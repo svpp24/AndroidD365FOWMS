@@ -1,0 +1,169 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsUserAdmin</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// User administration, called from the D365FO form.
+///
+/// **Not exposed as a service.** Creating users, resetting passwords and deactivating accounts
+/// happen in D365FO, where D365FO's own security decides who may do them - so there is no
+/// acting-supervisor password check here. The role assignment is the authorisation.
+///
+/// It exists as a class rather than as form code for one reason: password hashing must have
+/// exactly one implementation. A form that generated its own salt, or reached for a different
+/// iteration count, would produce rows the handheld could never authenticate against - and the
+/// failure would look like a wrong password rather than like a bug.
+/// </summary>
+class HSMobileOpsUserAdmin
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>setPassword</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Sets or resets a user's password and forces them to change it at next sign-in.
+    ///
+    /// The forced change is the point of a reset: the temporary password an administrator reads
+    /// out over the phone is good for exactly one sign-in and then stops being a shared secret.
+    /// Any lockout is cleared too, because a reset is usually the answer to one.
+    /// </summary>
+    public static void setPassword(HSMobileOpsUser _user, str _newPassword)
+    {
+        HSMobileOpsUser user;
+        str             problem;
+        str             salt;
+
+        problem = HSMobileOpsPassword::policyFailure(_newPassword);
+        if (problem)
+        {
+            throw error(problem);
+        }
+
+        salt = HSMobileOpsPassword::newSalt();
+
+        ttsbegin;
+        user = HSMobileOpsUser::find(_user.UserName, true);
+
+        if (!user.RecId)
+        {
+            ttsabort;
+            throw error(strFmt('No mobile user %1', _user.UserName));
+        }
+
+        user.PasswordSalt       = salt;
+        user.HashIterations     = HSMobileOpsPassword::defaultIterations();
+        user.PasswordHash       = HSMobileOpsPassword::hash(_newPassword, salt, user.HashIterations);
+        user.MustChangePassword = NoYes::Yes;
+        user.FailedAttempts     = 0;
+        user.LockedUntilUtc     = DateTimeUtil::minValue();
+        user.update();
+        ttscommit;
+
+        info(strFmt(
+            'Password set for %1. They must change it at their next sign-in.', user.UserName));
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>setActive</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Activates or deactivates a mobile user.
+    ///
+    /// Deactivation rather than deletion, always. The user row is what a posted receipt's worker
+    /// attribution points at, so deleting it would orphan the history that makes the attribution
+    /// worth having - see HSMobileOpsPostLog, which records who posted what.
+    /// </summary>
+    public static void setActive(HSMobileOpsUser _user, boolean _active)
+    {
+        HSMobileOpsUser user;
+
+        ttsbegin;
+        user = HSMobileOpsUser::find(_user.UserName, true);
+
+        if (!user.RecId)
+        {
+            ttsabort;
+            throw error(strFmt('No mobile user %1', _user.UserName));
+        }
+
+        user.IsActive = _active ? NoYes::Yes : NoYes::No;
+
+        if (_active)
+        {
+            // Reactivating clears a lockout: an account switched back on should not still be
+            // serving out a timeout nobody remembers starting.
+            user.FailedAttempts = 0;
+            user.LockedUntilUtc = DateTimeUtil::minValue();
+        }
+
+        user.update();
+        ttscommit;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>unlock</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Clears a lockout without touching the password.
+    ///
+    /// The common case on a night shift: the worker knows their password, mistyped it five times
+    /// on a small keyboard, and needs to work now. Resetting the password would be a heavier
+    /// answer than the problem deserves.
+    /// </summary>
+    public static void unlock(HSMobileOpsUser _user)
+    {
+        HSMobileOpsUser user;
+
+        ttsbegin;
+        user = HSMobileOpsUser::find(_user.UserName, true);
+
+        if (user.RecId)
+        {
+            user.FailedAttempts = 0;
+            user.LockedUntilUtc = DateTimeUtil::minValue();
+            user.update();
+        }
+        ttscommit;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>makeDefaultWarehouse</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Makes one assignment the user's default, clearing the flag from the others.
+    ///
+    /// Enforced here rather than left to the form. Two rows both flagged default is a state with
+    /// no correct reading: the app would sign the worker into whichever the query happened to
+    /// return first, and the same person would land in different warehouses on different days.
+    /// </summary>
+    public static void makeDefaultWarehouse(HSMobileOpsUserWarehouse _assignment)
+    {
+        HSMobileOpsUserWarehouse assignment;
+
+        ttsbegin;
+        select forUpdate firstOnly assignment
+            where assignment.RecId == _assignment.RecId;
+
+        if (assignment.RecId)
+        {
+            HSMobileOpsUserWarehouse::clearDefaults(assignment.UserRecId, assignment.RecId);
+            assignment.IsDefault = NoYes::Yes;
+            assignment.update();
+        }
+        ttscommit;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

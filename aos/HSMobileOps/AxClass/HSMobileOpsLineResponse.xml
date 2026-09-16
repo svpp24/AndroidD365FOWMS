@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsLineResponse</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// The outstanding lines matching one item on one order.
+///
+/// Normally one row. Several when the same item is ordered on separate lines with different
+/// schedules or dimensions, which is common enough that the handheld has to be able to ask
+/// which one — and is the reason this returns a list rather than a single line.
+/// </summary>
+[DataContractAttribute]
+class HSMobileOpsLineResponse
+{
+    boolean success;
+    str     errorCode;
+    List    lines;
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmSuccess</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Success')]
+    public boolean parmSuccess(boolean _value = success)
+    {
+        success = _value;
+        return success;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmErrorCode</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// NOT_ON_ORDER when the item is not outstanding on this order. That is a real answer to a
+    /// real scan - the operator is holding something that does not belong to this delivery - and
+    /// not an error, so it comes back with Success set.
+    /// </summary>
+    [DataMemberAttribute('ErrorCode')]
+    public str parmErrorCode(str _value = errorCode)
+    {
+        errorCode = _value;
+        return errorCode;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmLines</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Lines'),
+     DataCollectionAttribute(Types::Class, classStr(HSMobileOpsPurchLineContract))]
+    public List parmLines(List _value = lines)
+    {
+        lines = _value;
+        return lines;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxMenu xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOps</Name>
+	<Label>Mobile operations</Label>
+	<MenuItems>
+		<AxMenuElement xmlns=""
+			i:type="AxMenuElementMenu">
+			<Name>Setup</Name>
+			<Label>Setup</Label>
+			<MenuItems>
+				<AxMenuElement xmlns=""
+					i:type="AxMenuElementReference">
+					<Name>HSMobileOpsUser</Name>
+					<MenuItemName>HSMobileOpsUser</MenuItemName>
+					<ObjectType>Display</ObjectType>
+				</AxMenuElement>
+			</MenuItems>
+		</AxMenuElement>
+	</MenuItems>
+</AxMenu>

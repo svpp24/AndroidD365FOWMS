@@ -1,0 +1,363 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsInquiryService</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// The single-answer lookups behind the remaining steps: location, serial, and on-hand.
+///
+/// Each one replaces an OData query that was doing far more work than the question deserved. The
+/// location check in particular went through WarehouseLocations, a data-entity view, to answer
+/// "does this bin exist in this warehouse" - one indexed read on WMSLocation.
+///
+/// All three are read-only, transaction-free and keyed. See HSMobileOpsReceivingService for the
+/// load reasoning that applies to this whole service group.
+/// </summary>
+class HSMobileOpsInquiryService
+{
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>validateLocation</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Whether a location exists in a warehouse.
+    ///
+    /// **There is no location-blocking check here, because basic warehousing has no such concept.**
+    /// An earlier version invented one against a WMSLocationBlocking table that does not exist -
+    /// and before that guessed two field names on it that also did not. Blocking in basic
+    /// warehousing is applied to *inventory*, not to bins, so a bin is either a real location in
+    /// this warehouse or it is not, and that is the only question this can honestly answer.
+    ///
+    /// The contract keeps CanReceiveInto and BlockingCause so the client does not have to change
+    /// if a real rule is added later - a location type restriction, say, once the WMSLocationType
+    /// values in use here are known. Until then CanReceiveInto tracks existence and nothing is
+    /// silently asserted about usability.
+    /// </summary>
+    public HSMobileOpsLocationResponse validateLocation(HSMobileOpsLocationRequest _request)
+    {
+        HSMobileOpsLocationResponse response = new HSMobileOpsLocationResponse();
+        WMSLocation                 wmsLocation;
+        DataAreaId                  company;
+        InventLocationId            warehouseId;
+        WMSLocationId               locationId;
+
+        response.parmSuccess(false);
+
+        if (_request)
+        {
+            company     = _request.parmDataAreaId();
+            warehouseId = _request.parmWarehouseId();
+            locationId  = _request.parmLocationId();
+        }
+
+        if (!company || !warehouseId || !locationId
+         || !CompanyInfo::findDataArea(company).RecId)
+        {
+            response.parmErrorCode('INVALID_REQUEST');
+            return response;
+        }
+
+        changecompany (company)
+        {
+            // Re-instantiated inside the block: a buffer created before changecompany keeps the
+            // session's original company and would answer about the wrong legal entity.
+            wmsLocation = null;
+
+            select firstOnly RecId, wMSLocationId, InventLocationId
+                from wmsLocation
+                where wmsLocation.InventLocationId == warehouseId
+                   && wmsLocation.wMSLocationId    == locationId;
+
+            if (!wmsLocation.RecId)
+            {
+                response.parmSuccess(true);
+                response.parmExists(false);
+                response.parmCanReceiveInto(false);
+                response.parmErrorCode('NOT_FOUND');
+                return response;
+            }
+
+            response.parmSuccess(true);
+            response.parmExists(true);
+            response.parmWarehouseId(wmsLocation.InventLocationId);
+            response.parmLocationId(wmsLocation.wMSLocationId);
+
+            // The bin is real and in this warehouse, which is everything that can be checked.
+            // Deliberately not left false-by-default: a location the operator can see and reach,
+            // reported as unusable for a reason the service cannot name, is worse than one it
+            // says nothing about.
+            response.parmCanReceiveInto(true);
+        }
+
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>validateSerial</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Whether a serial number is already registered against an item.
+    ///
+    /// A serial identifies one physical unit for the life of that unit. Receiving a second unit
+    /// under the same number makes the two indistinguishable in every later enquiry and cannot be
+    /// unpicked, so this is checked while the operator is still holding the box.
+    /// </summary>
+    public HSMobileOpsSerialResponse validateSerial(HSMobileOpsSerialRequest _request)
+    {
+        HSMobileOpsSerialResponse response = new HSMobileOpsSerialResponse();
+        InventSerial              inventSerial;
+        DataAreaId                company;
+        ItemId                    itemId;
+        InventSerialId            serialId;
+
+        response.parmSuccess(false);
+
+        if (_request)
+        {
+            company  = _request.parmDataAreaId();
+            itemId   = _request.parmItemId();
+            serialId = _request.parmSerialId();
+        }
+
+        if (!company || !itemId || !serialId || !CompanyInfo::findDataArea(company).RecId)
+        {
+            response.parmErrorCode('INVALID_REQUEST');
+            return response;
+        }
+
+        changecompany (company)
+        {
+            inventSerial = null;
+
+            select firstOnly RecId from inventSerial
+                where inventSerial.ItemId         == itemId
+                   && inventSerial.InventSerialId == serialId;
+
+            response.parmSuccess(true);
+            response.parmRegistered(inventSerial.RecId != 0);
+        }
+
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>validateBatch</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Whether an item and batch combination already has a master record.
+    ///
+    /// A batch's master record - InventBatch - is what a dimension actually attaches to; a
+    /// dimension referencing a batch with no master row is refused during posting. The client
+    /// uses this to decide, while the operator is still standing there, whether it needs to ask
+    /// for a manufacturing and expiry date before the batch can be used - not after a posting
+    /// fails on the queue with nobody there to answer.
+    /// </summary>
+    public HSMobileOpsBatchResponse validateBatch(HSMobileOpsBatchRequest _request)
+    {
+        HSMobileOpsBatchResponse response = new HSMobileOpsBatchResponse();
+        InventBatch              inventBatch;
+        DataAreaId               company;
+        ItemId                   itemId;
+        InventBatchId            batchId;
+
+        response.parmSuccess(false);
+
+        if (_request)
+        {
+            company = _request.parmDataAreaId();
+            itemId  = _request.parmItemId();
+            batchId = _request.parmBatchId();
+        }
+
+        if (!company || !itemId || !batchId || !CompanyInfo::findDataArea(company).RecId)
+        {
+            response.parmErrorCode('INVALID_REQUEST');
+            return response;
+        }
+
+        changecompany (company)
+        {
+            inventBatch = null;
+
+            select firstOnly RecId from inventBatch
+                where inventBatch.ItemId        == itemId
+                   && inventBatch.InventBatchId == batchId;
+
+            response.parmSuccess(true);
+            response.parmRegistered(inventBatch.RecId != 0);
+        }
+
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>debugPostLog</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Temporary troubleshooting: the last 20 HSMobileOpsPostLog rows, most recent first.
+    ///
+    /// Exists to answer one question directly instead of guessing at it through black-box HTTP
+    /// timing - is HSMobileOpsPostLog carrying a row with a blank or unexpected IdempotencyKey,
+    /// which is what a DuplicateKeyException on every insert regardless of the key sent would
+    /// mean. The IdempotencyKey is wrapped in brackets specifically so a blank one is visible as
+    /// "Key=[]" rather than an easily-missed run of spaces in a fixed-width column. Safe to
+    /// delete once that question is answered - this is not part of the app's real API surface.
+    /// </summary>
+    public HSMobileOpsDebugResponse debugPostLog()
+    {
+        HSMobileOpsDebugResponse response = new HSMobileOpsDebugResponse();
+        HSMobileOpsPostLog       postLog;
+        List                     rows = new List(Types::String);
+        // 'count' is a reserved word in X++ (the aggregate).
+        int                      countLog;
+
+        // crossCompany, and DataAreaId in the output - the first version of this method had
+        // neither and always came back empty despite every insert attempt reporting the row it
+        // was trying to write already existed. A plain select without crossCompany is scoped to
+        // this service's own ambient company, which need not be the one the insert actually ran
+        // under (that happens inside its own changecompany block in HSMobileOpsPostingService) -
+        // so the two were very possibly never looking at the same rows at all.
+        while select crossCompany postLog
+            order by PostedUtc desc
+        {
+            rows.addEnd(strFmt(
+                'Company=%1 Key=[%2] Type=%3 Source=%4 Doc=%5 By=%6 At=%7',
+                postLog.DataAreaId,
+                postLog.IdempotencyKey,
+                postLog.DocumentType,
+                postLog.SourceId,
+                postLog.DocumentNumber,
+                postLog.PostedByUserName,
+                DateTimeUtil::toStr(postLog.PostedUtc)));
+
+            countLog++;
+            if (countLog >= 20)
+            {
+                break;
+            }
+        }
+
+        response.parmSuccess(true);
+        response.parmRows(rows);
+
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>getOnHand</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// On-hand for one item, optionally narrowed to one warehouse.
+    ///
+    /// Aggregated on the server from InventSum. Sending the raw dimension rows to the device and
+    /// summing them there would move hundreds of rows for an item held in many bins, to render
+    /// five numbers.
+    ///
+    /// The GROUP BY bounds the *response*, not the *scan*. InventSum is among the largest tables
+    /// in the application, and an item stocked across thousands of bins is read in full to produce
+    /// those five numbers. The row ceiling is a backstop against one such item holding an AOS
+    /// session while every other handheld waits; narrowing to a warehouse, which the enquiry
+    /// screen does by default, is what keeps it off that path.
+    /// </summary>
+    public HSMobileOpsOnHandResponse getOnHand(HSMobileOpsOnHandRequest _request)
+    {
+        HSMobileOpsOnHandResponse response = new HSMobileOpsOnHandResponse();
+        HSMobileOpsOnHandRow      row;
+        InventSum                 inventSum;
+        InventDim                 inventDim;
+        List                      rows = new List(Types::Class);
+        DataAreaId                company;
+        ItemId                    itemId;
+        InventLocationId          warehouseId;
+        int                       rowCount;
+
+        response.parmSuccess(false);
+        response.parmRows(rows);
+
+        if (_request)
+        {
+            company     = _request.parmDataAreaId();
+            itemId      = _request.parmItemId();
+            warehouseId = _request.parmWarehouseId();
+        }
+
+        if (!company || !itemId || !CompanyInfo::findDataArea(company).RecId)
+        {
+            response.parmErrorCode('INVALID_REQUEST');
+            return response;
+        }
+
+        changecompany (company)
+        {
+            inventSum = null;
+            inventDim = null;
+
+            // Grouped in SQL rather than in X++: this collapses a per-bin result set to one row
+            // per site and warehouse before it leaves the database.
+            while select sum(PhysicalInvent), sum(AvailPhysical), sum(ReservPhysical),
+                         sum(Ordered), sum(AvailOrdered)
+                from inventSum
+                group by inventDim.InventSiteId, inventDim.InventLocationId
+                where inventSum.ItemId == itemId
+                   && inventSum.Closed == NoYes::No
+                join InventSiteId, InventLocationId from inventDim
+                    where inventDim.InventDimId == inventSum.InventDimId
+                       && (!warehouseId || inventDim.InventLocationId == warehouseId)
+            {
+                row = new HSMobileOpsOnHandRow();
+
+                row.parmItemId(itemId);
+                row.parmSiteId(inventDim.InventSiteId);
+                row.parmWarehouseId(inventDim.InventLocationId);
+                row.parmOnHand(inventSum.PhysicalInvent);
+                row.parmAvailable(inventSum.AvailPhysical);
+                row.parmReserved(inventSum.ReservPhysical);
+                row.parmOrdered(inventSum.Ordered);
+                row.parmTotalAvailable(inventSum.AvailPhysical + inventSum.AvailOrdered);
+
+                rows.addEnd(row);
+
+                rowCount++;
+                if (rowCount >= HSMobileOpsInquiryService::maxOnHandRows())
+                {
+                    response.parmErrorCode('TRUNCATED');
+                    break;
+                }
+            }
+
+            response.parmSuccess(true);
+        }
+
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>maxOnHandRows</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Ceiling on aggregated on-hand rows. One row per site and warehouse, so a legitimate answer
+    /// is a handful; anything approaching this means the query is not the one the operator wanted.
+    /// </summary>
+    private static int maxOnHandRows()
+    {
+        return 200;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

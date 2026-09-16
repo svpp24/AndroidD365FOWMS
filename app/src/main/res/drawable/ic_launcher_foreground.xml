@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Adaptive-icon foreground: a carton seen from the front with a scan beam across it.
+  Drawn as a vector so the project carries no binary assets — a fleet MDM rebuilds this
+  app often, and binary drawables are the usual source of "works on my machine" icon drift.
+
+  Adaptive icons are 108x108dp with only the centre 72x72dp guaranteed visible, so the
+  artwork stays inside roughly x/y 26..82.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- carton body -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M30,44 L54,34 L78,44 L78,74 L54,84 L30,74 Z" />
+
+    <!-- lid crease, left face shading -->
+    <path
+        android:fillColor="#C9DCEF"
+        android:pathData="M30,44 L54,54 L54,84 L30,74 Z" />
+
+    <!-- tape seam down the centre -->
+    <path
+        android:fillColor="#0B5394"
+        android:pathData="M51,52.75 L57,52.75 L57,80 L51,82.5 Z" />
+
+    <!-- scan beam -->
+    <path
+        android:fillColor="#FFC61A"
+        android:pathData="M22,58 L86,58 L86,62 L22,62 Z" />
+</vector>

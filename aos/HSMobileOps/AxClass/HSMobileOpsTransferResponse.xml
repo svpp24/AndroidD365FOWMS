@@ -1,0 +1,218 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsTransferResponse</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+[DataContractAttribute]
+class HSMobileOpsTransferResponse
+{
+    boolean          success;
+    str              errorCode;
+    str              message;
+    str              transferId;
+    str              transferStatus;
+    boolean          actionable;
+    InventSiteId     fromSiteId;
+    InventLocationId fromWarehouseId;
+    InventSiteId     toSiteId;
+    InventLocationId toWarehouseId;
+    int              outstandingLineCount;
+    boolean          linesIncluded;
+    List             lines;
+
+    // Receive direction only - see HSMobileOpsProcessSetup.RequireLocationCapture and the
+    // identical field on HSMobileOpsPurchOrderResponse. Shipping never asks for a location at
+    // all, regardless of this flag - the source location is already on the line.
+    boolean          requireLocationCapture;
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmSuccess</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Success')]
+    public boolean parmSuccess(boolean _value = success)
+    {
+        success = _value;
+        return success;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmErrorCode</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// NOT_FOUND, WRONG_WAREHOUSE, NOT_SHIPPABLE, NOT_RECEIVABLE, NOTHING_OUTSTANDING,
+    /// INVALID_REQUEST.
+    ///
+    /// WRONG_WAREHOUSE is worth its own code: an operator scanning a transfer at the wrong end is
+    /// the commonest mistake in this flow, and "nothing to do" would send them looking for a data
+    /// problem that is not there.
+    /// </summary>
+    [DataMemberAttribute('ErrorCode')]
+    public str parmErrorCode(str _value = errorCode)
+    {
+        errorCode = _value;
+        return errorCode;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmMessage</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Message')]
+    public str parmMessage(str _value = message)
+    {
+        message = _value;
+        return message;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmTransferId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('TransferId')]
+    public str parmTransferId(str _value = transferId)
+    {
+        transferId = _value;
+        return transferId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmTransferStatus</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('TransferStatus')]
+    public str parmTransferStatus(str _value = transferStatus)
+    {
+        transferStatus = _value;
+        return transferStatus;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmActionable</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Whether the requested direction can be worked right now. Decided on the server from the
+    /// status enum, so the client never has to interpret a status string.
+    /// </summary>
+    [DataMemberAttribute('Actionable')]
+    public boolean parmActionable(boolean _value = actionable)
+    {
+        actionable = _value;
+        return actionable;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmFromSiteId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('FromSiteId')]
+    public InventSiteId parmFromSiteId(InventSiteId _value = fromSiteId)
+    {
+        fromSiteId = _value;
+        return fromSiteId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmFromWarehouseId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('FromWarehouseId')]
+    public InventLocationId parmFromWarehouseId(InventLocationId _value = fromWarehouseId)
+    {
+        fromWarehouseId = _value;
+        return fromWarehouseId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmToSiteId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ToSiteId')]
+    public InventSiteId parmToSiteId(InventSiteId _value = toSiteId)
+    {
+        toSiteId = _value;
+        return toSiteId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmToWarehouseId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ToWarehouseId')]
+    public InventLocationId parmToWarehouseId(InventLocationId _value = toWarehouseId)
+    {
+        toWarehouseId = _value;
+        return toWarehouseId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmOutstandingLineCount</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('OutstandingLineCount')]
+    public int parmOutstandingLineCount(int _value = outstandingLineCount)
+    {
+        outstandingLineCount = _value;
+        return outstandingLineCount;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmLinesIncluded</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// False when the order carries too many lines to send whole; the client then asks per item.
+    /// Same adaptive rule as purchase orders, for the same reason.
+    /// </summary>
+    [DataMemberAttribute('LinesIncluded')]
+    public boolean parmLinesIncluded(boolean _value = linesIncluded)
+    {
+        linesIncluded = _value;
+        return linesIncluded;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmLines</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Lines'),
+     DataCollectionAttribute(Types::Class, classStr(HSMobileOpsTransferLineContract))]
+    public List parmLines(List _value = lines)
+    {
+        lines = _value;
+        return lines;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmRequireLocationCapture</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('RequireLocationCapture')]
+    public boolean parmRequireLocationCapture(boolean _value = requireLocationCapture)
+    {
+        requireLocationCapture = _value;
+        return requireLocationCapture;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

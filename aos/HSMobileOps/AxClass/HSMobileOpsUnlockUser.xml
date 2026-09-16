@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsUnlockUser</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Clears a lockout without touching the password.
+/// </summary>
+class HSMobileOpsUnlockUser
+{
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>main</Name>
+				<Source><![CDATA[
+    public static void main(Args _args)
+    {
+        HSMobileOpsUser user;
+
+        if (!_args || !_args.record() || _args.dataset() != tableNum(HSMobileOpsUser))
+        {
+            throw error('Select a mobile user first');
+        }
+
+        user = _args.record() as HSMobileOpsUser;
+
+        if (!user.isLockedOut())
+        {
+            info(strFmt('%1 is not locked out', user.UserName));
+            return;
+        }
+
+        HSMobileOpsUserAdmin::unlock(user);
+        info(strFmt('%1 unlocked', user.UserName));
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

@@ -1,0 +1,264 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxTable xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsDevice</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// The fleet of handhelds that have ever signed into ForeFront Mobile, one row per device.
+///
+/// Registered automatically - see registerSignIn - rather than through any setup screen. The
+/// standard D365FO Warehouse app populates an equivalent list the same way: every sign-in tells
+/// the AOS which physical device is asking, so IT gets a fleet inventory for free instead of
+/// needing someone to maintain one by hand. Before this table existed, a device's identity only
+/// ever showed up as an opaque DeviceId string on individual postings (HSMobileOpsPostQueue,
+/// HSMobileOpsPostLog) - traceable after the fact, but with no answer to "what handhelds are
+/// actually deployed at WMS-WHS right now" anywhere in D365FO.
+///
+/// DeviceId is generated client-side (see WorkerContextRepositoryImpl.deviceId) and is stable for
+/// the life of an install, not a hardware serial - a factory reset or reinstall registers what
+/// looks like a new device, which is the correct behaviour for a fleet MDM that should not need
+/// privileged access to read real hardware identifiers.
+/// </summary>
+public class HSMobileOpsDevice extends common
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>registerSignIn</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Upserts this device's row from a successful sign-in.
+    ///
+    /// Called from HSMobileOpsUserService::signIn once authentication has already succeeded -
+    /// never on its own, and never on a failed attempt, so this table only ever reflects devices
+    /// a real worker actually got into, not every handheld that tried a wrong password. Brand and
+    /// model are trusted as sent - a device lying about its own hardware is not a security
+    /// question this table answers - and are only ever overwritten with a non-blank value, so a
+    /// client that cannot read them (or an older app build that does not send them yet) does not
+    /// blank out what a previous sign-in already recorded.
+    /// </summary>
+    public static void registerSignIn(
+        str                   _deviceId,
+        str                   _deviceBrand,
+        str                   _deviceModel,
+        str                   _platform,
+        str                   _platformVersion,
+        str                   _appVersionName,
+        HSMobileOpsUserName   _userName,
+        InventSiteId          _siteId,
+        InventLocationId      _warehouseId)
+    {
+        HSMobileOpsDevice device;
+
+        if (!_deviceId)
+        {
+            return;
+        }
+
+        ttsbegin;
+
+        select forUpdate device
+            where device.DeviceId == _deviceId;
+
+        if (!device.RecId)
+        {
+            device.DeviceId     = _deviceId;
+            device.IsActive     = NoYes::Yes;
+            device.FirstSeenUtc = DateTimeUtil::utcNow();
+        }
+
+        if (_deviceBrand)
+        {
+            device.DeviceBrand = _deviceBrand;
+        }
+        if (_deviceModel)
+        {
+            device.DeviceModel = _deviceModel;
+        }
+        // Recomputed every sign-in rather than stored once, so a device that only had a model
+        // the first time (an app build that added brand reporting later, say) picks up the
+        // fuller name on its very next sign-in instead of being stuck with the old one.
+        device.FriendlyName = HSMobileOpsDevice::friendlyName(device.DeviceBrand, device.DeviceModel);
+
+        if (_platform)
+        {
+            device.Platform = _platform;
+        }
+        if (_platformVersion)
+        {
+            device.PlatformVersion = _platformVersion;
+        }
+        if (_appVersionName)
+        {
+            device.AppVersionName = _appVersionName;
+        }
+
+        device.LastUserName    = _userName;
+        device.LastSiteId      = _siteId;
+        device.LastWarehouseId = _warehouseId;
+        device.LastSignInUtc   = DateTimeUtil::utcNow();
+
+        if (device.RecId)
+        {
+            device.update();
+        }
+        else
+        {
+            device.insert();
+        }
+
+        ttscommit;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>friendlyName</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// "Zebra TC27", falling back to whichever of brand/model is actually known.
+    /// </summary>
+    private static str friendlyName(str _brand, str _model)
+    {
+        if (_brand && _model)
+        {
+            return strFmt('%1 %2', _brand, _model);
+        }
+
+        return _brand ? _brand : _model;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+	<Label>Mobile device</Label>
+	<TitleField1>FriendlyName</TitleField1>
+	<TitleField2>DeviceId</TitleField2>
+	<CacheLookup>NotInTTS</CacheLookup>
+	<ClusteredIndex>DeviceIdIdx</ClusteredIndex>
+	<PrimaryIndex>DeviceIdIdx</PrimaryIndex>
+	<ReplacementKey>DeviceIdIdx</ReplacementKey>
+	<Fields>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>DeviceId</Name>
+			<Label>Device ID</Label>
+			<HelpText>Generated on the handheld itself and stable for the life of the install - not a hardware serial number.</HelpText>
+			<StringSize>64</StringSize>
+			<Mandatory>Yes</Mandatory>
+			<AllowEdit>No</AllowEdit>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>FriendlyName</Name>
+			<Label>Friendly name</Label>
+			<HelpText>Brand and model together, e.g. "Zebra TC27". Recomputed on every sign-in.</HelpText>
+			<StringSize>121</StringSize>
+			<AllowEdit>No</AllowEdit>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>DeviceBrand</Name>
+			<Label>Brand</Label>
+			<StringSize>60</StringSize>
+			<AllowEdit>No</AllowEdit>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>DeviceModel</Name>
+			<Label>Model</Label>
+			<StringSize>60</StringSize>
+			<AllowEdit>No</AllowEdit>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>Platform</Name>
+			<Label>Platform</Label>
+			<HelpText>"Android" today - this app has no other client - but reported by the device rather than assumed, the same as the standard Warehouse app's own device list, so a future non-Android client needs no schema change here.</HelpText>
+			<StringSize>30</StringSize>
+			<AllowEdit>No</AllowEdit>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>PlatformVersion</Name>
+			<Label>Platform version</Label>
+			<HelpText>The OS version, e.g. "14". Useful the same way AppVersionName is - a fault that only shows up on some handhelds often turns out to be an OS-version line, not a device-model one.</HelpText>
+			<StringSize>30</StringSize>
+			<AllowEdit>No</AllowEdit>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>AppVersionName</Name>
+			<Label>App version</Label>
+			<HelpText>The app build last signed in from this device. Useful when a fault only shows up on some handhelds - the first question is usually whether they are all on the same build.</HelpText>
+			<StringSize>32</StringSize>
+			<AllowEdit>No</AllowEdit>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>LastUserName</Name>
+			<Label>Last user</Label>
+			<ExtendedDataType>HSMobileOpsUserName</ExtendedDataType>
+			<AllowEdit>No</AllowEdit>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>LastSiteId</Name>
+			<Label>Last site</Label>
+			<ExtendedDataType>InventSiteId</ExtendedDataType>
+			<AllowEdit>No</AllowEdit>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>LastWarehouseId</Name>
+			<Label>Last warehouse</Label>
+			<HelpText>The signed-in worker's default warehouse as of their last sign-in - not necessarily where the device is right now if they later switched warehouses without signing out.</HelpText>
+			<ExtendedDataType>InventLocationId</ExtendedDataType>
+			<AllowEdit>No</AllowEdit>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldUtcDateTime">
+			<Name>LastSignInUtc</Name>
+			<Label>Last sign-in</Label>
+			<AllowEdit>No</AllowEdit>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldUtcDateTime">
+			<Name>FirstSeenUtc</Name>
+			<Label>First seen</Label>
+			<AllowEdit>No</AllowEdit>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldEnum">
+			<Name>IsActive</Name>
+			<Label>Active</Label>
+			<HelpText>Deactivate a device that has been retired or lost. It can still sign in - deactivating a device is fleet bookkeeping, not a remote lock - but drops off the active-fleet view.</HelpText>
+			<EnumType>NoYes</EnumType>
+		</AxTableField>
+	</Fields>
+	<FullTextIndexes />
+	<Indexes>
+		<AxTableIndex>
+			<Name>DeviceIdIdx</Name>
+			<AllowDuplicates>No</AllowDuplicates>
+			<Fields>
+				<AxTableIndexField>
+					<DataField>DeviceId</DataField>
+				</AxTableIndexField>
+			</Fields>
+		</AxTableIndex>
+		<AxTableIndex>
+			<Name>LastWarehouseIdx</Name>
+			<Fields>
+				<AxTableIndexField>
+					<DataField>LastWarehouseId</DataField>
+				</AxTableIndexField>
+			</Fields>
+		</AxTableIndex>
+	</Indexes>
+	<Mappings />
+	<Relations />
+	<StateMachines />
+</AxTable>

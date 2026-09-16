@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsToggleDeviceActive</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Activates or deactivates a device's fleet row.
+///
+/// A device can still sign in either way - see the field help on HSMobileOpsDevice.IsActive.
+/// This is bookkeeping for "what is actually in service", not a remote kill switch; a lost or
+/// stolen handheld needs its worker accounts locked and the client secret rotated, neither of
+/// which lives on this table.
+/// </summary>
+class HSMobileOpsToggleDeviceActive
+{
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>main</Name>
+				<Source><![CDATA[
+    public static void main(Args _args)
+    {
+        HSMobileOpsDevice device;
+        boolean           makeActive;
+
+        if (!_args || !_args.record() || _args.dataset() != tableNum(HSMobileOpsDevice))
+        {
+            throw error('Select a device first');
+        }
+
+        device     = _args.record() as HSMobileOpsDevice;
+        makeActive = device.IsActive != NoYes::Yes;
+
+        ttsbegin;
+        device.selectForUpdate(true);
+        device.IsActive = makeActive ? NoYes::Yes : NoYes::No;
+        device.update();
+        ttscommit;
+
+        info(strFmt('%1 is now %2', device.FriendlyName, makeActive ? 'active' : 'inactive'));
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

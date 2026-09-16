@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxSecurityPrivilege xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsUserView</Name>
+	<Label>View mobile device users</Label>
+	<HelpText>Read handheld logins and their warehouse assignments without being able to change them. For a supervisor who needs to see who is set up, not to set them up.</HelpText>
+	<EntryPoints>
+		<AxSecurityEntryPointReference>
+			<Name>HSMobileOpsUser</Name>
+			<ObjectName>HSMobileOpsUser</ObjectName>
+			<ObjectType>MenuItemDisplay</ObjectType>
+			<AccessLevel>Read</AccessLevel>
+		</AxSecurityEntryPointReference>
+	</EntryPoints>
+	<Tables>
+		<AxSecurityPrivilegeTablePermission>
+			<Name>HSMobileOpsUser</Name>
+			<Delete>NoAccess</Delete>
+			<Insert>NoAccess</Insert>
+			<Read>Allow</Read>
+			<Update>NoAccess</Update>
+		</AxSecurityPrivilegeTablePermission>
+		<AxSecurityPrivilegeTablePermission>
+			<Name>HSMobileOpsUserWarehouse</Name>
+			<Delete>NoAccess</Delete>
+			<Insert>NoAccess</Insert>
+			<Read>Allow</Read>
+			<Update>NoAccess</Update>
+		</AxSecurityPrivilegeTablePermission>
+		<AxSecurityPrivilegeTablePermission>
+			<Name>HSMobileOpsPostLog</Name>
+			<Delete>NoAccess</Delete>
+			<Insert>NoAccess</Insert>
+			<Read>Allow</Read>
+			<Update>NoAccess</Update>
+		</AxSecurityPrivilegeTablePermission>
+	</Tables>
+</AxSecurityPrivilege>

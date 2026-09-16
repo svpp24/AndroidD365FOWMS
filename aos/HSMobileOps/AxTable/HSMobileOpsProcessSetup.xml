@@ -1,0 +1,258 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxTable xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsProcessSetup</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// How each mobile process handles more than one worker on the same order at once.
+///
+/// One row per process - receiving, transfer shipment, transfer receipt - not per warehouse and
+/// not per order. A warehouse that never sees a purchase order too big for one person and a
+/// distribution centre that always does are both served by the same three rows; the difference is
+/// which mode each row is set to, decided once here rather than remembered per delivery.
+///
+/// **None** is today's behaviour: no coordination, whoever posts first wins, a second worker's
+/// overlapping capture is rejected at post time against the live remaining quantity rather than
+/// silently over-received - see HSMobileOpsPostingService.
+///
+/// **LineClaim** adds a soft, time-limited claim: selecting a line marks it as being worked by
+/// this user for ClaimTimeoutMinutes, and another worker scanning the same item is told who has
+/// it rather than being silently offered a line someone is already standing at. See
+/// HSMobileOpsLineClaim.
+///
+/// **LicensePlate** scopes a whole visit to one pallet, built ad hoc by the worker on the handheld
+/// rather than pre-staged from an ASN - there is no inbound-shipment feed anywhere in this system
+/// to pre-stage it from. Two workers building two different pallets against the same order collide
+/// on nothing, because posting and local resume state are both scoped to the pallet, not the
+/// order. This is the closer analogue to how real WMS platforms solve this - see the design notes
+/// in aos/README.md - at the cost of asking the worker one more question per visit.
+///
+/// RequireLocationCapture is unrelated to concurrency and lives here only because this is already
+/// the one row-per-process setup table. A line that already carries a put-away location (a
+/// purchase order line's own LocationId, say) is always used as-is and never asked about -
+/// nothing here can override that. This flag decides only the fallback: when a line has no
+/// location of its own and the item's storage dimension tracks one, does this process still stop
+/// to ask, or accept the receipt without one. See HSMobileOpsPurchOrderResponse and the Android
+/// stepsFor() that reads it.
+/// </summary>
+public class HSMobileOpsProcessSetup extends common
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>find</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The setup row for one process, or the None-mode default if nobody has configured it yet.
+    ///
+    /// Defaulting to None rather than throwing means an unconfigured system behaves exactly as
+    /// it did before this table existed - nobody is forced to visit a setup form before the app
+    /// keeps working.
+    /// </summary>
+    public static HSMobileOpsProcessSetup find(str _processType, boolean _forUpdate = false)
+    {
+        HSMobileOpsProcessSetup setup;
+
+        setup.selectForUpdate(_forUpdate);
+
+        select firstOnly setup
+            where setup.ProcessType == _processType;
+
+        if (!setup.RecId)
+        {
+            setup.ProcessType            = _processType;
+            setup.ConcurrencyMode        = HSMobileOpsProcessSetup::modeNone();
+            setup.ClaimTimeoutMinutes    = HSMobileOpsProcessSetup::defaultClaimTimeoutMinutes();
+            // Unconfigured means "behave exactly as before this field existed" - see the class
+            // doc on RequireLocationCapture. Before it existed, the app always asked whenever
+            // the item's own storage dimension tracked location, so the safe default is to keep
+            // asking, not to silently stop.
+            setup.RequireLocationCapture = NoYes::Yes;
+        }
+
+        return setup;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>modeNone</Name>
+				<Source><![CDATA[
+
+    public static str modeNone()
+    {
+        return 'None';
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>modeLineClaim</Name>
+				<Source><![CDATA[
+
+    public static str modeLineClaim()
+    {
+        return 'LineClaim';
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>modeLicensePlate</Name>
+				<Source><![CDATA[
+
+    public static str modeLicensePlate()
+    {
+        return 'LicensePlate';
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>processReceiving</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The token used throughout for purchase order receiving. Matches the Android app's own
+    /// FlowType.RECEIVING, but deliberately not derived from it - the two sides agree on the
+    /// string by convention, the same way every other service contract in this model does.
+    /// </summary>
+    public static str processReceiving()
+    {
+        return 'Receiving';
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>processTransferShip</Name>
+				<Source><![CDATA[
+
+    public static str processTransferShip()
+    {
+        return 'TransferShip';
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>processTransferReceive</Name>
+				<Source><![CDATA[
+
+    public static str processTransferReceive()
+    {
+        return 'TransferReceive';
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>defaultClaimTimeoutMinutes</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// How long an unattended claim survives before another worker can take the line.
+    ///
+    /// Generous on purpose. The failure mode of too short is a worker who stepped away to find a
+    /// supervisor coming back to find their own claim gone and the line offered to someone else -
+    /// confusing and worse than the problem the claim exists to prevent. The failure mode of too
+    /// long is a genuinely abandoned line staying blocked for a while, which costs nothing but
+    /// patience and resolves itself on expiry regardless.
+    /// </summary>
+    public static int defaultClaimTimeoutMinutes()
+    {
+        return 20;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>ensureSeeded</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Inserts the three process rows, at None, if they do not already exist.
+    ///
+    /// Called from the setup form's init so a supervisor who has never touched this always sees
+    /// three editable rows rather than an empty grid with no clue what to add. Idempotent and
+    /// cheap - three keyed existence checks - so calling it on every form open costs nothing
+    /// once the rows exist.
+    /// </summary>
+    public static void ensureSeeded()
+    {
+        HSMobileOpsProcessSetup setup;
+        int                     i;
+        container               processes = [
+            HSMobileOpsProcessSetup::processReceiving(),
+            HSMobileOpsProcessSetup::processTransferShip(),
+            HSMobileOpsProcessSetup::processTransferReceive()];
+
+        for (i = 1; i <= conLen(processes); i++)
+        {
+            setup = null;
+
+            select firstOnly RecId from setup
+                where setup.ProcessType == conPeek(processes, i);
+
+            if (!setup.RecId)
+            {
+                setup.clear();
+                setup.ProcessType            = conPeek(processes, i);
+                setup.ConcurrencyMode        = HSMobileOpsProcessSetup::modeNone();
+                setup.ClaimTimeoutMinutes    = HSMobileOpsProcessSetup::defaultClaimTimeoutMinutes();
+                setup.RequireLocationCapture = NoYes::Yes;
+                setup.insert();
+            }
+        }
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+	<Label>Mobile process concurrency setup</Label>
+	<TitleField1>ProcessType</TitleField1>
+	<TitleField2>ConcurrencyMode</TitleField2>
+	<CacheLookup>NotInTTS</CacheLookup>
+	<ClusteredIndex>ProcessTypeIdx</ClusteredIndex>
+	<PrimaryIndex>ProcessTypeIdx</PrimaryIndex>
+	<Fields>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>ProcessType</Name>
+			<Label>Process</Label>
+			<HelpText>Receiving, TransferShip or TransferReceive.</HelpText>
+			<StringSize>30</StringSize>
+			<Mandatory>Yes</Mandatory>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>ConcurrencyMode</Name>
+			<Label>Mode</Label>
+			<HelpText>None, LineClaim or LicensePlate.</HelpText>
+			<StringSize>20</StringSize>
+			<Mandatory>Yes</Mandatory>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldInt">
+			<Name>ClaimTimeoutMinutes</Name>
+			<Label>Claim timeout (minutes)</Label>
+			<HelpText>Only used in LineClaim mode. How long a claim survives with no activity.</HelpText>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldEnum">
+			<Name>RequireLocationCapture</Name>
+			<Label>Require location capture</Label>
+			<HelpText>When a line does not already carry a put-away location, whether this process still asks the operator to scan one. Ignored for a line that already has one - see HSMobileOpsPurchOrderResponse.RequireLocationCapture.</HelpText>
+			<EnumType>NoYes</EnumType>
+		</AxTableField>
+	</Fields>
+	<FullTextIndexes />
+	<Indexes>
+		<AxTableIndex>
+			<Name>ProcessTypeIdx</Name>
+			<AllowDuplicates>No</AllowDuplicates>
+			<Fields>
+				<AxTableIndexField>
+					<DataField>ProcessType</DataField>
+				</AxTableIndexField>
+			</Fields>
+		</AxTableIndex>
+	</Indexes>
+	<Mappings />
+	<Relations />
+	<StateMachines />
+</AxTable>

@@ -1,0 +1,160 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsSignInRequest</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+[DataContractAttribute]
+class HSMobileOpsSignInRequest
+{
+    DataAreaId dataAreaId;
+    str        userName;
+    str        password;
+    str        deviceId;
+    str        deviceBrand;
+    str        deviceModel;
+    str        platform;
+    str        platformVersion;
+    str        appVersionName;
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmDataAreaId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('DataAreaId')]
+    public DataAreaId parmDataAreaId(DataAreaId _value = dataAreaId)
+    {
+        dataAreaId = _value;
+        return dataAreaId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmUserName</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('UserName')]
+    public str parmUserName(str _value = userName)
+    {
+        userName = _value;
+        return userName;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmPassword</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The password as typed. Travels once, over TLS, and is never written anywhere - not to the
+    /// user record, not to a log, not into the response. See HSMobileOpsPassword.
+    /// </summary>
+    [DataMemberAttribute('Password')]
+    public str parmPassword(str _value = password)
+    {
+        password = _value;
+        return password;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmDeviceId</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Which handheld. Recorded so a sign-in can be traced to a device, which matters when the
+    /// devices are shared and one of them starts producing odd receipts.
+    /// </summary>
+    [DataMemberAttribute('DeviceId')]
+    public str parmDeviceId(str _value = deviceId)
+    {
+        deviceId = _value;
+        return deviceId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmDeviceBrand</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The device manufacturer (Android's Build.MANUFACTURER), e.g. "Zebra". Feeds
+    /// HSMobileOpsDevice's fleet list - see HSMobileOpsDevice::registerSignIn. Blank on an older
+    /// app build that predates fleet registration; that sign-in still succeeds, it just does not
+    /// update the device's brand.
+    /// </summary>
+    [DataMemberAttribute('DeviceBrand')]
+    public str parmDeviceBrand(str _value = deviceBrand)
+    {
+        deviceBrand = _value;
+        return deviceBrand;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmDeviceModel</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The device model (Android's Build.MODEL), e.g. "TC27". See parmDeviceBrand.
+    /// </summary>
+    [DataMemberAttribute('DeviceModel')]
+    public str parmDeviceModel(str _value = deviceModel)
+    {
+        deviceModel = _value;
+        return deviceModel;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmPlatform</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// "Android" today - this app has no other client. See parmDeviceBrand.
+    /// </summary>
+    [DataMemberAttribute('Platform')]
+    public str parmPlatform(str _value = platform)
+    {
+        platform = _value;
+        return platform;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmPlatformVersion</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The OS version (Android's Build.VERSION.RELEASE), e.g. "14". See parmDeviceBrand.
+    /// </summary>
+    [DataMemberAttribute('PlatformVersion')]
+    public str parmPlatformVersion(str _value = platformVersion)
+    {
+        platformVersion = _value;
+        return platformVersion;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmAppVersionName</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The app build signing in, e.g. "1.4.2". Recorded on the device's fleet row so a fault
+    /// that only shows up on some handhelds can start from "are they on the same build" rather
+    /// than a supervisor having to ask each worker to read a version number off their screen.
+    /// </summary>
+    [DataMemberAttribute('AppVersionName')]
+    public str parmAppVersionName(str _value = appVersionName)
+    {
+        appVersionName = _value;
+        return appVersionName;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

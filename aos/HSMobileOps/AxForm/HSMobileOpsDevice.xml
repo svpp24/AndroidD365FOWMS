@@ -1,0 +1,389 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxForm xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns="Microsoft.Dynamics.AX.Metadata.V6">
+	<Name>HSMobileOpsDevice</Name>
+	<SourceCode>
+		<Methods xmlns="">
+			<Method>
+				<Name>classDeclaration</Name>
+				<Source><![CDATA[
+/// <summary>
+/// The handheld fleet: every device that has signed into ForeFront Mobile, populated
+/// automatically on sign-in - see HSMobileOpsDevice::registerSignIn.
+///
+/// Read-only except for the Active flag. There is nothing else here for a person to set: brand,
+/// model, last user and last warehouse are all reported by the device itself, and editing them
+/// on this form would just make them wrong the next time that device signs in and overwrites
+/// them anyway.
+/// </summary>
+[Form]
+public class HSMobileOpsDevice extends FormRun
+{
+}
+]]></Source>
+			</Method>
+		</Methods>
+		<DataSources xmlns="" />
+		<DataControls xmlns="" />
+		<Members xmlns="" />
+	</SourceCode>
+	<DataSources>
+		<AxFormDataSource xmlns="">
+			<Name>HSMobileOpsDevice</Name>
+			<Table>HSMobileOpsDevice</Table>
+			<Fields>
+				<AxFormDataSourceField>
+					<AllowAdd>No</AllowAdd>
+					<AllowEdit>No</AllowEdit>
+					<DataField>DeviceId</DataField>
+				</AxFormDataSourceField>
+				<AxFormDataSourceField>
+					<AllowAdd>No</AllowAdd>
+					<AllowEdit>No</AllowEdit>
+					<DataField>FriendlyName</DataField>
+				</AxFormDataSourceField>
+				<AxFormDataSourceField>
+					<AllowAdd>No</AllowAdd>
+					<AllowEdit>No</AllowEdit>
+					<DataField>DeviceBrand</DataField>
+				</AxFormDataSourceField>
+				<AxFormDataSourceField>
+					<AllowAdd>No</AllowAdd>
+					<AllowEdit>No</AllowEdit>
+					<DataField>DeviceModel</DataField>
+				</AxFormDataSourceField>
+				<AxFormDataSourceField>
+					<AllowAdd>No</AllowAdd>
+					<AllowEdit>No</AllowEdit>
+					<DataField>Platform</DataField>
+				</AxFormDataSourceField>
+				<AxFormDataSourceField>
+					<AllowAdd>No</AllowAdd>
+					<AllowEdit>No</AllowEdit>
+					<DataField>PlatformVersion</DataField>
+				</AxFormDataSourceField>
+				<AxFormDataSourceField>
+					<AllowAdd>No</AllowAdd>
+					<AllowEdit>No</AllowEdit>
+					<DataField>AppVersionName</DataField>
+				</AxFormDataSourceField>
+				<AxFormDataSourceField>
+					<AllowAdd>No</AllowAdd>
+					<AllowEdit>No</AllowEdit>
+					<DataField>LastUserName</DataField>
+				</AxFormDataSourceField>
+				<AxFormDataSourceField>
+					<AllowAdd>No</AllowAdd>
+					<AllowEdit>No</AllowEdit>
+					<DataField>LastSiteId</DataField>
+				</AxFormDataSourceField>
+				<AxFormDataSourceField>
+					<AllowAdd>No</AllowAdd>
+					<AllowEdit>No</AllowEdit>
+					<DataField>LastWarehouseId</DataField>
+				</AxFormDataSourceField>
+				<AxFormDataSourceField>
+					<AllowAdd>No</AllowAdd>
+					<AllowEdit>No</AllowEdit>
+					<DataField>LastSignInUtc</DataField>
+				</AxFormDataSourceField>
+				<AxFormDataSourceField>
+					<AllowAdd>No</AllowAdd>
+					<AllowEdit>No</AllowEdit>
+					<DataField>FirstSeenUtc</DataField>
+				</AxFormDataSourceField>
+			</Fields>
+			<ReferencedDataSources />
+			<AllowCreate>No</AllowCreate>
+			<AllowDelete>No</AllowDelete>
+			<Index>DeviceIdIdx</Index>
+			<InsertIfEmpty>No</InsertIfEmpty>
+			<DataSourceLinks />
+			<DerivedDataSources />
+		</AxFormDataSource>
+	</DataSources>
+	<Design>
+		<Caption xmlns="">Mobile devices</Caption>
+		<DataSource xmlns="">HSMobileOpsDevice</DataSource>
+		<Pattern xmlns="">SimpleListDetails</Pattern>
+		<PatternVersion xmlns="">1.3</PatternVersion>
+		<Style xmlns="">SimpleListDetails</Style>
+		<TitleDataSource xmlns="">HSMobileOpsDevice</TitleDataSource>
+		<Controls xmlns="">
+			<AxFormControl xmlns=""
+				i:type="AxFormActionPaneControl">
+				<Name>ActionPane</Name>
+				<Type>ActionPane</Type>
+				<FormControlExtension
+					i:nil="true" />
+				<Controls>
+					<AxFormControl xmlns=""
+						i:type="AxFormButtonGroupControl">
+						<Name>MaintainGroup</Name>
+						<Type>ButtonGroup</Type>
+						<FormControlExtension
+							i:nil="true" />
+						<Controls>
+							<AxFormControl xmlns=""
+								i:type="AxFormMenuFunctionButtonControl">
+								<Name>ToggleActiveButton</Name>
+								<HelpText>Mark the selected device as in or out of active service. It can still sign in either way - see the field help on Active.</HelpText>
+								<Type>MenuFunctionButton</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<ButtonDisplay>TextOnly</ButtonDisplay>
+								<DataSource>HSMobileOpsDevice</DataSource>
+								<MenuItemName>HSMobileOpsToggleDeviceActive</MenuItemName>
+								<MenuItemType>Action</MenuItemType>
+								<NeedsRecord>Yes</NeedsRecord>
+								<Text>Activate / deactivate</Text>
+							</AxFormControl>
+						</Controls>
+						<ArrangeMethod>Vertical</ArrangeMethod>
+						<Caption>Maintain</Caption>
+						<DataSource>HSMobileOpsDevice</DataSource>
+					</AxFormControl>
+				</Controls>
+				<AlignChild>No</AlignChild>
+				<AlignChildren>No</AlignChildren>
+				<ArrangeMethod>Vertical</ArrangeMethod>
+			</AxFormControl>
+			<AxFormControl xmlns=""
+				i:type="AxFormGroupControl">
+				<Name>GridContainer1</Name>
+				<HeightMode>SizeToAvailable</HeightMode>
+				<Type>Group</Type>
+				<FormControlExtension
+					i:nil="true" />
+				<Controls>
+					<AxFormControl>
+						<Name>QuickFilterControl1</Name>
+						<WidthMode>SizeToAvailable</WidthMode>
+						<FormControlExtension>
+							<Name>QuickFilterControl</Name>
+							<ExtensionComponents />
+							<ExtensionProperties>
+								<AxFormControlExtensionProperty>
+									<Name>targetControlName</Name>
+									<Type>String</Type>
+								</AxFormControlExtensionProperty>
+								<AxFormControlExtensionProperty>
+									<Name>placeholderText</Name>
+									<Type>String</Type>
+								</AxFormControlExtensionProperty>
+								<AxFormControlExtensionProperty>
+									<Name>defaultColumnName</Name>
+									<Type>String</Type>
+								</AxFormControlExtensionProperty>
+							</ExtensionProperties>
+						</FormControlExtension>
+					</AxFormControl>
+					<AxFormControl xmlns=""
+						i:type="AxFormGridControl">
+						<Name>FormGridControl1</Name>
+						<AllowEdit>No</AllowEdit>
+						<Type>Grid</Type>
+						<WidthMode>SizeToContent</WidthMode>
+						<FormControlExtension
+							i:nil="true" />
+						<Controls>
+							<AxFormControl xmlns=""
+								i:type="AxFormStringControl">
+								<Name>Grid_FriendlyName</Name>
+								<Type>String</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<DataField>FriendlyName</DataField>
+								<DataSource>HSMobileOpsDevice</DataSource>
+							</AxFormControl>
+							<AxFormControl xmlns=""
+								i:type="AxFormStringControl">
+								<Name>Grid_LastUserName</Name>
+								<Type>String</Type>
+								<WidthMode>SizeToAvailable</WidthMode>
+								<FormControlExtension
+									i:nil="true" />
+								<DataField>LastUserName</DataField>
+								<DataSource>HSMobileOpsDevice</DataSource>
+							</AxFormControl>
+							<AxFormControl xmlns=""
+								i:type="AxFormCheckBoxControl">
+								<Name>Grid_IsActive</Name>
+								<Type>CheckBox</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<DataField>IsActive</DataField>
+								<DataSource>HSMobileOpsDevice</DataSource>
+							</AxFormControl>
+						</Controls>
+						<DataSource>HSMobileOpsDevice</DataSource>
+						<MultiSelect>No</MultiSelect>
+						<ShowRowLabels>No</ShowRowLabels>
+						<Style>List</Style>
+					</AxFormControl>
+				</Controls>
+				<FrameType>None</FrameType>
+				<Style>SidePanel</Style>
+			</AxFormControl>
+			<AxFormControl xmlns=""
+				i:type="AxFormGroupControl">
+				<Name>DetailsHeader</Name>
+				<Type>Group</Type>
+				<WidthMode>SizeToAvailable</WidthMode>
+				<FormControlExtension
+					i:nil="true" />
+				<Controls>
+					<AxFormControl xmlns=""
+						i:type="AxFormStringControl">
+						<Name>FriendlyName</Name>
+						<AllowEdit>No</AllowEdit>
+						<Type>String</Type>
+						<FormControlExtension
+							i:nil="true" />
+						<DataField>FriendlyName</DataField>
+						<DataSource>HSMobileOpsDevice</DataSource>
+					</AxFormControl>
+					<AxFormControl xmlns=""
+						i:type="AxFormStringControl">
+						<Name>DeviceId</Name>
+						<AllowEdit>No</AllowEdit>
+						<Type>String</Type>
+						<FormControlExtension
+							i:nil="true" />
+						<DataField>DeviceId</DataField>
+						<DataSource>HSMobileOpsDevice</DataSource>
+					</AxFormControl>
+					<AxFormControl xmlns=""
+						i:type="AxFormStringControl">
+						<Name>DeviceBrand</Name>
+						<AllowEdit>No</AllowEdit>
+						<Type>String</Type>
+						<FormControlExtension
+							i:nil="true" />
+						<DataField>DeviceBrand</DataField>
+						<DataSource>HSMobileOpsDevice</DataSource>
+					</AxFormControl>
+					<AxFormControl xmlns=""
+						i:type="AxFormStringControl">
+						<Name>DeviceModel</Name>
+						<AllowEdit>No</AllowEdit>
+						<Type>String</Type>
+						<FormControlExtension
+							i:nil="true" />
+						<DataField>DeviceModel</DataField>
+						<DataSource>HSMobileOpsDevice</DataSource>
+					</AxFormControl>
+				</Controls>
+				<ColumnsMode>Fill</ColumnsMode>
+				<FrameType>None</FrameType>
+			</AxFormControl>
+			<AxFormControl xmlns=""
+				i:type="AxFormTabControl">
+				<Name>Tab</Name>
+				<AlignControl>No</AlignControl>
+				<Type>Tab</Type>
+				<FormControlExtension
+					i:nil="true" />
+				<Controls>
+					<AxFormControl xmlns=""
+						i:type="AxFormTabPageControl">
+						<Name>StatusPage</Name>
+						<Pattern>FieldsFieldGroups</Pattern>
+						<PatternVersion>1.1</PatternVersion>
+						<Type>TabPage</Type>
+						<FormControlExtension
+							i:nil="true" />
+						<Controls>
+							<AxFormControl xmlns=""
+								i:type="AxFormStringControl">
+								<Name>Platform</Name>
+								<AllowEdit>No</AllowEdit>
+								<Type>String</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<DataField>Platform</DataField>
+								<DataSource>HSMobileOpsDevice</DataSource>
+							</AxFormControl>
+							<AxFormControl xmlns=""
+								i:type="AxFormStringControl">
+								<Name>PlatformVersion</Name>
+								<AllowEdit>No</AllowEdit>
+								<Type>String</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<DataField>PlatformVersion</DataField>
+								<DataSource>HSMobileOpsDevice</DataSource>
+							</AxFormControl>
+							<AxFormControl xmlns=""
+								i:type="AxFormStringControl">
+								<Name>AppVersionName</Name>
+								<AllowEdit>No</AllowEdit>
+								<Type>String</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<DataField>AppVersionName</DataField>
+								<DataSource>HSMobileOpsDevice</DataSource>
+							</AxFormControl>
+							<AxFormControl xmlns=""
+								i:type="AxFormStringControl">
+								<Name>LastSiteId</Name>
+								<AllowEdit>No</AllowEdit>
+								<Type>String</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<DataField>LastSiteId</DataField>
+								<DataSource>HSMobileOpsDevice</DataSource>
+							</AxFormControl>
+							<AxFormControl xmlns=""
+								i:type="AxFormStringControl">
+								<Name>LastWarehouseId</Name>
+								<AllowEdit>No</AllowEdit>
+								<Type>String</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<DataField>LastWarehouseId</DataField>
+								<DataSource>HSMobileOpsDevice</DataSource>
+							</AxFormControl>
+							<AxFormControl xmlns=""
+								i:type="AxFormDateTimeControl">
+								<Name>LastSignInUtc</Name>
+								<AllowEdit>No</AllowEdit>
+								<Type>DateTime</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<DataField>LastSignInUtc</DataField>
+								<DataSource>HSMobileOpsDevice</DataSource>
+							</AxFormControl>
+							<AxFormControl xmlns=""
+								i:type="AxFormDateTimeControl">
+								<Name>FirstSeenUtc</Name>
+								<AllowEdit>No</AllowEdit>
+								<Type>DateTime</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<DataField>FirstSeenUtc</DataField>
+								<DataSource>HSMobileOpsDevice</DataSource>
+							</AxFormControl>
+							<AxFormControl xmlns=""
+								i:type="AxFormCheckBoxControl">
+								<Name>IsActive</Name>
+								<Type>CheckBox</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<DataField>IsActive</DataField>
+								<DataSource>HSMobileOpsDevice</DataSource>
+							</AxFormControl>
+						</Controls>
+						<ColumnsMode>Fill</ColumnsMode>
+						<Caption>Status</Caption>
+						<DataSource>HSMobileOpsDevice</DataSource>
+					</AxFormControl>
+				</Controls>
+				<AlignChild>No</AlignChild>
+				<ArrangeMethod>Vertical</ArrangeMethod>
+				<DataSource>HSMobileOpsDevice</DataSource>
+				<Style>FastTabs</Style>
+			</AxFormControl>
+		</Controls>
+	</Design>
+	<Parts />
+</AxForm>

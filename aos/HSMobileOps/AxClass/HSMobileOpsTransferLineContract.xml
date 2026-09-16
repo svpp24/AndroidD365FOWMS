@@ -1,0 +1,238 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsTransferLineContract</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+[DataContractAttribute]
+class HSMobileOpsTransferLineContract
+{
+    LineNum             lineNumber;
+    ItemId              itemId;
+    Name                itemName;
+    UnitOfMeasureSymbol unitId;
+
+    InventQty           transferQty;
+    InventQty           shippedQty;
+    InventQty           receivedQty;
+    InventQty           remainingQty;
+
+    InventSiteId        fromSiteId;
+    InventLocationId    fromWarehouseId;
+    InventSiteId        toSiteId;
+    InventLocationId    toWarehouseId;
+    WMSLocationId       locationId;
+
+    boolean             batchRequired;
+    boolean             serialRequired;
+    boolean             locationRequired;
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmLineNumber</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('LineNumber')]
+    public LineNum parmLineNumber(LineNum _value = lineNumber)
+    {
+        lineNumber = _value;
+        return lineNumber;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmItemId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ItemId')]
+    public ItemId parmItemId(ItemId _value = itemId)
+    {
+        itemId = _value;
+        return itemId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmItemName</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ItemName')]
+    public Name parmItemName(Name _value = itemName)
+    {
+        itemName = _value;
+        return itemName;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmUnitId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('UnitId')]
+    public UnitOfMeasureSymbol parmUnitId(UnitOfMeasureSymbol _value = unitId)
+    {
+        unitId = _value;
+        return unitId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmTransferQty</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('TransferQty')]
+    public InventQty parmTransferQty(InventQty _value = transferQty)
+    {
+        transferQty = _value;
+        return transferQty;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmShippedQty</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ShippedQty')]
+    public InventQty parmShippedQty(InventQty _value = shippedQty)
+    {
+        shippedQty = _value;
+        return shippedQty;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmReceivedQty</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ReceivedQty')]
+    public InventQty parmReceivedQty(InventQty _value = receivedQty)
+    {
+        receivedQty = _value;
+        return receivedQty;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmRemainingQty</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// What is outstanding *for the requested direction* - remaining to ship, or remaining to
+    /// receive. Named without a direction on purpose: the client drives one flow and should not
+    /// have to know which field it is looking at.
+    ///
+    /// Note the two are not the same number even on an untouched order, and on a partly shipped
+    /// one they never are. Receiving is bounded by what was shipped, not by what was ordered.
+    /// </summary>
+    [DataMemberAttribute('RemainingQty')]
+    public InventQty parmRemainingQty(InventQty _value = remainingQty)
+    {
+        remainingQty = _value;
+        return remainingQty;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmFromSiteId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('FromSiteId')]
+    public InventSiteId parmFromSiteId(InventSiteId _value = fromSiteId)
+    {
+        fromSiteId = _value;
+        return fromSiteId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmFromWarehouseId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('FromWarehouseId')]
+    public InventLocationId parmFromWarehouseId(InventLocationId _value = fromWarehouseId)
+    {
+        fromWarehouseId = _value;
+        return fromWarehouseId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmToSiteId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ToSiteId')]
+    public InventSiteId parmToSiteId(InventSiteId _value = toSiteId)
+    {
+        toSiteId = _value;
+        return toSiteId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmToWarehouseId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ToWarehouseId')]
+    public InventLocationId parmToWarehouseId(InventLocationId _value = toWarehouseId)
+    {
+        toWarehouseId = _value;
+        return toWarehouseId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmLocationId</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The line's own location on the source side. A hint for shipping, never an answer for
+    /// receiving - where the goods are put away is what the operator scans.
+    /// </summary>
+    [DataMemberAttribute('LocationId')]
+    public WMSLocationId parmLocationId(WMSLocationId _value = locationId)
+    {
+        locationId = _value;
+        return locationId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmBatchRequired</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('BatchRequired')]
+    public boolean parmBatchRequired(boolean _value = batchRequired)
+    {
+        batchRequired = _value;
+        return batchRequired;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmSerialRequired</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('SerialRequired')]
+    public boolean parmSerialRequired(boolean _value = serialRequired)
+    {
+        serialRequired = _value;
+        return serialRequired;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmLocationRequired</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('LocationRequired')]
+    public boolean parmLocationRequired(boolean _value = locationRequired)
+    {
+        locationRequired = _value;
+        return locationRequired;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

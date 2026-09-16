@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsWarehouseAssignment</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+[DataContractAttribute]
+class HSMobileOpsWarehouseAssignment
+{
+    str     siteId;
+    str     warehouseId;
+    str     warehouseName;
+    boolean isDefault;
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmSiteId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('SiteId')]
+    public str parmSiteId(str _value = siteId)
+    {
+        siteId = _value;
+        return siteId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmWarehouseId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('WarehouseId')]
+    public str parmWarehouseId(str _value = warehouseId)
+    {
+        warehouseId = _value;
+        return warehouseId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmWarehouseName</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The warehouse's name, so the switcher reads "Main store" rather than "100011". An operator
+    /// picking between sites recognises the name; the code is what they mistype.
+    /// </summary>
+    [DataMemberAttribute('WarehouseName')]
+    public str parmWarehouseName(str _value = warehouseName)
+    {
+        warehouseName = _value;
+        return warehouseName;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmIsDefault</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('IsDefault')]
+    public boolean parmIsDefault(boolean _value = isDefault)
+    {
+        isDefault = _value;
+        return isDefault;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

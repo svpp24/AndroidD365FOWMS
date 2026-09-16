@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsTransferLineRequest</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+[DataContractAttribute]
+class HSMobileOpsTransferLineRequest
+{
+    DataAreaId dataAreaId;
+    str        transferId;
+    ItemId     itemId;
+    str        mode;
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmDataAreaId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('DataAreaId')]
+    public DataAreaId parmDataAreaId(DataAreaId _value = dataAreaId)
+    {
+        dataAreaId = _value;
+        return dataAreaId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmTransferId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('TransferId')]
+    public str parmTransferId(str _value = transferId)
+    {
+        transferId = _value;
+        return transferId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmItemId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ItemId')]
+    public ItemId parmItemId(ItemId _value = itemId)
+    {
+        itemId = _value;
+        return itemId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmMode</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Mode')]
+    public str parmMode(str _value = mode)
+    {
+        mode = _value;
+        return mode;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

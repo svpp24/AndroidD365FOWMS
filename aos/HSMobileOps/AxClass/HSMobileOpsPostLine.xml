@@ -1,0 +1,191 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsPostLine</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// One captured line, off the wire.
+///
+/// No longer a [DataContractAttribute] - see HSMobileOpsPostRequest.parmLinesJson for why. This
+/// stays a plain value holder with the same parm-method shape it always had, populated by
+/// HSMobileOpsPostingService::parseLines instead of by AIF, so postProductReceipt and postTransfer
+/// did not have to change how they read a line.
+/// </summary>
+class HSMobileOpsPostLine
+{
+    LineNum       lineNumber;
+    ItemId        itemId;
+    InventQty     quantity;
+    str           unitId;
+    str           siteId;
+    str           warehouseId;
+    str           locationId;
+    str           batchId;
+    str           batchManufacturingDate;
+    str           batchExpiryDate;
+    List          serialIds;
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmLineNumber</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('LineNumber')]
+    public LineNum parmLineNumber(LineNum _value = lineNumber)
+    {
+        lineNumber = _value;
+        return lineNumber;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmItemId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ItemId')]
+    public ItemId parmItemId(ItemId _value = itemId)
+    {
+        itemId = _value;
+        return itemId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmQuantity</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The quantity to post, in the unit the line was read in.
+    ///
+    /// Never re-derived on the server from what is outstanding. The operator counted something;
+    /// posting a different number because the order says so would silently overwrite a real
+    /// short delivery with a wish.
+    /// </summary>
+    [DataMemberAttribute('Quantity')]
+    public InventQty parmQuantity(InventQty _value = quantity)
+    {
+        quantity = _value;
+        return quantity;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmUnitId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('UnitId')]
+    public str parmUnitId(str _value = unitId)
+    {
+        unitId = _value;
+        return unitId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmSiteId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('SiteId')]
+    public str parmSiteId(str _value = siteId)
+    {
+        siteId = _value;
+        return siteId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmWarehouseId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('WarehouseId')]
+    public str parmWarehouseId(str _value = warehouseId)
+    {
+        warehouseId = _value;
+        return warehouseId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmLocationId</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Where the stock was actually put away. Blank when the item does not track location, and
+    /// always blank on a transfer shipment - the goods are leaving, not landing anywhere.
+    /// </summary>
+    [DataMemberAttribute('LocationId')]
+    public str parmLocationId(str _value = locationId)
+    {
+        locationId = _value;
+        return locationId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmBatchId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('BatchId')]
+    public str parmBatchId(str _value = batchId)
+    {
+        batchId = _value;
+        return batchId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmBatchManufacturingDate</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// yyyy-MM-dd, or blank. Only meaningful - and only ever sent - when the batch scanned at
+    /// the batch step turned out to be new; an existing batch already has its own dates and the
+    /// client does not ask again.
+    /// </summary>
+    [DataMemberAttribute('BatchManufacturingDate')]
+    public str parmBatchManufacturingDate(str _value = batchManufacturingDate)
+    {
+        batchManufacturingDate = _value;
+        return batchManufacturingDate;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmBatchExpiryDate</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// yyyy-MM-dd, or blank. See parmBatchManufacturingDate.
+    /// </summary>
+    [DataMemberAttribute('BatchExpiryDate')]
+    public str parmBatchExpiryDate(str _value = batchExpiryDate)
+    {
+        batchExpiryDate = _value;
+        return batchExpiryDate;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmSerialIds</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// One serial per unit, for serial-tracked items.
+    ///
+    /// A count rather than a quantity is the point: a serial identifies exactly one physical unit,
+    /// so ten units means ten serials and the service refuses a mismatch rather than guessing.
+    /// </summary>
+    [DataMemberAttribute('SerialIds'),
+     DataCollectionAttribute(Types::String)]
+    public List parmSerialIds(List _value = serialIds)
+    {
+        serialIds = _value;
+        return serialIds;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

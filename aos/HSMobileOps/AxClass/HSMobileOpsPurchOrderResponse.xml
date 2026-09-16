@@ -1,0 +1,321 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsPurchOrderResponse</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// One purchase order and its receivable lines.
+///
+/// Failure is reported in [parmErrorCode], not by throwing. An exception out of a custom service
+/// becomes an HTTP 500 with a stack trace, which tells a handheld operator nothing and tells a
+/// monitoring dashboard that the service is broken when in fact the operator scanned a number
+/// that does not exist. A missing order is an ordinary answer to an ordinary question.
+/// </summary>
+[DataContractAttribute]
+class HSMobileOpsPurchOrderResponse
+{
+    boolean     success;
+    str         errorCode;
+    str         message;
+
+    PurchId     purchId;
+    VendAccount vendorAccount;
+    Name        vendorName;
+    str         purchStatus;
+    str         approvalStatus;
+    boolean     receivable;
+
+    InventSiteId     siteId;
+    InventLocationId warehouseId;
+    utcdatetime      deliveryDate;
+    CurrencyCode     currencyCode;
+
+    List        lines;
+
+    int         outstandingLineCount;
+    boolean     linesIncluded;
+
+    // How this process currently coordinates concurrent workers - see HSMobileOpsProcessSetup.
+    // The client decides whether to show claim UI, a pallet prompt, or neither, from this field
+    // alone; it does not infer the mode from whether individual lines happen to carry a claim.
+    str         concurrencyMode;
+    int         claimTimeoutMinutes;
+
+    // Whether the client should still ask for a put-away location when a line has none of its
+    // own - see HSMobileOpsProcessSetup.RequireLocationCapture. A line that already carries a
+    // location is unaffected either way; the client always uses that and never asks.
+    boolean     requireLocationCapture;
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmSuccess</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// True when the order exists and could be read. Says nothing about whether it can be
+    /// received against - see [parmReceivable] for that.
+    /// </summary>
+    [DataMemberAttribute('Success')]
+    public boolean parmSuccess(boolean _value = success)
+    {
+        success = _value;
+        return success;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmErrorCode</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// A stable token the client can branch on: NOT_FOUND, NOT_APPROVED, NOTHING_OUTSTANDING,
+    /// WMS_WAREHOUSE, INVALID_REQUEST. Never a label meant to be shown to an operator - the
+    /// client owns wording, because it owns the language the device is set to.
+    /// </summary>
+    [DataMemberAttribute('ErrorCode')]
+    public str parmErrorCode(str _value = errorCode)
+    {
+        errorCode = _value;
+        return errorCode;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmMessage</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Message')]
+    public str parmMessage(str _value = message)
+    {
+        message = _value;
+        return message;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmPurchId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('PurchId')]
+    public PurchId parmPurchId(PurchId _value = purchId)
+    {
+        purchId = _value;
+        return purchId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmVendorAccount</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('VendorAccount')]
+    public VendAccount parmVendorAccount(VendAccount _value = vendorAccount)
+    {
+        vendorAccount = _value;
+        return vendorAccount;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmVendorName</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Resolved through DirPartyTable. Costs one extra read per call and is worth it: the
+    /// OData entity does not publish a name at all, so the app could only ever show an account
+    /// number, and an operator matching a delivery against paperwork reads the name.
+    /// </summary>
+    [DataMemberAttribute('VendorName')]
+    public Name parmVendorName(Name _value = vendorName)
+    {
+        vendorName = _value;
+        return vendorName;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmPurchStatus</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('PurchStatus')]
+    public str parmPurchStatus(str _value = purchStatus)
+    {
+        purchStatus = _value;
+        return purchStatus;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmApprovalStatus</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ApprovalStatus')]
+    public str parmApprovalStatus(str _value = approvalStatus)
+    {
+        approvalStatus = _value;
+        return approvalStatus;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmReceivable</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Whether the AOS considers this order receivable right now.
+    ///
+    /// Decided here rather than on the device. The client had to infer it from a document
+    /// approval status string and got it wrong twice - once refusing every Confirmed order.
+    /// The rule belongs where the enum lives.
+    /// </summary>
+    [DataMemberAttribute('Receivable')]
+    public boolean parmReceivable(boolean _value = receivable)
+    {
+        receivable = _value;
+        return receivable;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmSiteId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('SiteId')]
+    public InventSiteId parmSiteId(InventSiteId _value = siteId)
+    {
+        siteId = _value;
+        return siteId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmWarehouseId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('WarehouseId')]
+    public InventLocationId parmWarehouseId(InventLocationId _value = warehouseId)
+    {
+        warehouseId = _value;
+        return warehouseId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmDeliveryDate</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('DeliveryDate')]
+    public utcdatetime parmDeliveryDate(utcdatetime _value = deliveryDate)
+    {
+        deliveryDate = _value;
+        return deliveryDate;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmCurrencyCode</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('CurrencyCode')]
+    public CurrencyCode parmCurrencyCode(CurrencyCode _value = currencyCode)
+    {
+        currencyCode = _value;
+        return currencyCode;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmOutstandingLineCount</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// How many lines still have something to receive - always the true total, whether or not the
+    /// lines themselves were sent.
+    ///
+    /// The handheld needs this even when it does not get the lines: it decides from the count
+    /// whether the item step has exactly one possible answer, and it is what tells the operator
+    /// the size of the job in front of them.
+    /// </summary>
+    [DataMemberAttribute('OutstandingLineCount')]
+    public int parmOutstandingLineCount(int _value = outstandingLineCount)
+    {
+        outstandingLineCount = _value;
+        return outstandingLineCount;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmLinesIncluded</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Whether [parmLines] holds the order's lines, or is empty because the order is too large.
+    ///
+    /// A purchase order here can carry thousands of lines. Sending all of them so the device can
+    /// filter to the one item just scanned means moving megabytes to draw a single prompt, and it
+    /// gets worse as the order grows. Past the threshold the client asks per item instead, so the
+    /// cost stops tracking the size of the *order* and starts tracking the size of the *delivery*.
+    ///
+    /// False with a non-zero count is not an error. It means "ask me per item".
+    /// </summary>
+    [DataMemberAttribute('LinesIncluded')]
+    public boolean parmLinesIncluded(boolean _value = linesIncluded)
+    {
+        linesIncluded = _value;
+        return linesIncluded;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmLines</Name>
+				<Source><![CDATA[
+    [DataMemberAttribute('Lines'),
+     DataCollectionAttribute(Types::Class, classStr(HSMobileOpsPurchLineContract))]
+    public List parmLines(List _value = lines)
+    {
+        lines = _value;
+        return lines;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmConcurrencyMode</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ConcurrencyMode')]
+    public str parmConcurrencyMode(str _value = concurrencyMode)
+    {
+        concurrencyMode = _value;
+        return concurrencyMode;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmClaimTimeoutMinutes</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ClaimTimeoutMinutes')]
+    public int parmClaimTimeoutMinutes(int _value = claimTimeoutMinutes)
+    {
+        claimTimeoutMinutes = _value;
+        return claimTimeoutMinutes;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmRequireLocationCapture</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('RequireLocationCapture')]
+    public boolean parmRequireLocationCapture(boolean _value = requireLocationCapture)
+    {
+        requireLocationCapture = _value;
+        return requireLocationCapture;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

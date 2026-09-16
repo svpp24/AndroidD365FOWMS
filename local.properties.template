@@ -1,0 +1,22 @@
+# Copy to local.properties and fill in. NEVER commit local.properties.
+sdk.dir=C\:\Users\<you>\AppData\Local\Android\Sdk
+
+# --- D365FO environments -------------------------------------------------
+D365_DEV_RESOURCE=https://dev-aos.sandbox.operations.dynamics.com
+D365_UAT_RESOURCE=https://uat-aos.sandbox.operations.dynamics.com
+D365_PROD_RESOURCE=https://prod-aos.operations.dynamics.com
+
+AAD_TENANT_ID=00000000-0000-0000-0000-000000000000
+AAD_CLIENT_ID=00000000-0000-0000-0000-000000000000
+
+# Base64 SHA-256 pins for the AOS TLS chain (leaf + backup/intermediate).
+# Obtain with:  openssl s_client -connect <host>:443 | openssl x509 -pubkey -noout \
+#               | openssl pkey -pubin -outform der | openssl dgst -sha256 -binary | openssl enc -base64
+D365_CERT_PIN_PRIMARY=sha256/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+D365_CERT_PIN_BACKUP=sha256/BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB=
+
+# URL-encoded SHA-1 signature hash from the AAD app registration.
+# Debug keystore:  keytool -exportcert -alias androiddebugkey \
+#   -keystore %USERPROFILE%\.android\debug.keystore -storepass android -keypass android \
+#   | openssl sha1 -binary | openssl base64
+MSAL_SIGNATURE_HASH=

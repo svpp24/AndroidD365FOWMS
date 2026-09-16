@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!-- Cleartext is never permitted, in any build type. -->
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+    <!--
+      Certificate pinning for the AOS host is applied programmatically in NetworkModule
+      (OkHttp CertificatePinner) because the active environment - Dev / UAT / Prod - is
+      chosen at runtime and a static XML host list cannot express that.
+    -->
+</network-security-config>

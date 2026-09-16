@@ -1,0 +1,133 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxTable xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsPostLog</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Every posting the handheld has made, keyed by the idempotency key it sent.
+///
+/// **This table is what stops a receipt being posted twice.** A handheld on warehouse wifi loses
+/// responses regularly: the posting commits, the reply never arrives, and the queue retries. With
+/// nothing to recognise the replay, the second attempt posts a second product receipt and the
+/// stock is booked in twice — a discrepancy that surfaces weeks later at a count, by which time
+/// nobody can explain it.
+///
+/// So the client mints a key per captured transaction and sends it with every attempt. The first
+/// attempt writes a row here inside the same transaction as the posting itself; a replay finds the
+/// row and returns the original document number without posting anything. The unique index is what
+/// enforces that under concurrency — two devices, or two retries racing, cannot both insert.
+///
+/// The row is the receipt of record for the device, so it is never cleaned up automatically. It is
+/// small, and the day it matters is the day someone is asking why a pallet was counted twice.
+/// </summary>
+public class HSMobileOpsPostLog extends common
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>findByKey</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The posting already made under this idempotency key, if any.
+    /// </summary>
+    public static HSMobileOpsPostLog findByKey(str _idempotencyKey, boolean _forUpdate = false)
+    {
+        HSMobileOpsPostLog postLog;
+
+        if (!_idempotencyKey)
+        {
+            return postLog;
+        }
+
+        postLog.selectForUpdate(_forUpdate);
+
+        select firstOnly postLog
+            where postLog.IdempotencyKey == _idempotencyKey;
+
+        return postLog;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+	<Label>Mobile posting log</Label>
+	<TitleField1>IdempotencyKey</TitleField1>
+	<TitleField2>DocumentNumber</TitleField2>
+	<CacheLookup>None</CacheLookup>
+	<ClusteredIndex>IdempotencyIdx</ClusteredIndex>
+	<PrimaryIndex>IdempotencyIdx</PrimaryIndex>
+	<Fields>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>IdempotencyKey</Name>
+			<Label>Idempotency key</Label>
+			<StringSize>64</StringSize>
+			<Mandatory>Yes</Mandatory>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>DocumentType</Name>
+			<Label>Document type</Label>
+			<StringSize>40</StringSize>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>SourceId</Name>
+			<Label>Source order</Label>
+			<StringSize>40</StringSize>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>DocumentNumber</Name>
+			<Label>Posted document</Label>
+			<StringSize>40</StringSize>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>PostedByUserName</Name>
+			<Label>Posted by</Label>
+			<StringSize>50</StringSize>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>PersonnelNumber</Name>
+			<ExtendedDataType>HcmPersonnelNumberId</ExtendedDataType>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>DeviceId</Name>
+			<Label>Device</Label>
+			<StringSize>64</StringSize>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldUtcDateTime">
+			<Name>PostedUtc</Name>
+			<Label>Posted at</Label>
+		</AxTableField>
+	</Fields>
+	<FullTextIndexes />
+	<Indexes>
+		<AxTableIndex>
+			<Name>IdempotencyIdx</Name>
+			<AllowDuplicates>No</AllowDuplicates>
+			<Fields>
+				<AxTableIndexField>
+					<DataField>IdempotencyKey</DataField>
+				</AxTableIndexField>
+			</Fields>
+		</AxTableIndex>
+		<AxTableIndex>
+			<Name>SourceIdx</Name>
+			<Fields>
+				<AxTableIndexField>
+					<DataField>SourceId</DataField>
+				</AxTableIndexField>
+			</Fields>
+		</AxTableIndex>
+	</Indexes>
+	<Mappings />
+	<Relations />
+	<StateMachines />
+</AxTable>

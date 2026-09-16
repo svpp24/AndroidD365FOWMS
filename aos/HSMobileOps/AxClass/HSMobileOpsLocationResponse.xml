@@ -1,0 +1,110 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsLocationResponse</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+[DataContractAttribute]
+class HSMobileOpsLocationResponse
+{
+    boolean          success;
+    str              errorCode;
+    boolean          locationExists;
+    boolean          canReceiveInto;
+    InventLocationId warehouseId;
+    WMSLocationId    locationId;
+    str              blockingCause;
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmSuccess</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Success')]
+    public boolean parmSuccess(boolean _value = success)
+    {
+        success = _value;
+        return success;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmErrorCode</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ErrorCode')]
+    public str parmErrorCode(str _value = errorCode)
+    {
+        errorCode = _value;
+        return errorCode;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmExists</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Whether the bin exists at all. Distinct from [parmCanReceiveInto], because "no such bin"
+    /// and "that bin is blocked" send an operator to two different places.
+    /// </summary>
+    [DataMemberAttribute('Exists')]
+    public boolean parmExists(boolean _value = locationExists)
+    {
+        locationExists = _value;
+        return locationExists;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmCanReceiveInto</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('CanReceiveInto')]
+    public boolean parmCanReceiveInto(boolean _value = canReceiveInto)
+    {
+        canReceiveInto = _value;
+        return canReceiveInto;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmWarehouseId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('WarehouseId')]
+    public InventLocationId parmWarehouseId(InventLocationId _value = warehouseId)
+    {
+        warehouseId = _value;
+        return warehouseId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmLocationId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('LocationId')]
+    public WMSLocationId parmLocationId(WMSLocationId _value = locationId)
+    {
+        locationId = _value;
+        return locationId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmBlockingCause</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('BlockingCause')]
+    public str parmBlockingCause(str _value = blockingCause)
+    {
+        blockingCause = _value;
+        return blockingCause;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

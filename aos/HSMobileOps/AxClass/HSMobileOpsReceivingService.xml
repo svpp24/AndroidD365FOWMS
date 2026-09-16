@@ -1,0 +1,648 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsReceivingService</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Read side of the handheld receiving flow.
+///
+/// One method per operator step, each answering in a single round trip. That shape is the whole
+/// reason this service exists: over OData the PO step cost three entity queries (header, lines,
+/// posted receipts) and the item step a fourth, every one of them paying for a data-entity view
+/// and the OData pipeline on top of a table read.
+///
+/// **Load behaviour is a design constraint here, not an afterthought.** D365FO throttles by
+/// integrating application when the environment is under pressure, and a throttled request has
+/// already cost a round trip before it is refused. Three things keep this service cheap:
+///
+/// 1. **Fewest possible calls.** A whole receipt is a handful of calls, not fifteen. Throttling
+///    counts requests, so the strongest defence is not making them.
+/// 2. **No transactions on the read path.** Nothing here opens a ttsbegin. A read that takes a
+///    lock is a read that makes every other session wait for it under load.
+/// 3. **Short sessions.** Each call is a handful of indexed selects and returns. AOS request
+///    capacity is bounded by concurrent sessions, so the cost of a call is mostly how long it
+///    holds one, not how much data it moves.
+///
+/// Every select is keyed on an existing index and scoped to one legal entity. There is no
+/// crossCompany anywhere: a cross-company read cannot use the company-partitioned indexes and
+/// scans instead, which is exactly the shape that falls over when fifty handhelds scan at once.
+/// </summary>
+class HSMobileOpsReceivingService
+{
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>getPurchaseOrder</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Everything the PO step and the item step need, in one call.
+    ///
+    /// Returns the order, its receivable lines, the remaining quantity per line, and each item's
+    /// tracking and storage dimension requirements - so the client can compute its whole step
+    /// sequence without asking again.
+    ///
+    /// On an order with more open lines than the inline limit the lines are deliberately withheld
+    /// and only the count is returned; the client then asks per item. See parmLinesIncluded.
+    /// </summary>
+    public HSMobileOpsPurchOrderResponse getPurchaseOrder(HSMobileOpsPurchOrderRequest _request)
+    {
+        HSMobileOpsPurchOrderResponse   response = new HSMobileOpsPurchOrderResponse();
+        PurchTable                      purchTable;
+        HSMobileOpsProcessSetup         setup;
+        DataAreaId                      company;
+        PurchId                         purchId;
+        str                             blockReason;
+        int                             outstanding;
+
+        response.parmLines(new List(Types::Class));
+        response.parmSuccess(false);
+
+        if (!_request)
+        {
+            return HSMobileOpsReceivingService::fail(
+                response, 'INVALID_REQUEST', 'No request body');
+        }
+
+        company = _request.parmDataAreaId();
+        purchId = _request.parmPurchId();
+
+        if (!company || !purchId)
+        {
+            return HSMobileOpsReceivingService::fail(
+                response, 'INVALID_REQUEST', 'DataAreaId and PurchId are both required');
+        }
+
+        // Validated before changecompany: an unknown id would otherwise put the session into a
+        // company that does not exist and fail obscurely on the first select.
+        if (!CompanyInfo::findDataArea(company).RecId)
+        {
+            return HSMobileOpsReceivingService::fail(
+                response, 'INVALID_REQUEST', strFmt('No legal entity %1', company));
+        }
+
+        changecompany (company)
+        {
+            // Re-instantiated inside the block on purpose. A buffer created before changecompany
+            // keeps the session's original company, so without this the service would silently
+            // read the service account's default legal entity instead of the one asked for -
+            // returning a confident, wrong answer rather than an error.
+            purchTable = null;
+            setup      = null;
+
+            // firstOnly plus an explicit field list. The field list matters more than it looks:
+            // PurchTable is a wide table, and selecting * pulls every column across the wire
+            // from SQL on every scan.
+            select firstOnly RecId, PurchId, OrderAccount, PurchStatus, DocumentState,
+                             DocumentStatus, InventSiteId, InventLocationId, DeliveryDate,
+                             CurrencyCode
+                from purchTable
+                where purchTable.PurchId == purchId;
+
+            if (!purchTable.RecId)
+            {
+                return HSMobileOpsReceivingService::fail(
+                    response, 'NOT_FOUND', strFmt('No purchase order %1 in %2', purchId, company));
+            }
+
+            response.parmPurchId(purchTable.PurchId);
+            response.parmVendorAccount(purchTable.OrderAccount);
+            response.parmVendorName(
+                HSMobileOpsReceivingService::vendorName(purchTable.OrderAccount));
+            response.parmPurchStatus(enum2Symbol(enumNum(PurchStatus), purchTable.PurchStatus));
+            response.parmApprovalStatus(
+                enum2Symbol(enumNum(VersioningDocumentState), purchTable.DocumentState));
+            response.parmSiteId(purchTable.InventSiteId);
+            response.parmWarehouseId(purchTable.InventLocationId);
+            response.parmDeliveryDate(
+                DateTimeUtil::newDateTime(purchTable.DeliveryDate, 0));
+            response.parmCurrencyCode(purchTable.CurrencyCode);
+
+            setup = HSMobileOpsProcessSetup::find(HSMobileOpsProcessSetup::processReceiving());
+            response.parmConcurrencyMode(setup.ConcurrencyMode);
+            response.parmClaimTimeoutMinutes(setup.ClaimTimeoutMinutes);
+            response.parmRequireLocationCapture(setup.RequireLocationCapture == NoYes::Yes);
+
+            blockReason = HSMobileOpsReceivingService::receivableBlockReason(purchTable);
+            response.parmReceivable(blockReason == '');
+
+            outstanding = HSMobileOpsReceivingService::outstandingLineCount(purchId);
+            response.parmOutstandingLineCount(outstanding);
+
+            if (blockReason)
+            {
+                // Reported alongside the order rather than instead of it. The operator still needs
+                // to see which order they scanned and who the vendor is, to chase the right person.
+                response.parmErrorCode(blockReason);
+            }
+            else if (!outstanding)
+            {
+                response.parmErrorCode('NOTHING_OUTSTANDING');
+            }
+            else if (outstanding <= HSMobileOpsReceivingService::inlineLineLimit())
+            {
+                HSMobileOpsReceivingService::appendLines(
+                    response, purchId, '', setup.ConcurrencyMode);
+                response.parmLinesIncluded(true);
+            }
+
+            response.parmSuccess(true);
+        }
+
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>getLinesForItem</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The outstanding lines for one item on one order.
+    ///
+    /// The item step's query on a large order. Cost tracks the number of lines for *this item* -
+    /// usually one - rather than the size of the order, which is what makes a five-thousand-line
+    /// purchase order behave the same as a five-line one from the operator's side.
+    /// </summary>
+    public HSMobileOpsLineResponse getLinesForItem(HSMobileOpsLineRequest _request)
+    {
+        HSMobileOpsLineResponse       response = new HSMobileOpsLineResponse();
+        HSMobileOpsPurchOrderResponse carrier  = new HSMobileOpsPurchOrderResponse();
+        HSMobileOpsProcessSetup       setup;
+        DataAreaId                    company;
+        PurchId                       purchId;
+        ItemId                        itemId;
+
+        response.parmSuccess(false);
+        response.parmLines(new List(Types::Class));
+
+        // appendLines fills a purchase order response; handing it the same List means one line
+        // mapping serves both callers rather than two copies that can drift apart.
+        carrier.parmLines(response.parmLines());
+
+        if (_request)
+        {
+            company = _request.parmDataAreaId();
+            purchId = _request.parmPurchId();
+            itemId  = _request.parmItemId();
+        }
+
+        if (!company || !purchId || !itemId || !CompanyInfo::findDataArea(company).RecId)
+        {
+            response.parmErrorCode('INVALID_REQUEST');
+            return response;
+        }
+
+        changecompany (company)
+        {
+            setup = null;
+            setup = HSMobileOpsProcessSetup::find(HSMobileOpsProcessSetup::processReceiving());
+            HSMobileOpsReceivingService::appendLines(
+                carrier, purchId, itemId, setup.ConcurrencyMode);
+        }
+
+        response.parmSuccess(true);
+
+        if (!response.parmLines().elements())
+        {
+            // A real answer: the operator is holding something that is not outstanding on this
+            // order. The client says so by name rather than showing an empty list.
+            response.parmErrorCode('NOT_ON_ORDER');
+        }
+
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>claimLine</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Claims a line for the calling worker, in LineClaim mode.
+    ///
+    /// Called from the client once a line is selected, not once per step - the same claim
+    /// covers quantity, location, batch and serial capture on that line, and is released or
+    /// naturally left to expire when the operator moves on. Safe to call when the process is
+    /// not in LineClaim mode at all: it always succeeds trivially in that case, so the client
+    /// does not need to know the mode before calling - though it will already know, from
+    /// ConcurrencyMode on the order response, whether calling it does anything.
+    /// </summary>
+    public HSMobileOpsClaimResponse claimLine(HSMobileOpsClaimRequest _request)
+    {
+        HSMobileOpsClaimResponse response = new HSMobileOpsClaimResponse();
+        HSMobileOpsProcessSetup  setup;
+        HSMobileOpsLineClaim     claim;
+        DataAreaId               company;
+
+        response.parmSuccess(false);
+
+        if (!_request || !_request.parmDataAreaId() || !_request.parmSourceId()
+            || !_request.parmLineNumber() || !_request.parmUserName())
+        {
+            response.parmErrorCode('INVALID_REQUEST');
+            return response;
+        }
+
+        company = _request.parmDataAreaId();
+
+        if (!CompanyInfo::findDataArea(company).RecId)
+        {
+            response.parmErrorCode('INVALID_REQUEST');
+            response.parmMessage(strFmt('No legal entity %1', company));
+            return response;
+        }
+
+        changecompany (company)
+        {
+            setup = null;
+            claim = null;
+
+            setup = HSMobileOpsProcessSetup::find(HSMobileOpsProcessSetup::processReceiving());
+
+            if (setup.ConcurrencyMode != HSMobileOpsProcessSetup::modeLineClaim())
+            {
+                // Not in this mode: nothing to claim, and saying so is not an error. A client
+                // that calls this defensively on every process should not have to special-case
+                // the processes where it does nothing.
+                response.parmSuccess(true);
+                response.parmGranted(true);
+                return response;
+            }
+
+            ttsbegin;
+            claim = HSMobileOpsLineClaim::claim(
+                HSMobileOpsProcessSetup::processReceiving(),
+                _request.parmSourceId(),
+                _request.parmLineNumber(),
+                _request.parmUserName(),
+                _request.parmDisplayName(),
+                _request.parmDeviceId(),
+                setup.ClaimTimeoutMinutes);
+            ttscommit;
+
+            response.parmSuccess(true);
+            response.parmGranted(
+                strUpr(claim.ClaimedByUserName) == strUpr(_request.parmUserName()));
+            response.parmClaimedByUserName(claim.ClaimedByUserName);
+            response.parmClaimedByDisplayName(claim.ClaimedByDisplayName);
+            response.parmClaimExpiresUtc(claim.ClaimExpiresUtc);
+
+            if (!response.parmGranted())
+            {
+                response.parmErrorCode('LINE_CLAIMED');
+                response.parmMessage(strFmt(
+                    'Already being received by %1',
+                    claim.ClaimedByDisplayName ? claim.ClaimedByDisplayName : claim.ClaimedByUserName));
+            }
+        }
+
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>releaseLine</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Releases the calling worker's own claim - back button, reset, or a successful commit of
+    /// the line all call this. A no-op, not an error, when the process is not in LineClaim mode
+    /// or when the caller held no claim to begin with.
+    /// </summary>
+    public HSMobileOpsClaimResponse releaseLine(HSMobileOpsClaimRequest _request)
+    {
+        HSMobileOpsClaimResponse response = new HSMobileOpsClaimResponse();
+        DataAreaId               company;
+
+        response.parmSuccess(false);
+
+        if (!_request || !_request.parmDataAreaId() || !_request.parmSourceId()
+            || !_request.parmLineNumber() || !_request.parmUserName())
+        {
+            response.parmErrorCode('INVALID_REQUEST');
+            return response;
+        }
+
+        company = _request.parmDataAreaId();
+
+        if (!CompanyInfo::findDataArea(company).RecId)
+        {
+            response.parmErrorCode('INVALID_REQUEST');
+            response.parmMessage(strFmt('No legal entity %1', company));
+            return response;
+        }
+
+        changecompany (company)
+        {
+            ttsbegin;
+            HSMobileOpsLineClaim::release(
+                HSMobileOpsProcessSetup::processReceiving(),
+                _request.parmSourceId(),
+                _request.parmLineNumber(),
+                _request.parmUserName());
+            ttscommit;
+        }
+
+        response.parmSuccess(true);
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>appendLines</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Reads the receivable lines and their dimension requirements.
+    ///
+    /// Only lines with something physically outstanding are returned. Filtering on the server is
+    /// not merely tidier: a fully received order can carry hundreds of closed lines, and shipping
+    /// them to a handheld so it can throw them away is bandwidth and parse time spent on a screen
+    /// that will never show them.
+    ///
+    /// A blank _itemId returns every outstanding line; a supplied one narrows to that item.
+    ///
+    /// _concurrencyMode decides whether lines carry claim annotation at all. Passed in rather
+    /// than looked up here so the setup table is read once by the caller, not once per line -
+    /// and so a caller that already knows the mode is None can skip the claim query entirely,
+    /// which is the common case on every process that has never turned this on.
+    /// </summary>
+    private static void appendLines(
+        HSMobileOpsPurchOrderResponse _response, PurchId _purchId, ItemId _itemId,
+        str _concurrencyMode)
+    {
+        PurchLine                    purchLine;
+        InventDim                    inventDim;
+        HSMobileOpsPurchLineContract line;
+        InventDimGroupSetup          dimSetup;
+        HSMobileOpsLineClaim         activeClaim;
+        List                         lines = _response.parmLines();
+        int                          lineCount;
+        boolean                      claimsActive = _concurrencyMode
+            == HSMobileOpsProcessSetup::modeLineClaim();
+
+        // Keyed by item, not by line. An order routinely carries several lines of the same item,
+        // and without these the per-item lookups below run once per line instead of once per item.
+        Map unitByItem = new Map(Types::String, Types::String);
+        Map dimsByItem = new Map(Types::String, Types::Class);
+
+        while select LineNumber, ItemId, Name, PurchUnit, PurchQty, RemainPurchPhysical,
+                     PurchStatus, InventDimId, OverDeliveryPct, UnderDeliveryPct
+            from purchLine
+            order by purchLine.LineNumber
+            where purchLine.PurchId             == _purchId
+               && purchLine.PurchStatus         != PurchStatus::Canceled
+               && purchLine.RemainPurchPhysical  > 0
+               && (!_itemId || purchLine.ItemId == _itemId)
+            join InventSiteId, InventLocationId, wMSLocationId from inventDim
+                where inventDim.InventDimId == purchLine.InventDimId
+        {
+            line     = new HSMobileOpsPurchLineContract();
+            dimSetup = HSMobileOpsReceivingService::dimensionsOf(purchLine.ItemId, dimsByItem);
+
+            line.parmLineNumber(purchLine.LineNumber);
+            line.parmItemId(purchLine.ItemId);
+            line.parmItemName(purchLine.Name);
+            line.parmPurchUnit(purchLine.PurchUnit);
+            line.parmInventUnit(
+                HSMobileOpsReceivingService::inventUnitOf(purchLine.ItemId, unitByItem));
+
+            line.parmOrderedQty(purchLine.PurchQty);
+            line.parmRemainingQty(purchLine.RemainPurchPhysical);
+            // Both operands are columns on the row already read. No join, no second query - and
+            // over OData this number did not exist at all.
+            line.parmReceivedQty(purchLine.PurchQty - purchLine.RemainPurchPhysical);
+
+            line.parmSiteId(inventDim.InventSiteId);
+            line.parmWarehouseId(inventDim.InventLocationId);
+            line.parmLocationId(inventDim.wMSLocationId);
+
+            // Resolved once per item and reused, which is why the client no longer needs a
+            // separate released-product call to learn the same thing.
+            line.parmBatchRequired(dimSetup.isDimensionActive(fieldNum(InventDim, InventBatchId)));
+            line.parmSerialRequired(dimSetup.isDimensionActive(fieldNum(InventDim, InventSerialId)));
+            line.parmLocationRequired(dimSetup.isDimensionActive(fieldNum(InventDim, wMSLocationId)));
+
+            line.parmOverDeliveryPct(purchLine.OverDeliveryPct);
+            line.parmUnderDeliveryPct(purchLine.UnderDeliveryPct);
+            line.parmLineStatus(enum2Symbol(enumNum(PurchStatus), purchLine.PurchStatus));
+
+            if (claimsActive)
+            {
+                activeClaim = HSMobileOpsLineClaim::findActive(
+                    HSMobileOpsProcessSetup::processReceiving(), _purchId, purchLine.LineNumber);
+
+                if (activeClaim.RecId)
+                {
+                    line.parmClaimedByUserName(activeClaim.ClaimedByUserName);
+                    line.parmClaimedByDisplayName(activeClaim.ClaimedByDisplayName);
+                    line.parmClaimExpiresUtc(activeClaim.ClaimExpiresUtc);
+                }
+            }
+
+            lines.addEnd(line);
+
+            lineCount++;
+            if (lineCount >= HSMobileOpsReceivingService::inlineLineLimit())
+            {
+                // Only reachable on the per-item path, where the caller narrowed to one item and
+                // this many rows means something is wrong with the data rather than with the ask.
+                _response.parmMessage(strFmt('Showing the first %1 lines', lineCount));
+                break;
+            }
+        }
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>outstandingLineCount</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// How many lines still have something to receive.
+    ///
+    /// A count in SQL rather than a fetch-and-count. On a five-thousand-line order the difference
+    /// is between reading an index and materialising every row to throw them away.
+    /// </summary>
+    private static int outstandingLineCount(PurchId _purchId)
+    {
+        PurchLine purchLine;
+
+        select count(RecId) from purchLine
+            where purchLine.PurchId             == _purchId
+               && purchLine.PurchStatus         != PurchStatus::Canceled
+               && purchLine.RemainPurchPhysical  > 0;
+
+        return any2Int(purchLine.RecId);
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>inventUnitOf</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Inventory unit for an item, resolved once per item rather than once per line.
+    ///
+    /// InventTableModule::find is record-cache backed, so the saving on a small order is modest.
+    /// It stops being modest on an order with twenty lines of the same item, which is an ordinary
+    /// shape for a bulk purchase and exactly when the operator is waiting.
+    /// </summary>
+    private static UnitOfMeasureSymbol inventUnitOf(ItemId _itemId, Map _cache)
+    {
+        if (!_cache.exists(_itemId))
+        {
+            _cache.insert(
+                _itemId,
+                InventTableModule::find(_itemId, ModuleInventPurchSales::Invent).UnitId);
+        }
+
+        return _cache.lookup(_itemId);
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>dimensionsOf</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The item's dimension group setup, resolved once per item.
+    ///
+    /// The platform is widely believed to cache InventDimGroupSetup, and it may well do so on the
+    /// target version - but the app cannot be built on that belief, and a local map makes the cost
+    /// per item certain rather than probable.
+    /// </summary>
+    private static InventDimGroupSetup dimensionsOf(ItemId _itemId, Map _cache)
+    {
+        if (!_cache.exists(_itemId))
+        {
+            _cache.insert(_itemId, InventDimGroupSetup::newItemId(_itemId));
+        }
+
+        return _cache.lookup(_itemId);
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>receivableBlockReason</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Why an order cannot be received against, or an empty string when it can.
+    ///
+    /// The business process is: a clerk drafts the order, a manager approves it, and *then* the
+    /// clerk confirms it and sends it to the vendor. Goods only ever move after that. So approval
+    /// alone is not enough - an order that is approved but unconfirmed is one the vendor has never
+    /// been told about, and stock arriving against it is an exception the warehouse must not
+    /// silently absorb. D365FO agrees: it refuses to post a product receipt against an unconfirmed
+    /// order, so accepting the scan here only moves the failure to somewhere nobody is standing.
+    ///
+    /// Approved-but-unconfirmed is reported separately from not-approved, because they send the
+    /// operator to different people: one is waiting on the purchasing clerk to confirm and send,
+    /// the other on the purchasing manager to approve.
+    /// </summary>
+    private static str receivableBlockReason(PurchTable _purchTable)
+    {
+        boolean confirmed;
+
+        if (_purchTable.PurchStatus != PurchStatus::Backorder
+         && _purchTable.PurchStatus != PurchStatus::None)
+        {
+            return 'NOT_OPEN';
+        }
+
+        // DocumentStatus is the confirmation signal that works either way. It leaves None only
+        // once a confirmation has actually been posted, whether or not change management is on -
+        // unlike DocumentState, which stays Draft for the whole life of an order on a tenant that
+        // does not use change management.
+        confirmed = _purchTable.DocumentStatus != DocumentStatus::None;
+
+        if (confirmed)
+        {
+            return '';
+        }
+
+        switch (_purchTable.DocumentState)
+        {
+            case VersioningDocumentState::Confirmed,
+                 VersioningDocumentState::Finalized:
+                // The workflow says confirmed even though no confirmation journal exists yet.
+                // Trust the workflow state; the journal may simply not have posted.
+                return '';
+
+            case VersioningDocumentState::Approved:
+                return 'NOT_CONFIRMED';
+
+            case VersioningDocumentState::Draft:
+                // Draft with no confirmation covers both a genuinely unapproved order and a
+                // tenant not using change management at all. Neither has been confirmed, and
+                // "not confirmed" is the accurate thing to say about both.
+                return 'NOT_CONFIRMED';
+
+            default:
+                return 'NOT_APPROVED';
+        }
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>vendorName</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Resolved through DirPartyTable. Costs one extra read per call and is worth it: the OData
+    /// entity does not publish a name at all, so the app could only ever show an account number,
+    /// and an operator matching a delivery against paperwork reads the name.
+    /// </summary>
+    private static Name vendorName(VendAccount _account)
+    {
+        VendTable vendTable = VendTable::find(_account);
+
+        return vendTable.RecId ? vendTable.name() : '';
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>fail</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Failure is reported in the contract, not by throwing. An exception out of a custom service
+    /// becomes an HTTP 500 with a stack trace, which tells a handheld operator nothing and tells a
+    /// dashboard the service is broken when in fact the operator scanned a number that does not
+    /// exist. A missing order is an ordinary answer to an ordinary question.
+    /// </summary>
+    private static HSMobileOpsPurchOrderResponse fail(
+        HSMobileOpsPurchOrderResponse _response, str _code, str _message)
+    {
+        _response.parmSuccess(false);
+        _response.parmErrorCode(_code);
+        _response.parmMessage(_message);
+
+        return _response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>inlineLineLimit</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Above this many outstanding lines, the order's lines are not sent inline.
+    ///
+    /// Not a limit on what can be received - it is the point where sending everything costs more
+    /// than asking per item. Small orders, which are most of them, still arrive complete in one
+    /// call and cost the item step nothing.
+    /// </summary>
+    private static int inlineLineLimit()
+    {
+        return 50;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

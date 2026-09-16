@@ -1,0 +1,173 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxTable xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsUserWarehouse</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// The warehouses one handheld user is allowed to work in.
+///
+/// A worker is rarely tied to exactly one warehouse for ever - cover for a sick colleague, a
+/// second site down the road, a peak-season move - so the assignment is a list, with one row
+/// marked default. The app signs the worker straight into the default and offers the rest as a
+/// switch, which means nobody types a warehouse code at a receiving bay and nobody can pick a
+/// warehouse they have no business in.
+///
+/// This is also the reason the free-text warehouse box in the app's settings stops being the
+/// source of truth once a worker signs in: a typo there previously produced an empty worklist
+/// that looked exactly like a broken app.
+/// </summary>
+public class HSMobileOpsUserWarehouse extends common
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>clearDefaults</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Unsets the default flag on every row for a user, except optionally one to keep.
+    ///
+    /// Enforced here rather than trusted to callers. Two rows marked default is a state with no
+    /// correct interpretation - the app would pick whichever the query happened to return first,
+    /// and the same worker would land in different warehouses on different days.
+    /// </summary>
+    public static void clearDefaults(RefRecId _userRecId, RefRecId _keepRecId = 0)
+    {
+        HSMobileOpsUserWarehouse assignment;
+
+        update_recordset assignment
+            setting IsDefault = NoYes::No
+            where assignment.UserRecId  == _userRecId
+               && assignment.IsDefault  == NoYes::Yes
+               && assignment.RecId      != _keepRecId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>findDefault</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The user's default warehouse assignment, or their only one if none is flagged.
+    ///
+    /// Falling back to a single unflagged assignment rather than returning nothing: a user with
+    /// exactly one warehouse and nobody having ticked the box is an administrative slip, not a
+    /// reason to refuse them a shift.
+    /// </summary>
+    public static HSMobileOpsUserWarehouse findDefault(RefRecId _userRecId)
+    {
+        HSMobileOpsUserWarehouse assignment;
+        int                      assignmentCount;
+
+        select firstOnly assignment
+            where assignment.UserRecId == _userRecId
+               && assignment.IsDefault == NoYes::Yes;
+
+        if (assignment.RecId)
+        {
+            return assignment;
+        }
+
+        select count(RecId) from assignment
+            where assignment.UserRecId == _userRecId;
+
+        if (any2Int(assignment.RecId) == 1)
+        {
+            select firstOnly assignment
+                where assignment.UserRecId == _userRecId;
+        }
+        else
+        {
+            assignment.clear();
+        }
+
+        return assignment;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+	<Label>Mobile user warehouse</Label>
+	<TitleField1>WarehouseId</TitleField1>
+	<CacheLookup>NotInTTS</CacheLookup>
+	<ClusteredIndex>UserWarehouseIdx</ClusteredIndex>
+	<PrimaryIndex>UserWarehouseIdx</PrimaryIndex>
+	<Fields>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldInt64">
+			<Name>UserRecId</Name>
+			<Label>Mobile user</Label>
+			<ExtendedDataType>RefRecId</ExtendedDataType>
+			<Mandatory>Yes</Mandatory>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>SiteId</Name>
+			<ExtendedDataType>InventSiteId</ExtendedDataType>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>WarehouseId</Name>
+			<ExtendedDataType>InventLocationId</ExtendedDataType>
+			<Mandatory>Yes</Mandatory>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldEnum">
+			<Name>IsDefault</Name>
+			<Label>Default</Label>
+			<EnumType>NoYes</EnumType>
+		</AxTableField>
+	</Fields>
+	<FullTextIndexes />
+	<Indexes>
+		<AxTableIndex>
+			<Name>UserWarehouseIdx</Name>
+			<AllowDuplicates>No</AllowDuplicates>
+			<Fields>
+				<AxTableIndexField>
+					<DataField>UserRecId</DataField>
+				</AxTableIndexField>
+				<AxTableIndexField>
+					<DataField>WarehouseId</DataField>
+				</AxTableIndexField>
+			</Fields>
+		</AxTableIndex>
+	</Indexes>
+	<Mappings />
+	<Relations>
+		<AxTableRelation xmlns=""
+			i:type="AxTableRelationForeignKey">
+			<Name>HSMobileOpsUser</Name>
+			<Cardinality>ZeroMore</Cardinality>
+			<RelatedTable>HSMobileOpsUser</RelatedTable>
+			<RelatedTableCardinality>ExactlyOne</RelatedTableCardinality>
+			<RelationshipType>Association</RelationshipType>
+			<Constraints>
+				<AxTableRelationConstraint xmlns=""
+					i:type="AxTableRelationConstraintField">
+					<Name>UserRecId</Name>
+					<Field>UserRecId</Field>
+					<RelatedField>RecId</RelatedField>
+				</AxTableRelationConstraint>
+			</Constraints>
+		</AxTableRelation>
+		<AxTableRelation xmlns=""
+			i:type="AxTableRelationForeignKey">
+			<Name>InventLocation</Name>
+			<Cardinality>ZeroMore</Cardinality>
+			<RelatedTable>InventLocation</RelatedTable>
+			<RelatedTableCardinality>ExactlyOne</RelatedTableCardinality>
+			<RelationshipType>Association</RelationshipType>
+			<Constraints>
+				<AxTableRelationConstraint xmlns=""
+					i:type="AxTableRelationConstraintField">
+					<Name>WarehouseId</Name>
+					<Field>WarehouseId</Field>
+					<RelatedField>InventLocationId</RelatedField>
+				</AxTableRelationConstraint>
+			</Constraints>
+		</AxTableRelation>
+	</Relations>
+	<StateMachines />
+</AxTable>

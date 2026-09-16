@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsPostQueueEntry</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// One row of HSMobileOpsPostQueue, as the Activity screen needs it - what was submitted, what
+/// it is now, and why, without exposing the raw LinesJson a status list has no use for.
+/// </summary>
+[DataContractAttribute]
+class HSMobileOpsPostQueueEntry
+{
+    str         sourceId;
+    str         documentType;
+    str         status;
+    str         errorMessage;
+    utcdatetime receivedUtc;
+    utcdatetime processedUtc;
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmSourceId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('SourceId')]
+    public str parmSourceId(str _value = sourceId)
+    {
+        sourceId = _value;
+        return sourceId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmDocumentType</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('DocumentType')]
+    public str parmDocumentType(str _value = documentType)
+    {
+        documentType = _value;
+        return documentType;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmStatus</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Status')]
+    public str parmStatus(str _value = status)
+    {
+        status = _value;
+        return status;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmErrorMessage</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ErrorMessage')]
+    public str parmErrorMessage(str _value = errorMessage)
+    {
+        errorMessage = _value;
+        return errorMessage;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmReceivedUtc</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ReceivedUtc')]
+    public utcdatetime parmReceivedUtc(utcdatetime _value = receivedUtc)
+    {
+        receivedUtc = _value;
+        return receivedUtc;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmProcessedUtc</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ProcessedUtc')]
+    public utcdatetime parmProcessedUtc(utcdatetime _value = processedUtc)
+    {
+        processedUtc = _value;
+        return processedUtc;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

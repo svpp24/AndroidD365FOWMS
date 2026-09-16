@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsTransferRequest</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+[DataContractAttribute]
+class HSMobileOpsTransferRequest
+{
+    DataAreaId       dataAreaId;
+    str              transferId;
+    InventLocationId warehouseId;
+    str              mode;
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmDataAreaId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('DataAreaId')]
+    public DataAreaId parmDataAreaId(DataAreaId _value = dataAreaId)
+    {
+        dataAreaId = _value;
+        return dataAreaId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmTransferId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('TransferId')]
+    public str parmTransferId(str _value = transferId)
+    {
+        transferId = _value;
+        return transferId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmWarehouseId</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The warehouse the operator is standing in.
+    ///
+    /// Used to check they are at the right end of the transfer, not to filter. Shipping from a
+    /// warehouse that is not the order's source, or receiving at one that is not its destination,
+    /// is a mistake worth naming rather than an empty list to puzzle over.
+    /// </summary>
+    [DataMemberAttribute('WarehouseId')]
+    public InventLocationId parmWarehouseId(InventLocationId _value = warehouseId)
+    {
+        warehouseId = _value;
+        return warehouseId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmMode</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// 'Ship' or 'Receive'.
+    ///
+    /// The same order is read from both ends and the answers differ in every way that matters:
+    /// which quantity is outstanding, which warehouse the operator should be in, and which
+    /// statuses permit the work. One operation with a direction rather than two near-identical
+    /// ones, so the rules that differ sit side by side and cannot drift apart.
+    /// </summary>
+    [DataMemberAttribute('Mode')]
+    public str parmMode(str _value = mode)
+    {
+        mode = _value;
+        return mode;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

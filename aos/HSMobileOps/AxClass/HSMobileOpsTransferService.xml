@@ -1,0 +1,458 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsTransferService</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Read side of the transfer order flows: shipping from one warehouse, receiving at the other.
+///
+/// **One order, two ends, two different answers.** The same transfer is worked twice - shipped
+/// from the source warehouse and received at the destination - and almost nothing about the two
+/// is the same. Which quantity is outstanding differs, which warehouse the operator should be
+/// standing in differs, and which statuses permit the work differs. So direction is a parameter
+/// rather than two near-identical services: the rules that differ sit next to each other and
+/// cannot quietly drift apart.
+///
+/// The trap this exists to avoid: **receiving is bounded by what was shipped, not by what was
+/// ordered.** A ten-line order with four shipped has six outstanding to ship and four to receive,
+/// and an app that reads the ordered quantity at the receiving end invites an operator to book in
+/// stock that never left the other site.
+///
+/// Same load discipline as the other services: no transactions on the read path, every select
+/// keyed and scoped to one legal entity, no crossCompany, and lines withheld past a threshold so
+/// a large order costs a per-item query instead of a payload.
+/// </summary>
+class HSMobileOpsTransferService
+{
+    private const int InlineLineLimit = 50;
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>getTransferOrder</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// One transfer order, read for the requested direction.
+    /// </summary>
+    public HSMobileOpsTransferResponse getTransferOrder(HSMobileOpsTransferRequest _request)
+    {
+        HSMobileOpsTransferResponse response = new HSMobileOpsTransferResponse();
+        InventTransferTable         transferTable;
+        DataAreaId                  company;
+        str                         transferId;
+        InventLocationId            atWarehouse;
+        boolean                     shipping;
+        str                         blockReason;
+        int                         outstanding;
+        HSMobileOpsProcessSetup     transferReceiveSetup;
+
+        response.parmSuccess(false);
+        response.parmLines(new List(Types::Class));
+
+        if (_request)
+        {
+            company     = _request.parmDataAreaId();
+            transferId  = _request.parmTransferId();
+            atWarehouse = _request.parmWarehouseId();
+            shipping    = HSMobileOpsTransferService::isShipMode(_request.parmMode());
+        }
+
+        if (!company || !transferId || !CompanyInfo::findDataArea(company).RecId)
+        {
+            response.parmErrorCode('INVALID_REQUEST');
+            response.parmMessage('DataAreaId, TransferId and Mode are all required');
+            return response;
+        }
+
+        changecompany (company)
+        {
+            // Re-instantiated inside the block: a buffer created before changecompany keeps the
+            // session's original company and would answer about the wrong legal entity.
+            transferTable = null;
+
+            select firstOnly RecId, TransferId, TransferStatus, InventLocationIdFrom,
+                             InventLocationIdTo
+                from transferTable
+                where transferTable.TransferId == transferId;
+
+            if (!transferTable.RecId)
+            {
+                response.parmErrorCode('NOT_FOUND');
+                response.parmMessage(strFmt('No transfer order %1 in %2', transferId, company));
+                return response;
+            }
+
+            response.parmTransferId(transferTable.TransferId);
+            response.parmTransferStatus(
+                enum2Symbol(enumNum(InventTransferStatus), transferTable.TransferStatus));
+            response.parmFromSiteId(
+                HSMobileOpsTransferService::siteOf(transferTable.InventLocationIdFrom));
+            response.parmFromWarehouseId(transferTable.InventLocationIdFrom);
+            response.parmToSiteId(
+                HSMobileOpsTransferService::siteOf(transferTable.InventLocationIdTo));
+            response.parmToWarehouseId(transferTable.InventLocationIdTo);
+
+            // Receive direction only - see the field's own doc on HSMobileOpsTransferResponse.
+            // Left at its type default (false) when shipping, which is harmless: the Android
+            // ship flow never reads this field, since shipping never asks for a location at all.
+            if (!shipping)
+            {
+                transferReceiveSetup = HSMobileOpsProcessSetup::find(
+                    HSMobileOpsProcessSetup::processTransferReceive());
+                response.parmRequireLocationCapture(
+                    transferReceiveSetup.RequireLocationCapture == NoYes::Yes);
+            }
+
+            blockReason = HSMobileOpsTransferService::blockReason(
+                transferTable, shipping, atWarehouse);
+            response.parmActionable(blockReason == '');
+
+            outstanding = HSMobileOpsTransferService::outstandingLineCount(transferId, shipping);
+            response.parmOutstandingLineCount(outstanding);
+
+            if (blockReason)
+            {
+                response.parmErrorCode(blockReason);
+            }
+            else if (!outstanding)
+            {
+                response.parmErrorCode('NOTHING_OUTSTANDING');
+            }
+            else if (outstanding <= InlineLineLimit)
+            {
+                HSMobileOpsTransferService::appendLines(response, transferTable, shipping, '');
+                response.parmLinesIncluded(true);
+            }
+
+            response.parmSuccess(true);
+        }
+
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>getLinesForItem</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The outstanding lines for one item on one transfer order, in the requested direction.
+    ///
+    /// The item step's query on a large order, so cost tracks the number of lines carrying that
+    /// item rather than the size of the order.
+    /// </summary>
+    public HSMobileOpsTransferResponse getLinesForItem(HSMobileOpsTransferLineRequest _request)
+    {
+        HSMobileOpsTransferResponse response = new HSMobileOpsTransferResponse();
+        InventTransferTable         transferTable;
+        DataAreaId                  company;
+        str                         transferId;
+        ItemId                      itemId;
+        boolean                     shipping;
+
+        response.parmSuccess(false);
+        response.parmLines(new List(Types::Class));
+
+        if (_request)
+        {
+            company    = _request.parmDataAreaId();
+            transferId = _request.parmTransferId();
+            itemId     = _request.parmItemId();
+            shipping   = HSMobileOpsTransferService::isShipMode(_request.parmMode());
+        }
+
+        if (!company || !transferId || !itemId || !CompanyInfo::findDataArea(company).RecId)
+        {
+            response.parmErrorCode('INVALID_REQUEST');
+            return response;
+        }
+
+        changecompany (company)
+        {
+            transferTable = null;
+
+            select firstOnly RecId, TransferId, InventLocationIdFrom, InventLocationIdTo
+                from transferTable
+                where transferTable.TransferId == transferId;
+
+            if (!transferTable.RecId)
+            {
+                response.parmErrorCode('NOT_FOUND');
+                return response;
+            }
+
+            HSMobileOpsTransferService::appendLines(response, transferTable, shipping, itemId);
+        }
+
+        response.parmSuccess(true);
+
+        if (!response.parmLines().elements())
+        {
+            // A real answer: the operator is holding something not outstanding on this order in
+            // this direction. Said by name rather than shown as an empty list.
+            response.parmErrorCode('NOT_ON_ORDER');
+        }
+
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>appendLines</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Reads the lines outstanding in the requested direction, with their dimension requirements.
+    ///
+    /// A blank _itemId returns every outstanding line; a supplied one narrows to that item.
+    /// </summary>
+    private static void appendLines(
+        HSMobileOpsTransferResponse _response,
+        InventTransferTable         _transferTable,
+        boolean                     _shipping,
+        ItemId                      _itemId)
+    {
+        InventTransferLine              transferLine;
+        InventDim                       inventDim;
+        HSMobileOpsTransferLineContract line;
+        InventDimGroupSetup             dimSetup;
+        List                            lines = _response.parmLines();
+        int                             lineCount;
+        InventQty                       remaining;
+
+        // Per item, not per line: an order routinely carries several lines of the same item, and
+        // these would otherwise run once per line.
+        Map namesByItem = new Map(Types::String, Types::String);
+        Map dimsByItem  = new Map(Types::String, Types::Class);
+
+        while select LineNum, ItemId, UnitId, QtyTransfer, QtyShipped, QtyReceived,
+                     QtyRemainShip, InventDimId
+            from transferLine
+            order by transferLine.LineNum
+            where transferLine.TransferId == _transferTable.TransferId
+               && (!_itemId || transferLine.ItemId == _itemId)
+            join InventSiteId, InventLocationId, wMSLocationId from inventDim
+                where inventDim.InventDimId == transferLine.InventDimId
+        {
+            // The whole reason direction is a parameter. Receiving is bounded by what was
+            // shipped; reading the ordered quantity here would invite an operator to book in
+            // stock that never left the source site.
+            remaining = _shipping
+                ? transferLine.QtyRemainShip
+                : transferLine.QtyShipped - transferLine.QtyReceived;
+
+            if (remaining <= 0)
+            {
+                continue;
+            }
+
+            line     = new HSMobileOpsTransferLineContract();
+            dimSetup = HSMobileOpsTransferService::dimensionsOf(transferLine.ItemId, dimsByItem);
+
+            line.parmLineNumber(transferLine.LineNum);
+            line.parmItemId(transferLine.ItemId);
+            line.parmItemName(
+                HSMobileOpsTransferService::itemNameOf(transferLine.ItemId, namesByItem));
+            line.parmUnitId(transferLine.UnitId);
+
+            line.parmTransferQty(transferLine.QtyTransfer);
+            line.parmShippedQty(transferLine.QtyShipped);
+            line.parmReceivedQty(transferLine.QtyReceived);
+            line.parmRemainingQty(remaining);
+
+            // Sites and warehouses come from the header: they are properties of the transfer,
+            // not of the line, and reading them per line would only invite them to disagree.
+            line.parmFromSiteId(
+                HSMobileOpsTransferService::siteOf(_transferTable.InventLocationIdFrom));
+            line.parmFromWarehouseId(_transferTable.InventLocationIdFrom);
+            line.parmToSiteId(
+                HSMobileOpsTransferService::siteOf(_transferTable.InventLocationIdTo));
+            line.parmToWarehouseId(_transferTable.InventLocationIdTo);
+            line.parmLocationId(inventDim.wMSLocationId);
+
+            line.parmBatchRequired(dimSetup.isDimensionActive(fieldNum(InventDim, InventBatchId)));
+            line.parmSerialRequired(dimSetup.isDimensionActive(fieldNum(InventDim, InventSerialId)));
+            line.parmLocationRequired(dimSetup.isDimensionActive(fieldNum(InventDim, wMSLocationId)));
+
+            lines.addEnd(line);
+
+            lineCount++;
+            if (lineCount >= InlineLineLimit)
+            {
+                _response.parmMessage(strFmt('Showing the first %1 lines', lineCount));
+                break;
+            }
+        }
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>outstandingLineCount</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// How many lines are outstanding in the requested direction.
+    ///
+    /// Counted in SQL rather than by fetching and counting: on a large order that is the
+    /// difference between reading an index and materialising every row to discard it.
+    /// </summary>
+    private static int outstandingLineCount(str _transferId, boolean _shipping)
+    {
+        InventTransferLine transferLine;
+
+        if (_shipping)
+        {
+            select count(RecId) from transferLine
+                where transferLine.TransferId    == _transferId
+                   && transferLine.QtyRemainShip  > 0;
+        }
+        else
+        {
+            select count(RecId) from transferLine
+                where transferLine.TransferId == _transferId
+                   && transferLine.QtyShipped     > transferLine.QtyReceived;
+        }
+
+        return any2Int(transferLine.RecId);
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>siteOf</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The site a warehouse belongs to.
+    ///
+    /// InventTransferTable carries warehouses, not sites - the site is a property of the warehouse.
+    /// Looked up rather than stored alongside, because two copies of the same fact are two facts
+    /// that can disagree.
+    /// </summary>
+    private static InventSiteId siteOf(InventLocationId _warehouseId)
+    {
+        if (!_warehouseId)
+        {
+            return '';
+        }
+
+        return InventLocation::find(_warehouseId).InventSiteId;
+    }
+]]></Source>
+			</Method>			<Method>
+				<Name>blockReason</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Why this order cannot be worked in this direction now, or an empty string when it can.
+    ///
+    /// Two checks, and the warehouse one earns its own answer. Scanning a transfer at the wrong
+    /// end is the commonest mistake in this flow, and reporting it as "nothing outstanding" sends
+    /// an operator hunting for a data problem that does not exist.
+    ///
+    /// The warehouse check is skipped when the caller sends none, so a device that has not yet
+    /// been given a warehouse still reads the order rather than being locked out of it.
+    /// </summary>
+    private static str blockReason(
+        InventTransferTable _transferTable,
+        boolean             _shipping,
+        InventLocationId    _atWarehouse)
+    {
+        InventTransferLine transferLine;
+        InventLocationId   expected;
+
+        expected = _shipping
+            ? _transferTable.InventLocationIdFrom
+            : _transferTable.InventLocationIdTo;
+
+        if (_atWarehouse && expected && _atWarehouse != expected)
+        {
+            return 'WRONG_WAREHOUSE';
+        }
+
+        // Decided from the outstanding quantities on the lines, not from the header status.
+        //
+        // The header cannot answer this on its own: an order reading as shipped may still have a
+        // line waiting to be received, and one reading as created may already have a line part
+        // shipped. The worker at the rack only cares whether anything is left to do, and the
+        // quantities say that directly - with no dependence on how the status enum is spelled.
+        if (_shipping)
+        {
+            select firstOnly RecId from transferLine
+                where transferLine.TransferId    == _transferTable.TransferId
+                   && transferLine.QtyRemainShip  > 0;
+
+            return transferLine.RecId ? '' : 'NOT_SHIPPABLE';
+        }
+
+        // Receivable means something is in transit - shipped but not yet received. Written as the
+        // difference rather than as QtyRemainReceive so it cannot be read as 'ordered but not
+        // received', which would offer to receive goods that were never sent.
+        select firstOnly RecId from transferLine
+            where transferLine.TransferId == _transferTable.TransferId
+               && transferLine.QtyShipped  > transferLine.QtyReceived;
+
+        return transferLine.RecId ? '' : 'NOT_RECEIVABLE';
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>isShipMode</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Whether the caller asked for the shipping end.
+    ///
+    /// Anything that is not recognisably "ship" is treated as receiving, and receiving is the
+    /// safer default of the two: it is bounded by what has actually been sent, so a mangled mode
+    /// string cannot invite an operator to ship stock that was never picked.
+    /// </summary>
+    private static boolean isShipMode(str _mode)
+    {
+        return strLwr(strLTrim(strRTrim(_mode))) == 'ship';
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>itemNameOf</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The item's name, resolved once per item.
+    ///
+    /// InventTransferLine carries no name, so this is a lookup - and on an order with twenty
+    /// lines of the same item, caching turns twenty of them into one.
+    /// </summary>
+    private static Name itemNameOf(ItemId _itemId, Map _cache)
+    {
+        if (!_cache.exists(_itemId))
+        {
+            _cache.insert(_itemId, InventTable::find(_itemId).itemName());
+        }
+
+        return _cache.lookup(_itemId);
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>dimensionsOf</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The item's dimension group setup, resolved once per item rather than once per line.
+    /// </summary>
+    private static InventDimGroupSetup dimensionsOf(ItemId _itemId, Map _cache)
+    {
+        if (!_cache.exists(_itemId))
+        {
+            _cache.insert(_itemId, InventDimGroupSetup::newItemId(_itemId));
+        }
+
+        return _cache.lookup(_itemId);
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

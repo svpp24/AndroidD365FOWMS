@@ -1,0 +1,253 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxTable xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsLineClaim</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// A soft, time-limited hold on one order line, for processes running in LineClaim mode - see
+/// HSMobileOpsProcessSetup.
+///
+/// Deliberately not a real lock. Nothing in D365FO enforces this at the row level; it is
+/// advisory, checked by the read services and shown to the worker so a second person sees "being
+/// received by [name]" instead of being silently offered a line someone is already standing at.
+/// The actual data-integrity guard - the thing that prevents two people over-receiving the same
+/// physical stock even if both ignore the claim entirely - is the live RemainPurchPhysical check
+/// inside HSMobileOpsPostingService, which exists whether or not this table does. This table is
+/// about avoiding wasted work and confusing rejections, not about correctness; correctness does
+/// not depend on it.
+///
+/// Generic across processes on purpose - ProcessType plus SourceId plus LineNumber, not a
+/// foreign key to PurchLine or InventTransferLine - so the same table and the same claim/release
+/// logic serve receiving and both transfer directions without three near-identical copies.
+///
+/// Expiry is checked lazily, on read, against ClaimExpiresUtc. There is no background job
+/// sweeping stale rows; an expired claim simply stops being honoured the next time anyone asks,
+/// and gets overwritten in place the next time anyone successfully claims that line.
+/// </summary>
+public class HSMobileOpsLineClaim extends common
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>findActive</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The live claim on a line, or an empty buffer when there is none or it has expired.
+    ///
+    /// An expired row is deliberately still findable by [findForUpdate] - claiming reuses it in
+    /// place rather than inserting a second row per line - but this method, used for read-side
+    /// annotation, treats it as though it were not there.
+    /// </summary>
+    public static HSMobileOpsLineClaim findActive(
+        str _processType, str _sourceId, LineNum _lineNumber)
+    {
+        HSMobileOpsLineClaim claim;
+
+        select firstOnly claim
+            where claim.ProcessType == _processType
+               && claim.SourceId    == _sourceId
+               && claim.LineNumber  == _lineNumber;
+
+        if (claim.RecId && claim.ClaimExpiresUtc <= DateTimeUtil::utcNow())
+        {
+            // Expired: the caller must see "no active claim", not the stale row. A table
+            // buffer's "nothing found" is an empty buffer, never null - matches
+            // HSMobileOpsPostLog::findByKey and every other finder in this model.
+            claim.clear();
+        }
+
+        return claim;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>claim</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Claims a line for a worker, or reports who already holds it.
+    ///
+    /// Succeeds when the line is unclaimed, the existing claim has expired, or the existing claim
+    /// already belongs to the same user and device - the last case is a renewal, not a new claim,
+    /// and is what keeps a claim alive while a worker is genuinely still working the line rather
+    /// than making them re-claim it between every step.
+    ///
+    /// Called inside its own transaction by the caller; this method does not begin or commit one,
+    /// so it can be composed into a larger posting or read transaction where useful.
+    /// </summary>
+    public static HSMobileOpsLineClaim claim(
+        str    _processType,
+        str    _sourceId,
+        LineNum _lineNumber,
+        str    _userName,
+        str    _displayName,
+        str    _deviceId,
+        int    _timeoutMinutes)
+    {
+        HSMobileOpsLineClaim claim;
+        utcdatetime          now;
+
+        now = DateTimeUtil::utcNow();
+
+        select forUpdate firstOnly claim
+            where claim.ProcessType == _processType
+               && claim.SourceId    == _sourceId
+               && claim.LineNumber  == _lineNumber;
+
+        if (claim.RecId
+            && claim.ClaimExpiresUtc > now
+            && strUpr(claim.ClaimedByUserName) != strUpr(_userName))
+        {
+            // Someone else's live claim. Handed back as-is so the caller can report who holds
+            // it; refusing silently would leave the worker guessing why nothing happened.
+            return claim;
+        }
+
+        if (!claim.RecId)
+        {
+            claim.clear();
+            claim.ProcessType = _processType;
+            claim.SourceId    = _sourceId;
+            claim.LineNumber  = _lineNumber;
+        }
+
+        claim.ClaimedByUserName    = _userName;
+        claim.ClaimedByDisplayName = _displayName;
+        claim.DeviceId              = _deviceId;
+        claim.ClaimedAtUtc          = now;
+        // addSeconds rather than an addMinutes call this codebase has not used anywhere else -
+        // built from a primitive already relied on elsewhere (DateTimeUtil::utcNow) instead of
+        // a convenience overload nothing here has verified exists.
+        claim.ClaimExpiresUtc      = DateTimeUtil::addSeconds(now, _timeoutMinutes * 60);
+
+        if (claim.RecId)
+        {
+            claim.update();
+        }
+        else
+        {
+            claim.insert();
+        }
+
+        return claim;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>release</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Releases a claim, but only the caller's own. A stale or someone-else's claim is left
+    /// alone rather than silently removed - it will speak for itself on expiry, and a worker's
+    /// own back-out action must never be able to affect a claim it does not hold.
+    /// </summary>
+    public static void release(
+        str _processType, str _sourceId, LineNum _lineNumber, str _userName)
+    {
+        HSMobileOpsLineClaim claim;
+
+        select forUpdate firstOnly claim
+            where claim.ProcessType == _processType
+               && claim.SourceId    == _sourceId
+               && claim.LineNumber  == _lineNumber;
+
+        if (claim.RecId && strUpr(claim.ClaimedByUserName) == strUpr(_userName))
+        {
+            claim.delete();
+        }
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+	<Label>Mobile line claims</Label>
+	<TitleField1>SourceId</TitleField1>
+	<TitleField2>ClaimedByUserName</TitleField2>
+	<CacheLookup>None</CacheLookup>
+	<ClusteredIndex>LineIdx</ClusteredIndex>
+	<PrimaryIndex>LineIdx</PrimaryIndex>
+	<Fields>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>ProcessType</Name>
+			<Label>Process</Label>
+			<StringSize>30</StringSize>
+			<Mandatory>Yes</Mandatory>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>SourceId</Name>
+			<Label>Order</Label>
+			<HelpText>Purchase order or transfer order number.</HelpText>
+			<StringSize>40</StringSize>
+			<Mandatory>Yes</Mandatory>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldReal">
+			<Name>LineNumber</Name>
+			<Label>Line</Label>
+			<ExtendedDataType>LineNum</ExtendedDataType>
+			<Mandatory>Yes</Mandatory>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>ClaimedByUserName</Name>
+			<Label>Claimed by</Label>
+			<ExtendedDataType>HSMobileOpsUserName</ExtendedDataType>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>ClaimedByDisplayName</Name>
+			<Label>Name</Label>
+			<StringSize>60</StringSize>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>DeviceId</Name>
+			<Label>Device</Label>
+			<StringSize>64</StringSize>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldUtcDateTime">
+			<Name>ClaimedAtUtc</Name>
+			<Label>Claimed at</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldUtcDateTime">
+			<Name>ClaimExpiresUtc</Name>
+			<Label>Expires</Label>
+		</AxTableField>
+	</Fields>
+	<FullTextIndexes />
+	<Indexes>
+		<AxTableIndex>
+			<Name>LineIdx</Name>
+			<AllowDuplicates>No</AllowDuplicates>
+			<Fields>
+				<AxTableIndexField>
+					<DataField>ProcessType</DataField>
+				</AxTableIndexField>
+				<AxTableIndexField>
+					<DataField>SourceId</DataField>
+				</AxTableIndexField>
+				<AxTableIndexField>
+					<DataField>LineNumber</DataField>
+				</AxTableIndexField>
+			</Fields>
+		</AxTableIndex>
+		<AxTableIndex>
+			<Name>ExpiryIdx</Name>
+			<Fields>
+				<AxTableIndexField>
+					<DataField>ClaimExpiresUtc</DataField>
+				</AxTableIndexField>
+			</Fields>
+		</AxTableIndex>
+	</Indexes>
+	<Mappings />
+	<Relations />
+	<StateMachines />
+</AxTable>

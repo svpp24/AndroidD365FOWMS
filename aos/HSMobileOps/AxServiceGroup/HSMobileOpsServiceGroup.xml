@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxServiceGroup xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsServiceGroup</Name>
+	<AutoDeploy>Yes</AutoDeploy>
+	<Services>
+		<AxServiceGroupService>
+			<Name>HSMobileOpsReceivingSvc</Name>
+			<Service>HSMobileOpsReceivingSvc</Service>
+		</AxServiceGroupService>
+		<AxServiceGroupService>
+			<Name>HSMobileOpsInquirySvc</Name>
+			<Service>HSMobileOpsInquirySvc</Service>
+		</AxServiceGroupService>
+		<AxServiceGroupService>
+			<Name>HSMobileOpsUserSvc</Name>
+			<Service>HSMobileOpsUserSvc</Service>
+		</AxServiceGroupService>
+		<AxServiceGroupService>
+			<Name>HSMobileOpsTransferSvc</Name>
+			<Service>HSMobileOpsTransferSvc</Service>
+		</AxServiceGroupService>
+		<AxServiceGroupService>
+			<Name>HSMobileOpsPostingSvc</Name>
+			<Service>HSMobileOpsPostingSvc</Service>
+		</AxServiceGroupService>
+	</Services>
+</AxServiceGroup>

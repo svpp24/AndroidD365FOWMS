@@ -1,0 +1,107 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsClaimRequest</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Claims or releases one line, in a process running in LineClaim mode. Shared across receiving
+/// and both transfer directions - see HSMobileOpsLineClaim, which is equally generic.
+/// </summary>
+[DataContractAttribute]
+class HSMobileOpsClaimRequest
+{
+    DataAreaId dataAreaId;
+    str        sourceId;
+    LineNum    lineNumber;
+    str        userName;
+    str        displayName;
+    str        deviceId;
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmDataAreaId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('DataAreaId')]
+    public DataAreaId parmDataAreaId(DataAreaId _value = dataAreaId)
+    {
+        dataAreaId = _value;
+        return dataAreaId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmSourceId</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Purchase order or transfer order number, matching whichever service operation this
+    /// request is sent to.
+    /// </summary>
+    [DataMemberAttribute('SourceId')]
+    public str parmSourceId(str _value = sourceId)
+    {
+        sourceId = _value;
+        return sourceId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmLineNumber</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('LineNumber')]
+    public LineNum parmLineNumber(LineNum _value = lineNumber)
+    {
+        lineNumber = _value;
+        return lineNumber;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmUserName</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('UserName')]
+    public str parmUserName(str _value = userName)
+    {
+        userName = _value;
+        return userName;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmDisplayName</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Not looked up server-side. The worker's display name lives in HSMobileOpsUser, but
+    /// re-selecting it on every claim to save one field on the request is a trade the read path
+    /// already made the other way - see HSMobileOpsPurchLineContract.ClaimedByDisplayName,
+    /// which exists purely so a second worker's screen can show a name without its own lookup.
+    /// </summary>
+    [DataMemberAttribute('DisplayName')]
+    public str parmDisplayName(str _value = displayName)
+    {
+        displayName = _value;
+        return displayName;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmDeviceId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('DeviceId')]
+    public str parmDeviceId(str _value = deviceId)
+    {
+        deviceId = _value;
+        return deviceId;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

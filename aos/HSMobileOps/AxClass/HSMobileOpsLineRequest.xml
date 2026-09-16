@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsLineRequest</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// The outstanding lines of one purchase order for one item.
+///
+/// Exists because a purchase order can carry thousands of lines. Returning all of them so the
+/// handheld can filter to the one item just scanned means moving megabytes to render a single
+/// prompt, and it gets worse as the order gets bigger. The operator has already told us the item;
+/// this asks the only question that follows from it.
+/// </summary>
+[DataContractAttribute]
+class HSMobileOpsLineRequest
+{
+    DataAreaId  dataAreaId;
+    PurchId     purchId;
+    ItemId      itemId;
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmDataAreaId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('DataAreaId')]
+    public DataAreaId parmDataAreaId(DataAreaId _value = dataAreaId)
+    {
+        dataAreaId = _value;
+        return dataAreaId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmPurchId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('PurchId')]
+    public PurchId parmPurchId(PurchId _value = purchId)
+    {
+        purchId = _value;
+        return purchId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmItemId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ItemId')]
+    public ItemId parmItemId(ItemId _value = itemId)
+    {
+        itemId = _value;
+        return itemId;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

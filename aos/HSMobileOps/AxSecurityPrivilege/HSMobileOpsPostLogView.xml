@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxSecurityPrivilege xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsPostLogView</Name>
+	<Label>View mobile posting log</Label>
+	<HelpText>Read what has posted from a handheld - which order, which device, when - without being able to change or delete any of it. No dedicated form of its own: this table is read through OData/reporting and through the other screens that already carry it (HSMobileOpsUser), not a standalone page in D365FO.</HelpText>
+	<EntryPoints />
+	<Tables>
+		<AxSecurityPrivilegeTablePermission>
+			<Name>HSMobileOpsPostLog</Name>
+			<Delete>NoAccess</Delete>
+			<Insert>NoAccess</Insert>
+			<Read>Allow</Read>
+			<Update>NoAccess</Update>
+		</AxSecurityPrivilegeTablePermission>
+	</Tables>
+</AxSecurityPrivilege>

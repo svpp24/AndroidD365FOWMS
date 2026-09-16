@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxMenuItemAction xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsUnlockUser</Name>
+	<Label>Unlock</Label>
+	<HelpText>Clear a sign-in lockout</HelpText>
+	<Object>HSMobileOpsUnlockUser</Object>
+	<ObjectType>Class</ObjectType>
+</AxMenuItemAction>

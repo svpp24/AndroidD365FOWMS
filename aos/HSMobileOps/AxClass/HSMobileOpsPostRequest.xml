@@ -1,0 +1,165 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsPostRequest</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+[DataContractAttribute]
+class HSMobileOpsPostRequest
+{
+    DataAreaId dataAreaId;
+    str        idempotencyKey;
+    str        sourceId;
+    str        reference;
+    str        userName;
+    HcmPersonnelNumberId personnelNumber;
+    str        deviceId;
+    str        linesJson;
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmDataAreaId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('DataAreaId')]
+    public DataAreaId parmDataAreaId(DataAreaId _value = dataAreaId)
+    {
+        dataAreaId = _value;
+        return dataAreaId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmIdempotencyKey</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Minted by the client, once, when the transaction is captured - not per attempt.
+    ///
+    /// This is the whole safety mechanism. A handheld on warehouse wifi loses responses regularly:
+    /// the posting commits, the reply is lost, the queue retries. Without a stable key the retry
+    /// posts a second receipt and the stock is booked in twice, which nobody catches until a count
+    /// weeks later. With one, the replay returns the original document number and posts nothing.
+    ///
+    /// It must survive an app restart and must not change between attempts. A key regenerated on
+    /// retry is no key at all.
+    /// </summary>
+    [DataMemberAttribute('IdempotencyKey')]
+    public str parmIdempotencyKey(str _value = idempotencyKey)
+    {
+        idempotencyKey = _value;
+        return idempotencyKey;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmSourceId</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The purchase order number, or the transfer order number, depending on the operation.
+    /// </summary>
+    [DataMemberAttribute('SourceId')]
+    public str parmSourceId(str _value = sourceId)
+    {
+        sourceId = _value;
+        return sourceId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmReference</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The vendor's delivery note on a product receipt; free for the caller on a transfer.
+    ///
+    /// Mandatory for a product receipt: it is the vendor's own reference on the posted journal,
+    /// and it is what reconciles the GRN against their paperwork afterwards.
+    /// </summary>
+    [DataMemberAttribute('Reference')]
+    public str parmReference(str _value = reference)
+    {
+        reference = _value;
+        return reference;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmUserName</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The handheld user who captured this, and the worker they map to.
+    ///
+    /// The device authenticates with a service principal that every device shares, so without
+    /// these every posting in the system would carry the same CreatedBy and a GRN could never say
+    /// who received the pallet. Recorded on the posting log rather than trusted for authorisation.
+    /// </summary>
+    [DataMemberAttribute('UserName')]
+    public str parmUserName(str _value = userName)
+    {
+        userName = _value;
+        return userName;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmPersonnelNumber</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('PersonnelNumber')]
+    public HcmPersonnelNumberId parmPersonnelNumber(HcmPersonnelNumberId _value = personnelNumber)
+    {
+        personnelNumber = _value;
+        return personnelNumber;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmDeviceId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('DeviceId')]
+    public str parmDeviceId(str _value = deviceId)
+    {
+        deviceId = _value;
+        return deviceId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmLinesJson</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The captured lines, as a JSON array - not a native collection.
+    ///
+    /// This used to be `List parmLines()` with `DataCollectionAttribute(Types::Class,
+    /// classStr(HSMobileOpsPostLine))`, which is the textbook-correct way to declare a list of a
+    /// custom DataContract on a service parameter. It compiled clean and every other service in
+    /// this group serialises a List of a custom class the same way in its *response* without
+    /// trouble. The difference is direction: this was the only place in the whole model asking the
+    /// JSON custom-service endpoint to deserialise a list of a custom class on the way *in*, and
+    /// live it failed every request with `Unable to cast object of type
+    /// 'Newtonsoft.Json.Linq.JObject' to type 'Dynamics.AX.Application.HSMobileOpsPostLine'` -
+    /// confirmed after both a plain class rebuild and a full rebuild of HSMobileOpsPostingSvc, so
+    /// it is not a stale-deployment artefact, it is this binding direction not working here.
+    ///
+    /// Carrying the lines as a string instead sidesteps that binding entirely: `str` always
+    /// deserialises correctly, and HSMobileOpsPostingService::parseLines reads the array back out
+    /// with Newtonsoft.Json.Linq directly - the same library the failure above proves is already
+    /// loaded and working - rather than relying on AIF to infer the element type.
+    /// </summary>
+    [DataMemberAttribute('LinesJson')]
+    public str parmLinesJson(str _value = linesJson)
+    {
+        linesJson = _value;
+        return linesJson;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

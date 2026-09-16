@@ -1,0 +1,509 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxForm xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns="Microsoft.Dynamics.AX.Metadata.V6">
+	<Name>HSMobileOpsUser</Name>
+	<SourceCode>
+		<Methods xmlns="">
+			<Method>
+				<Name>classDeclaration</Name>
+				<Source><![CDATA[
+/// <summary>
+/// Mobile device users, and the warehouses each may work in.
+///
+/// The only place these accounts are created, reset and deactivated. The handheld deliberately has
+/// no administration screen: user setup belongs where D365FO's own security governs who may do it,
+/// not on a device that lives on a warehouse floor and is shared between shifts.
+///
+/// The password is never shown, never stored in clear and never editable as a field. It can only
+/// be *set*, through the button, which routes to HSMobileOpsUserAdmin so that hashing has exactly
+/// one implementation - a form that rolled its own salt would create rows the handheld could never
+/// authenticate against, and the failure would look like a wrong password rather than a bug.
+/// </summary>
+[Form]
+public class HSMobileOpsUser extends FormRun
+{
+}
+]]></Source>
+			</Method>
+		</Methods>
+		<DataSources xmlns="" />
+		<DataControls xmlns="" />
+		<Members xmlns="" />
+	</SourceCode>
+	<DataSources>
+		<AxFormDataSource xmlns="">
+			<Name>HSMobileOpsUser</Name>
+			<Table>HSMobileOpsUser</Table>
+			<Fields>
+				<AxFormDataSourceField>
+					<AllowAdd>No</AllowAdd>
+					<AllowEdit>No</AllowEdit>
+					<DataField>PasswordHash</DataField>
+				</AxFormDataSourceField>
+				<AxFormDataSourceField>
+					<AllowAdd>No</AllowAdd>
+					<AllowEdit>No</AllowEdit>
+					<DataField>PasswordSalt</DataField>
+				</AxFormDataSourceField>
+				<AxFormDataSourceField>
+					<AllowAdd>No</AllowAdd>
+					<AllowEdit>No</AllowEdit>
+					<DataField>HashIterations</DataField>
+				</AxFormDataSourceField>
+				<AxFormDataSourceField>
+					<AllowEdit>No</AllowEdit>
+					<DataField>FailedAttempts</DataField>
+				</AxFormDataSourceField>
+				<AxFormDataSourceField>
+					<AllowEdit>No</AllowEdit>
+					<DataField>LockedUntilUtc</DataField>
+				</AxFormDataSourceField>
+				<AxFormDataSourceField>
+					<AllowEdit>No</AllowEdit>
+					<DataField>LastSignInUtc</DataField>
+				</AxFormDataSourceField>
+			</Fields>
+			<ReferencedDataSources />
+			<AllowDelete>No</AllowDelete>
+			<Index>UserNameIdx</Index>
+			<InsertIfEmpty>No</InsertIfEmpty>
+			<DataSourceLinks />
+			<DerivedDataSources />
+		</AxFormDataSource>
+		<AxFormDataSource xmlns="">
+			<Name>HSMobileOpsUserWarehouse</Name>
+			<Table>HSMobileOpsUserWarehouse</Table>
+			<Fields>
+				<AxFormDataSourceField>
+					<AllowEdit>No</AllowEdit>
+					<DataField>IsDefault</DataField>
+				</AxFormDataSourceField>
+			</Fields>
+			<ReferencedDataSources />
+			<JoinSource>HSMobileOpsUser</JoinSource>
+			<InsertIfEmpty>No</InsertIfEmpty>
+			<DataSourceLinks />
+			<DerivedDataSources />
+		</AxFormDataSource>
+	</DataSources>
+	<Design>
+		<Caption xmlns="">Mobile device users</Caption>
+		<DataSource xmlns="">HSMobileOpsUser</DataSource>
+		<Pattern xmlns="">SimpleListDetails</Pattern>
+		<PatternVersion xmlns="">1.3</PatternVersion>
+		<Style xmlns="">SimpleListDetails</Style>
+		<TitleDataSource xmlns="">HSMobileOpsUser</TitleDataSource>
+		<Controls xmlns="">
+			<AxFormControl xmlns=""
+				i:type="AxFormActionPaneControl">
+				<Name>ActionPane</Name>
+				<Type>ActionPane</Type>
+				<FormControlExtension
+					i:nil="true" />
+				<Controls>
+					<AxFormControl xmlns=""
+						i:type="AxFormButtonGroupControl">
+						<Name>PasswordGroup</Name>
+						<Type>ButtonGroup</Type>
+						<FormControlExtension
+							i:nil="true" />
+						<Controls>
+							<AxFormControl xmlns=""
+								i:type="AxFormMenuFunctionButtonControl">
+								<Name>SetPasswordButton</Name>
+								<HelpText>Set or reset the handheld password for this user. They must change it at their next sign-in.</HelpText>
+								<Type>MenuFunctionButton</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<ButtonDisplay>TextOnly</ButtonDisplay>
+								<DataSource>HSMobileOpsUser</DataSource>
+								<MenuItemName>HSMobileOpsSetPassword</MenuItemName>
+								<MenuItemType>Action</MenuItemType>
+								<NeedsRecord>Yes</NeedsRecord>
+								<Text>Set password</Text>
+							</AxFormControl>
+							<AxFormControl xmlns=""
+								i:type="AxFormMenuFunctionButtonControl">
+								<Name>UnlockButton</Name>
+								<HelpText>Clear a lockout caused by failed sign-in attempts, without changing the password.</HelpText>
+								<Type>MenuFunctionButton</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<ButtonDisplay>TextOnly</ButtonDisplay>
+								<DataSource>HSMobileOpsUser</DataSource>
+								<MenuItemName>HSMobileOpsUnlockUser</MenuItemName>
+								<MenuItemType>Action</MenuItemType>
+								<NeedsRecord>Yes</NeedsRecord>
+								<Text>Unlock</Text>
+							</AxFormControl>
+							<AxFormControl xmlns=""
+								i:type="AxFormMenuFunctionButtonControl">
+								<Name>ToggleActiveButton</Name>
+								<HelpText>Deactivated users cannot sign in. The record is kept, because posted receipts point at it.</HelpText>
+								<Type>MenuFunctionButton</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<ButtonDisplay>TextOnly</ButtonDisplay>
+								<DataSource>HSMobileOpsUser</DataSource>
+								<MenuItemName>HSMobileOpsToggleUserActive</MenuItemName>
+								<MenuItemType>Action</MenuItemType>
+								<NeedsRecord>Yes</NeedsRecord>
+								<Text>Activate / deactivate</Text>
+							</AxFormControl>
+						</Controls>
+						<ArrangeMethod>Vertical</ArrangeMethod>
+						<Caption>Maintain</Caption>
+						<DataSource>HSMobileOpsUser</DataSource>
+					</AxFormControl>
+				</Controls>
+				<AlignChild>No</AlignChild>
+				<AlignChildren>No</AlignChildren>
+				<ArrangeMethod>Vertical</ArrangeMethod>
+			</AxFormControl>
+			<AxFormControl xmlns=""
+				i:type="AxFormGroupControl">
+				<Name>GridContainer1</Name>
+				<HeightMode>SizeToAvailable</HeightMode>
+				<Type>Group</Type>
+				<FormControlExtension
+					i:nil="true" />
+				<Controls>
+					<AxFormControl>
+						<Name>QuickFilterControl1</Name>
+						<WidthMode>SizeToAvailable</WidthMode>
+						<FormControlExtension>
+							<Name>QuickFilterControl</Name>
+							<ExtensionComponents />
+							<ExtensionProperties>
+								<AxFormControlExtensionProperty>
+									<Name>targetControlName</Name>
+									<Type>String</Type>
+								</AxFormControlExtensionProperty>
+								<AxFormControlExtensionProperty>
+									<Name>placeholderText</Name>
+									<Type>String</Type>
+								</AxFormControlExtensionProperty>
+								<AxFormControlExtensionProperty>
+									<Name>defaultColumnName</Name>
+									<Type>String</Type>
+								</AxFormControlExtensionProperty>
+							</ExtensionProperties>
+						</FormControlExtension>
+					</AxFormControl>
+					<AxFormControl xmlns=""
+						i:type="AxFormGridControl">
+						<Name>FormGridControl1</Name>
+						<AllowEdit>No</AllowEdit>
+						<Type>Grid</Type>
+						<WidthMode>SizeToContent</WidthMode>
+						<FormControlExtension
+							i:nil="true" />
+						<Controls>
+							<AxFormControl xmlns=""
+								i:type="AxFormStringControl">
+								<Name>Grid_UserName</Name>
+								<Type>String</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<DataField>UserName</DataField>
+								<DataSource>HSMobileOpsUser</DataSource>
+							</AxFormControl>
+							<AxFormControl xmlns=""
+								i:type="AxFormStringControl">
+								<Name>Grid_DisplayName</Name>
+								<Type>String</Type>
+								<WidthMode>SizeToAvailable</WidthMode>
+								<FormControlExtension
+									i:nil="true" />
+								<DataField>DisplayName</DataField>
+								<DataSource>HSMobileOpsUser</DataSource>
+							</AxFormControl>
+							<AxFormControl xmlns=""
+								i:type="AxFormCheckBoxControl">
+								<Name>Grid_IsActive</Name>
+								<Type>CheckBox</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<DataField>IsActive</DataField>
+								<DataSource>HSMobileOpsUser</DataSource>
+							</AxFormControl>
+						</Controls>
+						<DataSource>HSMobileOpsUser</DataSource>
+						<MultiSelect>No</MultiSelect>
+						<ShowRowLabels>No</ShowRowLabels>
+						<Style>List</Style>
+					</AxFormControl>
+				</Controls>
+				<FrameType>None</FrameType>
+				<Style>SidePanel</Style>
+			</AxFormControl>
+			<AxFormControl xmlns=""
+				i:type="AxFormGroupControl">
+				<Name>DetailsHeader</Name>
+				<Type>Group</Type>
+				<WidthMode>SizeToAvailable</WidthMode>
+				<FormControlExtension
+					i:nil="true" />
+				<Controls>
+					<AxFormControl xmlns=""
+						i:type="AxFormStringControl">
+						<Name>UserName</Name>
+						<Type>String</Type>
+						<FormControlExtension
+							i:nil="true" />
+						<DataField>UserName</DataField>
+						<DataSource>HSMobileOpsUser</DataSource>
+					</AxFormControl>
+					<AxFormControl xmlns=""
+						i:type="AxFormStringControl">
+						<Name>DisplayName</Name>
+						<Type>String</Type>
+						<FormControlExtension
+							i:nil="true" />
+						<DataField>DisplayName</DataField>
+						<DataSource>HSMobileOpsUser</DataSource>
+					</AxFormControl>
+					<AxFormControl xmlns=""
+						i:type="AxFormStringControl">
+						<Name>PersonnelNumber</Name>
+						<HelpText>The worker this login belongs to. This is what makes a posted receipt attributable to a person rather than to the service account every device shares.</HelpText>
+						<Type>String</Type>
+						<FormControlExtension
+							i:nil="true" />
+						<DataField>PersonnelNumber</DataField>
+						<DataSource>HSMobileOpsUser</DataSource>
+					</AxFormControl>
+					<AxFormControl xmlns=""
+						i:type="AxFormCheckBoxControl">
+						<Name>IsSupervisor</Name>
+						<Type>CheckBox</Type>
+						<FormControlExtension
+							i:nil="true" />
+						<DataField>IsSupervisor</DataField>
+						<DataSource>HSMobileOpsUser</DataSource>
+					</AxFormControl>
+					<AxFormControl xmlns=""
+						i:type="AxFormCheckBoxControl">
+						<Name>IsCycleCountSupervisor</Name>
+						<HelpText>May review and approve inventory count variances. Distinct from Supervisor - a worker can hold either, both, or neither.</HelpText>
+						<Type>CheckBox</Type>
+						<FormControlExtension
+							i:nil="true" />
+						<DataField>IsCycleCountSupervisor</DataField>
+						<DataSource>HSMobileOpsUser</DataSource>
+					</AxFormControl>
+				</Controls>
+				<ColumnsMode>Fill</ColumnsMode>
+				<FrameType>None</FrameType>
+			</AxFormControl>
+			<AxFormControl xmlns=""
+				i:type="AxFormTabControl">
+				<Name>Tab</Name>
+				<AlignControl>No</AlignControl>
+				<Type>Tab</Type>
+				<FormControlExtension
+					i:nil="true" />
+				<Controls>
+					<AxFormControl xmlns=""
+						i:type="AxFormTabPageControl">
+						<Name>StatusPage</Name>
+						<Pattern>FieldsFieldGroups</Pattern>
+						<PatternVersion>1.1</PatternVersion>
+						<Type>TabPage</Type>
+						<FormControlExtension
+							i:nil="true" />
+						<Controls>
+							<AxFormControl xmlns=""
+								i:type="AxFormCheckBoxControl">
+								<Name>IsActive</Name>
+								<Type>CheckBox</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<DataField>IsActive</DataField>
+								<DataSource>HSMobileOpsUser</DataSource>
+							</AxFormControl>
+							<AxFormControl xmlns=""
+								i:type="AxFormCheckBoxControl">
+								<Name>MustChangePassword</Name>
+								<Type>CheckBox</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<DataField>MustChangePassword</DataField>
+								<DataSource>HSMobileOpsUser</DataSource>
+							</AxFormControl>
+							<AxFormControl xmlns=""
+								i:type="AxFormRealControl">
+								<Name>MaxOverPercent</Name>
+								<HelpText>This worker's personal over-delivery allowance, as a percentage of ordered quantity. Zero means no personal override - the purchase order line's own D365FO-configured tolerance still applies unchanged. Only ever widens what a line already allows, never narrows it.</HelpText>
+								<Type>Real</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<DataField>MaxOverPercent</DataField>
+								<DataSource>HSMobileOpsUser</DataSource>
+							</AxFormControl>
+							<AxFormControl xmlns=""
+								i:type="AxFormRealControl">
+								<Name>MaxOverQty</Name>
+								<HelpText>This worker's personal over-delivery allowance, as an absolute quantity above ordered. See Maximum over-delivery percent - the same "zero means unconfigured, only ever widens" rule.</HelpText>
+								<Type>Real</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<DataField>MaxOverQty</DataField>
+								<DataSource>HSMobileOpsUser</DataSource>
+							</AxFormControl>
+							<AxFormControl xmlns=""
+								i:type="AxFormIntegerControl">
+								<Name>FailedAttempts</Name>
+								<AllowEdit>No</AllowEdit>
+								<Type>Integer</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<DataField>FailedAttempts</DataField>
+								<DataSource>HSMobileOpsUser</DataSource>
+							</AxFormControl>
+							<AxFormControl xmlns=""
+								i:type="AxFormDateTimeControl">
+								<Name>LockedUntilUtc</Name>
+								<AllowEdit>No</AllowEdit>
+								<Type>DateTime</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<DataField>LockedUntilUtc</DataField>
+								<DataSource>HSMobileOpsUser</DataSource>
+							</AxFormControl>
+							<AxFormControl xmlns=""
+								i:type="AxFormDateTimeControl">
+								<Name>LastSignInUtc</Name>
+								<AllowEdit>No</AllowEdit>
+								<Type>DateTime</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<DataField>LastSignInUtc</DataField>
+								<DataSource>HSMobileOpsUser</DataSource>
+							</AxFormControl>
+						</Controls>
+						<ColumnsMode>Fill</ColumnsMode>
+						<Caption>Status</Caption>
+						<DataSource>HSMobileOpsUser</DataSource>
+					</AxFormControl>
+					<AxFormControl xmlns=""
+						i:type="AxFormTabPageControl">
+						<Name>WarehousePage</Name>
+						<HelpText>Every warehouse this worker may work in. Exactly one is the default: the handheld signs them straight into it and offers the rest as a switch.</HelpText>
+						<Type>TabPage</Type>
+						<FormControlExtension
+							i:nil="true" />
+						<Controls>
+							<AxFormControl xmlns=""
+								i:type="AxFormActionPaneControl">
+								<Name>WarehouseActions</Name>
+								<Type>ActionPane</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<Controls>
+									<AxFormControl xmlns=""
+										i:type="AxFormButtonGroupControl">
+										<Name>WarehouseButtonGroup</Name>
+										<Type>ButtonGroup</Type>
+										<FormControlExtension
+											i:nil="true" />
+										<Controls>
+											<AxFormControl xmlns=""
+												i:type="AxFormCommandButtonControl">
+												<Name>NewWarehouseButton</Name>
+												<HelpText>Assign another warehouse this worker may work in.</HelpText>
+												<Type>CommandButton</Type>
+												<FormControlExtension
+													i:nil="true" />
+												<ButtonDisplay>TextOnly</ButtonDisplay>
+												<Command>New</Command>
+												<DataSource>HSMobileOpsUserWarehouse</DataSource>
+												<Text>Add</Text>
+											</AxFormControl>
+											<AxFormControl xmlns=""
+												i:type="AxFormCommandButtonControl">
+												<Name>DeleteWarehouseButton</Name>
+												<HelpText>Remove a warehouse assignment. Removing the default leaves the worker without one until another is set.</HelpText>
+												<Type>CommandButton</Type>
+												<FormControlExtension
+													i:nil="true" />
+												<ButtonDisplay>TextOnly</ButtonDisplay>
+												<Command>Delete</Command>
+												<DataSource>HSMobileOpsUserWarehouse</DataSource>
+												<Text>Remove</Text>
+											</AxFormControl>
+											<AxFormControl xmlns=""
+												i:type="AxFormMenuFunctionButtonControl">
+												<Name>MakeDefaultButton</Name>
+												<HelpText>The warehouse the handheld signs this worker into. Setting one clears the flag from the others.</HelpText>
+												<Type>MenuFunctionButton</Type>
+												<FormControlExtension
+													i:nil="true" />
+												<ButtonDisplay>TextOnly</ButtonDisplay>
+												<DataSource>HSMobileOpsUserWarehouse</DataSource>
+												<MenuItemName>HSMobileOpsSetDefaultWarehouse</MenuItemName>
+												<MenuItemType>Action</MenuItemType>
+												<NeedsRecord>Yes</NeedsRecord>
+												<Text>Set as default</Text>
+											</AxFormControl>
+										</Controls>
+										<ArrangeMethod>Vertical</ArrangeMethod>
+										<DataSource>HSMobileOpsUserWarehouse</DataSource>
+									</AxFormControl>
+								</Controls>
+								<AlignChild>No</AlignChild>
+								<AlignChildren>No</AlignChildren>
+								<ArrangeMethod>Vertical</ArrangeMethod>
+								<Style>Strip</Style>
+							</AxFormControl>
+							<AxFormControl xmlns=""
+								i:type="AxFormGridControl">
+								<Name>WarehouseGrid</Name>
+								<Type>Grid</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<Controls>
+									<AxFormControl xmlns=""
+										i:type="AxFormStringControl">
+										<Name>Wh_SiteId</Name>
+										<Type>String</Type>
+										<FormControlExtension
+											i:nil="true" />
+										<DataField>SiteId</DataField>
+										<DataSource>HSMobileOpsUserWarehouse</DataSource>
+									</AxFormControl>
+									<AxFormControl xmlns=""
+										i:type="AxFormStringControl">
+										<Name>Wh_WarehouseId</Name>
+										<Type>String</Type>
+										<FormControlExtension
+											i:nil="true" />
+										<DataField>WarehouseId</DataField>
+										<DataSource>HSMobileOpsUserWarehouse</DataSource>
+									</AxFormControl>
+									<AxFormControl xmlns=""
+										i:type="AxFormCheckBoxControl">
+										<Name>Wh_IsDefault</Name>
+										<AllowEdit>No</AllowEdit>
+										<HelpText>Set through the button, so that only one row can ever be the default.</HelpText>
+										<Type>CheckBox</Type>
+										<FormControlExtension
+											i:nil="true" />
+										<DataField>IsDefault</DataField>
+										<DataSource>HSMobileOpsUserWarehouse</DataSource>
+									</AxFormControl>
+								</Controls>
+								<DataSource>HSMobileOpsUserWarehouse</DataSource>
+							</AxFormControl>
+						</Controls>
+						<Caption>Warehouses</Caption>
+					</AxFormControl>
+				</Controls>
+				<AlignChild>No</AlignChild>
+				<ArrangeMethod>Vertical</ArrangeMethod>
+				<DataSource>HSMobileOpsUser</DataSource>
+				<Style>FastTabs</Style>
+			</AxFormControl>
+		</Controls>
+	</Design>
+	<Parts />
+</AxForm>

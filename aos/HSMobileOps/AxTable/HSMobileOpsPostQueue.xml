@@ -1,0 +1,222 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxTable xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsPostQueue</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// What a handheld asked to have registered or posted, staged the moment it arrives and worked
+/// off separately.
+///
+/// **Landing is deliberately cheap and everything slow happens afterward.** postProductReceipt
+/// and postTransfer used to do the real work - resolving InventTrans, walking InventDim,
+/// running the transfer engine - inline, in the same request the operator's device was blocked
+/// on. Confirmed live against this tenant: that work can take upwards of a minute when the AOS
+/// is under load, which an operator standing at a scanner should never have to wait out. Now
+/// that same request does one INSERT and returns; a row here means "received", not "done".
+///
+/// **Processing is operator-triggered, not automatic.** There is deliberately no batch job
+/// draining this table on a timer - see aos/README.md for why a periodic job here was decided
+/// against for now. A supervisor or the operator taps "Process pending" on the Activity screen,
+/// which calls HSMobileOpsPostingService::processPending and walks every Pending row for that
+/// company, most recent request in, still processed oldest first so nothing waits behind a
+/// newer one.
+///
+/// Status is exactly three values: Pending (staged, not yet attempted), Registered (or Posted,
+/// for a transfer - the real work succeeded), Failed (the real work was attempted and refused -
+/// ErrorMessage carries D365FO's own reason). A row never leaves Failed on its own; reprocessing
+/// a failed request means the operator submits it again from the device, which lands as a new
+/// row under a new idempotency key.
+/// </summary>
+public class HSMobileOpsPostQueue extends common
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>findByKey</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The staged (or already-processed) request under this idempotency key, if any.
+    /// </summary>
+    public static HSMobileOpsPostQueue findByKey(str _idempotencyKey, boolean _forUpdate = false)
+    {
+        HSMobileOpsPostQueue postQueue;
+
+        if (!_idempotencyKey)
+        {
+            return postQueue;
+        }
+
+        postQueue.selectForUpdate(_forUpdate);
+
+        select firstOnly postQueue
+            where postQueue.IdempotencyKey == _idempotencyKey;
+
+        return postQueue;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>statusPending</Name>
+				<Source><![CDATA[
+
+    public static str statusPending()
+    {
+        return 'Pending';
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>statusRegistered</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Terminal success - a product receipt's registration, a transfer shipment or a transfer
+    /// receipt, whichever DocumentType this row is. One value covers all three: the device
+    /// already knows which from the request it sent, and the status list on the Activity screen
+    /// shows DocumentType alongside it.
+    /// </summary>
+    public static str statusRegistered()
+    {
+        return 'Registered';
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>statusFailed</Name>
+				<Source><![CDATA[
+
+    public static str statusFailed()
+    {
+        return 'Failed';
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+	<Label>Mobile posting queue</Label>
+	<TitleField1>SourceId</TitleField1>
+	<TitleField2>Status</TitleField2>
+	<CacheLookup>NotInTTS</CacheLookup>
+	<ClusteredIndex>IdempotencyIdx</ClusteredIndex>
+	<PrimaryIndex>IdempotencyIdx</PrimaryIndex>
+	<Fields>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>IdempotencyKey</Name>
+			<Label>Idempotency key</Label>
+			<StringSize>64</StringSize>
+			<Mandatory>Yes</Mandatory>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>DocumentType</Name>
+			<Label>Document type</Label>
+			<HelpText>Registration, TransferShipment or TransferReceipt.</HelpText>
+			<StringSize>40</StringSize>
+			<Mandatory>Yes</Mandatory>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>SourceId</Name>
+			<Label>Source order</Label>
+			<HelpText>The purchase order or transfer order number.</HelpText>
+			<StringSize>40</StringSize>
+			<Mandatory>Yes</Mandatory>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>Reference</Name>
+			<Label>Reference</Label>
+			<HelpText>Vendor packing slip id for a receipt; blank for a transfer.</HelpText>
+			<StringSize>40</StringSize>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>UserName</Name>
+			<Label>Submitted by</Label>
+			<StringSize>50</StringSize>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>PersonnelNumber</Name>
+			<ExtendedDataType>HcmPersonnelNumberId</ExtendedDataType>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>DeviceId</Name>
+			<Label>Device</Label>
+			<StringSize>64</StringSize>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>LinesJson</Name>
+			<Label>Lines (JSON)</Label>
+			<HelpText>The captured lines exactly as the device sent them, parsed only when this row is processed. 2000 chars holds roughly ten lines; a bigger basket is posted in more than one go.</HelpText>
+			<StringSize>2000</StringSize>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>Status</Name>
+			<Label>Status</Label>
+			<HelpText>Pending, Registered or Failed.</HelpText>
+			<StringSize>20</StringSize>
+			<Mandatory>Yes</Mandatory>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldUtcDateTime">
+			<Name>ReceivedUtc</Name>
+			<Label>Received</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldUtcDateTime">
+			<Name>ProcessedUtc</Name>
+			<Label>Processed</Label>
+			<HelpText>When this row last left Pending - set whether it succeeded or failed.</HelpText>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>ErrorMessage</Name>
+			<Label>Error</Label>
+			<HelpText>D365FO's own reason, set only when Status is Failed.</HelpText>
+			<StringSize>250</StringSize>
+		</AxTableField>
+	</Fields>
+	<FullTextIndexes />
+	<Indexes>
+		<AxTableIndex>
+			<Name>IdempotencyIdx</Name>
+			<AllowDuplicates>No</AllowDuplicates>
+			<Fields>
+				<AxTableIndexField>
+					<DataField>IdempotencyKey</DataField>
+				</AxTableIndexField>
+			</Fields>
+		</AxTableIndex>
+		<AxTableIndex>
+			<Name>StatusIdx</Name>
+			<AllowDuplicates>Yes</AllowDuplicates>
+			<Fields>
+				<AxTableIndexField>
+					<DataField>Status</DataField>
+				</AxTableIndexField>
+				<AxTableIndexField>
+					<DataField>ReceivedUtc</DataField>
+				</AxTableIndexField>
+			</Fields>
+		</AxTableIndex>
+		<AxTableIndex>
+			<Name>SourceIdx</Name>
+			<AllowDuplicates>Yes</AllowDuplicates>
+			<Fields>
+				<AxTableIndexField>
+					<DataField>SourceId</DataField>
+				</AxTableIndexField>
+			</Fields>
+		</AxTableIndex>
+	</Indexes>
+	<Mappings />
+	<Relations />
+	<StateMachines />
+</AxTable>

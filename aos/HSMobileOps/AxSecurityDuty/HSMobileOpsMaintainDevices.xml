@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxSecurityDuty xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsMaintainDevices</Name>
+	<Label>Maintain the mobile device fleet</Label>
+	<HelpText>Mark handhelds active or inactive as they are deployed or retired from service.</HelpText>
+	<Privileges>
+		<AxSecurityDutyPrivilegeReference>
+			<Name>HSMobileOpsDeviceMaintain</Name>
+		</AxSecurityDutyPrivilegeReference>
+	</Privileges>
+</AxSecurityDuty>

@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsOnHandResponse</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+[DataContractAttribute]
+class HSMobileOpsOnHandResponse
+{
+    boolean success;
+    str     errorCode;
+    List    rows;
+
+    /// <summary>
+    /// Empty is a real answer - the item exists and has no stock - and is not an error.
+    /// </summary>
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmSuccess</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Success')]
+    public boolean parmSuccess(boolean _value = success)
+    {
+        success = _value;
+        return success;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmErrorCode</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ErrorCode')]
+    public str parmErrorCode(str _value = errorCode)
+    {
+        errorCode = _value;
+        return errorCode;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmRows</Name>
+				<Source><![CDATA[
+    [DataMemberAttribute('Rows'),
+     DataCollectionAttribute(Types::Class, classStr(HSMobileOpsOnHandRow))]
+    public List parmRows(List _value = rows)
+    {
+        rows = _value;
+        return rows;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

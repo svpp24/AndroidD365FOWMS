@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsPostQueueResponse</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// From processPending: the rows just worked, each carrying its outcome. From getQueueStatus:
+/// the most recent rows regardless of status, most recently received first.
+/// </summary>
+[DataContractAttribute]
+class HSMobileOpsPostQueueResponse
+{
+    boolean success;
+    List    rows;
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmSuccess</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Success')]
+    public boolean parmSuccess(boolean _value = success)
+    {
+        success = _value;
+        return success;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmRows</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Rows'),
+     DataCollectionAttribute(Types::Class, classStr(HSMobileOpsPostQueueEntry))]
+    public List parmRows(List _value = rows)
+    {
+        rows = _value;
+        return rows;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

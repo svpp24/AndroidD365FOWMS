@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Status bar notification icon.
+
+  Deliberately a plain filled shape, not a copy of the launcher icon: Android renders this at a
+  small size, silhouette-only, and re-tints it to white (or the channel's colour) regardless of
+  what colour is drawn here - a detailed or multi-colour icon just turns into an illegible blob.
+  A bell is the standard Android notification glyph, so it reads at a glance as "you have a
+  notification" the same way every other app's icon does, rather than needing to be puzzled out.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24"
+    android:tint="#FFFFFFFF">
+    <path
+        android:fillColor="#FF000000"
+        android:pathData="M12,22c1.1,0 2,-0.9 2,-2h-4C10,21.1 10.9,22 12,22z M18,16v-5c0,-3.07 -1.64,-5.64 -4.5,-6.32V4c0,-0.83 -0.67,-1.5 -1.5,-1.5s-1.5,0.67 -1.5,1.5v0.68C7.63,5.36 6,7.92 6,11v5l-2,2v1h16v-1L18,16z" />
+</vector>

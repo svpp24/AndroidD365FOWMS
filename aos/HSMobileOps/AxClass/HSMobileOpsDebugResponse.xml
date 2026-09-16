@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsDebugResponse</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// A temporary troubleshooting response - see HSMobileOpsInquiryService::debugPostLog. Not part
+/// of the app's real API surface; safe to delete once the HSMobileOpsPostLog duplicate-key issue
+/// it exists to diagnose is understood.
+/// </summary>
+[DataContractAttribute]
+class HSMobileOpsDebugResponse
+{
+    boolean success;
+    List    rows;
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmSuccess</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Success')]
+    public boolean parmSuccess(boolean _value = success)
+    {
+        success = _value;
+        return success;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmRows</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// One formatted line per HSMobileOpsPostLog row, most recent first.
+    /// </summary>
+    [DataMemberAttribute('Rows'),
+     DataCollectionAttribute(Types::String)]
+    public List parmRows(List _value = rows)
+    {
+        rows = _value;
+        return rows;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

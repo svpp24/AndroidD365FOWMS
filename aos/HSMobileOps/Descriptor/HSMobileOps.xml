@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxModelInfo xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns="http://schemas.datacontract.org/2004/07/Microsoft.Dynamics.AX.Metadata.MetaModel">
+	<AppliedUpdates i:nil="true" />
+	<Customization>DoNotAllow</Customization>
+	<DisplayName>HSMobileOps</DisplayName>
+	<Id>895623</Id>
+	<Layer>14</Layer>
+	<Locked>false</Locked>
+	<ModelModule>HSMobileOps</ModelModule>
+	<ModelReferences>ApplicationCommon;ApplicationFoundation;ApplicationPlatform;ApplicationSuite;Directory;UnitOfMeasure</ModelReferences>
+	<Name>HSMobileOps</Name>
+	<Publisher>HS</Publisher>
+	<SolutionId i:nil="true" />
+	<VersionBuild>0</VersionBuild>
+	<VersionMajor>1</VersionMajor>
+	<VersionMinor>0</VersionMinor>
+	<VersionRevision>0</VersionRevision>
+</AxModelInfo>

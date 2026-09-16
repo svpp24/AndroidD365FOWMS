@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxService xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsUserSvc</Name>
+	<Class>HSMobileOpsUserService</Class>
+	<ExternalName>UserService</ExternalName>
+	<Namespace>http://schemas.hs.com/mobileops</Namespace>
+	<ServiceOperations>
+		<AxServiceOperation>
+			<Name>signIn</Name>
+			<Method>signIn</Method>
+		</AxServiceOperation>
+		<AxServiceOperation>
+			<Name>changePassword</Name>
+			<Method>changePassword</Method>
+		</AxServiceOperation>
+	</ServiceOperations>
+</AxService>

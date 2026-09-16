@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxMenuExtension xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>MainMenu.HSMobileOps</Name>
+	<MenuItems>
+		<AxMenuElement xmlns=""
+			i:type="AxMenuElementMenuReference">
+			<Name>HSMobileOps</Name>
+			<Label>Mobile operations</Label>
+			<MenuName>HSMobileOps</MenuName>
+		</AxMenuElement>
+	</MenuItems>
+</AxMenuExtension>

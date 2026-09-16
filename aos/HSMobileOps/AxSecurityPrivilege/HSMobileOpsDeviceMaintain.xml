@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxSecurityPrivilege xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsDeviceMaintain</Name>
+	<Label>Maintain mobile devices</Label>
+	<HelpText>See the handheld fleet and mark devices active or inactive as they are deployed or retired.</HelpText>
+	<EntryPoints>
+		<AxSecurityEntryPointReference>
+			<Name>HSMobileOpsDevice</Name>
+			<ObjectName>HSMobileOpsDevice</ObjectName>
+			<ObjectType>MenuItemDisplay</ObjectType>
+			<AccessLevel>Update</AccessLevel>
+		</AxSecurityEntryPointReference>
+		<AxSecurityEntryPointReference>
+			<Name>HSMobileOpsToggleDeviceActive</Name>
+			<ObjectName>HSMobileOpsToggleDeviceActive</ObjectName>
+			<ObjectType>MenuItemAction</ObjectType>
+			<AccessLevel>Update</AccessLevel>
+		</AxSecurityEntryPointReference>
+	</EntryPoints>
+	<Tables>
+		<AxSecurityPrivilegeTablePermission>
+			<Name>HSMobileOpsDevice</Name>
+			<Delete>NoAccess</Delete>
+			<Insert>NoAccess</Insert>
+			<Read>Allow</Read>
+			<Update>Allow</Update>
+		</AxSecurityPrivilegeTablePermission>
+	</Tables>
+</AxSecurityPrivilege>

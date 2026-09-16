@@ -1,0 +1,171 @@
+package com.d365fo.mobileops.presentation
+
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
+import android.os.Bundle
+import android.view.KeyEvent
+import android.view.WindowManager
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.core.content.ContextCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
+import com.d365fo.mobileops.data.security.SessionGuard
+import com.d365fo.mobileops.data.security.ThemePreferences
+import com.d365fo.mobileops.data.sync.SyncStatus
+import com.d365fo.mobileops.data.sync.SyncStatusProvider
+import com.d365fo.mobileops.presentation.common.AppRoot
+import com.d365fo.mobileops.presentation.common.scan.HidScannerBridge
+import com.d365fo.mobileops.presentation.common.scan.OemScannerReceiver
+import com.d365fo.mobileops.presentation.common.scan.ScanFeedback
+import com.d365fo.mobileops.presentation.common.theme.D365MobileTheme
+import dagger.hilt.android.AndroidEntryPoint
+import javax.inject.Inject
+
+@AndroidEntryPoint
+class MainActivity : ComponentActivity() {
+
+    @Inject lateinit var scannerBridge: HidScannerBridge
+    @Inject lateinit var sessionGuard: SessionGuard
+    @Inject lateinit var syncStatusProvider: SyncStatusProvider
+    @Inject lateinit var scanFeedback: ScanFeedback
+    @Inject lateinit var themePreferences: ThemePreferences
+
+    /**
+     * Registered only while the app is in the foreground; see [OemScannerReceiver] for why.
+     */
+    private var scanReceiver: OemScannerReceiver? = null
+
+    /**
+     * The system permission dialog itself is the entire handler here - there is nothing to do
+     * with a denial beyond leaving it denied. [SyncNotifier] already checks the grant before
+     * every post and silently no-ops without it, so a worker who dismisses this dialog just
+     * keeps the in-app failed-sync list as their only signal, exactly as before this feature
+     * existed.
+     */
+    private val requestNotificationPermission =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+
+        hideSystemBars()
+
+        // A manifest <uses-permission> for POST_NOTIFICATIONS does nothing by itself on API 33+;
+        // it only makes the runtime prompt legal to show. Asked once, up front, rather than at
+        // the moment of the first dead-letter - by definition that first failure happens in the
+        // background, where a permission prompt cannot be shown at all.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
+                != PackageManager.PERMISSION_GRANTED
+        ) {
+            requestNotificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+
+        setContent {
+            val palette by themePreferences.palette.collectAsState()
+            D365MobileTheme(palette = palette) {
+                val status by syncStatusProvider.status.collectAsState(initial = SyncStatus.UNKNOWN)
+                AppRoot(syncStatus = status)
+            }
+        }
+    }
+
+    /**
+     * Scanner keystrokes are intercepted before the view hierarchy sees them.
+     *
+     * Doing this at the Activity rather than per field is what stops a scan from being typed
+     * into whichever text field happens to hold focus — the single most common failure mode
+     * for wedge-scanner apps.
+     *
+     * Also swallows a phantom BACK key here - confirmed live on this handheld: pressing the
+     * physical scan trigger fires the barcode broadcast (see OemScannerReceiver) *and* a raw
+     * BACK key event, at the hardware level, on the same press. On a successful scan that was
+     * invisible - the flow had already advanced a step, so "back" just re-landed on it - but on
+     * a failed lookup, which leaves the flow on its first step, the same phantom key popped the
+     * whole screen to Home instants after the error was set, discarding it before anyone could
+     * read it. A genuine user back-press never lands within [HidScannerBridge.justScanned]'s
+     * window of an actual scan, so this only ever swallows the phantom one.
+     */
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        sessionGuard.touch()
+        if (scannerBridge.onKeyEvent(event)) return true
+        if (event.keyCode == KeyEvent.KEYCODE_BACK && scannerBridge.justScanned()) return true
+        return super.dispatchKeyEvent(event)
+    }
+
+    /**
+     * Starts listening for imager broadcasts.
+     *
+     * This is the path that actually works on this handheld. Its scan head is not a keyboard
+     * wedge - the device exposes no alphabetic keyboard at all - so dispatchKeyEvent above never
+     * sees a scan, and without this registration pulling the trigger did nothing.
+     */
+    override fun onStart() {
+        super.onStart()
+        scanReceiver = OemScannerReceiver.register(this) { barcode ->
+            sessionGuard.touch()
+            scannerBridge.submitBroadcastScan(barcode)
+        }
+    }
+
+    override fun onStop() {
+        scanReceiver?.let(::unregisterReceiver)
+        scanReceiver = null
+        super.onStop()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        sessionGuard.evaluateOnResume()
+        // Held only while the app is in the foreground. A picker working through a pallet
+        // should not have the screen time out between scans, but the wake lock is released
+        // the moment the app is backgrounded so a handheld in a pocket does not cook itself.
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        // The system re-shows both bars behind a permission dialog, a returning app switch,
+        // anything that takes focus away and back - so this is re-applied on every resume, the
+        // same reasoning as the wake lock right above it, not just once in onCreate.
+        hideSystemBars()
+    }
+
+    /**
+     * Hides the status bar and navigation bar - a warehouse handheld's screen is small enough
+     * that the clock and the three-button/gesture bar are real space taken from the scan field,
+     * the line list, the captured-so-far card. "Immersive sticky": a swipe from either edge
+     * brings both back temporarily for whoever actually needs them (pulling down notifications,
+     * using system back/home), and they hide again on their own - never a mode an operator has
+     * to remember to turn off.
+     */
+    private fun hideSystemBars() {
+        // Deliberately NOT setDecorFitsSystemWindows(window, false) - that switches the whole
+        // activity to edge-to-edge, where Compose's own content has to account for system-bar
+        // insets itself via Modifier.systemBarsPadding()/safeDrawingPadding() or every screen's
+        // layout math goes wrong. Confirmed live: with it set, the app's own bottom tab bar
+        // collapsed to zero height and Home/On-hand/Activity/Settings became unreachable - a
+        // real regression, not a cosmetic one. Left at the default (true), a hidden system bar
+        // just stops reserving space and a transient one (brought back by the edge swipe below)
+        // overlays on top rather than resizing content either way, so hide/show-by-swipe works
+        // exactly the same without that cost.
+        WindowInsetsControllerCompat(window, window.decorView).apply {
+            hide(WindowInsetsCompat.Type.systemBars())
+            systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        }
+    }
+
+    override fun onPause() {
+        window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        sessionGuard.onBackgrounded()
+        super.onPause()
+    }
+
+    override fun onDestroy() {
+        // ScanFeedback holds a ToneGenerator, which is a finite system audio resource — held
+        // open it can starve other apps of a tone channel on a device that scans all shift.
+        scanFeedback.release()
+        super.onDestroy()
+    }
+}

@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsSetDefaultWarehouse</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Makes the selected warehouse assignment the user's default.
+/// </summary>
+class HSMobileOpsSetDefaultWarehouse
+{
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>main</Name>
+				<Source><![CDATA[
+    public static void main(Args _args)
+    {
+        HSMobileOpsUserWarehouse assignment;
+
+        if (!_args || !_args.record() || _args.dataset() != tableNum(HSMobileOpsUserWarehouse))
+        {
+            throw error('Select a warehouse assignment first');
+        }
+
+        assignment = _args.record() as HSMobileOpsUserWarehouse;
+
+        HSMobileOpsUserAdmin::makeDefaultWarehouse(assignment);
+        info(strFmt('%1 is now the default warehouse', assignment.WarehouseId));
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

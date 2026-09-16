@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">ForeFront Mobile</string>
+
+    <!-- Generic -->
+    <string name="action_retry">Retry</string>
+    <string name="action_cancel">Cancel</string>
+    <string name="action_confirm">Confirm</string>
+    <string name="action_post">Post</string>
+    <string name="action_save_draft">Save draft</string>
+    <string name="action_back">Back</string>
+    <string name="action_search">Search</string>
+    <string name="action_clear">Clear</string>
+    <string name="loading">Loading…</string>
+
+    <!-- Connectivity / sync status bar -->
+    <string name="status_online">Online</string>
+    <string name="status_offline">Offline — work is saved on this device</string>
+    <string name="status_d365_unreachable">D365FO unreachable — work is saved on this device</string>
+    <string name="status_back_online">Back online</string>
+    <string name="status_pending_count">%1$d pending</string>
+    <string name="status_last_sync">Last sync %1$s</string>
+    <string name="status_never_synced">Never synced</string>
+    <string name="status_failed_count">%1$d failed — supervisor review</string>
+
+    <!-- Scanning -->
+    <string name="scan_prompt">Scan item barcode</string>
+    <string name="scan_or_type">Scan or type</string>
+    <string name="scan_unknown_barcode">Barcode not recognised: %1$s</string>
+    <string name="scan_item_inactive">Item %1$s is not active</string>
+    <string name="scan_item_not_on_order">Item %1$s is not on this order</string>
+
+    <!-- Step indicator -->
+    <string name="step_x_of_n">Step %1$d of %2$d</string>
+
+    <!-- Quantity entry -->
+    <string name="qty_label">Quantity</string>
+    <string name="qty_decrement">Decrease quantity by one</string>
+    <string name="qty_increment">Increase quantity by one</string>
+    <string name="qty_must_be_positive">Quantity must be greater than zero</string>
+    <string name="qty_not_numeric">Enter a valid number</string>
+    <string name="qty_exceeds_remaining">Quantity %1$s exceeds the %2$s remaining</string>
+    <string name="qty_over_tolerance">Over-receipt of %1$s%% exceeds the %2$s%% tolerance</string>
+    <string name="qty_under_tolerance">Under-receipt of %1$s%% exceeds the %2$s%% tolerance</string>
+
+    <!-- Tracking dimensions -->
+    <string name="batch_label">Batch number</string>
+    <string name="serial_label">Serial number</string>
+    <string name="batch_required">A batch number is required for this item</string>
+    <string name="serial_required">A serial number is required for this item</string>
+    <string name="serial_one_per_unit">Serialised items must be received one unit at a time</string>
+    <string name="serial_already_used">Serial %1$s is already registered in D365FO</string>
+    <string name="location_required">A location is required</string>
+    <string name="location_unknown">Location %1$s does not exist in warehouse %2$s</string>
+    <string name="location_inactive">Location %1$s is blocked</string>
+
+    <!-- Supervisor override -->
+    <string name="override_title">Supervisor override</string>
+    <string name="override_message">This action is outside normal tolerance. A supervisor PIN is required to continue.</string>
+    <string name="override_pin_label">Supervisor PIN</string>
+    <string name="override_incorrect">Incorrect PIN</string>
+    <string name="override_locked">Too many attempts. Try again in %1$d seconds.</string>
+
+    <!-- PO Receiving -->
+    <string name="po_receiving_title">PO receiving</string>
+    <string name="po_search_hint">PO number or vendor</string>
+    <string name="po_empty">No open purchase orders for this warehouse</string>
+    <string name="po_vendor">Vendor</string>
+    <string name="po_delivery_date">Delivery date</string>
+    <!--
+      A plural, not a format string. "1 lines" is wrong in English and the mistake gets
+      worse on translation: several target languages this app will ship into distinguish
+      more than two plural forms, and a bare %d cannot express that.
+    -->
+    <plurals name="po_lines_count">
+        <item quantity="one">%1$d line</item>
+        <item quantity="other">%1$d lines</item>
+    </plurals>
+    <string name="po_line_ordered">Ordered</string>
+    <string name="po_line_received">Received</string>
+    <string name="po_line_remaining">Remaining</string>
+    <string name="po_line_fully_received">Fully received</string>
+    <string name="po_receive_confirm">Receive %1$s %2$s of %3$s</string>
+    <string name="po_receipt_queued">Receipt saved. It will post to D365FO automatically.</string>
+    <string name="po_nothing_to_post">Register at least one line before posting</string>
+    <string name="po_status_invalid">This purchase order is no longer open (%1$s)</string>
+
+    <!-- Errors -->
+    <string name="error_generic">Something went wrong. Try again.</string>
+    <string name="error_no_connection">No connection. Your work is saved on this device.</string>
+    <string name="error_auth_expired">Your session expired. Sign in again.</string>
+    <string name="error_locked_period">The accounting period is closed in D365FO. Contact your supervisor.</string>
+    <string name="error_record_changed">This record changed in D365FO. The latest version has been loaded.</string>
+    <string name="error_posting_rejected">D365FO rejected this posting: %1$s</string>
+
+    <!-- Plurals -->
+    <plurals name="pending_transactions">
+        <item quantity="one">%1$d transaction waiting to sync</item>
+        <item quantity="other">%1$d transactions waiting to sync</item>
+    </plurals>
+</resources>

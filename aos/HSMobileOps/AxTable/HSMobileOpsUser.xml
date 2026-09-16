@@ -1,0 +1,198 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxTable xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsUser</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// A warehouse worker's handheld login.
+///
+/// Deliberately separate from Entra ID. Warehouse workers routinely have no Microsoft account,
+/// handhelds are shared across shifts, and a worker needs to sign in and out in seconds at a
+/// receiving bay. This table is what makes a posting attributable to a person rather than to the
+/// service principal the device authenticates with.
+///
+/// **This is a custom credential store, with everything that implies.** No MFA, no conditional
+/// access, no central revocation through Entra, and no password policy unless one is enforced
+/// here. It is appropriate for shop-floor identity layered on top of a service-principal
+/// transport; it is not a replacement for Entra ID for anyone who has one.
+///
+/// The password itself is never stored, and never reaches this table. Only a PBKDF2 hash and the
+/// salt it was derived with - see HSMobileOpsPassword.
+/// </summary>
+public class HSMobileOpsUser extends common
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>find</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Finds a user by name, case-insensitively.
+    ///
+    /// Case folding matters: an operator typing their own name at a bay will not reliably match
+    /// the case it was created with, and "wrong password" for a case mismatch is the kind of
+    /// failure that has people convinced the app is broken.
+    /// </summary>
+    public static HSMobileOpsUser find(HSMobileOpsUserName _userName, boolean _forUpdate = false)
+    {
+        HSMobileOpsUser user;
+
+        if (!_userName)
+        {
+            return user;
+        }
+
+        user.selectForUpdate(_forUpdate);
+
+        select firstOnly user
+            where user.UserName == _userName;
+
+        return user;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>isLockedOut</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Whether failed attempts have locked this account for now.
+    ///
+    /// A time-boxed lockout rather than a permanent one. A permanent lock needs an administrator
+    /// to clear it, and on a night shift with nobody to call that means the work stops - so the
+    /// common case of a mistyped password costs a wait, not an escalation.
+    /// </summary>
+    public boolean isLockedOut()
+    {
+        return this.LockedUntilUtc
+            && DateTimeUtil::utcNow() < this.LockedUntilUtc;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+	<Label>Mobile device user</Label>
+	<TitleField1>UserName</TitleField1>
+	<TitleField2>PersonnelNumber</TitleField2>
+	<CacheLookup>NotInTTS</CacheLookup>
+	<ClusteredIndex>UserNameIdx</ClusteredIndex>
+	<PrimaryIndex>UserNameIdx</PrimaryIndex>
+	<ReplacementKey>UserNameIdx</ReplacementKey>
+	<Fields>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>UserName</Name>
+			<ExtendedDataType>HSMobileOpsUserName</ExtendedDataType>
+			<Mandatory>Yes</Mandatory>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>PasswordHash</Name>
+			<Label>Password hash</Label>
+			<StringSize>128</StringSize>
+			<Visible>No</Visible>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>PasswordSalt</Name>
+			<Label>Password salt</Label>
+			<StringSize>64</StringSize>
+			<Visible>No</Visible>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldInt">
+			<Name>HashIterations</Name>
+			<Label>Hash iterations</Label>
+			<Visible>No</Visible>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldEnum">
+			<Name>IsActive</Name>
+			<Label>Active</Label>
+			<EnumType>NoYes</EnumType>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>PersonnelNumber</Name>
+			<ExtendedDataType>HcmPersonnelNumberId</ExtendedDataType>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>DisplayName</Name>
+			<ExtendedDataType>Name</ExtendedDataType>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldEnum">
+			<Name>IsSupervisor</Name>
+			<Label>Supervisor</Label>
+			<EnumType>NoYes</EnumType>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldEnum">
+			<Name>IsCycleCountSupervisor</Name>
+			<Label>Cycle count supervisor</Label>
+			<HelpText>May review and approve inventory count variances. Distinct from Supervisor above - a worker can hold either, both, or neither.</HelpText>
+			<EnumType>NoYes</EnumType>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldReal">
+			<Name>MaxOverPercent</Name>
+			<Label>Maximum over-delivery percent</Label>
+			<HelpText>This worker's personal over-delivery allowance, as a percentage of ordered quantity. Zero means no personal override - the purchase order line's own D365FO-configured tolerance still applies unchanged. Only ever widens what a line already allows, never narrows it.</HelpText>
+			<ExtendedDataType>Percent</ExtendedDataType>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldReal">
+			<Name>MaxOverQty</Name>
+			<Label>Maximum over-delivery quantity</Label>
+			<HelpText>This worker's personal over-delivery allowance, as an absolute quantity above ordered. See Maximum over-delivery percent - the same "zero means unconfigured, only ever widens" rule.</HelpText>
+			<ExtendedDataType>Qty</ExtendedDataType>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldEnum">
+			<Name>MustChangePassword</Name>
+			<Label>Must change password</Label>
+			<EnumType>NoYes</EnumType>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldInt">
+			<Name>FailedAttempts</Name>
+			<Label>Failed sign-in attempts</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldUtcDateTime">
+			<Name>LockedUntilUtc</Name>
+			<Label>Locked until</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldUtcDateTime">
+			<Name>LastSignInUtc</Name>
+			<Label>Last sign-in</Label>
+		</AxTableField>
+	</Fields>
+	<FullTextIndexes />
+	<Indexes>
+		<AxTableIndex>
+			<Name>UserNameIdx</Name>
+			<AllowDuplicates>No</AllowDuplicates>
+			<Fields>
+				<AxTableIndexField>
+					<DataField>UserName</DataField>
+				</AxTableIndexField>
+			</Fields>
+		</AxTableIndex>
+		<AxTableIndex>
+			<Name>PersonnelIdx</Name>
+			<Fields>
+				<AxTableIndexField>
+					<DataField>PersonnelNumber</DataField>
+				</AxTableIndexField>
+			</Fields>
+		</AxTableIndex>
+	</Indexes>
+	<Mappings />
+	<Relations />
+	<StateMachines />
+</AxTable>

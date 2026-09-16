@@ -1,0 +1,357 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsUserService</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Handheld sign-in and self-service password change.
+///
+/// **Two layers of identity, and they answer different questions.** The device authenticates to
+/// D365FO with a service principal, which proves the *app* may talk to the system. That says
+/// nothing about who is holding the device - and every device shares it, so on its own every
+/// posting would carry the same CreatedBy and a GRN could never tell you who received the pallet.
+/// This service adds the second layer: which worker.
+///
+/// Consequences that shape everything below:
+///
+/// - **A wrong user name and a wrong password give the same answer.** Distinguishing them tells
+///   an attacker which accounts exist, which is half the problem solved for them.
+/// - **There is no administration here.** Creating users, resetting other people's passwords
+///   and deactivating accounts happen in D365FO, where D365FO's own security decides who may do
+///   them. The handheld signs people in; it does not manage them.
+/// - **Failed attempts lock the account for a while**, not for ever. A permanent lock needs an
+///   administrator, and on a night shift with nobody to call that stops the work.
+///
+/// Passwords arrive here, are verified or hashed, and are never stored, echoed or logged.
+/// </summary>
+class HSMobileOpsUserService
+{
+    private const int MaxFailedAttempts = 5;
+    private const int LockoutMinutes    = 15;
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>signIn</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Signs a worker in and returns their identity and the warehouses they may work in.
+    /// </summary>
+    public HSMobileOpsSignInResponse signIn(HSMobileOpsSignInRequest _request)
+    {
+        HSMobileOpsSignInResponse response = new HSMobileOpsSignInResponse();
+        HSMobileOpsUser           user;
+        DataAreaId                company;
+        str                       userName;
+        str                       password;
+        boolean                   ok;
+
+        response.parmSuccess(false);
+        response.parmWarehouses(new List(Types::Class));
+
+        if (_request)
+        {
+            company  = _request.parmDataAreaId();
+            userName = _request.parmUserName();
+            password = _request.parmPassword();
+        }
+
+        if (!company || !userName || !password || !CompanyInfo::findDataArea(company).RecId)
+        {
+            response.parmErrorCode('INVALID_REQUEST');
+            response.parmMessage('Company, user name and password are all required');
+            return response;
+        }
+
+        changecompany (company)
+        {
+            user = null;
+            user = HSMobileOpsUser::find(userName, true);
+
+            // Deliberately identical to the wrong-password answer below. Anything that
+            // distinguishes "no such user" from "wrong password" enumerates accounts.
+            if (!user.RecId)
+            {
+                response.parmErrorCode('INVALID_CREDENTIALS');
+                response.parmMessage('That user name and password do not match');
+                return response;
+            }
+
+            if (user.isLockedOut())
+            {
+                response.parmErrorCode('LOCKED_OUT');
+                response.parmMessage(strFmt(
+                    'Too many failed attempts. Try again after %1.',
+                    DateTimeUtil::toStr(user.LockedUntilUtc)));
+                return response;
+            }
+
+            if (user.IsActive != NoYes::Yes)
+            {
+                response.parmErrorCode('INACTIVE');
+                response.parmMessage('This account has been deactivated');
+                return response;
+            }
+
+            ok = HSMobileOpsPassword::verify(
+                password, user.PasswordHash, user.PasswordSalt, user.HashIterations);
+
+            ttsbegin;
+            if (!ok)
+            {
+                HSMobileOpsUserService::recordFailure(user);
+                ttscommit;
+
+                response.parmErrorCode('INVALID_CREDENTIALS');
+                response.parmMessage('That user name and password do not match');
+                return response;
+            }
+
+            user.FailedAttempts = 0;
+            user.LockedUntilUtc = DateTimeUtil::minValue();
+            user.LastSignInUtc  = DateTimeUtil::utcNow();
+            user.update();
+            ttscommit;
+
+            response.parmUserName(user.UserName);
+            response.parmDisplayName(user.DisplayName);
+            response.parmPersonnelNumber(user.PersonnelNumber);
+            response.parmIsSupervisor(user.IsSupervisor == NoYes::Yes);
+            response.parmIsCycleCountSupervisor(user.IsCycleCountSupervisor == NoYes::Yes);
+            response.parmMaxOverPercent(user.MaxOverPercent);
+            response.parmMaxOverQty(user.MaxOverQty);
+            response.parmMustChangePassword(user.MustChangePassword == NoYes::Yes);
+
+            HSMobileOpsUserService::appendWarehouses(response, user.RecId);
+
+            if (!response.parmWarehouses().elements())
+            {
+                // Signed in but with nowhere to work. Reported as its own outcome: the fix is an
+                // administrator assigning a warehouse, not the worker retyping their password.
+                response.parmErrorCode('NO_WAREHOUSE');
+                response.parmMessage('No warehouse is assigned to this user');
+                return response;
+            }
+
+            // Fleet registration piggybacks on a real sign-in rather than being its own call -
+            // the device id, brand and model are already on this same request, and a successful
+            // sign-in is exactly the moment a device's identity is trustworthy. Never blocks the
+            // sign-in itself: a fleet-list row is a nice-to-have for IT, not something a worker
+            // should be locked out of the app over.
+            HSMobileOpsUserService::registerDevice(_request, response, user.UserName);
+
+            response.parmSuccess(true);
+        }
+
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>appendWarehouses</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The warehouses assigned to a user, with exactly one marked default.
+    ///
+    /// If the data has no default flagged and there is exactly one assignment, that one is
+    /// returned as the default - an administrative slip should not cost a worker their shift.
+    /// Where several are assigned and none flagged, none is defaulted and the app asks.
+    /// </summary>
+    private static void appendWarehouses(HSMobileOpsSignInResponse _response, RefRecId _userRecId)
+    {
+        HSMobileOpsUserWarehouse       assignment;
+        InventLocation                 inventLocation;
+        HSMobileOpsWarehouseAssignment contract;
+        HSMobileOpsUserWarehouse       defaultAssignment;
+        List                           warehouses = _response.parmWarehouses();
+
+        defaultAssignment = HSMobileOpsUserWarehouse::findDefault(_userRecId);
+
+        while select SiteId, WarehouseId, IsDefault, RecId from assignment
+            order by assignment.WarehouseId
+            where assignment.UserRecId == _userRecId
+            outer join Name from inventLocation
+                where inventLocation.InventLocationId == assignment.WarehouseId
+        {
+            contract = new HSMobileOpsWarehouseAssignment();
+
+            contract.parmSiteId(assignment.SiteId);
+            contract.parmWarehouseId(assignment.WarehouseId);
+            contract.parmWarehouseName(inventLocation.Name);
+            contract.parmIsDefault(assignment.RecId == defaultAssignment.RecId);
+
+            warehouses.addEnd(contract);
+        }
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>registerDevice</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Upserts this handheld's fleet row - see HSMobileOpsDevice::registerSignIn.
+    ///
+    /// Reads the default warehouse back out of the response this same request just built in
+    /// appendWarehouses, rather than re-querying HSMobileOpsUserWarehouse - the answer is already
+    /// in hand. Wrapped in its own try/catch so that a problem in the fleet table - a full disk,
+    /// a lock timeout, anything - never turns into a worker unable to start their shift over a
+    /// feature that exists purely for IT's benefit.
+    /// </summary>
+    private static void registerDevice(
+        HSMobileOpsSignInRequest  _request,
+        HSMobileOpsSignInResponse _response,
+        HSMobileOpsUserName       _userName)
+    {
+        ListEnumerator                 enumerator;
+        HSMobileOpsWarehouseAssignment assignment;
+        InventSiteId                   siteId;
+        InventLocationId               warehouseId;
+
+        enumerator = _response.parmWarehouses().getEnumerator();
+        while (enumerator.moveNext())
+        {
+            assignment = enumerator.current();
+            if (assignment.parmIsDefault())
+            {
+                siteId      = assignment.parmSiteId();
+                warehouseId = assignment.parmWarehouseId();
+                break;
+            }
+        }
+
+        try
+        {
+            HSMobileOpsDevice::registerSignIn(
+                _request.parmDeviceId(),
+                _request.parmDeviceBrand(),
+                _request.parmDeviceModel(),
+                _request.parmPlatform(),
+                _request.parmPlatformVersion(),
+                _request.parmAppVersionName(),
+                _userName,
+                siteId,
+                warehouseId);
+        }
+        catch (Exception::Error)
+        {
+            // Deliberately not HSMobileOpsPostingService::lastError() - that method is private
+            // to its own class, and this failure is a diagnostic nicety, not something worth a
+            // cross-class dependency for. The device id alone is enough to go looking.
+            warning(strFmt(
+                'HSMobileOpsDevice registration failed for device %1', _request.parmDeviceId()));
+        }
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>recordFailure</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Counts a failed attempt and locks the account once there have been too many.
+    ///
+    /// Time-boxed. The overwhelming majority of failures are a mistyped password on a small
+    /// keyboard, and the response to that should be a wait, not a phone call.
+    /// </summary>
+    private static void recordFailure(HSMobileOpsUser _user)
+    {
+        _user.FailedAttempts += 1;
+
+        if (_user.FailedAttempts >= MaxFailedAttempts)
+        {
+            _user.LockedUntilUtc = DateTimeUtil::addMinutes(
+                DateTimeUtil::utcNow(), LockoutMinutes);
+            _user.FailedAttempts = 0;
+        }
+
+        _user.update();
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>changePassword</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// A worker changing their own password.
+    ///
+    /// The current password is required even when a change is being forced. Without it, anyone
+    /// who picks up an unlocked handheld mid-shift can lock the worker out of their own account.
+    /// </summary>
+    public HSMobileOpsChangePasswordResponse changePassword(HSMobileOpsChangePasswordRequest _request)
+    {
+        HSMobileOpsChangePasswordResponse response = new HSMobileOpsChangePasswordResponse();
+        HSMobileOpsUser          user;
+        DataAreaId               company;
+        str                      userName;
+        str                      currentPassword;
+        str                      newPassword;
+        str                      policyProblem;
+        str                      salt;
+
+        response.parmSuccess(false);
+
+        if (_request)
+        {
+            company         = _request.parmDataAreaId();
+            userName        = _request.parmUserName();
+            currentPassword = _request.parmCurrentPassword();
+            newPassword     = _request.parmNewPassword();
+        }
+
+        if (!company || !userName || !currentPassword || !newPassword
+         || !CompanyInfo::findDataArea(company).RecId)
+        {
+            response.parmErrorCode('INVALID_REQUEST');
+            return response;
+        }
+
+        policyProblem = HSMobileOpsPassword::policyFailure(newPassword);
+        if (policyProblem)
+        {
+            response.parmErrorCode('POLICY');
+            response.parmMessage(policyProblem);
+            return response;
+        }
+
+        changecompany (company)
+        {
+            user = null;
+            user = HSMobileOpsUser::find(userName, true);
+
+            if (!user.RecId
+             || user.IsActive != NoYes::Yes
+             || !HSMobileOpsPassword::verify(
+                    currentPassword, user.PasswordHash, user.PasswordSalt, user.HashIterations))
+            {
+                response.parmErrorCode('INVALID_CREDENTIALS');
+                response.parmMessage('That user name and password do not match');
+                return response;
+            }
+
+            salt = HSMobileOpsPassword::newSalt();
+
+            ttsbegin;
+            user.PasswordSalt       = salt;
+            user.HashIterations     = HSMobileOpsPassword::defaultIterations();
+            user.PasswordHash       = HSMobileOpsPassword::hash(newPassword, salt, user.HashIterations);
+            user.MustChangePassword = NoYes::No;
+            user.FailedAttempts     = 0;
+            user.LockedUntilUtc     = DateTimeUtil::minValue();
+            user.update();
+            ttscommit;
+
+            response.parmSuccess(true);
+        }
+
+        return response;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsToggleUserActive</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Activates or deactivates a mobile user.
+/// </summary>
+class HSMobileOpsToggleUserActive
+{
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>main</Name>
+				<Source><![CDATA[
+    public static void main(Args _args)
+    {
+        HSMobileOpsUser user;
+        boolean         makeActive;
+
+        if (!_args || !_args.record() || _args.dataset() != tableNum(HSMobileOpsUser))
+        {
+            throw error('Select a mobile user first');
+        }
+
+        user       = _args.record() as HSMobileOpsUser;
+        makeActive = user.IsActive != NoYes::Yes;
+
+        // Deactivating is the destructive-feeling direction and the one worth confirming;
+        // switching someone back on is not.
+        if (!makeActive
+         && !Box::confirm(strFmt(
+                '%1 will no longer be able to sign in on a handheld. Continue?', user.UserName)))
+        {
+            return;
+        }
+
+        HSMobileOpsUserAdmin::setActive(user, makeActive);
+        info(strFmt('%1 is now %2', user.UserName, makeActive ? 'active' : 'inactive'));
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxSecurityPrivilege xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsDeviceView</Name>
+	<Label>View mobile devices</Label>
+	<HelpText>See the handheld fleet - which devices are registered, who last signed into each, and from which warehouse - without being able to change anything.</HelpText>
+	<EntryPoints>
+		<AxSecurityEntryPointReference>
+			<Name>HSMobileOpsDevice</Name>
+			<ObjectName>HSMobileOpsDevice</ObjectName>
+			<ObjectType>MenuItemDisplay</ObjectType>
+			<AccessLevel>Read</AccessLevel>
+		</AxSecurityEntryPointReference>
+	</EntryPoints>
+	<Tables>
+		<AxSecurityPrivilegeTablePermission>
+			<Name>HSMobileOpsDevice</Name>
+			<Delete>NoAccess</Delete>
+			<Insert>NoAccess</Insert>
+			<Read>Allow</Read>
+			<Update>NoAccess</Update>
+		</AxSecurityPrivilegeTablePermission>
+	</Tables>
+</AxSecurityPrivilege>

@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxService xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsPostingSvc</Name>
+	<Class>HSMobileOpsPostingService</Class>
+	<ExternalName>PostingService</ExternalName>
+	<Namespace>http://schemas.hs.com/mobileops</Namespace>
+	<ServiceOperations>
+		<AxServiceOperation>
+			<Name>postProductReceipt</Name>
+			<Method>postProductReceipt</Method>
+		</AxServiceOperation>
+		<AxServiceOperation>
+			<Name>postTransferShipment</Name>
+			<Method>postTransferShipment</Method>
+		</AxServiceOperation>
+		<AxServiceOperation>
+			<Name>postTransferReceipt</Name>
+			<Method>postTransferReceipt</Method>
+		</AxServiceOperation>
+		<AxServiceOperation>
+			<Name>processPending</Name>
+			<Method>processPending</Method>
+		</AxServiceOperation>
+		<AxServiceOperation>
+			<Name>getQueueStatus</Name>
+			<Method>getQueueStatus</Method>
+		</AxServiceOperation>
+	</ServiceOperations>
+</AxService>

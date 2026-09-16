@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxSecurityDuty xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsInquireDevices</Name>
+	<Label>Inquire into the mobile device fleet</Label>
+	<HelpText>See which handhelds are registered and who last used each, without being able to change anything.</HelpText>
+	<Privileges>
+		<AxSecurityDutyPrivilegeReference>
+			<Name>HSMobileOpsDeviceView</Name>
+		</AxSecurityDutyPrivilegeReference>
+	</Privileges>
+</AxSecurityDuty>

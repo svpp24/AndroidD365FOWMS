@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxService xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsReceivingSvc</Name>
+	<Class>HSMobileOpsReceivingService</Class>
+	<ExternalName>ReceivingService</ExternalName>
+	<Namespace>http://schemas.hs.com/mobileops</Namespace>
+	<ServiceOperations>
+		<AxServiceOperation>
+			<Name>getPurchaseOrder</Name>
+			<Method>getPurchaseOrder</Method>
+		</AxServiceOperation>
+		<AxServiceOperation>
+			<Name>getLinesForItem</Name>
+			<Method>getLinesForItem</Method>
+		</AxServiceOperation>
+		<AxServiceOperation>
+			<Name>claimLine</Name>
+			<Method>claimLine</Method>
+		</AxServiceOperation>
+		<AxServiceOperation>
+			<Name>releaseLine</Name>
+			<Method>releaseLine</Method>
+		</AxServiceOperation>
+	</ServiceOperations>
+</AxService>

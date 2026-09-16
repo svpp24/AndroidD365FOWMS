@@ -1,0 +1,1240 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsPostingService</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// The write side: product receipts, transfer shipments and transfer receipts.
+///
+/// **Landing and processing are two different steps, on purpose.** postProductReceipt and
+/// postTransfer used to do the real work inline - resolving InventTrans, walking InventDim,
+/// running the transfer engine - in the same request the operator's device was blocked on.
+/// Confirmed live against this tenant that the real work can take upwards of a minute under
+/// load; an operator standing at a scanner should never wait that out. Both methods now do one
+/// thing only - validate the shape, check idempotency, insert a HSMobileOpsPostQueue row, return
+/// - and are back in well under a second regardless of how slow the real work would have been.
+/// The real work happens in processPending, called separately (from the Activity screen's
+/// "Process pending" action, not automatically - see the class doc on HSMobileOpsPostQueue for
+/// why there is deliberately no timer here) and reported back through getQueueStatus.
+///
+/// **Every posting is idempotent, and that is not optional.** A handheld on warehouse wifi loses
+/// responses routinely — the request lands, the reply never arrives, the queue retries. Without
+/// a replay guard the retry stages a second row for the same physical count. So the client mints
+/// one key per captured transaction and HSMobileOpsPostQueue's unique index on IdempotencyKey is
+/// what makes a duplicate insert impossible rather than merely unlikely - checking for an
+/// existing row and then inserting is a race two concurrent retries would both win.
+///
+/// **Quantities are taken from the request, never re-derived.** The operator counted something.
+/// Posting what the order expected instead would quietly paper over a real short delivery, which
+/// is the single most damaging thing a receiving app can do.
+/// </summary>
+class HSMobileOpsPostingService
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>postProductReceipt</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Registers a purchase order delivery - quantity, batch and put-away location - against
+    /// its purchase order line. Deliberately does not post a product receipt.
+    ///
+    /// **No PurchFormLetter, no PurchParmTable, no PurchParmLine.** An earlier version of this
+    /// method built all three, purely to feed PurchFormLetter's PackingSlip posting - see
+    /// [registerLine] below, adapted from a published item-registration pattern (posting a
+    /// product receipt with item registration, via PurchFormLetter/InventTransWMS_Register -
+    /// shabibax.wordpress.com, June 2023) - and that posting step is gone now, on explicit
+    /// instruction: the handheld's job is to register what physically arrived, not to post the
+    /// formal receipt: that happens later, as its own step, outside this app. What
+    /// InventTransWMS_Register actually changes - the real InventTrans row, Ordered status to
+    /// Registered, with the batch and location now attached - never depended on the parm-table
+    /// machinery at all; that machinery existed only because PurchFormLetter needed it, and nothing
+    /// here calls PurchFormLetter any more.
+    ///
+    /// Each line is checked against RemainPurchPhysical *read inside this transaction*, not
+    /// against whatever the client believed when the scan happened. That is what stops a second
+    /// worker's overlapping capture from over-registering a line two people scanned without
+    /// knowing about each other - the same guard postTransfer already had for shipping/receiving.
+    /// </summary>
+    public HSMobileOpsPostResponse postProductReceipt(HSMobileOpsPostRequest _request)
+    {
+        HSMobileOpsPostResponse      response = new HSMobileOpsPostResponse();
+        PurchTable                   purchTable;
+        DataAreaId                   company;
+        str                          problem;
+
+        response.parmSuccess(false);
+
+        // Reference (the vendor delivery note) is no longer required - the device stopped
+        // capturing it once receiving became register-only, since there is no product-receipt
+        // journal left for a GRN to reconcile against. See ReceivingStep.PACKING_SLIP.
+        problem = HSMobileOpsPostingService::validate(_request, false);
+        if (problem)
+        {
+            response.parmErrorCode(problem);
+            response.parmMessage('The posting request was incomplete');
+            return response;
+        }
+
+        company = _request.parmDataAreaId();
+
+        changecompany (company)
+        {
+            purchTable = null;
+
+            // Landing is idempotent the same way processing used to be - see the class doc.
+            // A replay of an already-staged request is not an error, whatever became of it since.
+            if (HSMobileOpsPostQueue::findByKey(_request.parmIdempotencyKey()).RecId)
+            {
+                response.parmSuccess(true);
+                response.parmDocumentNumber('');
+                return response;
+            }
+
+            select firstOnly RecId, PurchId
+                from purchTable
+                where purchTable.PurchId == _request.parmSourceId();
+
+            if (!purchTable.RecId)
+            {
+                response.parmErrorCode('NOT_FOUND');
+                response.parmMessage(strFmt('No purchase order %1', _request.parmSourceId()));
+                return response;
+            }
+
+            try
+            {
+                HSMobileOpsPostingService::stage(_request, 'Registration');
+            }
+            catch (Exception::Error)
+            {
+                response.parmErrorCode('STAGING_FAILED');
+                response.parmMessage(HSMobileOpsPostingService::lastError());
+                return response;
+            }
+            catch (Exception::DuplicateKeyException)
+            {
+                // Only a genuine idempotency-key replay is a success here - the other request
+                // that carried this key won the race and its row is really there. Any other
+                // duplicate-key failure (a RecId collision from a broken sequence, say) is a
+                // real failure and must not be reported as done.
+                if (HSMobileOpsPostQueue::findByKey(_request.parmIdempotencyKey()).RecId)
+                {
+                    response.parmSuccess(true);
+                    response.parmDocumentNumber('');
+                    return response;
+                }
+
+                response.parmErrorCode('STAGING_FAILED');
+                response.parmMessage(strFmt(
+                    'Duplicate-key failure staging %1 and no row exists for this key - the RecId '
+                  + 'sequence for HSMobileOpsPostQueue is likely not advancing.',
+                    _request.parmSourceId()));
+                return response;
+            }
+
+            response.parmSuccess(true);
+            response.parmDocumentNumber('');
+        }
+
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>stage</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Lands one request in HSMobileOpsPostQueue at Pending. The one INSERT postProductReceipt
+    /// and postTransfer actually wait on - see the class doc on why the rest happens later.
+    /// </summary>
+    private static void stage(HSMobileOpsPostRequest _request, str _documentType)
+    {
+        HSMobileOpsPostQueue postQueue;
+
+        ttsbegin;
+
+        postQueue.clear();
+        postQueue.IdempotencyKey  = _request.parmIdempotencyKey();
+        postQueue.DocumentType    = _documentType;
+        postQueue.SourceId        = _request.parmSourceId();
+        postQueue.Reference       = _request.parmReference();
+        postQueue.UserName        = _request.parmUserName();
+        postQueue.PersonnelNumber = _request.parmPersonnelNumber();
+        postQueue.DeviceId        = _request.parmDeviceId();
+        postQueue.LinesJson       = _request.parmLinesJson();
+        postQueue.Status          = HSMobileOpsPostQueue::statusPending();
+        postQueue.ReceivedUtc     = DateTimeUtil::utcNow();
+        postQueue.insert();
+
+        ttscommit;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>processPending</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Works every Pending row for one company, oldest received first, and reports what each
+    /// one became. Called from the Activity screen's "Process pending" action - see the class
+    /// doc on HSMobileOpsPostQueue for why this is operator-triggered rather than automatic.
+    /// </summary>
+    public HSMobileOpsPostQueueResponse processPending(HSMobileOpsPostQueueRequest _request)
+    {
+        HSMobileOpsPostQueueResponse response = new HSMobileOpsPostQueueResponse();
+        HSMobileOpsPostQueue         postQueue;
+        HSMobileOpsPostQueue         processed;
+        List                         rows = new List(Types::Class);
+        DataAreaId                   company;
+
+        if (!_request || !_request.parmDataAreaId())
+        {
+            response.parmSuccess(false);
+            response.parmRows(rows);
+            return response;
+        }
+
+        company = _request.parmDataAreaId();
+
+        changecompany (company)
+        {
+            while select RecId, DocumentType from postQueue
+                order by ReceivedUtc asc
+                where postQueue.Status == HSMobileOpsPostQueue::statusPending()
+            {
+                switch (postQueue.DocumentType)
+                {
+                    case 'Registration':
+                        HSMobileOpsPostingService::processReceiptQueueEntry(postQueue.RecId);
+                        break;
+                    case 'TransferShipment':
+                        HSMobileOpsPostingService::processTransferQueueEntry(postQueue.RecId, true);
+                        break;
+                    case 'TransferReceipt':
+                        HSMobileOpsPostingService::processTransferQueueEntry(postQueue.RecId, false);
+                        break;
+                    default:
+                        continue;
+                }
+
+                processed = null;
+                select firstOnly processed
+                    where processed.RecId == postQueue.RecId;
+
+                if (processed.RecId)
+                {
+                    rows.addEnd(HSMobileOpsPostingService::toEntry(processed));
+                }
+            }
+        }
+
+        response.parmSuccess(true);
+        response.parmRows(rows);
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>getQueueStatus</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The most recent 50 requests for one company, whatever their status - Pending, Registered
+    /// or Failed alike. What the Activity screen's status list is built from.
+    /// </summary>
+    public HSMobileOpsPostQueueResponse getQueueStatus(HSMobileOpsPostQueueRequest _request)
+    {
+        HSMobileOpsPostQueueResponse response = new HSMobileOpsPostQueueResponse();
+        HSMobileOpsPostQueue         postQueue;
+        List                         rows = new List(Types::Class);
+        DataAreaId                   company;
+        // 'count' is a reserved word in X++ (the aggregate).
+        int                          rowCount;
+
+        if (!_request || !_request.parmDataAreaId())
+        {
+            response.parmSuccess(false);
+            response.parmRows(rows);
+            return response;
+        }
+
+        company = _request.parmDataAreaId();
+
+        changecompany (company)
+        {
+            while select postQueue
+                order by ReceivedUtc desc
+            {
+                rows.addEnd(HSMobileOpsPostingService::toEntry(postQueue));
+
+                rowCount++;
+                if (rowCount >= 50)
+                {
+                    break;
+                }
+            }
+        }
+
+        response.parmSuccess(true);
+        response.parmRows(rows);
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>toEntry</Name>
+				<Source><![CDATA[
+
+    private static HSMobileOpsPostQueueEntry toEntry(HSMobileOpsPostQueue _postQueue)
+    {
+        HSMobileOpsPostQueueEntry entry = new HSMobileOpsPostQueueEntry();
+
+        entry.parmSourceId(_postQueue.SourceId);
+        entry.parmDocumentType(_postQueue.DocumentType);
+        entry.parmStatus(_postQueue.Status);
+        entry.parmErrorMessage(_postQueue.ErrorMessage);
+        entry.parmReceivedUtc(_postQueue.ReceivedUtc);
+        entry.parmProcessedUtc(_postQueue.ProcessedUtc);
+
+        return entry;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>processReceiptQueueEntry</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The registration work postProductReceipt used to do inline, unchanged except for where
+    /// its outcome goes: onto the queue row itself, in its own transaction, separate from the
+    /// registration attempt so a failed attempt still leaves a row a supervisor can see.
+    /// </summary>
+    private static void processReceiptQueueEntry(RecId _queueRecId)
+    {
+        HSMobileOpsPostQueue postQueue;
+        PurchTable           purchTable;
+        PurchLine            purchLine;
+        HSMobileOpsPostLine  postLine;
+        List                 lines;
+        ListEnumerator       enumerator;
+        InventQty            requested;
+        InventQty            available;
+        str                  failMessage;
+
+        select firstOnly postQueue
+            where postQueue.RecId == _queueRecId;
+
+        if (!postQueue.RecId || postQueue.Status != HSMobileOpsPostQueue::statusPending())
+        {
+            return;
+        }
+
+        failMessage = '';
+
+        try
+        {
+            ttsbegin;
+
+            purchTable = null;
+            select firstOnly RecId, PurchId
+                from purchTable
+                where purchTable.PurchId == postQueue.SourceId;
+
+            if (!purchTable.RecId)
+            {
+                failMessage = strFmt('No purchase order %1', postQueue.SourceId);
+            }
+            else
+            {
+                lines      = HSMobileOpsPostingService::parseLines(postQueue.LinesJson);
+                enumerator = lines.getEnumerator();
+
+                while (enumerator.moveNext() && !failMessage)
+                {
+                    postLine  = enumerator.current();
+                    purchLine = null;
+
+                    select forUpdate firstOnly purchLine
+                        where purchLine.PurchId    == purchTable.PurchId
+                           && purchLine.LineNumber == postLine.parmLineNumber();
+
+                    if (!purchLine.RecId)
+                    {
+                        failMessage = strFmt(
+                            'Line %1 is not on %2',
+                            postLine.parmLineNumber(), purchTable.PurchId);
+                    }
+                    else
+                    {
+                        requested = postLine.parmQuantity();
+                        available = purchLine.RemainPurchPhysical;
+
+                        // Checked again here, not only on the device or at staging time - the
+                        // request may have sat Pending a while, and someone else may have
+                        // received part of the same line in the meantime.
+                        if (requested > available)
+                        {
+                            failMessage = strFmt(
+                                'Line %1: %2 requested but only %3 outstanding',
+                                postLine.parmLineNumber(), requested, available);
+                        }
+                        else
+                        {
+                            // Registers this line's quantity, batch and location directly
+                            // against its own InventTrans - every line, not only ones carrying
+                            // a batch or a location, because registering the quantity is the
+                            // point even when neither dimension needs to change.
+                            HSMobileOpsPostingService::registerLine(purchLine, postLine, requested);
+
+                            // Whatever claim was on this line is done its job the moment it
+                            // registers - a no-op outside LineClaim mode.
+                            HSMobileOpsLineClaim::release(
+                                HSMobileOpsProcessSetup::processReceiving(),
+                                purchTable.PurchId,
+                                purchLine.LineNumber,
+                                postQueue.UserName);
+                        }
+                    }
+                }
+            }
+
+            if (failMessage)
+            {
+                ttsabort;
+            }
+            else
+            {
+                ttscommit;
+            }
+        }
+        catch (Exception::Error)
+        {
+            failMessage = HSMobileOpsPostingService::lastError();
+        }
+        catch (Exception::Deadlock)
+        {
+            failMessage = 'The registration deadlocked and was rolled back. Retry.';
+        }
+
+        // Separate from the transaction above on purpose - the queue row's own outcome has to
+        // persist whether that transaction committed or aborted.
+        ttsbegin;
+        select forUpdate postQueue
+            where postQueue.RecId == _queueRecId;
+        if (failMessage)
+        {
+            postQueue.Status       = HSMobileOpsPostQueue::statusFailed();
+            postQueue.ErrorMessage = subStr(failMessage, 1, 250);
+        }
+        else
+        {
+            postQueue.Status = HSMobileOpsPostQueue::statusRegistered();
+        }
+        postQueue.ProcessedUtc = DateTimeUtil::utcNow();
+        postQueue.update();
+        ttscommit;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>registerLine</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Registers one line: the operator's counted quantity, and the batch and/or put-away
+    /// location captured for it, applied directly to the line's own InventTrans row.
+    ///
+    /// Adapted from a published item-registration pattern (posting a product receipt with item
+    /// registration via PurchFormLetter/InventTransWMS_Register - shabibax.wordpress.com, June
+    /// 2023), with the PurchFormLetter half removed - see the class doc on [postProductReceipt].
+    /// Find the line's own Ordered-status InventTrans by InventTransId, build a new InventDim
+    /// from that transaction's *own* current dimension - not from the purchase line or from
+    /// scratch - with the batch and/or location laid on top, resolve it through
+    /// InventDim::findOrCreate, and hand it to InventTransWMS_Register so the conversion happens
+    /// against the real transaction. This is what actually turns batch-less Ordered quantity
+    /// into a specific batch and location; setting InventDimId directly on a parm line - the
+    /// first version of this - does not, because that only told the posting engine which
+    /// dimension the *received* side should carry, and there is no posting engine step here any
+    /// more for it to tell.
+    ///
+    /// Silently a no-op if the line's InventTransId cannot be found - the caller already checked
+    /// this line is real and outstanding, so that should not happen, but a missing transaction
+    /// here is not a reason to fail an otherwise-valid registration over the one line it could
+    /// not resolve.
+    /// </summary>
+    private static void registerLine(PurchLine _purchLine, HSMobileOpsPostLine _postLine, InventQty _quantity)
+    {
+        InventTrans              inventTrans;
+        InventDim                inventDim;
+        TmpInventTransWMS        tmpInventTransWMS;
+        InventTransWMS_Register  register;
+
+        inventTrans = InventTrans::findTransId(_purchLine.InventTransId, true);
+        if (!inventTrans.RecId)
+        {
+            return;
+        }
+
+        inventDim = inventTrans.inventDim();
+
+        if (_postLine.parmBatchId())
+        {
+            HSMobileOpsPostingService::ensureBatch(
+                inventTrans.ItemId,
+                _postLine.parmBatchId(),
+                _postLine.parmBatchManufacturingDate(),
+                _postLine.parmBatchExpiryDate());
+            inventDim.InventBatchId = _postLine.parmBatchId();
+        }
+        if (_postLine.parmLocationId())
+        {
+            inventDim.wMSLocationId = _postLine.parmLocationId();
+        }
+
+        inventDim = InventDim::findOrCreate(inventDim);
+
+        register = InventTransWMS_Register::newStandard(tmpInventTransWMS);
+
+        inventTrans.InventDimId = inventDim.InventDimId;
+
+        tmpInventTransWMS.clear();
+        tmpInventTransWMS.initFromInventTrans(inventTrans);
+        tmpInventTransWMS.ItemId    = inventTrans.ItemId;
+        tmpInventTransWMS.InventQty = _quantity;
+        tmpInventTransWMS.insert();
+
+        register.writeTmpInventTransWMS(tmpInventTransWMS, inventTrans, inventDim);
+        register.updateInvent(inventTrans);
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>ensureBatch</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Creates the batch's own master record, if this item and batch combination has never been
+    /// seen before.
+    ///
+    /// InventDim::findOrCreate refused a brand new batch number with a plain "Update has been
+    /// canceled" - confirmed live, with the full dimension in the message, so the dimension
+    /// values themselves were not the problem. InventBatch is the batch's *master* record - one
+    /// row per item and batch, holding its manufacturing and expiry dates among other things -
+    /// and a dimension combination cannot reference a batch that has no master row of its own,
+    /// the same way an InventDim cannot reference a warehouse location that does not exist in
+    /// WMSLocation.
+    ///
+    /// The dates are set only when this call is the one creating the row. An existing batch
+    /// already has its own dates, decided whenever it was first created - the client does not
+    /// ask the operator again once HSMobileOpsInquirySvc/validateBatch says a batch is already
+    /// registered, and this must not silently overwrite an established batch's dates just
+    /// because a blank date happened to come through on a later line.
+    ///
+    /// _manufacturingDate is always blank from the Android app now - the operator is only asked
+    /// for the expiry date on a new batch, not both. Left as its own parameter rather than
+    /// removed: the field, the contract member and this method's ability to set it all still
+    /// exist and cost nothing idle, in case a manufacturing date is ever wanted back without
+    /// touching this method again.
+    /// </summary>
+    private static void ensureBatch(
+        ItemId _itemId, InventBatchId _batchId, str _manufacturingDate, str _expiryDate)
+    {
+        InventBatch inventBatch;
+
+        select firstOnly RecId from inventBatch
+            where inventBatch.ItemId         == _itemId
+               && inventBatch.InventBatchId  == _batchId;
+
+        if (!inventBatch.RecId)
+        {
+            inventBatch.clear();
+            inventBatch.ItemId        = _itemId;
+            inventBatch.InventBatchId = _batchId;
+
+            if (_manufacturingDate)
+            {
+                inventBatch.prodDate =
+                    HSMobileOpsPostingService::parseIsoDate(_manufacturingDate);
+            }
+            if (_expiryDate)
+            {
+                inventBatch.ExpDate = HSMobileOpsPostingService::parseIsoDate(_expiryDate);
+            }
+
+            inventBatch.insert();
+        }
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parseIsoDate</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// 'yyyy-MM-dd' to a Date, or dateNull() for anything that is not exactly that shape.
+    ///
+    /// Parsed by hand with subStr/str2int rather than str2Date, whose format is a numeric
+    /// day/month/year *sequence* code this codebase has no existing, verified use of - guessing
+    /// that code wrong silently reads a correct-looking string as the wrong date, which for an
+    /// expiry date is a stock-safety mistake, not a cosmetic one. Fixed field positions cannot
+    /// be misread the same way.
+    /// </summary>
+    private static Date parseIsoDate(str _isoDate)
+    {
+        int year;
+        int month;
+        int day;
+
+        if (!_isoDate || strLen(_isoDate) != 10)
+        {
+            return dateNull();
+        }
+
+        year  = str2int(subStr(_isoDate, 1, 4));
+        month = str2int(subStr(_isoDate, 6, 2));
+        day   = str2int(subStr(_isoDate, 9, 2));
+
+        if (year <= 0 || month <= 0 || month > 12 || day <= 0 || day > 31)
+        {
+            return dateNull();
+        }
+
+        return mkDate(day, month, year);
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>postTransferShipment</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Posts a transfer order shipment.
+    ///
+    /// The quantities to ship are written to InventTransferLine.QtyShipNow and the standard
+    /// InventTransferUpdShip engine is run over the order. Setting QtyShipNow rather than posting
+    /// the whole order is what makes a partial shipment possible - which is the normal case when
+    /// a pallet is picked over two shifts.
+    /// </summary>
+    public HSMobileOpsPostResponse postTransferShipment(HSMobileOpsPostRequest _request)
+    {
+        return HSMobileOpsPostingService::postTransfer(_request, true);
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>postTransferReceipt</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Posts a transfer order receipt.
+    ///
+    /// Bounded by what is in transit, not by what was ordered - the same rule the read side
+    /// enforces, checked again here because the client is not the last line of defence.
+    /// </summary>
+    public HSMobileOpsPostResponse postTransferReceipt(HSMobileOpsPostRequest _request)
+    {
+        return HSMobileOpsPostingService::postTransfer(_request, false);
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>postTransfer</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Shared transfer landing: validates, checks idempotency, stages. See the class doc - the
+    /// engine run that used to happen here now happens in processTransferQueueEntry instead,
+    /// triggered later from processPending.
+    /// </summary>
+    private static HSMobileOpsPostResponse postTransfer(
+        HSMobileOpsPostRequest _request, boolean _shipping)
+    {
+        HSMobileOpsPostResponse response = new HSMobileOpsPostResponse();
+        InventTransferTable     transferTable;
+        DataAreaId              company;
+        str                     problem;
+
+        response.parmSuccess(false);
+
+        problem = HSMobileOpsPostingService::validate(_request, false);
+        if (problem)
+        {
+            response.parmErrorCode(problem);
+            response.parmMessage('The posting request was incomplete');
+            return response;
+        }
+
+        company = _request.parmDataAreaId();
+
+        changecompany (company)
+        {
+            transferTable = null;
+
+            if (HSMobileOpsPostQueue::findByKey(_request.parmIdempotencyKey()).RecId)
+            {
+                response.parmSuccess(true);
+                response.parmDocumentNumber('');
+                return response;
+            }
+
+            select firstOnly RecId, TransferId
+                from transferTable
+                where transferTable.TransferId == _request.parmSourceId();
+
+            if (!transferTable.RecId)
+            {
+                response.parmErrorCode('NOT_FOUND');
+                response.parmMessage(strFmt('No transfer order %1', _request.parmSourceId()));
+                return response;
+            }
+
+            try
+            {
+                HSMobileOpsPostingService::stage(
+                    _request, _shipping ? 'TransferShipment' : 'TransferReceipt');
+            }
+            catch (Exception::Error)
+            {
+                response.parmErrorCode('STAGING_FAILED');
+                response.parmMessage(HSMobileOpsPostingService::lastError());
+                return response;
+            }
+            catch (Exception::DuplicateKeyException)
+            {
+                // See the identical guard in postProductReceipt - a real replay only.
+                if (HSMobileOpsPostQueue::findByKey(_request.parmIdempotencyKey()).RecId)
+                {
+                    response.parmSuccess(true);
+                    response.parmDocumentNumber('');
+                    return response;
+                }
+
+                response.parmErrorCode('STAGING_FAILED');
+                response.parmMessage(strFmt(
+                    'Duplicate-key failure staging %1 and no row exists for this key - the RecId '
+                  + 'sequence for HSMobileOpsPostQueue is likely not advancing.',
+                    _request.parmSourceId()));
+                return response;
+            }
+
+            response.parmSuccess(true);
+            response.parmDocumentNumber('');
+        }
+
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>processTransferQueueEntry</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The transfer-engine work postTransfer used to do inline, unchanged except for where its
+    /// outcome goes - see the identical note on processReceiptQueueEntry.
+    /// </summary>
+    private static void processTransferQueueEntry(RecId _queueRecId, boolean _shipping)
+    {
+        HSMobileOpsPostQueue     postQueue;
+        InventTransferTable      transferTable;
+        InventTransferLine       transferLine;
+        InventTransferParmTable  parmTable;
+        InventTransferUpdShip    updShip;
+        InventTransferUpdReceive updReceive;
+        TransDate                postingDate;
+        boolean                  posted;
+        boolean                  partial;
+        HSMobileOpsPostLine      postLine;
+        List                     lines;
+        ListEnumerator           enumerator;
+        InventQty                requested;
+        InventQty                available;
+        str                      failMessage;
+
+        select firstOnly postQueue
+            where postQueue.RecId == _queueRecId;
+
+        if (!postQueue.RecId || postQueue.Status != HSMobileOpsPostQueue::statusPending())
+        {
+            return;
+        }
+
+        failMessage = '';
+        partial     = false;
+        posted      = false;
+        postingDate = DateTimeUtil::date(DateTimeUtil::utcNow());
+
+        try
+        {
+            ttsbegin;
+
+            transferTable = null;
+            select firstOnly RecId, TransferId
+                from transferTable
+                where transferTable.TransferId == postQueue.SourceId;
+
+            if (!transferTable.RecId)
+            {
+                failMessage = strFmt('No transfer order %1', postQueue.SourceId);
+            }
+            else
+            {
+                // Zero every now-quantity first - see the identical note this carries over from
+                // the inline version.
+                if (_shipping)
+                {
+                    update_recordset transferLine
+                        setting QtyShipNow = 0
+                        where transferLine.TransferId == transferTable.TransferId;
+                }
+                else
+                {
+                    update_recordset transferLine
+                        setting QtyReceiveNow = 0
+                        where transferLine.TransferId == transferTable.TransferId;
+                }
+
+                // Batch is deliberately not applied here from postLine.parmBatchId(), unlike
+                // processReceiptQueueEntry - see the identical note this carries over from the
+                // inline version. Tracked as a known gap, not silently skipped.
+                lines      = HSMobileOpsPostingService::parseLines(postQueue.LinesJson);
+                enumerator = lines.getEnumerator();
+
+                while (enumerator.moveNext() && !failMessage)
+                {
+                    postLine     = enumerator.current();
+                    transferLine = null;
+
+                    select forUpdate firstOnly transferLine
+                        where transferLine.TransferId == transferTable.TransferId
+                           && transferLine.LineNum    == postLine.parmLineNumber();
+
+                    if (!transferLine.RecId)
+                    {
+                        failMessage = strFmt(
+                            'Line %1 is not on %2',
+                            postLine.parmLineNumber(), transferTable.TransferId);
+                    }
+                    else
+                    {
+                        requested = postLine.parmQuantity();
+                        available = _shipping
+                            ? transferLine.QtyRemainShip
+                            : transferLine.QtyShipped - transferLine.QtyReceived;
+
+                        if (requested > available)
+                        {
+                            failMessage = strFmt(
+                                'Line %1: %2 requested but only %3 outstanding',
+                                postLine.parmLineNumber(), requested, available);
+                        }
+                        else
+                        {
+                            if (requested < available)
+                            {
+                                partial = true;
+                            }
+
+                            if (_shipping)
+                            {
+                                transferLine.QtyShipNow = requested;
+                            }
+                            else
+                            {
+                                transferLine.QtyReceiveNow = requested;
+                            }
+
+                            transferLine.update();
+                        }
+                    }
+                }
+
+                if (!failMessage && partial)
+                {
+                    // Partial quantities are refused rather than silently rounded up - see the
+                    // identical note this carries over from the inline version.
+                    failMessage =
+                        'This transfer can only be posted for the full outstanding quantity on '
+                      + 'every line. Adjust the transfer order instead.';
+                }
+
+                if (!failMessage)
+                {
+                    parmTable.clear();
+                    parmTable.initParmDefault();
+                    parmTable.ParmId     = RunBaseMultiParm::getSysParmId();
+                    parmTable.TransferId = transferTable.TransferId;
+                    parmTable.EditLines  = NoYes::Yes;
+                    parmTable.UpdateType = _shipping
+                                         ? InventTransferUpdateType::Shipment
+                                         : InventTransferUpdateType::Receive;
+                    parmTable.TransDate  = postingDate;
+
+                    if (_shipping)
+                    {
+                        parmTable.ShipUpdateQty = InventTransferShipUpdateQty::All;
+                    }
+                    else
+                    {
+                        parmTable.ReceiveUpdateQty = InventTransferReceiveUpdateQty::All;
+                    }
+
+                    parmTable.insert();
+
+                    if (_shipping)
+                    {
+                        updShip = InventTransferUpdShip::newParmBuffer(parmTable);
+                        updShip.run();
+                        posted = updShip.parmIsSomeThingPosted();
+                    }
+                    else
+                    {
+                        updReceive = InventTransferUpdReceive::newParmBuffer(parmTable);
+                        updReceive.run();
+                        posted = updReceive.parmIsSomeThingPosted();
+                    }
+
+                    if (!posted)
+                    {
+                        // The engine reports failure by posting nothing rather than by throwing.
+                        failMessage =
+                            'The transfer engine posted nothing. Check the order status.';
+                    }
+                }
+            }
+
+            if (failMessage)
+            {
+                ttsabort;
+            }
+            else
+            {
+                ttscommit;
+            }
+        }
+        catch (Exception::Error)
+        {
+            failMessage = HSMobileOpsPostingService::lastError();
+        }
+        catch (Exception::Deadlock)
+        {
+            failMessage = 'The posting deadlocked and was rolled back. Retry.';
+        }
+
+        ttsbegin;
+        select forUpdate postQueue
+            where postQueue.RecId == _queueRecId;
+        if (failMessage)
+        {
+            postQueue.Status       = HSMobileOpsPostQueue::statusFailed();
+            postQueue.ErrorMessage = subStr(failMessage, 1, 250);
+        }
+        else
+        {
+            postQueue.Status = HSMobileOpsPostQueue::statusRegistered();
+        }
+        postQueue.ProcessedUtc = DateTimeUtil::utcNow();
+        postQueue.update();
+        ttscommit;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>validate</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Checks the request is complete enough to post, returning an error code or an empty string.
+    ///
+    /// The serial count check earns its place: a serial identifies exactly one physical unit, so
+    /// three serials against a quantity of five is not a rounding difference, it is two units
+    /// nobody can ever trace. Refusing beats posting something that cannot be unpicked.
+    /// </summary>
+    private static str validate(HSMobileOpsPostRequest _request, boolean _referenceRequired)
+    {
+        HSMobileOpsPostLine postLine;
+        List                 lines;
+        ListEnumerator      enumerator;
+
+        if (!_request
+         || !_request.parmDataAreaId()
+         || !_request.parmIdempotencyKey()
+         || !_request.parmSourceId()
+         || !_request.parmLinesJson()
+         || !CompanyInfo::findDataArea(_request.parmDataAreaId()).RecId)
+        {
+            return 'INVALID_REQUEST';
+        }
+
+        // Kept as a parameter, but no caller passes true any more - see the note at
+        // postProductReceipt's own validate() call. A reference is accepted when sent and
+        // ignored when not.
+        if (_referenceRequired && !_request.parmReference())
+        {
+            return 'INVALID_REQUEST';
+        }
+
+        lines = HSMobileOpsPostingService::parseLines(_request.parmLinesJson());
+        if (!lines || !lines.elements())
+        {
+            return 'INVALID_REQUEST';
+        }
+
+        enumerator = lines.getEnumerator();
+        while (enumerator.moveNext())
+        {
+            postLine = enumerator.current();
+
+            if (!postLine.parmItemId() || postLine.parmQuantity() <= 0)
+            {
+                return 'INVALID_REQUEST';
+            }
+
+            if (postLine.parmSerialIds() && postLine.parmSerialIds().elements())
+            {
+                if (postLine.parmSerialIds().elements() != postLine.parmQuantity())
+                {
+                    return 'SERIAL_COUNT';
+                }
+            }
+        }
+
+        return '';
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parseLines</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The request's lines, off the wire. See HSMobileOpsPostRequest.parmLinesJson for why this
+    /// is a hand-parsed JSON string rather than a bound List of HSMobileOpsPostLine.
+    ///
+    /// Newtonsoft.Json.Linq is used directly rather than through a higher-level X++ JSON helper -
+    /// it is already proven present and loaded on this exact server, because it is what named
+    /// itself in the cast exception this whole change exists to route around. An empty or
+    /// unparseable string returns an empty list rather than throwing; callers already treat an
+    /// empty list of lines as INVALID_REQUEST, which is the right answer for malformed input too.
+    /// </summary>
+    private static List parseLines(str _linesJson)
+    {
+        List                          result = new List(Types::Class);
+        System.Object                 parsedObj;
+        Newtonsoft.Json.Linq.JArray   jArray;
+        Newtonsoft.Json.Linq.JObject  jLine;
+        Newtonsoft.Json.Linq.JToken   serialsToken;
+        Newtonsoft.Json.Linq.JArray   jSerials;
+        HSMobileOpsPostLine           postLine;
+        List                          serialIds;
+        int                           lineCount;
+        int                           serialCount;
+        int                           i;
+        int                           j;
+
+        if (!_linesJson)
+        {
+            return result;
+        }
+
+        try
+        {
+            parsedObj = Newtonsoft.Json.Linq.JArray::Parse(_linesJson);
+        }
+        catch (Exception::CLRError)
+        {
+            return result;
+        }
+
+        jArray = parsedObj;
+        if (jArray == null)
+        {
+            return result;
+        }
+
+        lineCount = jArray.get_Count();
+
+        for (i = 0; i < lineCount; i++)
+        {
+            jLine = jArray.get_Item(i);
+            if (jLine == null)
+            {
+                continue;
+            }
+
+            postLine = new HSMobileOpsPostLine();
+            postLine.parmLineNumber(HSMobileOpsPostingService::jsonNum(jLine, 'LineNumber'));
+            postLine.parmItemId(HSMobileOpsPostingService::jsonStr(jLine, 'ItemId'));
+            postLine.parmQuantity(HSMobileOpsPostingService::jsonNum(jLine, 'Quantity'));
+            postLine.parmUnitId(HSMobileOpsPostingService::jsonStr(jLine, 'UnitId'));
+            postLine.parmSiteId(HSMobileOpsPostingService::jsonStr(jLine, 'SiteId'));
+            postLine.parmWarehouseId(HSMobileOpsPostingService::jsonStr(jLine, 'WarehouseId'));
+            postLine.parmLocationId(HSMobileOpsPostingService::jsonStr(jLine, 'LocationId'));
+            postLine.parmBatchId(HSMobileOpsPostingService::jsonStr(jLine, 'BatchId'));
+            postLine.parmBatchManufacturingDate(
+                HSMobileOpsPostingService::jsonStr(jLine, 'BatchManufacturingDate'));
+            postLine.parmBatchExpiryDate(
+                HSMobileOpsPostingService::jsonStr(jLine, 'BatchExpiryDate'));
+
+            serialIds    = new List(Types::String);
+            serialsToken = jLine.get_Item('SerialIds');
+            if (serialsToken != null)
+            {
+                jSerials = serialsToken;
+                if (jSerials != null)
+                {
+                    serialCount = jSerials.get_Count();
+                    for (j = 0; j < serialCount; j++)
+                    {
+                        serialIds.addEnd(jSerials.get_Item(j).ToString());
+                    }
+                }
+            }
+            postLine.parmSerialIds(serialIds);
+
+            result.addEnd(postLine);
+        }
+
+        return result;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>jsonStr</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// One property of a parsed JSON object, as a string - '' when absent rather than null, so
+    /// callers can keep using the same blank-means-not-set checks used everywhere else here.
+    /// </summary>
+    private static str jsonStr(Newtonsoft.Json.Linq.JObject _obj, str _property)
+    {
+        Newtonsoft.Json.Linq.JToken token;
+
+        if (_obj == null)
+        {
+            return '';
+        }
+
+        token = _obj.get_Item(_property);
+        if (token == null)
+        {
+            return '';
+        }
+
+        return token.ToString();
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>jsonNum</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// One property of a parsed JSON object, as a number - 0 when absent or not a number.
+    /// </summary>
+    private static real jsonNum(Newtonsoft.Json.Linq.JObject _obj, str _property)
+    {
+        str value = HSMobileOpsPostingService::jsonStr(_obj, _property);
+
+        if (!value)
+        {
+            return 0;
+        }
+
+        return str2num(value);
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>writeLog</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Records the posting against its idempotency key.
+    ///
+    /// Called inside the posting's own transaction, deliberately. The unique index means a
+    /// concurrent retry that got there first makes this insert fail, which rolls the posting back
+    /// with it - so a duplicate is impossible rather than merely unlikely. Checking first and
+    /// inserting afterwards would leave a window where two retries both find nothing and both post.
+    /// </summary>
+    private static void writeLog(
+        HSMobileOpsPostRequest _request, str _documentType, str _documentNumber)
+    {
+        HSMobileOpsPostLog postLog;
+
+        postLog.clear();
+        postLog.IdempotencyKey   = _request.parmIdempotencyKey();
+        postLog.DocumentType     = _documentType;
+        postLog.SourceId         = _request.parmSourceId();
+        postLog.DocumentNumber   = _documentNumber;
+        postLog.PostedByUserName = _request.parmUserName();
+        postLog.PersonnelNumber  = _request.parmPersonnelNumber();
+        postLog.DeviceId         = _request.parmDeviceId();
+        postLog.PostedUtc        = DateTimeUtil::utcNow();
+        postLog.insert();
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>replayOf</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The answer to a request that has already been posted.
+    ///
+    /// Success, not failure. The client's retry did exactly what it was supposed to, and the work
+    /// landed once - so it clears its queue entry knowing the receipt exists, and the operator is
+    /// not told a second one was created when it was not.
+    /// </summary>
+    private static HSMobileOpsPostResponse replayOf(
+        HSMobileOpsPostResponse _response, HSMobileOpsPostLog _existing)
+    {
+        _response.parmSuccess(true);
+        _response.parmAlreadyPosted(true);
+        _response.parmDocumentNumber(_existing.DocumentNumber);
+        _response.parmMessage(strFmt(
+            'Already posted as %1 at %2',
+            _existing.DocumentNumber, DateTimeUtil::toStr(_existing.PostedUtc)));
+
+        return _response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>lastError</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// D365FO's own message for the failure that just occurred.
+    ///
+    /// Passed through rather than summarised. "Posting failed" tells a warehouse supervisor
+    /// nothing; "the period is closed" or "item is stopped" tells them exactly who to call.
+    /// </summary>
+    private static str lastError()
+    {
+        SysInfologEnumerator enumerator = SysInfologEnumerator::newData(infolog.infologData());
+        str                  message;
+
+        // Every Error line, joined - a DB failure logs the operation, then "The SQL database
+        // has issued an error", then often a lock/session line, and keeping only the last one
+        // (as this did) threw away the part that actually says what went wrong.
+        while (enumerator.moveNext())
+        {
+            if (enumerator.currentException() == Exception::Error)
+            {
+                message += (message ? ' | ' : '') + enumerator.currentMessage();
+            }
+        }
+
+        return message ? message : 'D365FO refused the posting without a message';
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxService xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsInquirySvc</Name>
+	<Class>HSMobileOpsInquiryService</Class>
+	<ExternalName>InquiryService</ExternalName>
+	<Namespace>http://schemas.hs.com/mobileops</Namespace>
+	<ServiceOperations>
+		<AxServiceOperation>
+			<Name>validateLocation</Name>
+			<Method>validateLocation</Method>
+		</AxServiceOperation>
+		<AxServiceOperation>
+			<Name>validateSerial</Name>
+			<Method>validateSerial</Method>
+		</AxServiceOperation>
+		<AxServiceOperation>
+			<Name>validateBatch</Name>
+			<Method>validateBatch</Method>
+		</AxServiceOperation>
+		<AxServiceOperation>
+			<Name>debugPostLog</Name>
+			<Method>debugPostLog</Method>
+		</AxServiceOperation>
+		<AxServiceOperation>
+			<Name>getOnHand</Name>
+			<Method>getOnHand</Method>
+		</AxServiceOperation>
+	</ServiceOperations>
+</AxService>

@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxService xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsTransferSvc</Name>
+	<Class>HSMobileOpsTransferService</Class>
+	<ExternalName>TransferService</ExternalName>
+	<Namespace>http://schemas.hs.com/mobileops</Namespace>
+	<ServiceOperations>
+		<AxServiceOperation>
+			<Name>getTransferOrder</Name>
+			<Method>getTransferOrder</Method>
+		</AxServiceOperation>
+		<AxServiceOperation>
+			<Name>getLinesForItem</Name>
+			<Method>getLinesForItem</Method>
+		</AxServiceOperation>
+	</ServiceOperations>
+</AxService>

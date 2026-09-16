@@ -1,0 +1,320 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsPurchLineContract</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// One purchase order line, carrying everything the handheld needs to drive its remaining steps.
+///
+/// The dimension flags matter as much as the quantities. Over OData the app had to fetch the
+/// released product separately just to learn whether the item needs a batch or a serial, which
+/// cost a whole round trip at the item step. They are read here from InventDimGroupSetup, which
+/// is cached in the AOS, so they are effectively free once the line is in hand.
+/// </summary>
+[DataContractAttribute]
+class HSMobileOpsPurchLineContract
+{
+    LineNum             lineNumber;
+    ItemId              itemId;
+    Name                itemName;
+    UnitOfMeasureSymbol purchUnit;
+    UnitOfMeasureSymbol inventUnit;
+
+    PurchQty            orderedQty;
+    PurchQty            receivedQty;
+    PurchQty            remainingQty;
+
+    InventSiteId        siteId;
+    InventLocationId    warehouseId;
+    WMSLocationId       locationId;
+
+    boolean             batchRequired;
+    boolean             serialRequired;
+    boolean             locationRequired;
+
+    Percent             overDeliveryPct;
+    Percent             underDeliveryPct;
+
+    str                 lineStatus;
+    boolean             stopped;
+
+    // Populated only when the receiving process is in LineClaim mode; see
+    // HSMobileOpsProcessSetup and HSMobileOpsLineClaim. Blank when the line is free, or when
+    // the process is not in that mode at all - the client tells the two apart by ConcurrencyMode
+    // on the order response, not by guessing from these being empty.
+    str                 claimedByUserName;
+    str                 claimedByDisplayName;
+    utcdatetime         claimExpiresUtc;
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmLineNumber</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('LineNumber')]
+    public LineNum parmLineNumber(LineNum _value = lineNumber)
+    {
+        lineNumber = _value;
+        return lineNumber;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmItemId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ItemId')]
+    public ItemId parmItemId(ItemId _value = itemId)
+    {
+        itemId = _value;
+        return itemId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmItemName</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ItemName')]
+    public Name parmItemName(Name _value = itemName)
+    {
+        itemName = _value;
+        return itemName;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmPurchUnit</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('PurchUnit')]
+    public UnitOfMeasureSymbol parmPurchUnit(UnitOfMeasureSymbol _value = purchUnit)
+    {
+        purchUnit = _value;
+        return purchUnit;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmInventUnit</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('InventUnit')]
+    public UnitOfMeasureSymbol parmInventUnit(UnitOfMeasureSymbol _value = inventUnit)
+    {
+        inventUnit = _value;
+        return inventUnit;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmOrderedQty</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('OrderedQty')]
+    public PurchQty parmOrderedQty(PurchQty _value = orderedQty)
+    {
+        orderedQty = _value;
+        return orderedQty;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmReceivedQty</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Already received physically, in the purchase unit.
+    ///
+    /// Derived on the server as ordered minus remaining, both of which are columns on PurchLine.
+    /// Over OData this number did not exist at all and had to be summed from ProductReceiptLines,
+    /// which was an extra query per order and got the answer wrong if the paging was not followed.
+    /// </summary>
+    [DataMemberAttribute('ReceivedQty')]
+    public PurchQty parmReceivedQty(PurchQty _value = receivedQty)
+    {
+        receivedQty = _value;
+        return receivedQty;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmRemainingQty</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('RemainingQty')]
+    public PurchQty parmRemainingQty(PurchQty _value = remainingQty)
+    {
+        remainingQty = _value;
+        return remainingQty;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmSiteId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('SiteId')]
+    public InventSiteId parmSiteId(InventSiteId _value = siteId)
+    {
+        siteId = _value;
+        return siteId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmWarehouseId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('WarehouseId')]
+    public InventLocationId parmWarehouseId(InventLocationId _value = warehouseId)
+    {
+        warehouseId = _value;
+        return warehouseId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmLocationId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('LocationId')]
+    public WMSLocationId parmLocationId(WMSLocationId _value = locationId)
+    {
+        locationId = _value;
+        return locationId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmBatchRequired</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// True when the item's tracking dimension group has batch numbers active.
+    ///
+    /// The handheld shows a batch prompt if and only if this is set. Getting it wrong is not a
+    /// cosmetic problem in either direction: prompting for a dimension the item does not track
+    /// produces a posting the AOS rejects, and skipping one it does track produces the same.
+    /// </summary>
+    [DataMemberAttribute('BatchRequired')]
+    public boolean parmBatchRequired(boolean _value = batchRequired)
+    {
+        batchRequired = _value;
+        return batchRequired;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmSerialRequired</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('SerialRequired')]
+    public boolean parmSerialRequired(boolean _value = serialRequired)
+    {
+        serialRequired = _value;
+        return serialRequired;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmLocationRequired</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('LocationRequired')]
+    public boolean parmLocationRequired(boolean _value = locationRequired)
+    {
+        locationRequired = _value;
+        return locationRequired;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmOverDeliveryPct</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('OverDeliveryPct')]
+    public Percent parmOverDeliveryPct(Percent _value = overDeliveryPct)
+    {
+        overDeliveryPct = _value;
+        return overDeliveryPct;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmUnderDeliveryPct</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('UnderDeliveryPct')]
+    public Percent parmUnderDeliveryPct(Percent _value = underDeliveryPct)
+    {
+        underDeliveryPct = _value;
+        return underDeliveryPct;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmLineStatus</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('LineStatus')]
+    public str parmLineStatus(str _value = lineStatus)
+    {
+        lineStatus = _value;
+        return lineStatus;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmStopped</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Stopped')]
+    public boolean parmStopped(boolean _value = stopped)
+    {
+        stopped = _value;
+        return stopped;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmClaimedByUserName</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ClaimedByUserName')]
+    public str parmClaimedByUserName(str _value = claimedByUserName)
+    {
+        claimedByUserName = _value;
+        return claimedByUserName;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmClaimedByDisplayName</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ClaimedByDisplayName')]
+    public str parmClaimedByDisplayName(str _value = claimedByDisplayName)
+    {
+        claimedByDisplayName = _value;
+        return claimedByDisplayName;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmClaimExpiresUtc</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ClaimExpiresUtc')]
+    public utcdatetime parmClaimExpiresUtc(utcdatetime _value = claimExpiresUtc)
+    {
+        claimExpiresUtc = _value;
+        return claimExpiresUtc;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

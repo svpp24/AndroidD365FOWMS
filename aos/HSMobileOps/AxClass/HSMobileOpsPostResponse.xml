@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsPostResponse</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+[DataContractAttribute]
+class HSMobileOpsPostResponse
+{
+    boolean success;
+    str     errorCode;
+    str     message;
+    str     documentNumber;
+    boolean alreadyPosted;
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmSuccess</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Success')]
+    public boolean parmSuccess(boolean _value = success)
+    {
+        success = _value;
+        return success;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmErrorCode</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// INVALID_REQUEST, NOT_FOUND, NOT_POSTABLE, QUANTITY, SERIAL_COUNT, POSTING_FAILED.
+    ///
+    /// POSTING_FAILED carries D365FO's own message in [parmMessage]: a closed period, a blocked
+    /// item, a credit hold. Those are business answers the operator's supervisor can act on, and
+    /// flattening them into "posting failed" would throw away the only useful part.
+    /// </summary>
+    [DataMemberAttribute('ErrorCode')]
+    public str parmErrorCode(str _value = errorCode)
+    {
+        errorCode = _value;
+        return errorCode;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmMessage</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Message')]
+    public str parmMessage(str _value = message)
+    {
+        message = _value;
+        return message;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmDocumentNumber</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The product receipt id, or the transfer shipment/receipt id. Returned on a replay too.
+    /// </summary>
+    [DataMemberAttribute('DocumentNumber')]
+    public str parmDocumentNumber(str _value = documentNumber)
+    {
+        documentNumber = _value;
+        return documentNumber;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmAlreadyPosted</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// True when this key had already been posted and nothing new happened.
+    ///
+    /// Success, not a failure: the client's retry did exactly what it should. Reported separately
+    /// so the device can clear its queue entry knowing the work landed once, and so the operator
+    /// is not told a second receipt was created when it was not.
+    /// </summary>
+    [DataMemberAttribute('AlreadyPosted')]
+    public boolean parmAlreadyPosted(boolean _value = alreadyPosted)
+    {
+        alreadyPosted = _value;
+        return alreadyPosted;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

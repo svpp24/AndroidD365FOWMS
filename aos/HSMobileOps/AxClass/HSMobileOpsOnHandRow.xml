@@ -1,0 +1,119 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsOnHandRow</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+[DataContractAttribute]
+class HSMobileOpsOnHandRow
+{
+    ItemId           itemId;
+    InventSiteId     siteId;
+    InventLocationId warehouseId;
+    InventQty        onHand;
+    InventQty        available;
+    InventQty        reserved;
+    InventQty        ordered;
+    InventQty        totalAvailable;
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmItemId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ItemId')]
+    public ItemId parmItemId(ItemId _value = itemId)
+    {
+        itemId = _value;
+        return itemId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmSiteId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('SiteId')]
+    public InventSiteId parmSiteId(InventSiteId _value = siteId)
+    {
+        siteId = _value;
+        return siteId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmWarehouseId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('WarehouseId')]
+    public InventLocationId parmWarehouseId(InventLocationId _value = warehouseId)
+    {
+        warehouseId = _value;
+        return warehouseId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmOnHand</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('OnHand')]
+    public InventQty parmOnHand(InventQty _value = onHand)
+    {
+        onHand = _value;
+        return onHand;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmAvailable</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Available')]
+    public InventQty parmAvailable(InventQty _value = available)
+    {
+        available = _value;
+        return available;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmReserved</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Reserved')]
+    public InventQty parmReserved(InventQty _value = reserved)
+    {
+        reserved = _value;
+        return reserved;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmOrdered</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Ordered')]
+    public InventQty parmOrdered(InventQty _value = ordered)
+    {
+        ordered = _value;
+        return ordered;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmTotalAvailable</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('TotalAvailable')]
+    public InventQty parmTotalAvailable(InventQty _value = totalAvailable)
+    {
+        totalAvailable = _value;
+        return totalAvailable;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

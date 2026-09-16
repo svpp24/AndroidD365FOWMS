@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxMenuItemDisplay xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsDevice</Name>
+	<Label>Mobile devices</Label>
+	<HelpText>The handheld fleet: every device that has signed into ForeFront Mobile, registered automatically on sign-in.</HelpText>
+	<Object>HSMobileOpsDevice</Object>
+	<ObjectType>Form</ObjectType>
+</AxMenuItemDisplay>

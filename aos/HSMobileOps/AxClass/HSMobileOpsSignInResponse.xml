@@ -1,0 +1,208 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsSignInResponse</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+[DataContractAttribute]
+class HSMobileOpsSignInResponse
+{
+    boolean success;
+    str     errorCode;
+    str     message;
+    str     userName;
+    str     displayName;
+    HcmPersonnelNumberId personnelNumber;
+    boolean isSupervisor;
+    boolean isCycleCountSupervisor;
+    real    maxOverPercent;
+    real    maxOverQty;
+    boolean mustChangePassword;
+    List    warehouses;
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmSuccess</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Success')]
+    public boolean parmSuccess(boolean _value = success)
+    {
+        success = _value;
+        return success;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmErrorCode</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// INVALID_CREDENTIALS, INACTIVE, LOCKED_OUT, NO_WAREHOUSE, INVALID_REQUEST.
+    ///
+    /// A wrong user name and a wrong password both return INVALID_CREDENTIALS, deliberately.
+    /// Distinguishing them tells an attacker which user names exist, which is the first half of
+    /// the problem solved for them.
+    /// </summary>
+    [DataMemberAttribute('ErrorCode')]
+    public str parmErrorCode(str _value = errorCode)
+    {
+        errorCode = _value;
+        return errorCode;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmMessage</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Message')]
+    public str parmMessage(str _value = message)
+    {
+        message = _value;
+        return message;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmUserName</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('UserName')]
+    public str parmUserName(str _value = userName)
+    {
+        userName = _value;
+        return userName;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmDisplayName</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('DisplayName')]
+    public str parmDisplayName(str _value = displayName)
+    {
+        displayName = _value;
+        return displayName;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmPersonnelNumber</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The HcmWorker this login belongs to. This is what makes a posted receipt attributable to a
+    /// person, rather than to the service principal every device shares.
+    /// </summary>
+    [DataMemberAttribute('PersonnelNumber')]
+    public HcmPersonnelNumberId parmPersonnelNumber(HcmPersonnelNumberId _value = personnelNumber)
+    {
+        personnelNumber = _value;
+        return personnelNumber;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmIsSupervisor</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('IsSupervisor')]
+    public boolean parmIsSupervisor(boolean _value = isSupervisor)
+    {
+        isSupervisor = _value;
+        return isSupervisor;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmIsCycleCountSupervisor</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// A distinct, narrower flag from IsSupervisor - a worker can review a count variance
+    /// without holding every other supervisor permission this app might grow, and vice versa.
+    /// Not yet acted on anywhere: the inventory count module itself is still planned, not
+    /// built. This exists now so that module can gate on it from day one instead of every
+    /// worker record needing a second migration to add it later.
+    /// </summary>
+    [DataMemberAttribute('IsCycleCountSupervisor')]
+    public boolean parmIsCycleCountSupervisor(boolean _value = isCycleCountSupervisor)
+    {
+        isCycleCountSupervisor = _value;
+        return isCycleCountSupervisor;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmMaxOverPercent</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// This worker's personal over-delivery allowance, as a percentage of ordered quantity.
+    /// Zero means "no personal override" - not "this worker may never over-deliver", which
+    /// would make an unconfigured value silently more restrictive than a line with no
+    /// tolerance of its own already is. Only ever widens what a purchase order line's own
+    /// D365FO-configured tolerance already allows, never narrows it - see
+    /// ReceivingFlowViewModel.effectiveMaximum, the one place this is actually used.
+    /// </summary>
+    [DataMemberAttribute('MaxOverPercent')]
+    public real parmMaxOverPercent(real _value = maxOverPercent)
+    {
+        maxOverPercent = _value;
+        return maxOverPercent;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmMaxOverQty</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// This worker's personal over-delivery allowance, as an absolute quantity above ordered.
+    /// See parmMaxOverPercent - the same "zero means unconfigured, only ever widens" rule.
+    /// </summary>
+    [DataMemberAttribute('MaxOverQty')]
+    public real parmMaxOverQty(real _value = maxOverQty)
+    {
+        maxOverQty = _value;
+        return maxOverQty;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmMustChangePassword</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('MustChangePassword')]
+    public boolean parmMustChangePassword(boolean _value = mustChangePassword)
+    {
+        mustChangePassword = _value;
+        return mustChangePassword;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmWarehouses</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Every warehouse this worker may work in, with exactly one flagged default.
+    ///
+    /// The app signs them into the default and offers the rest as a switch. A worker cannot pick
+    /// a warehouse that is not on this list, which is the point: the free-text warehouse box in
+    /// settings was a typo away from an empty worklist that looked like a broken app.
+    /// </summary>
+    [DataMemberAttribute('Warehouses'),
+     DataCollectionAttribute(Types::Class, classStr(HSMobileOpsWarehouseAssignment))]
+    public List parmWarehouses(List _value = warehouses)
+    {
+        warehouses = _value;
+        return warehouses;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>
