@@ -175,6 +175,86 @@ class CountSubmitRunnerTest {
     }
 
     @Test
+    fun `unexpected items and empty locations are sent after the counts`() = runTest {
+        store.queue("CNT-1")
+        store.addException("CNT-1")
+        store.locationChecks += com.d365fo.mobileops.data.local.entity.CountLocationCheckEntity(
+            "CNT-1", "B-02", verifiedEmpty = true, verifiedBy = "counter1", verifiedAt = 1_700L,
+        )
+        transport.polls += TransportResult.Ok(ImportJobStatus.Succeeded)
+
+        assertThat(runner.run("CNT-1")).isEqualTo(RunResult.DONE)
+
+        assertThat(transport.sentExceptions.single().single().itemId).isEqualTo("UNEXPECTED-1")
+        assertThat(transport.sentEmptyLocations.single().single().locationId).isEqualTo("B-02")
+        assertThat(store.exceptions.single().sentAt).isNotNull()
+        assertThat(store.rows["CNT-1"]!!.state).isEqualTo(CountSubmissionState.SUCCEEDED)
+    }
+
+    @Test
+    fun `exception submit failure keeps the counts submitted and says so`() = runTest {
+        store.queue("CNT-1")
+        store.addException("CNT-1")
+        transport.polls += TransportResult.Ok(ImportJobStatus.Succeeded)
+        transport.exceptions = businessRule("NOT_IMPLEMENTED").toTransport()
+
+        assertThat(runner.run("CNT-1")).isEqualTo(RunResult.DONE)
+
+        val row = store.rows["CNT-1"]!!
+        assertThat(row.state).isEqualTo(CountSubmissionState.PARTIAL)
+        assertThat(row.error).isEqualTo(CountSubmissionError.EXCEPTIONS_FAILED)
+        assertThat(row.message).contains("1 unexpected item could not be sent")
+        assertThat(store.journalStatus["CNT-1"]).isEqualTo("SUBMITTED")
+        assertThat(store.exceptions.single().sendError).isNotNull()
+        assertThat(store.exceptions.single().sentAt).isNull()
+    }
+
+    @Test
+    fun `offline while sending exceptions retries without re-sending the counts`() = runTest {
+        store.queue("CNT-1")
+        store.addException("CNT-1")
+        transport.polls += TransportResult.Ok(ImportJobStatus.Succeeded)
+        transport.exceptions = offline().toTransport()
+
+        assertThat(runner.run("CNT-1")).isEqualTo(RunResult.RETRY)
+        assertThat(store.rows["CNT-1"]!!.countsDone).isTrue()
+
+        transport.exceptions = TransportResult.Ok(1)
+        assertThat(runner.run("CNT-1")).isEqualTo(RunResult.DONE)
+
+        assertThat(transport.startCalls).isEqualTo(1)
+        assertThat(store.rows["CNT-1"]!!.state).isEqualTo(CountSubmissionState.SUCCEEDED)
+    }
+
+    @Test
+    fun `a resend of exceptions only never touches the counts`() = runTest {
+        store.queue("CNT-1")
+        store.rows["CNT-1"] = store.rows["CNT-1"]!!.copy(countsDone = true, exceptionsOnly = true)
+        store.addException("CNT-1")
+
+        assertThat(runner.run("CNT-1")).isEqualTo(RunResult.DONE)
+
+        assertThat(transport.startCalls).isEqualTo(0)
+        assertThat(transport.sentExceptions).hasSize(1)
+    }
+
+    @Test
+    fun `a partially accepted import keeps its warning through a restart before exceptions`() = runTest {
+        store.queue("CNT-1")
+        store.addException("CNT-1")
+        transport.polls += TransportResult.Ok(ImportJobStatus.PartiallySucceeded("1 line not accepted"))
+        transport.exceptions = offline().toTransport()
+        runner.run("CNT-1")
+
+        transport.exceptions = TransportResult.Ok(1)
+        runner.run("CNT-1")
+
+        val row = store.rows["CNT-1"]!!
+        assertThat(row.state).isEqualTo(CountSubmissionState.PARTIAL)
+        assertThat(row.message).isEqualTo("1 line not accepted")
+    }
+
+    @Test
     fun `a finished submission is left alone`() = runTest {
         store.queue("CNT-1")
         store.update("CNT-1", CountSubmissionState.SUCCEEDED)

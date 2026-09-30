@@ -150,7 +150,7 @@ fun CountingJournalListScreen(
                     CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
                 }
 
-                state.error != null -> {
+                state.error != null && state.journals.isEmpty() -> {
                     ErrorBanner(
                         message = state.error.orEmpty(),
                         modifier = Modifier
@@ -178,6 +178,14 @@ fun CountingJournalListScreen(
                         contentPadding = PaddingValues(vertical = WarehouseDimens.ItemSpacing),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
+                        state.error?.let { error ->
+                            item(key = "error") {
+                                ErrorBanner(
+                                    message = "Couldn't refresh the journal list ($error). " +
+                                        "Journals already on this device are shown.",
+                                )
+                            }
+                        }
                         items(state.journals, key = { it.journalId }) { journal ->
                             CountingJournalRow(
                                 journal = journal,
@@ -195,6 +203,7 @@ fun CountingJournalListScreen(
                                     onStartCounting(journal.journalId)
                                 },
                                 onEndCount = { confirmEndFor = journal.journalId },
+                                onResendExceptions = { viewModel.resendExceptions(journal.journalId) },
                                 onReopen = { confirmReopenFor = journal.journalId },
                             )
                         }
@@ -219,6 +228,7 @@ private fun CountingJournalRow(
     onViewLines: () -> Unit,
     onStartCounting: () -> Unit,
     onEndCount: () -> Unit,
+    onResendExceptions: () -> Unit,
     onReopen: () -> Unit,
 ) {
     val refreshing = exportStatus != null && exportStatus !is ExportJobStatus.Failed
@@ -307,6 +317,7 @@ private fun CountingJournalRow(
                     onViewLines = onViewLines,
                     onStartCounting = onStartCounting,
                     onEndCount = onEndCount,
+                    onResendExceptions = onResendExceptions,
                     onReopen = onReopen,
                     submitBlocked = myClaim?.lost == true,
                 )
@@ -331,6 +342,7 @@ private fun CountControls(
     onViewLines: () -> Unit,
     onStartCounting: () -> Unit,
     onEndCount: () -> Unit,
+    onResendExceptions: () -> Unit,
     onReopen: () -> Unit,
     submitBlocked: Boolean,
 ) {
@@ -372,10 +384,16 @@ private fun CountControls(
                 )
                 countState.error?.let {
                     Text(
-                        text = "Some lines were not accepted: $it",
+                        text = if (countState.failedExceptions > 0) it else "Some lines were not accepted: $it",
                         style = MaterialTheme.typography.bodySmall,
                         color = WarehouseStatusColors.amber,
                     )
+                }
+                if (countState.failedExceptions > 0) {
+                    OutlinedButton(
+                        onClick = onResendExceptions,
+                        modifier = Modifier.fillMaxWidth().heightIn(min = WarehouseDimens.MinTouchTarget),
+                    ) { Text("Send unexpected items again") }
                 }
             }
             phase == CountPhase.FAILED -> countState.error?.let { ErrorBanner(message = it) }
@@ -453,6 +471,18 @@ private fun EndCountDialog(
                         "${countState.notCounted} lines are not counted at all and will be left as " +
                             "they are.",
                         color = WarehouseStatusColors.amber,
+                    )
+                }
+                if (countState.emptyLocations > 0) {
+                    Text(
+                        "${countState.emptyLocations} location${if (countState.emptyLocations == 1) "" else "s"} " +
+                            "confirmed empty.",
+                    )
+                }
+                if (countState.exceptions > 0) {
+                    Text(
+                        "${countState.exceptions} item${if (countState.exceptions == 1) "" else "s"} recorded as " +
+                            "not on this journal - sent with the counts for a planner to resolve.",
                     )
                 }
                 Text(

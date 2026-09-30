@@ -20,6 +20,10 @@ data class CountingJournalSummary(
     val claims: List<CountClaimInfo> = emptyList(),
     /** Claimable location ranges of a wall-to-wall journal; empty means it is claimed whole. */
     val ranges: List<CountRange> = emptyList(),
+    /** Count location by location - decided by the server. */
+    val locationFirst: Boolean = false,
+    /** The system expects these locations to be empty. */
+    val zeroStockCheck: Boolean = false,
 )
 
 data class CountClaimInfo(

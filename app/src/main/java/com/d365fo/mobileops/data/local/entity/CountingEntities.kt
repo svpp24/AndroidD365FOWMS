@@ -91,6 +91,9 @@ enum class CountSubmissionError {
     DMF_FAILED,
     NOTHING_COUNTED,
 
+    /** The counts landed, but the unexpected items / empty locations could not be sent. */
+    EXCEPTIONS_FAILED,
+
     /** The server does not offer this operation yet (NOT_IMPLEMENTED / service not deployed). */
     NOT_AVAILABLE,
     OTHER,
@@ -121,4 +124,64 @@ data class CountSubmissionEntity(
     val submittedAt: Long,
     val updatedAt: Long,
     val attempts: Int = 0,
+    /** The counts themselves were accepted; what is left is sending unexpected items / empty locations. */
+    val countsDone: Boolean = false,
+    /** What D365FO refused of the counts (a partially accepted import), kept for the final state. */
+    val countsWarning: String? = null,
+    /** A resend of unexpected items only - the counts went through earlier. */
+    val exceptionsOnly: Boolean = false,
+)
+
+/**
+ * An item found during a count that is not on the journal ("Not on this journal"). Never becomes
+ * a journal line on the device; sent to the server with the submission, which resolves it.
+ */
+@Entity(
+    tableName = "count_exception",
+    foreignKeys = [
+        ForeignKey(
+            entity = JournalEntity::class,
+            parentColumns = ["journalId"],
+            childColumns = ["journalId"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+    ],
+    indices = [Index("journalId")],
+)
+data class CountExceptionEntity(
+    /** Device-generated UUID, stable across retries - the server dedupes on it. */
+    @PrimaryKey val clientId: String,
+    val journalId: String,
+    val itemId: String,
+    val locationId: String?,
+    val quantity: String,
+    val batchId: String?,
+    val serialId: String?,
+    val note: String?,
+    val capturedBy: String?,
+    val capturedAt: Long,
+    val sentAt: Long? = null,
+    val sendError: String? = null,
+)
+
+/** A location the counter confirmed empty: every line there counted as zero, and who said so. */
+@Entity(
+    tableName = "count_location_check",
+    primaryKeys = ["journalId", "locationId"],
+    foreignKeys = [
+        ForeignKey(
+            entity = JournalEntity::class,
+            parentColumns = ["journalId"],
+            childColumns = ["journalId"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+    ],
+)
+data class CountLocationCheckEntity(
+    val journalId: String,
+    val locationId: String,
+    val verifiedEmpty: Boolean,
+    val verifiedBy: String?,
+    val verifiedAt: Long,
+    val sentAt: Long? = null,
 )

@@ -229,8 +229,20 @@ interface JournalDao {
     )
     suspend fun markCountingSubmitted(journalId: String, warning: String?)
 
-    @Query("UPDATE invent_journal SET transferMode = :transferMode, originType = :originType, passNumber = :passNumber WHERE journalId = :journalId")
-    suspend fun updateCountingAttributes(journalId: String, transferMode: com.d365fo.mobileops.data.local.entity.TransferMode, originType: String, passNumber: Int)
+    /** What the server says about a counting journal, refreshed on every Get data. */
+    @Query(
+        """
+        UPDATE invent_journal
+        SET transferMode = :transferMode, locationFirst = :locationFirst, zeroStockCheck = :zeroStockCheck
+        WHERE journalId = :journalId
+        """,
+    )
+    suspend fun updateCountingAttributes(
+        journalId: String,
+        transferMode: com.d365fo.mobileops.data.local.entity.TransferMode,
+        locationFirst: Boolean,
+        zeroStockCheck: Boolean,
+    )
 
     @Query("DELETE FROM invent_journal WHERE status = 'POSTED' AND postedAt < :olderThan")
     suspend fun purgePosted(olderThan: Long): Int

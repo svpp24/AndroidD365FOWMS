@@ -1,5 +1,7 @@
 package com.d365fo.mobileops.data.counting
 
+import com.d365fo.mobileops.data.local.entity.CountExceptionEntity
+import com.d365fo.mobileops.data.local.entity.CountLocationCheckEntity
 import com.d365fo.mobileops.data.repository.CountingJournalRepository
 import com.d365fo.mobileops.domain.model.ImportJobStatus
 import com.d365fo.mobileops.util.NetworkResult
@@ -20,6 +22,14 @@ class LiveCountTransport @Inject constructor(
 
     override suspend fun submitDirect(journalId: String, audit: SubmissionAudit, claimToken: String?) =
         direct.submit(journalId, audit, claimToken).toTransport()
+
+    override suspend fun submitExceptions(
+        journalId: String,
+        audit: SubmissionAudit,
+        claimToken: String?,
+        exceptions: List<CountExceptionEntity>,
+        emptyLocations: List<CountLocationCheckEntity>,
+    ) = direct.submitExceptions(journalId, audit, claimToken, exceptions, emptyLocations).toTransport()
 
     private fun <T> NetworkResult<T>.toTransport(): TransportResult<T> = when (this) {
         is NetworkResult.Success -> TransportResult.Ok(data)

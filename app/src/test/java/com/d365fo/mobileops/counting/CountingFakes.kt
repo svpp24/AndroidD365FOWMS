@@ -1,6 +1,10 @@
 package com.d365fo.mobileops.counting
 
 import com.d365fo.mobileops.data.counting.ClaimStore
+import com.d365fo.mobileops.data.counting.CountCaptureStore
+import com.d365fo.mobileops.data.local.dao.CountLine
+import com.d365fo.mobileops.data.local.entity.CountExceptionEntity
+import com.d365fo.mobileops.data.local.entity.CountLocationCheckEntity
 import com.d365fo.mobileops.data.counting.CountTransport
 import com.d365fo.mobileops.data.counting.SubmissionAudit
 import com.d365fo.mobileops.data.counting.SubmissionStore
@@ -79,6 +83,8 @@ class FakeClaimStore : ClaimStore {
 class FakeSubmissionStore : SubmissionStore {
     val rows = mutableMapOf<String, CountSubmissionEntity>()
     val journalStatus = mutableMapOf<String, String>()
+    val exceptions = mutableListOf<CountExceptionEntity>()
+    val locationChecks = mutableListOf<CountLocationCheckEntity>()
 
     fun queue(journalId: String, mode: TransferMode = TransferMode.DMF, executionId: String? = null) {
         rows[journalId] = CountSubmissionEntity(
@@ -109,12 +115,73 @@ class FakeSubmissionStore : SubmissionStore {
     }
     override suspend fun markJournalSubmitted(journalId: String, warning: String?) { journalStatus[journalId] = "SUBMITTED" }
     override suspend fun markJournalFailed(journalId: String, message: String) { journalStatus[journalId] = "FAILED" }
+    override suspend fun markCountsDone(journalId: String, warning: String?) {
+        rows[journalId] = rows.getValue(journalId).copy(countsDone = true, countsWarning = warning)
+    }
+    override suspend fun unsentExceptions(journalId: String) = exceptions.filter { it.journalId == journalId && it.sentAt == null }
+    override suspend fun unsentLocationChecks(journalId: String) = locationChecks.filter { it.journalId == journalId && it.sentAt == null }
+    override suspend fun markExceptionsSent(journalId: String) {
+        exceptions.replaceAll { if (it.journalId == journalId && it.sentAt == null) it.copy(sentAt = 1L, sendError = null) else it }
+        locationChecks.replaceAll { if (it.journalId == journalId) it.copy(sentAt = 1L) else it }
+    }
+    override suspend fun markExceptionsFailed(journalId: String, error: String) {
+        exceptions.replaceAll { if (it.journalId == journalId && it.sentAt == null) it.copy(sendError = error) else it }
+    }
+
+    fun addException(journalId: String, itemId: String = "UNEXPECTED-1") {
+        exceptions += CountExceptionEntity(
+            clientId = "ex-${exceptions.size + 1}",
+            journalId = journalId,
+            itemId = itemId,
+            locationId = "A-01",
+            quantity = "3",
+            batchId = null,
+            serialId = null,
+            note = null,
+            capturedBy = "counter1",
+            capturedAt = 1_500L,
+        )
+    }
 }
+
+class FakeCountCaptureStore(lines: List<CountLine>) : CountCaptureStore {
+    val lines = lines.toMutableList()
+    val checks = mutableListOf<CountLocationCheckEntity>()
+    val exceptions = mutableListOf<CountExceptionEntity>()
+
+    override suspend fun lines(journalId: String) = lines.filter { it.journalId == journalId }
+    override suspend fun recordCount(journalLineId: String, quantity: String, countedBy: String?, at: Long) {
+        lines.replaceAll {
+            if (it.journalLineId == journalLineId) it.copy(countedQuantity = quantity, countedBy = countedBy, countedAt = at) else it
+        }
+    }
+    override suspend fun saveLocationCheck(check: CountLocationCheckEntity) { checks += check }
+    override suspend fun saveException(exception: CountExceptionEntity) { exceptions += exception }
+    override suspend fun deleteUnsentException(clientId: String) { exceptions.removeAll { it.clientId == clientId && it.sentAt == null } }
+}
+
+fun countLine(id: Int, item: String, location: String?, counted: String? = null) = CountLine(
+    journalLineId = "CNT-1-$id",
+    journalId = "CNT-1",
+    lineNumber = id,
+    itemId = item,
+    itemName = item,
+    locationId = location,
+    batchId = null,
+    serialId = null,
+    countedQuantity = counted,
+    markedCounted = false,
+    countedBy = null,
+    countedAt = null,
+)
 
 class FakeCountTransport : CountTransport {
     var start: TransportResult<String> = TransportResult.Ok("exec-1")
     val polls = ArrayDeque<TransportResult<ImportJobStatus>>()
     var direct: TransportResult<Int> = TransportResult.Ok(1)
+    var exceptions: TransportResult<Int> = TransportResult.Ok(1)
+    val sentExceptions = mutableListOf<List<CountExceptionEntity>>()
+    val sentEmptyLocations = mutableListOf<List<CountLocationCheckEntity>>()
 
     var startCalls = 0
     val audits = mutableListOf<SubmissionAudit>()
@@ -134,6 +201,18 @@ class FakeCountTransport : CountTransport {
         audits += audit
         claimTokens += claimToken
         return direct
+    }
+
+    override suspend fun submitExceptions(
+        journalId: String,
+        audit: SubmissionAudit,
+        claimToken: String?,
+        exceptions: List<CountExceptionEntity>,
+        emptyLocations: List<CountLocationCheckEntity>,
+    ): TransportResult<Int> {
+        sentExceptions += exceptions
+        sentEmptyLocations += emptyLocations
+        return this.exceptions
     }
 }
 

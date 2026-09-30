@@ -14,6 +14,8 @@ class HSMobileOpsJournalSummaryRow
     str                  transferMode;
     List                 claims;
     List                 ranges;
+    boolean              locationFirst;
+    boolean              zeroStockCheck;
 
 }
 ]]></Declaration>
@@ -122,6 +124,37 @@ class HSMobileOpsJournalSummaryRow
     {
         ranges = _value;
         return ranges;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmLocationFirst</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Count this journal location by location: scan a location, then its items.
+    /// </summary>
+    [DataMemberAttribute('LocationFirst')]
+    public boolean parmLocationFirst(boolean _value = locationFirst)
+    {
+        locationFirst = _value;
+        return locationFirst;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmZeroStockCheck</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// A zero-stock verification journal: the system expects these locations to be empty; the
+    /// counter confirms empty or records what was found.
+    /// </summary>
+    [DataMemberAttribute('ZeroStockCheck')]
+    public boolean parmZeroStockCheck(boolean _value = zeroStockCheck)
+    {
+        zeroStockCheck = _value;
+        return zeroStockCheck;
     }
 ]]></Source>
 			</Method>

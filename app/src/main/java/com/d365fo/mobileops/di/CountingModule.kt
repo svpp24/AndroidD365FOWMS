@@ -1,6 +1,8 @@
 package com.d365fo.mobileops.di
 
 import com.d365fo.mobileops.data.counting.ClaimStore
+import com.d365fo.mobileops.data.counting.CountCaptureStore
+import com.d365fo.mobileops.data.counting.RoomCountCaptureStore
 import com.d365fo.mobileops.data.counting.CountTransport
 import com.d365fo.mobileops.data.counting.LiveCountTaskRepository
 import com.d365fo.mobileops.data.counting.LiveCountTransport
@@ -35,4 +37,7 @@ abstract class CountingModule {
 
     @Binds @Singleton
     abstract fun bindCountTransport(impl: LiveCountTransport): CountTransport
+
+    @Binds @Singleton
+    abstract fun bindCountCaptureStore(impl: RoomCountCaptureStore): CountCaptureStore
 }

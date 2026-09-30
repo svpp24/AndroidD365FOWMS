@@ -76,7 +76,12 @@ android {
         buildConfigField("String", "RELEASE_SIGNING_CERT_SHA256", "\"${secret("RELEASE_SIGNING_CERT_SHA256")}\"")
 
         // Inventory count extensions - each off until its X++ side exists. See FeatureFlags.kt.
-        listOf("FEATURE_COUNT_CLAIMS", "FEATURE_COUNT_DIRECT").forEach { flag ->
+        listOf(
+            "FEATURE_COUNT_CLAIMS",
+            "FEATURE_COUNT_DIRECT",
+            "FEATURE_COUNT_LOCATION_FIRST",
+            "FEATURE_COUNT_EXCEPTIONS",
+        ).forEach { flag ->
             buildConfigField("boolean", flag, secret(flag, "false").toBoolean().toString())
         }
 

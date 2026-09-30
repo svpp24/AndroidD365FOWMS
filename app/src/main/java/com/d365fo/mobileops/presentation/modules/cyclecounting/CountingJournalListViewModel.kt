@@ -5,6 +5,8 @@ import androidx.lifecycle.viewModelScope
 import com.d365fo.mobileops.data.counting.CountClaimManager
 import com.d365fo.mobileops.data.counting.CountSubmissions
 import com.d365fo.mobileops.data.counting.EndCountResult
+import com.d365fo.mobileops.data.local.dao.CaptureExtrasRow
+import com.d365fo.mobileops.data.local.dao.CountingDao
 import com.d365fo.mobileops.data.local.dao.CountingProgressRow
 import com.d365fo.mobileops.data.local.dao.JournalDao
 import com.d365fo.mobileops.data.local.entity.CountClaimEntity
@@ -66,6 +68,12 @@ data class JournalCountState(
     val markedOnly: Int,
     /** FAILED: why. SUBMITTED: a warning - some lines were refused - or null if all landed. */
     val error: String? = null,
+    /** Items recorded as "Not on this journal". */
+    val exceptions: Int = 0,
+    /** Of those, how many the server refused and are waiting to be sent again. */
+    val failedExceptions: Int = 0,
+    /** Locations confirmed empty. */
+    val emptyLocations: Int = 0,
 ) {
     val counted: Int get() = withQuantity + markedOnly
     val notCounted: Int get() = (total - counted).coerceAtLeast(0)
@@ -92,6 +100,7 @@ class CountingJournalListViewModel @Inject constructor(
     private val countSubmissions: CountSubmissions,
     private val countTasks: CountTaskRepository,
     private val flags: FeatureFlags,
+    countingDao: CountingDao,
 ) : ViewModel() {
 
     private val _loaded = MutableStateFlow(CountingJournalListState(claimsEnabled = flags.countClaims))
@@ -101,6 +110,7 @@ class CountingJournalListViewModel @Inject constructor(
         val progress: List<CountingProgressRow>,
         val claims: List<CountClaimEntity>,
         val submissions: List<CountSubmissionEntity>,
+        val extras: List<CaptureExtrasRow>,
     )
 
     private val roomSide = combine(
@@ -108,7 +118,8 @@ class CountingJournalListViewModel @Inject constructor(
         journalDao.observeCountingProgress(),
         claims.observe(),
         countSubmissions.observe(),
-    ) { journals, progress, claimRows, submissions -> RoomSide(journals, progress, claimRows, submissions) }
+        countingDao.observeCaptureExtras(),
+    ) { journals, progress, claimRows, submissions, extras -> RoomSide(journals, progress, claimRows, submissions, extras) }
 
     val state: StateFlow<CountingJournalListState> = combine(
         _loaded,
@@ -117,7 +128,28 @@ class CountingJournalListViewModel @Inject constructor(
     ) { loaded, tracked, room ->
         val progressById = room.progress.associateBy { it.journalId }
         val submissionById = room.submissions.associateBy { it.journalId }
+        val extrasById = room.extras.associateBy { it.journalId }
+        // Room is the source of truth: a journal whose lines are on this device is listed even when
+        // the server list could not be loaded (offline) or no longer includes it (posted/closed
+        // there) - its counts must stay reachable. Server rows win when both exist.
+        val serverIds = loaded.journals.mapTo(HashSet()) { it.journalId }
+        val localOnly = room.journals
+            .filter { it.journalId !in serverIds }
+            .map { journal ->
+                CountingJournalSummary(
+                    journalId = journal.journalId,
+                    journalNameId = journal.journalNameId,
+                    description = journal.description,
+                    journalDate = journal.journalDate,
+                    lineCount = progressById[journal.journalId]?.total ?: 0,
+                    transferMode = journal.transferMode,
+                    locationFirst = journal.locationFirst,
+                    zeroStockCheck = journal.zeroStockCheck,
+                )
+            }
         loaded.copy(
+            journals = loaded.journals + localOnly,
+            localOnlyIds = localOnly.mapTo(HashSet()) { it.journalId },
             exportStatuses = tracked
                 .filterValues { !it.imported }
                 .mapValues { (_, download) -> download.status },
@@ -128,6 +160,7 @@ class CountingJournalListViewModel @Inject constructor(
                 journal.journalId to journal.toCountState(
                     progressById[journal.journalId],
                     submissionById[journal.journalId],
+                    extrasById[journal.journalId],
                 )
             },
             myClaims = room.claims.associateBy { it.journalId },
@@ -150,7 +183,7 @@ class CountingJournalListViewModel @Inject constructor(
 
     /** Get data (or Get data again). Claims first when claims are on. */
     fun startExport(journalId: String) {
-        val journal = _loaded.value.journals.firstOrNull { it.journalId == journalId } ?: return
+        val journal = state.value.journals.firstOrNull { it.journalId == journalId } ?: return
         val warehouseId = _loaded.value.warehouseId
         if (warehouseId.isNullOrBlank()) return
 
@@ -178,7 +211,7 @@ class CountingJournalListViewModel @Inject constructor(
 
     fun pickRange(journalId: String, range: CountRange) {
         _loaded.update { it.copy(rangePickerFor = null) }
-        val journal = _loaded.value.journals.firstOrNull { it.journalId == journalId } ?: return
+        val journal = state.value.journals.firstOrNull { it.journalId == journalId } ?: return
         val warehouseId = _loaded.value.warehouseId ?: return
         viewModelScope.launch { claimAndDownload(journal, warehouseId, range) }
     }
@@ -242,6 +275,16 @@ class CountingJournalListViewModel @Inject constructor(
         }
     }
 
+    /** Sends unexpected items / empty locations again after the server refused them. */
+    fun resendExceptions(journalId: String) {
+        viewModelScope.launch {
+            when (val result = countSubmissions.resendExceptions(journalId)) {
+                EndCountResult.Queued -> Unit
+                is EndCountResult.Refused -> showMessage(result.message)
+            }
+        }
+    }
+
     private suspend fun claimAndDownload(journal: CountingJournalSummary, warehouseId: String, range: CountRange?) {
         _loaded.update { it.copy(claiming = journal.journalId) }
         val outcome = claims.claim(journal.journalId, range)
@@ -279,6 +322,7 @@ class CountingJournalListViewModel @Inject constructor(
     private fun JournalEntity.toCountState(
         progress: CountingProgressRow?,
         submission: CountSubmissionEntity?,
+        extras: CaptureExtrasRow?,
     ): JournalCountState {
         val submitting = submission?.state?.inProgress == true
         val phase = when (status) {
@@ -304,6 +348,9 @@ class CountingJournalListViewModel @Inject constructor(
             withQuantity = progress?.withQuantity ?: 0,
             markedOnly = progress?.markedOnly ?: 0,
             error = error,
+            exceptions = extras?.exceptions ?: 0,
+            failedExceptions = extras?.failedExceptions ?: 0,
+            emptyLocations = extras?.emptyLocations ?: 0,
         )
     }
 
@@ -333,6 +380,8 @@ class CountingJournalListViewModel @Inject constructor(
 data class CountingJournalListState(
     val warehouseId: String? = null,
     val journals: List<CountingJournalSummary> = emptyList(),
+    /** Journals listed only because their lines are on this device (not in the server list). */
+    val localOnlyIds: Set<String> = emptySet(),
     val busy: Boolean = false,
     val error: String? = null,
     /** A "Get data" run in progress or failed, for journals with no data on the device yet. */

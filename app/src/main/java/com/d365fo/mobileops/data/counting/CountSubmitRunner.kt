@@ -2,6 +2,8 @@ package com.d365fo.mobileops.data.counting
 
 import com.d365fo.mobileops.data.local.dao.CountingDao
 import com.d365fo.mobileops.data.local.dao.JournalDao
+import com.d365fo.mobileops.data.local.entity.CountExceptionEntity
+import com.d365fo.mobileops.data.local.entity.CountLocationCheckEntity
 import com.d365fo.mobileops.data.local.entity.CountSubmissionEntity
 import com.d365fo.mobileops.data.local.entity.CountSubmissionError
 import com.d365fo.mobileops.data.local.entity.CountSubmissionState
@@ -51,6 +53,13 @@ interface CountTransport {
     suspend fun startDmfImport(journalId: String, audit: SubmissionAudit, claimToken: String?): TransportResult<String>
     suspend fun pollDmfImport(executionId: String): TransportResult<ImportJobStatus>
     suspend fun submitDirect(journalId: String, audit: SubmissionAudit, claimToken: String?): TransportResult<Int>
+    suspend fun submitExceptions(
+        journalId: String,
+        audit: SubmissionAudit,
+        claimToken: String?,
+        exceptions: List<CountExceptionEntity>,
+        emptyLocations: List<CountLocationCheckEntity>,
+    ): TransportResult<Int>
 }
 
 /** Submission rows plus the journal status they drive. */
@@ -61,6 +70,11 @@ interface SubmissionStore {
     suspend fun countAttempt(journalId: String)
     suspend fun markJournalSubmitted(journalId: String, warning: String?)
     suspend fun markJournalFailed(journalId: String, message: String)
+    suspend fun markCountsDone(journalId: String, warning: String?)
+    suspend fun unsentExceptions(journalId: String): List<CountExceptionEntity>
+    suspend fun unsentLocationChecks(journalId: String): List<CountLocationCheckEntity>
+    suspend fun markExceptionsSent(journalId: String)
+    suspend fun markExceptionsFailed(journalId: String, error: String)
 }
 
 @Singleton
@@ -79,6 +93,16 @@ class RoomSubmissionStore @Inject constructor(
         journalDao.markCountingSubmitted(journalId, warning)
     override suspend fun markJournalFailed(journalId: String, message: String) =
         journalDao.updateStatus(journalId, JournalStatus.FAILED, SyncState.ERROR, message)
+    override suspend fun markCountsDone(journalId: String, warning: String?) =
+        countingDao.markCountsDone(journalId, warning, now())
+    override suspend fun unsentExceptions(journalId: String) = countingDao.unsentExceptions(journalId)
+    override suspend fun unsentLocationChecks(journalId: String) = countingDao.unsentLocationChecks(journalId)
+    override suspend fun markExceptionsSent(journalId: String) {
+        countingDao.markExceptionsSent(journalId, now())
+        countingDao.markLocationChecksSent(journalId, now())
+    }
+    override suspend fun markExceptionsFailed(journalId: String, error: String) =
+        countingDao.markExceptionsFailed(journalId, error)
 }
 
 /** What the worker should tell WorkManager. */
@@ -118,13 +142,67 @@ class CountSubmitRunner @Inject constructor(
             )
         }
 
-        return when (submission.transferMode) {
-            TransferMode.DMF -> runDmf(submission, claim?.claimToken)
-            TransferMode.DIRECT -> runDirect(submission, claim?.claimToken)
+        var countsWarning = submission.countsWarning
+        if (!submission.countsDone && !submission.exceptionsOnly) {
+            val counts = when (submission.transferMode) {
+                TransferMode.DMF -> runDmf(submission, claim?.claimToken)
+                TransferMode.DIRECT -> runDirect(submission, claim?.claimToken)
+            }
+            when (counts) {
+                is Stage.Stop -> return counts.result
+                is Stage.Continue -> {
+                    countsWarning = counts.warning
+                    store.markCountsDone(journalId, countsWarning)
+                }
+            }
+        }
+        return sendExceptions(submission, claim?.claimToken, countsWarning)
+    }
+
+    /** Continue: the counts landed (maybe with D365FO refusing some lines). Stop: end this run. */
+    private sealed interface Stage {
+        data class Continue(val warning: String?) : Stage
+        data class Stop(val result: RunResult) : Stage
+    }
+
+    /**
+     * Unexpected items and verified-empty locations go after the counts. A definite refusal does
+     * not undo the counts: the journal is SUBMITTED with a warning and the exceptions stay on the
+     * device, marked failed, ready to send again.
+     */
+    private suspend fun sendExceptions(submission: CountSubmissionEntity, claimToken: String?, warning: String?): RunResult {
+        val journalId = submission.journalId
+        val exceptions = store.unsentExceptions(journalId)
+        val emptyLocations = store.unsentLocationChecks(journalId)
+        if (exceptions.isEmpty() && emptyLocations.isEmpty()) return succeed(journalId, warning)
+
+        store.update(journalId, CountSubmissionState.UPLOADING, message = "Sending unexpected items…")
+        return when (val result = transport.submitExceptions(journalId, submission.audit(), claimToken, exceptions, emptyLocations)) {
+            is TransportResult.Ok -> {
+                store.markExceptionsSent(journalId)
+                succeed(journalId, warning)
+            }
+            is TransportResult.Retry -> {
+                store.update(journalId, CountSubmissionState.QUEUED, message = "Waiting to retry: ${result.reason}")
+                RunResult.RETRY
+            }
+            is TransportResult.Fail -> {
+                store.markExceptionsFailed(journalId, result.message)
+                val what = listOfNotNull(
+                    exceptions.size.takeIf { it > 0 }?.let { "$it unexpected item${if (it == 1) "" else "s"}" },
+                    emptyLocations.size.takeIf { it > 0 }?.let { "$it empty location${if (it == 1) "" else "s"}" },
+                ).joinToString(" and ")
+                succeed(
+                    journalId,
+                    warning = listOfNotNull(warning, "Counts submitted, but $what could not be sent: ${result.message}")
+                        .joinToString(" "),
+                    error = CountSubmissionError.EXCEPTIONS_FAILED,
+                )
+            }
         }
     }
 
-    private suspend fun runDmf(submission: CountSubmissionEntity, claimToken: String?): RunResult {
+    private suspend fun runDmf(submission: CountSubmissionEntity, claimToken: String?): Stage {
         val journalId = submission.journalId
         var executionId = submission.executionId
 
@@ -137,47 +215,49 @@ class CountSubmitRunner @Inject constructor(
                 }
                 is TransportResult.Retry -> {
                     store.update(journalId, CountSubmissionState.QUEUED, message = "Waiting to retry: ${started.reason}")
-                    return RunResult.RETRY
+                    return Stage.Stop(RunResult.RETRY)
                 }
-                is TransportResult.Fail -> return fail(journalId, started.error, started.message)
+                is TransportResult.Fail -> return Stage.Stop(fail(journalId, started.error, started.message))
             }
         }
 
         repeat(maxPollsPerRun) {
             delay(pollIntervalMs)
             when (val poll = transport.pollDmfImport(executionId)) {
-                is TransportResult.Retry -> return RunResult.RETRY
-                is TransportResult.Fail -> return fail(journalId, poll.error, poll.message)
+                is TransportResult.Retry -> return Stage.Stop(RunResult.RETRY)
+                is TransportResult.Fail -> return Stage.Stop(fail(journalId, poll.error, poll.message))
                 is TransportResult.Ok -> when (val status = poll.value) {
                     ImportJobStatus.Enqueued -> store.update(journalId, CountSubmissionState.IMPORTING)
                     is ImportJobStatus.Running -> store.update(journalId, CountSubmissionState.IMPORTING, percent = status.percent)
-                    ImportJobStatus.Succeeded -> return succeed(journalId, warning = null)
-                    is ImportJobStatus.PartiallySucceeded -> return succeed(journalId, warning = status.warning)
-                    is ImportJobStatus.Failed -> return fail(journalId, CountSubmissionError.DMF_FAILED, status.reason)
+                    ImportJobStatus.Succeeded -> return Stage.Continue(warning = null)
+                    is ImportJobStatus.PartiallySucceeded -> return Stage.Continue(warning = status.warning)
+                    is ImportJobStatus.Failed ->
+                        return Stage.Stop(fail(journalId, CountSubmissionError.DMF_FAILED, status.reason))
                 }
             }
         }
         // Still running in D365FO. The execution id is stored, so the next run just keeps polling.
-        return RunResult.RETRY
+        return Stage.Stop(RunResult.RETRY)
     }
 
-    private suspend fun runDirect(submission: CountSubmissionEntity, claimToken: String?): RunResult {
+    private suspend fun runDirect(submission: CountSubmissionEntity, claimToken: String?): Stage {
         val journalId = submission.journalId
         store.update(journalId, CountSubmissionState.UPLOADING)
         return when (val result = transport.submitDirect(journalId, submission.audit(), claimToken)) {
-            is TransportResult.Ok -> succeed(journalId, warning = null)
+            is TransportResult.Ok -> Stage.Continue(warning = null)
             is TransportResult.Retry -> {
                 store.update(journalId, CountSubmissionState.QUEUED, message = "Waiting to retry: ${result.reason}")
-                RunResult.RETRY
+                Stage.Stop(RunResult.RETRY)
             }
-            is TransportResult.Fail -> fail(journalId, result.error, result.message)
+            is TransportResult.Fail -> Stage.Stop(fail(journalId, result.error, result.message))
         }
     }
 
-    private suspend fun succeed(journalId: String, warning: String?): RunResult {
+    private suspend fun succeed(journalId: String, warning: String?, error: CountSubmissionError? = null): RunResult {
         store.update(
             journalId,
             if (warning == null) CountSubmissionState.SUCCEEDED else CountSubmissionState.PARTIAL,
+            error = error,
             message = warning,
         )
         store.markJournalSubmitted(journalId, warning)

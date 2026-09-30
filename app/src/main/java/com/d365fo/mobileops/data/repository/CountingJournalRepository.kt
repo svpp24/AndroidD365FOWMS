@@ -151,6 +151,8 @@ class CountingJournalRepository @Inject constructor(
                                     lineCount = range.lineCount,
                                 )
                             },
+                            locationFirst = row.locationFirst,
+                            zeroStockCheck = row.zeroStockCheck,
                         )
                     },
                 )
@@ -375,6 +377,7 @@ class CountingJournalRepository @Inject constructor(
             journalDao.upsertLinesChunked(lines)
             MergeResult(added = lines.size, removed = 0)
         }
+        journalDao.updateCountingAttributes(journal.journalId, TransferMode.DMF, journal.locationFirst, journal.zeroStockCheck)
         // After the lines, so each reference row's journal exists (foreign key), and keyed by
         // the line id the merge actually kept.
         countingDao.upsertReferences(

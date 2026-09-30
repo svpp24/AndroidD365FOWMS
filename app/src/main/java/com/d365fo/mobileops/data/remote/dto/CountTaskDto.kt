@@ -155,3 +155,46 @@ data class DirectSubmitServiceResponse(
     @SerialName("Message") val message: String? = null,
     @SerialName("AcceptedLines") val acceptedLines: Int = 0,
 )
+
+@Serializable
+data class CountExceptionsServiceRequest(@SerialName("_request") val request: CountExceptionsRequestBody)
+
+@Serializable
+data class CountExceptionsRequestBody(
+    @SerialName("DataAreaId") val dataAreaId: String,
+    @SerialName("JournalId") val journalId: String,
+    @SerialName("ClaimToken") val claimToken: String? = null,
+    @SerialName("SubmissionId") val submissionId: String,
+    @SerialName("UserId") val userId: String,
+    @SerialName("DeviceId") val deviceId: String,
+    @SerialName("Exceptions") val exceptions: List<CountExceptionRowDto>,
+    @SerialName("EmptyLocations") val emptyLocations: List<CountEmptyLocationRowDto>,
+)
+
+@Serializable
+data class CountExceptionRowDto(
+    @SerialName("ClientId") val clientId: String,
+    @SerialName("ItemNumber") val itemNumber: String,
+    @SerialName("LocationId") val locationId: String? = null,
+    @SerialName("Quantity") val quantity: Double,
+    @SerialName("BatchId") val batchId: String? = null,
+    @SerialName("SerialId") val serialId: String? = null,
+    @SerialName("Note") val note: String? = null,
+    @SerialName("CapturedBy") val capturedBy: String? = null,
+    @SerialName("CapturedAtUtc") val capturedAtUtc: String,
+)
+
+@Serializable
+data class CountEmptyLocationRowDto(
+    @SerialName("LocationId") val locationId: String,
+    @SerialName("VerifiedBy") val verifiedBy: String? = null,
+    @SerialName("VerifiedAtUtc") val verifiedAtUtc: String,
+)
+
+@Serializable
+data class CountExceptionsServiceResponse(
+    @SerialName("Success") val success: Boolean = false,
+    @SerialName("ErrorCode") val errorCode: String? = null,
+    @SerialName("Message") val message: String? = null,
+    @SerialName("Accepted") val accepted: Int = 0,
+)

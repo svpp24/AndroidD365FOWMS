@@ -5,6 +5,8 @@ import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import com.d365fo.mobileops.data.local.entity.CountClaimEntity
+import com.d365fo.mobileops.data.local.entity.CountExceptionEntity
+import com.d365fo.mobileops.data.local.entity.CountLocationCheckEntity
 import com.d365fo.mobileops.data.local.entity.CountSubmissionEntity
 import com.d365fo.mobileops.data.local.entity.CountSubmissionError
 import com.d365fo.mobileops.data.local.entity.CountSubmissionState
@@ -148,4 +150,58 @@ interface CountingDao {
 
     @Query("DELETE FROM count_submission WHERE journalId = :journalId")
     suspend fun deleteSubmission(journalId: String)
+
+    @Query("UPDATE count_submission SET countsDone = 1, countsWarning = :warning, updatedAt = :at WHERE journalId = :journalId")
+    suspend fun markCountsDone(journalId: String, warning: String?, at: Long)
+
+    // -- Unexpected items and location checks -------------------------------------------------
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertException(exception: CountExceptionEntity)
+
+    @Query("DELETE FROM count_exception WHERE clientId = :clientId AND sentAt IS NULL")
+    suspend fun deleteUnsentException(clientId: String)
+
+    @Query("SELECT * FROM count_exception WHERE journalId = :journalId ORDER BY capturedAt")
+    fun observeExceptions(journalId: String): Flow<List<CountExceptionEntity>>
+
+    @Query("SELECT * FROM count_exception WHERE journalId = :journalId AND sentAt IS NULL ORDER BY capturedAt")
+    suspend fun unsentExceptions(journalId: String): List<CountExceptionEntity>
+
+    @Query("UPDATE count_exception SET sentAt = :at, sendError = NULL WHERE journalId = :journalId AND sentAt IS NULL")
+    suspend fun markExceptionsSent(journalId: String, at: Long)
+
+    @Query("UPDATE count_exception SET sendError = :error WHERE journalId = :journalId AND sentAt IS NULL")
+    suspend fun markExceptionsFailed(journalId: String, error: String)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertLocationCheck(check: CountLocationCheckEntity)
+
+    @Query("SELECT * FROM count_location_check WHERE journalId = :journalId")
+    fun observeLocationChecks(journalId: String): Flow<List<CountLocationCheckEntity>>
+
+    @Query("SELECT * FROM count_location_check WHERE journalId = :journalId AND sentAt IS NULL")
+    suspend fun unsentLocationChecks(journalId: String): List<CountLocationCheckEntity>
+
+    @Query("UPDATE count_location_check SET sentAt = :at WHERE journalId = :journalId AND sentAt IS NULL")
+    suspend fun markLocationChecksSent(journalId: String, at: Long)
+
+    /** Per journal: unexpected items and verified-empty locations, for the list card and End count. */
+    @Query(
+        """
+        SELECT j.journalId AS journalId,
+               (SELECT COUNT(*) FROM count_exception e WHERE e.journalId = j.journalId) AS exceptions,
+               (SELECT COUNT(*) FROM count_exception e WHERE e.journalId = j.journalId AND e.sentAt IS NULL AND e.sendError IS NOT NULL) AS failedExceptions,
+               (SELECT COUNT(*) FROM count_location_check c WHERE c.journalId = j.journalId AND c.verifiedEmpty = 1) AS emptyLocations
+        FROM invent_journal j WHERE j.type = 'COUNTING'
+        """,
+    )
+    fun observeCaptureExtras(): Flow<List<CaptureExtrasRow>>
 }
+
+data class CaptureExtrasRow(
+    val journalId: String,
+    val exceptions: Int,
+    val failedExceptions: Int,
+    val emptyLocations: Int,
+)

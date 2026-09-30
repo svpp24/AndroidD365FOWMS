@@ -257,6 +257,8 @@ data class JournalSummaryServiceRow(
     @SerialName("TransferMode") val transferMode: String? = null,
     @SerialName("Claims") val claims: List<CountClaimRowDto> = emptyList(),
     @SerialName("Ranges") val ranges: List<CountRangeRowDto> = emptyList(),
+    @SerialName("LocationFirst") val locationFirst: Boolean = false,
+    @SerialName("ZeroStockCheck") val zeroStockCheck: Boolean = false,
 )
 
 // -- Counting journal export -- one AOS call creates a request-private DMF project scoped to one

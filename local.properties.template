@@ -34,3 +34,5 @@ RELEASE_SIGNING_CERT_SHA256=
 # --- Inventory count extensions (true/false, default false) - turn on once the X++ side exists ---
 FEATURE_COUNT_CLAIMS=
 FEATURE_COUNT_DIRECT=
+FEATURE_COUNT_LOCATION_FIRST=
+FEATURE_COUNT_EXCEPTIONS=

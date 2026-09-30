@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsCountExceptionsResponse</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// submitExceptions' answer. ErrorCode on failure: JOURNAL_POSTED, JOURNAL_NOT_FOUND,
+/// CLAIM_LOST, INVALID_REQUEST, NOT_IMPLEMENTED.
+/// </summary>
+[DataContractAttribute]
+class HSMobileOpsCountExceptionsResponse
+{
+    boolean success;
+    str     errorCode;
+    str     message;
+    int     accepted;
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmSuccess</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Success')]
+    public boolean parmSuccess(boolean _value = success)
+    {
+        success = _value;
+        return success;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmErrorCode</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ErrorCode')]
+    public str parmErrorCode(str _value = errorCode)
+    {
+        errorCode = _value;
+        return errorCode;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmMessage</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Message')]
+    public str parmMessage(str _value = message)
+    {
+        message = _value;
+        return message;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmAccepted</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Accepted')]
+    public int parmAccepted(int _value = accepted)
+    {
+        accepted = _value;
+        return accepted;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

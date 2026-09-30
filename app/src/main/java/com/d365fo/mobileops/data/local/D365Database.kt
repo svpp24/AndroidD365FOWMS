@@ -22,6 +22,8 @@ import com.d365fo.mobileops.data.local.dao.FlowSessionDao
 import com.d365fo.mobileops.data.local.dao.WarehouseDao
 import com.d365fo.mobileops.data.local.entity.BarcodeEntity
 import com.d365fo.mobileops.data.local.entity.CountClaimEntity
+import com.d365fo.mobileops.data.local.entity.CountExceptionEntity
+import com.d365fo.mobileops.data.local.entity.CountLocationCheckEntity
 import com.d365fo.mobileops.data.local.entity.CountSubmissionEntity
 import com.d365fo.mobileops.data.local.entity.CountingLineReferenceEntity
 import com.d365fo.mobileops.data.local.entity.FailedSyncEntity
@@ -68,6 +70,8 @@ import com.d365fo.mobileops.data.local.entity.WorkerPermissionEntity
         CountingLineReferenceEntity::class,
         CountClaimEntity::class,
         CountSubmissionEntity::class,
+        CountExceptionEntity::class,
+        CountLocationCheckEntity::class,
         // transfer orders
         TransferOrderEntity::class,
         TransferLineEntity::class,
@@ -82,7 +86,7 @@ import com.d365fo.mobileops.data.local.entity.WorkerPermissionEntity
         WorkerPermissionEntity::class,
         WorkerDirectoryEntity::class,
     ],
-    version = 8,
+    version = 9,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -314,7 +318,35 @@ abstract class D365Database : RoomDatabase() {
             }
         }
 
+        /** 8 -> 9: location-first counting, empty locations, unexpected items. Additive only. */
+        private val MIGRATION_8_9 = object : androidx.room.migration.Migration(8, 9) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `invent_journal` ADD COLUMN `locationFirst` INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE `invent_journal` ADD COLUMN `zeroStockCheck` INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE `count_submission` ADD COLUMN `countsDone` INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE `count_submission` ADD COLUMN `exceptionsOnly` INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE `count_submission` ADD COLUMN `countsWarning` TEXT")
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `count_exception` (`clientId` TEXT NOT NULL, `journalId` TEXT NOT NULL, " +
+                        "`itemId` TEXT NOT NULL, `locationId` TEXT, `quantity` TEXT NOT NULL, `batchId` TEXT, " +
+                        "`serialId` TEXT, `note` TEXT, `capturedBy` TEXT, `capturedAt` INTEGER NOT NULL, " +
+                        "`sentAt` INTEGER, `sendError` TEXT, PRIMARY KEY(`clientId`), FOREIGN KEY(`journalId`) " +
+                        "REFERENCES `invent_journal`(`journalId`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_count_exception_journalId` ON `count_exception` (`journalId`)")
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `count_location_check` (`journalId` TEXT NOT NULL, " +
+                        "`locationId` TEXT NOT NULL, `verifiedEmpty` INTEGER NOT NULL, `verifiedBy` TEXT, " +
+                        "`verifiedAt` INTEGER NOT NULL, `sentAt` INTEGER, PRIMARY KEY(`journalId`, `locationId`), " +
+                        "FOREIGN KEY(`journalId`) REFERENCES `invent_journal`(`journalId`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+                )
+            }
+        }
+
         val MIGRATIONS: Array<androidx.room.migration.Migration> =
-            arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
+            arrayOf(
+                MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7,
+                MIGRATION_7_8, MIGRATION_8_9,
+            )
     }
 }

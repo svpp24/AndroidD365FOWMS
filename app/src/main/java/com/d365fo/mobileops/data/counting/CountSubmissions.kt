@@ -109,6 +109,40 @@ class CountSubmissions @Inject constructor(
         return EndCountResult.Queued
     }
 
+    /**
+     * Sends a submitted journal's unexpected items / empty locations again after a failure. The
+     * counts are not re-sent - the new submission starts at the exceptions stage.
+     */
+    suspend fun resendExceptions(journalId: String): EndCountResult {
+        if (countingDao.getSubmission(journalId)?.state?.inProgress == true) return EndCountResult.Queued
+        val journal = journalDao.getJournal(journalId)?.journal
+            ?: return EndCountResult.Refused("This journal's lines are not on this device.")
+        if (countingDao.unsentExceptions(journalId).isEmpty() && countingDao.unsentLocationChecks(journalId).isEmpty()) {
+            return EndCountResult.Refused("Nothing is waiting to be sent.")
+        }
+        val now = System.currentTimeMillis()
+        countingDao.upsertSubmission(
+            CountSubmissionEntity(
+                journalId = journalId,
+                submissionId = UUID.randomUUID().toString(),
+                transferMode = journal.transferMode,
+                state = CountSubmissionState.QUEUED,
+                userId = workerSession.session.value?.userName
+                    ?: secureStore.getString(SecureStore.KEY_WORKER_ID).orEmpty(),
+                deviceId = secureStore.deviceId(),
+                originType = journal.originType,
+                passNumber = journal.passNumber,
+                startedAt = journal.countStartedAt,
+                submittedAt = now,
+                updatedAt = now,
+                countsDone = true,
+                exceptionsOnly = true,
+            ),
+        )
+        scheduler.enqueue(journalId)
+        return EndCountResult.Queued
+    }
+
     /** App start: make sure every unfinished submission has a job behind it. */
     suspend fun resumePending() {
         observe().first().filter { it.state.inProgress }.forEach { scheduler.enqueue(it.journalId) }

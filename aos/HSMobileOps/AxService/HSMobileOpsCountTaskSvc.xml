@@ -29,5 +29,9 @@
 			<Name>submitCounts</Name>
 			<Method>submitCounts</Method>
 		</AxServiceOperation>
+		<AxServiceOperation>
+			<Name>submitExceptions</Name>
+			<Method>submitExceptions</Method>
+		</AxServiceOperation>
 	</ServiceOperations>
 </AxService>

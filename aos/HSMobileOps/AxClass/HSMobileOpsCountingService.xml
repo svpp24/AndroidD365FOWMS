@@ -148,6 +148,9 @@ class HSMobileOpsCountingService
                 row.parmTransferMode('DMF');
                 row.parmClaims(new List(Types::Class));
                 row.parmRanges(new List(Types::Class));
+                // TODO (X++ owner): per-journal counting mode and zero-stock verification flag.
+                row.parmLocationFirst(false);
+                row.parmZeroStockCheck(false);
 
                 rows.addEnd(row);
 

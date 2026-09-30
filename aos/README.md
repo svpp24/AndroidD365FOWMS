@@ -546,6 +546,17 @@ Error codes the app acts on: `CLAIMED_BY_OTHER`, `CLAIM_EXPIRED`, `CLAIM_LOST`, 
 strings. On the app, claims and DIRECT mode are behind `FEATURE_COUNT_CLAIMS` /
 `FEATURE_COUNT_DIRECT` in `local.properties` (off by default).
 
+**Location-first, empty locations, unexpected items.** `listOpenJournals` rows also carry
+`LocationFirst` and `ZeroStockCheck` (both `false` today — **TODO**). New operation
+`submitExceptions` on `HSMobileOpsCountTaskSvc` receives, after the counts of the same
+`SubmissionId`, the items a counter recorded as "Not on this journal" (`ClientId` UUID, item,
+location, quantity, batch, serial, note, who/when) and the locations confirmed empty (location,
+who/when). The app never creates journal lines; storing these for the planner to resolve is
+**TODO** (returns `NOT_IMPLEMENTED`). An empty location's lines themselves are counted as zero on
+the device and go through the normal count import. If `submitExceptions` refuses, the counts stay
+submitted and the app shows the exceptions as not sent, with a "Send again" action. App flags:
+`FEATURE_COUNT_LOCATION_FIRST`, `FEATURE_COUNT_EXCEPTIONS`.
+
 ## Licensing
 
 **Full replacement, this session — a certificate-chain design, not the earlier single-key-per-

@@ -67,6 +67,10 @@ data class JournalEntity(
     val originType: String = "SCHEDULED",
     /** Counting only: 1 for a first count, 2+ for a recount pass. */
     val passNumber: Int = 1,
+    /** Counting only: count location by location (scan a location, then its items). */
+    val locationFirst: Boolean = false,
+    /** Counting only: the system expects these locations to be empty. */
+    val zeroStockCheck: Boolean = false,
     @Embedded val sync: SyncMeta = SyncMeta(),
 )
 

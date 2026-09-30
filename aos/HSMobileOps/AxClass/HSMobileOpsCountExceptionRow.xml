@@ -1,0 +1,137 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsCountExceptionRow</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// An item found during a count that is not on the journal ("Not on this journal"). The app
+/// never adds journal lines; the server or planner resolves each one (create a line, investigate).
+/// ClientId is a device-generated UUID, stable across retries. Timestamps are ISO 8601 UTC.
+/// </summary>
+[DataContractAttribute]
+class HSMobileOpsCountExceptionRow
+{
+    str  clientId;
+    str  itemNumber;
+    str  locationId;
+    real quantity;
+    str  batchId;
+    str  serialId;
+    str  note;
+    str  capturedBy;
+    str  capturedAtUtc;
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmClientId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ClientId')]
+    public str parmClientId(str _value = clientId)
+    {
+        clientId = _value;
+        return clientId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmItemNumber</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ItemNumber')]
+    public str parmItemNumber(str _value = itemNumber)
+    {
+        itemNumber = _value;
+        return itemNumber;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmLocationId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('LocationId')]
+    public str parmLocationId(str _value = locationId)
+    {
+        locationId = _value;
+        return locationId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmQuantity</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Quantity')]
+    public real parmQuantity(real _value = quantity)
+    {
+        quantity = _value;
+        return quantity;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmBatchId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('BatchId')]
+    public str parmBatchId(str _value = batchId)
+    {
+        batchId = _value;
+        return batchId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmSerialId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('SerialId')]
+    public str parmSerialId(str _value = serialId)
+    {
+        serialId = _value;
+        return serialId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmNote</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Note')]
+    public str parmNote(str _value = note)
+    {
+        note = _value;
+        return note;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmCapturedBy</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('CapturedBy')]
+    public str parmCapturedBy(str _value = capturedBy)
+    {
+        capturedBy = _value;
+        return capturedBy;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmCapturedAtUtc</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('CapturedAtUtc')]
+    public str parmCapturedAtUtc(str _value = capturedAtUtc)
+    {
+        capturedAtUtc = _value;
+        return capturedAtUtc;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

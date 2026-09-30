@@ -25,6 +25,8 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -32,6 +34,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -53,6 +56,7 @@ import com.d365fo.mobileops.presentation.common.components.AppTopBar as TopAppBa
 import com.d365fo.mobileops.presentation.common.components.CountProgressBar
 import com.d365fo.mobileops.presentation.common.components.CancelOutlinedButton
 import com.d365fo.mobileops.presentation.common.components.ConfirmButton
+import com.d365fo.mobileops.presentation.common.components.ErrorBanner
 import com.d365fo.mobileops.presentation.common.components.SquareButton as Button
 import com.d365fo.mobileops.presentation.common.components.SquareOutlinedButton as OutlinedButton
 import com.d365fo.mobileops.presentation.common.scan.CameraScannerSheet
@@ -135,6 +139,38 @@ fun CountingScanScreen(
                     CountProgressBar(progress = state.counted.toFloat() / state.totalLines)
                 }
 
+                if (state.zeroStockCheck) {
+                    Text(
+                        text = "D365FO expects these locations to be empty. Confirm each one empty, " +
+                            "or record what you find.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = WarehouseStatusColors.amber,
+                    )
+                }
+
+                if (state.locationModeAvailable) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        Text("Count by location", style = MaterialTheme.typography.bodyMedium)
+                        Switch(
+                            checked = state.byLocation,
+                            onCheckedChange = viewModel::setByLocation,
+                            enabled = !state.locked,
+                        )
+                    }
+                }
+
+                if (state.byLocation) {
+                    LocationBar(
+                        state = state,
+                        onEmpty = viewModel::requestLocationEmpty,
+                        onChange = viewModel::clearLocation,
+                    )
+                }
+
                 // The scan box. A hardware scan needs no button at all.
                 OutlinedTextField(
                     value = state.query,
@@ -142,7 +178,12 @@ fun CountingScanScreen(
                     modifier = Modifier.fillMaxWidth().focusRequester(scanFocus),
                     singleLine = true,
                     enabled = !state.locked,
-                    placeholder = { Text("Scan or type item / barcode") },
+                    placeholder = {
+                        Text(
+                            if (state.byLocation && state.selectedLocation == null) "Scan a location"
+                            else "Scan or type item / barcode",
+                        )
+                    },
                     leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
                     trailingIcon = {
                         if (state.query.isNotEmpty()) {
@@ -167,6 +208,55 @@ fun CountingScanScreen(
                         color = if (message.isError) MaterialTheme.colorScheme.error else WarehouseStatusColors.green,
                         modifier = Modifier.fillMaxWidth().clickable(onClick = viewModel::dismissMessage),
                     )
+                    message.unexpectedItemId?.let { itemId ->
+                        OutlinedButton(
+                            onClick = { viewModel.openUnexpected(itemId) },
+                            modifier = Modifier.fillMaxWidth().heightIn(min = WarehouseDimens.MinTouchTarget),
+                        ) { Text("Not on this journal - record it") }
+                    }
+                }
+
+                if (state.exceptionsEnabled && !state.locked) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        Text(
+                            text = when (val n = state.exceptions.size) {
+                                0 -> "No items recorded as not on this journal"
+                                1 -> "1 item not on this journal"
+                                else -> "$n items not on this journal"
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = WarehouseStatusColors.text3,
+                            modifier = Modifier.weight(1f),
+                        )
+                        TextButton(onClick = { viewModel.openUnexpected() }) { Text("Add") }
+                    }
+                    state.exceptions.forEach { exception ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                text = listOfNotNull(
+                                    exception.itemId,
+                                    "×${exception.quantity}",
+                                    exception.locationId?.let { "Loc $it" },
+                                    exception.sendError?.let { "not sent" },
+                                ).joinToString(" · "),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (exception.sendError != null) WarehouseStatusColors.amber else WarehouseStatusColors.text3,
+                                modifier = Modifier.weight(1f),
+                            )
+                            if (exception.sentAt == null) {
+                                IconButton(onClick = { viewModel.removeUnexpected(exception.clientId) }) {
+                                    Icon(Icons.Default.Clear, contentDescription = "Remove ${exception.itemId}")
+                                }
+                            }
+                        }
+                    }
                 }
                 if (state.locked) {
                     Text(
@@ -214,6 +304,37 @@ fun CountingScanScreen(
             lines = state.choice,
             onPick = viewModel::pickLine,
             onCancel = viewModel::cancelChoice,
+        )
+    }
+
+    state.emptyPrompt?.let { prompt ->
+        AlertDialog(
+            onDismissRequest = viewModel::cancelLocationEmpty,
+            title = { Text("Is ${prompt.locationId} empty?") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        "All ${prompt.lines} line${if (prompt.lines == 1) "" else "s"} at this location will be " +
+                            "counted as 0, and the location recorded as verified empty by you.",
+                    )
+                    if (prompt.alreadyCounted > 0) {
+                        Text(
+                            "${prompt.alreadyCounted} of them already have a count, which will be replaced with 0.",
+                            color = WarehouseStatusColors.amber,
+                        )
+                    }
+                }
+            },
+            confirmButton = { ConfirmButton(onClick = viewModel::confirmLocationEmpty) { Text("Yes, it's empty") } },
+            dismissButton = { CancelOutlinedButton(onClick = viewModel::cancelLocationEmpty) { Text("Cancel") } },
+        )
+    }
+
+    state.unexpected?.let { prompt ->
+        UnexpectedItemDialog(
+            prompt = prompt,
+            onSave = viewModel::saveUnexpected,
+            onCancel = viewModel::cancelUnexpected,
         )
     }
 
@@ -340,3 +461,92 @@ private fun whereLine(line: CountLine): String? =
         line.batchId?.takeIf { it.isNotBlank() }?.let { "Batch $it" },
         line.serialId?.takeIf { it.isNotBlank() }?.let { "Serial $it" },
     ).joinToString(" · ").ifEmpty { null }
+
+/** Location-first: the location being counted, or a prompt to scan one. */
+@Composable
+private fun LocationBar(state: CountingScanState, onEmpty: () -> Unit, onChange: () -> Unit) {
+    val location = state.selectedLocation
+    if (location == null) {
+        Text(
+            text = "Scan a location to start counting it.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = WarehouseStatusColors.text3,
+        )
+        return
+    }
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = "Location $location",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    text = "${state.locationCounted} of ${state.locationTotal}",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                OutlinedButton(
+                    onClick = onEmpty,
+                    enabled = !state.locked,
+                    modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget),
+                ) { Text("Location is empty") }
+                OutlinedButton(
+                    onClick = onChange,
+                    modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget),
+                ) { Text("Other location") }
+            }
+        }
+    }
+}
+
+/**
+ * "Not on this journal": what was found, where, how many. Recorded as an exception for the
+ * server to resolve - the device never adds a journal line.
+ */
+@Composable
+private fun UnexpectedItemDialog(
+    prompt: UnexpectedItemPrompt,
+    onSave: (item: String, location: String, quantity: String, batch: String, serial: String, note: String) -> Unit,
+    onCancel: () -> Unit,
+) {
+    var item by remember(prompt) { mutableStateOf(prompt.itemId) }
+    var location by remember(prompt) { mutableStateOf(prompt.locationId.orEmpty()) }
+    var quantity by remember(prompt) { mutableStateOf("") }
+    var batch by remember(prompt) { mutableStateOf("") }
+    var serial by remember(prompt) { mutableStateOf("") }
+    var note by remember(prompt) { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = onCancel,
+        title = { Text("Not on this journal") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                prompt.error?.let { ErrorBanner(message = it) }
+                OutlinedTextField(item, { item = it.trim() }, label = { Text("Item number") }, singleLine = true)
+                OutlinedTextField(location, { location = it.trim() }, label = { Text("Location") }, singleLine = true)
+                OutlinedTextField(
+                    value = quantity,
+                    onValueChange = { quantity = it.filter(Char::isDigit).take(12) },
+                    label = { Text("Quantity found") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                )
+                OutlinedTextField(batch, { batch = it.trim() }, label = { Text("Batch (optional)") }, singleLine = true)
+                OutlinedTextField(serial, { serial = it.trim() }, label = { Text("Serial (optional)") }, singleLine = true)
+                OutlinedTextField(note, { note = it }, label = { Text("Note (optional)") })
+            }
+        },
+        confirmButton = {
+            ConfirmButton(onClick = { onSave(item, location, quantity, batch, serial, note) }) { Text("Record") }
+        },
+        dismissButton = { CancelOutlinedButton(onClick = onCancel) { Text("Cancel") } },
+    )
+}

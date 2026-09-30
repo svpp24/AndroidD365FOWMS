@@ -125,6 +125,7 @@ class DirectCountingRepository @Inject constructor(
             journalDao.upsertLinesChunked(lines)
             MergeResult(added = lines.size, removed = 0)
         }
+        journalDao.updateCountingAttributes(journal.journalId, TransferMode.DIRECT, journal.locationFirst, journal.zeroStockCheck)
         NetworkResult.Success(ImportSummary(lines.size, merge.added, merge.removed, refreshed = alreadyOnDevice))
     }
 
@@ -181,6 +182,64 @@ class DirectCountingRepository @Inject constructor(
                 }
             }
         }
+
+    /** Unexpected items and verified-empty locations - always via the direct service, whatever the journal's mode. */
+    suspend fun submitExceptions(
+        journalId: String,
+        audit: SubmissionAudit,
+        claimToken: String?,
+        exceptions: List<com.d365fo.mobileops.data.local.entity.CountExceptionEntity>,
+        emptyLocations: List<com.d365fo.mobileops.data.local.entity.CountLocationCheckEntity>,
+    ): NetworkResult<Int> = withContext(ioDispatcher) {
+        val result = errorMapper.safeCall {
+            api.submitExceptions(
+                com.d365fo.mobileops.data.remote.dto.CountExceptionsServiceRequest(
+                    com.d365fo.mobileops.data.remote.dto.CountExceptionsRequestBody(
+                        dataAreaId = company(),
+                        journalId = journalId,
+                        claimToken = claimToken,
+                        submissionId = audit.submissionId,
+                        userId = audit.userId,
+                        deviceId = audit.deviceId,
+                        exceptions = exceptions.map {
+                            com.d365fo.mobileops.data.remote.dto.CountExceptionRowDto(
+                                clientId = it.clientId,
+                                itemNumber = it.itemId,
+                                locationId = it.locationId,
+                                quantity = it.quantity.toDoubleOrNull() ?: 0.0,
+                                batchId = it.batchId,
+                                serialId = it.serialId,
+                                note = it.note,
+                                capturedBy = it.capturedBy,
+                                capturedAtUtc = Formatters.isoUtc(it.capturedAt),
+                            )
+                        },
+                        emptyLocations = emptyLocations.map {
+                            com.d365fo.mobileops.data.remote.dto.CountEmptyLocationRowDto(
+                                locationId = it.locationId,
+                                verifiedBy = it.verifiedBy,
+                                verifiedAtUtc = Formatters.isoUtc(it.verifiedAt),
+                            )
+                        },
+                    ),
+                ),
+            )
+        }
+        when (result) {
+            is NetworkResult.Error -> result
+            NetworkResult.Loading -> NetworkResult.Error(AppFailure.Fatal("unexpected Loading"))
+            is NetworkResult.Success -> if (result.data.success) {
+                NetworkResult.Success(result.data.accepted)
+            } else {
+                NetworkResult.Error(
+                    AppFailure.BusinessRule(
+                        result.data.message ?: messageFor(result.data.errorCode),
+                        d365ErrorCode = result.data.errorCode,
+                    ),
+                )
+            }
+        }
+    }
 
     private fun messageFor(code: String?): String = when (code) {
         "JOURNAL_POSTED" -> "This journal has already been posted in D365FO."

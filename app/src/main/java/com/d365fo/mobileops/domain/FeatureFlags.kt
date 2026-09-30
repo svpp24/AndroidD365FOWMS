@@ -16,10 +16,18 @@ interface FeatureFlags {
 
     /** DIRECT transfer mode for small counting journals (lines and counts via HSMobileOpsCountTaskSvc). */
     val countDirect: Boolean
+
+    /** Location-first counting and "Location is empty". */
+    val countLocationFirst: Boolean
+
+    /** "Not on this journal": capture unexpected items and send them with the counts. */
+    val countExceptions: Boolean
 }
 
 @Singleton
 class BuildConfigFeatureFlags @Inject constructor() : FeatureFlags {
     override val countClaims: Boolean get() = BuildConfig.FEATURE_COUNT_CLAIMS
     override val countDirect: Boolean get() = BuildConfig.FEATURE_COUNT_DIRECT
+    override val countLocationFirst: Boolean get() = BuildConfig.FEATURE_COUNT_LOCATION_FIRST
+    override val countExceptions: Boolean get() = BuildConfig.FEATURE_COUNT_EXCEPTIONS
 }

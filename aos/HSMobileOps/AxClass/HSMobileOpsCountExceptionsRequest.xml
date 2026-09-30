@@ -1,0 +1,125 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsCountExceptionsRequest</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// submitExceptions' request: unexpected items and verified-empty locations of one submission.
+/// SubmissionId is the same idempotency key the counts were sent with.
+/// </summary>
+[DataContractAttribute]
+class HSMobileOpsCountExceptionsRequest
+{
+    DataAreaId      dataAreaId;
+    InventJournalId journalId;
+    str             claimToken;
+    str             submissionId;
+    str             userId;
+    str             deviceId;
+    List            exceptions;
+    List            emptyLocations;
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmDataAreaId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('DataAreaId')]
+    public DataAreaId parmDataAreaId(DataAreaId _value = dataAreaId)
+    {
+        dataAreaId = _value;
+        return dataAreaId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmJournalId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('JournalId')]
+    public InventJournalId parmJournalId(InventJournalId _value = journalId)
+    {
+        journalId = _value;
+        return journalId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmClaimToken</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ClaimToken')]
+    public str parmClaimToken(str _value = claimToken)
+    {
+        claimToken = _value;
+        return claimToken;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmSubmissionId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('SubmissionId')]
+    public str parmSubmissionId(str _value = submissionId)
+    {
+        submissionId = _value;
+        return submissionId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmUserId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('UserId')]
+    public str parmUserId(str _value = userId)
+    {
+        userId = _value;
+        return userId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmDeviceId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('DeviceId')]
+    public str parmDeviceId(str _value = deviceId)
+    {
+        deviceId = _value;
+        return deviceId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmExceptions</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Exceptions'),
+     DataCollectionAttribute(Types::Class, classStr(HSMobileOpsCountExceptionRow))]
+    public List parmExceptions(List _value = exceptions)
+    {
+        exceptions = _value;
+        return exceptions;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmEmptyLocations</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('EmptyLocations'),
+     DataCollectionAttribute(Types::Class, classStr(HSMobileOpsCountEmptyLocationRow))]
+    public List parmEmptyLocations(List _value = emptyLocations)
+    {
+        emptyLocations = _value;
+        return emptyLocations;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

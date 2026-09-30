@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsCountEmptyLocationRow</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// A location the counter confirmed empty ("Location is empty"): every line there was counted as
+/// zero, and this records who verified it and when.
+/// </summary>
+[DataContractAttribute]
+class HSMobileOpsCountEmptyLocationRow
+{
+    str locationId;
+    str verifiedBy;
+    str verifiedAtUtc;
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmLocationId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('LocationId')]
+    public str parmLocationId(str _value = locationId)
+    {
+        locationId = _value;
+        return locationId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmVerifiedBy</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('VerifiedBy')]
+    public str parmVerifiedBy(str _value = verifiedBy)
+    {
+        verifiedBy = _value;
+        return verifiedBy;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmVerifiedAtUtc</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('VerifiedAtUtc')]
+    public str parmVerifiedAtUtc(str _value = verifiedAtUtc)
+    {
+        verifiedAtUtc = _value;
+        return verifiedAtUtc;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

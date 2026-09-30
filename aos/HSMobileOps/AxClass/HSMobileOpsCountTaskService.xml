@@ -272,6 +272,44 @@ class HSMobileOpsCountTaskService
 ]]></Source>
 			</Method>
 			<Method>
+				<Name>submitExceptions</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Unexpected items ("Not on this journal") and verified-empty locations, sent after the
+    /// counts of the same submission. The app never creates journal lines itself - resolving an
+    /// exception (create a line, investigate) is the server's or planner's decision.
+    /// </summary>
+    [Wrappable(false), Hookable(false)]
+    public HSMobileOpsCountExceptionsResponse submitExceptions(HSMobileOpsCountExceptionsRequest _request)
+    {
+        HSMobileOpsCountExceptionsResponse response = new HSMobileOpsCountExceptionsResponse();
+        str                                state;
+
+        response.parmSuccess(false);
+
+        if (!_request || !_request.parmDataAreaId() || !_request.parmJournalId() || !_request.parmSubmissionId()
+            || !CompanyInfo::findDataArea(_request.parmDataAreaId()).RecId)
+        {
+            response.parmErrorCode('INVALID_REQUEST');
+            return response;
+        }
+
+        state = HSMobileOpsCountTaskService::journalState(_request.parmDataAreaId(), _request.parmJournalId());
+        if (state != HSMobileOpsCountTaskService::stateOpen())
+        {
+            response.parmErrorCode(state == HSMobileOpsCountTaskService::statePosted() ? 'JOURNAL_POSTED' : 'JOURNAL_NOT_FOUND');
+            return response;
+        }
+
+        // TODO (X++ owner): store each exception (dedupe on ClientId) and each verified-empty
+        // location (LocationId, VerifiedBy, VerifiedAtUtc) for the planner to resolve.
+        response.parmErrorCode('NOT_IMPLEMENTED');
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
 				<Name>journalState</Name>
 				<Source><![CDATA[
 

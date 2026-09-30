@@ -302,4 +302,7 @@ class LiveCountTaskServiceApi @Inject constructor(
 
     override suspend fun submitCounts(body: com.d365fo.mobileops.data.remote.dto.DirectSubmitServiceRequest) =
         delegate.get().submitCounts(body)
+
+    override suspend fun submitExceptions(body: com.d365fo.mobileops.data.remote.dto.CountExceptionsServiceRequest) =
+        delegate.get().submitExceptions(body)
 }
