@@ -1,0 +1,164 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsCountDirectSubmitRequest</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// submitCounts' request (DIRECT transfer mode). SubmissionId is a client-generated UUID and is
+/// the idempotency key: a retry of the same submission must be accepted once, not applied twice.
+/// The audit fields travel with every submission; timestamps are ISO 8601 UTC strings.
+/// </summary>
+[DataContractAttribute]
+class HSMobileOpsCountDirectSubmitRequest
+{
+    DataAreaId      dataAreaId;
+    InventJournalId journalId;
+    str             claimToken;
+    str             submissionId;
+    str             userId;
+    str             deviceId;
+    str             startedAtUtc;
+    str             submittedAtUtc;
+    int             passNumber;
+    str             originType;
+    List            lines;
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmDataAreaId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('DataAreaId')]
+    public DataAreaId parmDataAreaId(DataAreaId _value = dataAreaId)
+    {
+        dataAreaId = _value;
+        return dataAreaId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmJournalId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('JournalId')]
+    public InventJournalId parmJournalId(InventJournalId _value = journalId)
+    {
+        journalId = _value;
+        return journalId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmClaimToken</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ClaimToken')]
+    public str parmClaimToken(str _value = claimToken)
+    {
+        claimToken = _value;
+        return claimToken;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmSubmissionId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('SubmissionId')]
+    public str parmSubmissionId(str _value = submissionId)
+    {
+        submissionId = _value;
+        return submissionId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmUserId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('UserId')]
+    public str parmUserId(str _value = userId)
+    {
+        userId = _value;
+        return userId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmDeviceId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('DeviceId')]
+    public str parmDeviceId(str _value = deviceId)
+    {
+        deviceId = _value;
+        return deviceId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmStartedAtUtc</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('StartedAtUtc')]
+    public str parmStartedAtUtc(str _value = startedAtUtc)
+    {
+        startedAtUtc = _value;
+        return startedAtUtc;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmSubmittedAtUtc</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('SubmittedAtUtc')]
+    public str parmSubmittedAtUtc(str _value = submittedAtUtc)
+    {
+        submittedAtUtc = _value;
+        return submittedAtUtc;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmPassNumber</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('PassNumber')]
+    public int parmPassNumber(int _value = passNumber)
+    {
+        passNumber = _value;
+        return passNumber;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmOriginType</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('OriginType')]
+    public str parmOriginType(str _value = originType)
+    {
+        originType = _value;
+        return originType;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmLines</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Lines'),
+     DataCollectionAttribute(Types::Class, classStr(HSMobileOpsCountDirectCountRow))]
+    public List parmLines(List _value = lines)
+    {
+        lines = _value;
+        return lines;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

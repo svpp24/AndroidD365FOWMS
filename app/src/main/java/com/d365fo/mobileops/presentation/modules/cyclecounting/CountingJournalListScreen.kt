@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.TextButton
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.MoreVert
@@ -43,6 +44,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.d365fo.mobileops.data.local.entity.CountClaimEntity
+import com.d365fo.mobileops.domain.model.CountRange
 import com.d365fo.mobileops.domain.model.CountingJournalSummary
 import com.d365fo.mobileops.domain.model.ExportJobStatus
 import com.d365fo.mobileops.presentation.common.components.ErrorBanner
@@ -94,6 +97,24 @@ fun CountingJournalListScreen(
             dismissButton = {
                 CancelOutlinedButton(onClick = { confirmReopenFor = null }) { Text("Cancel") }
             },
+        )
+    }
+
+    state.rangePickerFor?.let { journalId ->
+        state.journals.firstOrNull { it.journalId == journalId }?.let { journal ->
+            RangePickerDialog(
+                journal = journal,
+                onPick = { viewModel.pickRange(journalId, it) },
+                onDismiss = viewModel::cancelRangePicker,
+            )
+        }
+    }
+
+    state.message?.let { message ->
+        AlertDialog(
+            onDismissRequest = viewModel::dismissMessage,
+            text = { Text(message) },
+            confirmButton = { ConfirmButton(onClick = viewModel::dismissMessage) { Text("OK") } },
         )
     }
 
@@ -163,6 +184,10 @@ fun CountingJournalListScreen(
                                 exportStatus = state.exportStatuses[journal.journalId],
                                 countState = state.countStates[journal.journalId],
                                 refreshNote = state.refreshNotes[journal.journalId],
+                                claimsEnabled = state.claimsEnabled,
+                                myClaim = state.myClaims[journal.journalId],
+                                busy = state.claiming == journal.journalId || state.checking == journal.journalId,
+                                onReclaim = { viewModel.reclaim(journal.journalId) },
                                 onGetData = { viewModel.startExport(journal.journalId) },
                                 onViewLines = { onViewLines(journal.journalId) },
                                 onStartCounting = {
@@ -186,6 +211,10 @@ private fun CountingJournalRow(
     exportStatus: ExportJobStatus?,
     countState: JournalCountState?,
     refreshNote: String?,
+    claimsEnabled: Boolean,
+    myClaim: CountClaimEntity?,
+    busy: Boolean,
+    onReclaim: () -> Unit,
     onGetData: () -> Unit,
     onViewLines: () -> Unit,
     onStartCounting: () -> Unit,
@@ -197,7 +226,8 @@ private fun CountingJournalRow(
 
     // The rarely-used actions live in a menu instead of each taking a full-width button.
     val canRefresh = countState != null && !refreshing &&
-        countState.phase != CountPhase.SUBMITTING && countState.phase != CountPhase.SUBMITTED
+        countState.phase != CountPhase.SUBMITTING && countState.phase != CountPhase.SUBMITTED &&
+        countState.phase != CountPhase.POSTED
     val canReopen = countState?.phase == CountPhase.SUBMITTED
 
     Card(modifier = Modifier.fillMaxWidth()) {
@@ -250,6 +280,24 @@ private fun CountingJournalRow(
                 }
             }
 
+            if (claimsEnabled) {
+                ClaimLine(journal = journal, myClaim = myClaim)
+            }
+            if (myClaim?.lost == true) {
+                ErrorBanner(
+                    message = (myClaim.lostReason ?: "Your claim on this journal was lost.") +
+                        " Your counts are kept on this device. Claim the journal again to submit them.",
+                )
+                Button(
+                    onClick = onReclaim,
+                    enabled = !busy,
+                    modifier = Modifier.fillMaxWidth().heightIn(min = WarehouseDimens.MinTouchTarget),
+                ) { Text(if (busy) "Claiming…" else "Claim again") }
+            }
+            if (busy && myClaim?.lost != true) {
+                ProgressRow(label = "Checking with D365FO…", percent = null)
+            }
+
             if (countState != null) {
                 CountControls(
                     countState = countState,
@@ -260,6 +308,7 @@ private fun CountingJournalRow(
                     onStartCounting = onStartCounting,
                     onEndCount = onEndCount,
                     onReopen = onReopen,
+                    submitBlocked = myClaim?.lost == true,
                 )
             } else {
                 DownloadSection(status = exportStatus, onGetData = onGetData)
@@ -283,6 +332,7 @@ private fun CountControls(
     onStartCounting: () -> Unit,
     onEndCount: () -> Unit,
     onReopen: () -> Unit,
+    submitBlocked: Boolean,
 ) {
     val phase = countState.phase
     val finished = phase == CountPhase.SUBMITTED
@@ -308,7 +358,12 @@ private fun CountControls(
 
         // Status - only what needs saying.
         when {
-            submitting -> ProgressRow("Submitting counts… (see Activity)", null)
+            submitting -> ProgressRow(countState.error ?: "Submitting counts… (see Activity)", null)
+            phase == CountPhase.POSTED -> Text(
+                text = "Posted in D365FO. This journal is closed and can't be reopened.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = WarehouseStatusColors.text3,
+            )
             finished -> {
                 Text(
                     text = "Counts submitted to D365FO.",
@@ -352,7 +407,7 @@ private fun CountControls(
             ) { Text("View lines") }
 
             when {
-                submitting -> Unit
+                submitting || phase == CountPhase.POSTED -> Unit
                 finished -> Button(
                     onClick = onReopen,
                     modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget),
@@ -368,6 +423,7 @@ private fun CountControls(
         if (phase == CountPhase.COUNTING || phase == CountPhase.FAILED) {
             OutlinedButton(
                 onClick = onEndCount,
+                enabled = !submitBlocked,
                 modifier = Modifier.fillMaxWidth().heightIn(min = WarehouseDimens.MinTouchTarget),
             ) { Text("End count") }
         }
@@ -476,4 +532,60 @@ private fun ProgressRow(label: String, percent: Int?) {
             LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
         }
     }
+}
+
+/** Who holds this journal (or which of its ranges) - this device, someone else, or nobody. */
+@Composable
+private fun ClaimLine(journal: CountingJournalSummary, myClaim: CountClaimEntity?) {
+    val text = when {
+        myClaim != null && !myClaim.lost -> buildString {
+            append("Claimed by you")
+            myClaim.rangeId?.let { append(" · range $it") }
+            myClaim.expiresAt?.let { append(" · until ${Formatters.clockTime(it)}") }
+        }
+        journal.claims.isNotEmpty() -> journal.claims.joinToString("\n") { claim ->
+            val range = listOfNotNull(claim.locationFrom, claim.locationTo).joinToString(" - ")
+            "Claimed by ${claim.claimedBy}" + if (range.isNotBlank()) " ($range)" else ""
+        }
+        journal.ranges.isNotEmpty() -> "${journal.ranges.size} ranges to claim"
+        else -> return
+    }
+    Text(text = text, style = MaterialTheme.typography.bodySmall, color = WarehouseStatusColors.text3)
+}
+
+/** A wall-to-wall journal split by the planner: pick one range to claim and count. */
+@Composable
+private fun RangePickerDialog(
+    journal: CountingJournalSummary,
+    onPick: (CountRange) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val taken = journal.claims.mapNotNull { claim -> claim.rangeId?.let { it to claim.claimedBy } }.toMap()
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Choose a range") },
+        text = {
+            LazyColumn(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                items(journal.ranges, key = { it.rangeId }) { range ->
+                    val holder = taken[range.rangeId]
+                    TextButton(
+                        onClick = { onPick(range) },
+                        enabled = holder == null,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Column(modifier = Modifier.fillMaxWidth()) {
+                            Text(range.label, fontWeight = FontWeight.SemiBold)
+                            Text(
+                                text = holder?.let { "Claimed by $it" } ?: "${range.lineCount} lines",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = WarehouseStatusColors.text3,
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = { CancelOutlinedButton(onClick = onDismiss) { Text("Cancel") } },
+    )
 }

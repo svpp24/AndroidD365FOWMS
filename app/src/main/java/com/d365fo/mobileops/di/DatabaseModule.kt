@@ -3,6 +3,7 @@ package com.d365fo.mobileops.di
 import android.content.Context
 import androidx.room.Room
 import com.d365fo.mobileops.data.local.D365Database
+import com.d365fo.mobileops.data.local.dao.CountingDao
 import com.d365fo.mobileops.data.local.dao.InventDimDao
 import com.d365fo.mobileops.data.local.dao.ItemDao
 import com.d365fo.mobileops.data.local.dao.FlowSessionDao
@@ -65,4 +66,5 @@ object DatabaseModule {
     @Provides fun provideAuditDao(db: D365Database): ValidationAuditDao = db.validationAuditDao()
     @Provides fun provideStagedLineDao(db: D365Database): StagedLineDao = db.stagedLineDao()
     @Provides fun providePermissionDao(db: D365Database): PermissionDao = db.permissionDao()
+    @Provides fun provideCountingDao(db: D365Database): CountingDao = db.countingDao()
 }

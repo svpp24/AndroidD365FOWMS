@@ -4,16 +4,19 @@
 	<SourceCode>
 		<Declaration><![CDATA[
 /// <summary>
-/// Journal id is back - `exportOpenJournals` now creates/reuses one export definition group
-/// per journal rather than scoping a single shared one, so there is no longer a shared-state
-/// race for it to avoid by staying journal-agnostic. See
-/// HSMobileOpsCountingExportSetup::ensureExportForJournal's own doc comment.
+/// One export project per journal - see HSMobileOpsCountingExportSetup::ensureExportForJournal.
+/// LocationFrom/LocationTo (both optional) narrow the export to one claimed location range of a
+/// wall-to-wall journal; blank exports the whole journal. ClaimToken is carried for the claim
+/// check (TODO in X++ once claims exist).
 /// </summary>
 [DataContractAttribute]
 class HSMobileOpsScopeExportRequest
 {
-    DataAreaId       dataAreaId;
-    InventJournalId  journalId;
+    DataAreaId      dataAreaId;
+    InventJournalId journalId;
+    str             locationFrom;
+    str             locationTo;
+    str             claimToken;
 
 }
 ]]></Declaration>
@@ -39,6 +42,42 @@ class HSMobileOpsScopeExportRequest
     {
         journalId = _value;
         return journalId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmLocationFrom</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('LocationFrom')]
+    public str parmLocationFrom(str _value = locationFrom)
+    {
+        locationFrom = _value;
+        return locationFrom;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmLocationTo</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('LocationTo')]
+    public str parmLocationTo(str _value = locationTo)
+    {
+        locationTo = _value;
+        return locationTo;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmClaimToken</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ClaimToken')]
+    public str parmClaimToken(str _value = claimToken)
+    {
+        claimToken = _value;
+        return claimToken;
     }
 ]]></Source>
 			</Method>

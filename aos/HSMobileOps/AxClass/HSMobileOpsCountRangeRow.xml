@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsCountRangeRow</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// One claimable location range of a wall-to-wall counting journal (an aisle or zone), as split
+/// by the planner. Returned inside HSMobileOpsJournalSummaryRow.Ranges. An empty list means the
+/// journal is claimed whole.
+/// </summary>
+[DataContractAttribute]
+class HSMobileOpsCountRangeRow
+{
+    str rangeId;
+    str label;
+    str locationFrom;
+    str locationTo;
+    int lineCount;
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmRangeId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('RangeId')]
+    public str parmRangeId(str _value = rangeId)
+    {
+        rangeId = _value;
+        return rangeId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmLabel</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Label')]
+    public str parmLabel(str _value = label)
+    {
+        label = _value;
+        return label;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmLocationFrom</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('LocationFrom')]
+    public str parmLocationFrom(str _value = locationFrom)
+    {
+        locationFrom = _value;
+        return locationFrom;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmLocationTo</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('LocationTo')]
+    public str parmLocationTo(str _value = locationTo)
+    {
+        locationTo = _value;
+        return locationTo;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmLineCount</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('LineCount')]
+    public int parmLineCount(int _value = lineCount)
+    {
+        lineCount = _value;
+        return lineCount;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

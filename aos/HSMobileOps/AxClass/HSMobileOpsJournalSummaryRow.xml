@@ -11,6 +11,9 @@ class HSMobileOpsJournalSummaryRow
     Description          description;
     TransDate            journalDate;
     int                  lineCount;
+    str                  transferMode;
+    List                 claims;
+    List                 ranges;
 
 }
 ]]></Declaration>
@@ -77,6 +80,48 @@ class HSMobileOpsJournalSummaryRow
     {
         lineCount = _value;
         return lineCount;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmTransferMode</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// DMF (bulk export/import) or DIRECT (lines and counts via HSMobileOpsCountTaskSvc).
+    /// Decided here, per journal - never on the device.
+    /// </summary>
+    [DataMemberAttribute('TransferMode')]
+    public str parmTransferMode(str _value = transferMode)
+    {
+        transferMode = _value;
+        return transferMode;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmClaims</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Claims'),
+     DataCollectionAttribute(Types::Class, classStr(HSMobileOpsCountClaimRow))]
+    public List parmClaims(List _value = claims)
+    {
+        claims = _value;
+        return claims;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmRanges</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Ranges'),
+     DataCollectionAttribute(Types::Class, classStr(HSMobileOpsCountRangeRow))]
+    public List parmRanges(List _value = ranges)
+    {
+        ranges = _value;
+        return ranges;
     }
 ]]></Source>
 			</Method>

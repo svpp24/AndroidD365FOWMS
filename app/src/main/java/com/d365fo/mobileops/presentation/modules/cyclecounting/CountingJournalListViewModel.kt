@@ -2,13 +2,25 @@ package com.d365fo.mobileops.presentation.modules.cyclecounting
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.d365fo.mobileops.data.counting.CountClaimManager
+import com.d365fo.mobileops.data.counting.CountSubmissions
+import com.d365fo.mobileops.data.counting.EndCountResult
 import com.d365fo.mobileops.data.local.dao.CountingProgressRow
 import com.d365fo.mobileops.data.local.dao.JournalDao
+import com.d365fo.mobileops.data.local.entity.CountClaimEntity
+import com.d365fo.mobileops.data.local.entity.CountSubmissionEntity
 import com.d365fo.mobileops.data.local.entity.JournalEntity
 import com.d365fo.mobileops.data.local.entity.JournalStatus
+import com.d365fo.mobileops.data.local.entity.TransferMode
 import com.d365fo.mobileops.data.repository.CountingDownloadTracker
 import com.d365fo.mobileops.data.repository.CountingJournalRepository
 import com.d365fo.mobileops.data.repository.WorkerSessionRepository
+import com.d365fo.mobileops.domain.FeatureFlags
+import com.d365fo.mobileops.domain.counting.ClaimOutcome
+import com.d365fo.mobileops.domain.counting.ClaimRefusal
+import com.d365fo.mobileops.domain.counting.CountTaskRepository
+import com.d365fo.mobileops.domain.counting.JournalRemoteState
+import com.d365fo.mobileops.domain.model.CountRange
 import com.d365fo.mobileops.domain.model.CountingJournalSummary
 import com.d365fo.mobileops.domain.model.ExportJobStatus
 import com.d365fo.mobileops.util.NetworkResult
@@ -30,13 +42,16 @@ enum class CountPhase {
     /** Start counting was pressed; counts are being entered. */
     COUNTING,
 
-    /** End count was pressed and the counts are on their way to D365FO. */
+    /** End count was pressed and the counts are on their way to D365FO (a WorkManager job). */
     SUBMITTING,
 
-    /** D365FO accepted the counts. */
+    /** D365FO accepted the counts. The journal is still open there until a supervisor posts it. */
     SUBMITTED,
 
-    /** The last submission failed or was interrupted - End count can be pressed again. */
+    /** The journal was posted in D365FO. Closed for good on this device. */
+    POSTED,
+
+    /** The last submission failed - End count can be pressed again. */
     FAILED,
 }
 
@@ -59,16 +74,13 @@ data class JournalCountState(
 }
 
 /**
- * Open counting journals for this worker's assigned warehouse. Loads itself on entry, same as
- * PoOfTodayViewModel - there is nothing to scan here, the question is "what's open for me to
- * count", not "tell me about the thing in my hand".
+ * Open counting journals for this worker's assigned warehouse. Loads itself on entry.
  *
- * A card has two lives. Before data: "Get data" hands the journal to [CountingDownloadTracker],
- * which runs the export, download and Room import on the application scope so it survives the
- * worker navigating away (and shows on the Activity page). After data: the card's state comes
- * from Room - [countStates] - not from anything in memory, so "View lines / Start counting / End
- * count", the progress tally and a submitted journal all survive the app being restarted. End
- * count is likewise handed to the tracker and runs in the background.
+ * Before data, "Get data" hands the journal to [CountingDownloadTracker]. With claims on
+ * ([FeatureFlags.countClaims]) the journal - or, for a wall-to-wall journal the planner split
+ * into ranges, one range picked by the worker - is claimed first, and only that range's lines
+ * are downloaded. After data, the card's state comes from Room. End count persists a submission
+ * and hands it to WorkManager ([CountSubmissions]); nothing about it lives only in memory.
  */
 @HiltViewModel
 class CountingJournalListViewModel @Inject constructor(
@@ -76,34 +88,49 @@ class CountingJournalListViewModel @Inject constructor(
     private val workerSession: WorkerSessionRepository,
     private val downloads: CountingDownloadTracker,
     private val journalDao: JournalDao,
+    private val claims: CountClaimManager,
+    private val countSubmissions: CountSubmissions,
+    private val countTasks: CountTaskRepository,
+    private val flags: FeatureFlags,
 ) : ViewModel() {
 
-    private val _loaded = MutableStateFlow(CountingJournalListState())
+    private val _loaded = MutableStateFlow(CountingJournalListState(claimsEnabled = flags.countClaims))
+
+    private data class RoomSide(
+        val journals: List<JournalEntity>,
+        val progress: List<CountingProgressRow>,
+        val claims: List<CountClaimEntity>,
+        val submissions: List<CountSubmissionEntity>,
+    )
+
+    private val roomSide = combine(
+        journalDao.observeCountingJournals(),
+        journalDao.observeCountingProgress(),
+        claims.observe(),
+        countSubmissions.observe(),
+    ) { journals, progress, claimRows, submissions -> RoomSide(journals, progress, claimRows, submissions) }
 
     val state: StateFlow<CountingJournalListState> = combine(
         _loaded,
         downloads.downloads,
-        downloads.submissions,
-        journalDao.observeCountingJournals(),
-        journalDao.observeCountingProgress(),
-    ) { loaded, tracked, submissions, roomJournals, progress ->
-        val progressById = progress.associateBy { it.journalId }
-        val countStates = roomJournals.associate { journal ->
-            val submitting = submissions[journal.journalId]?.inProgress == true
-            journal.journalId to journal.toCountState(progressById[journal.journalId], submitting)
-        }
+        roomSide,
+    ) { loaded, tracked, room ->
+        val progressById = room.progress.associateBy { it.journalId }
+        val submissionById = room.submissions.associateBy { it.journalId }
         loaded.copy(
-            // A download's own progress or failure. For a journal with no data yet this drives
-            // the whole card; for one already on the device it is a "Get data again" in flight
-            // (or failed), shown alongside the counting controls.
             exportStatuses = tracked
                 .filterValues { !it.imported }
                 .mapValues { (_, download) -> download.status },
-            // What a finished "Get data again" did, e.g. "Refreshed - 3 new lines added".
             refreshNotes = tracked.values
                 .filter { it.imported && it.note != null }
                 .associate { it.journalId to it.note.orEmpty() },
-            countStates = countStates,
+            countStates = room.journals.associate { journal ->
+                journal.journalId to journal.toCountState(
+                    progressById[journal.journalId],
+                    submissionById[journal.journalId],
+                )
+            },
+            myClaims = room.claims.associateBy { it.journalId },
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), CountingJournalListState())
 
@@ -119,11 +146,57 @@ class CountingJournalListViewModel @Inject constructor(
         viewModelScope.launch { load(_loaded.value.warehouseId) }
     }
 
+    fun dismissMessage() = _loaded.update { it.copy(message = null) }
+
+    /** Get data (or Get data again). Claims first when claims are on. */
     fun startExport(journalId: String) {
         val journal = _loaded.value.journals.firstOrNull { it.journalId == journalId } ?: return
         val warehouseId = _loaded.value.warehouseId
         if (warehouseId.isNullOrBlank()) return
-        downloads.start(journal, warehouseId)
+
+        if (journal.transferMode == TransferMode.DIRECT && !flags.countDirect) {
+            showMessage("This journal uses direct transfer, which is not enabled in this app build.")
+            return
+        }
+        if (!flags.countClaims) {
+            downloads.start(journal, warehouseId)
+            return
+        }
+
+        viewModelScope.launch {
+            val existing = claims.localClaim(journalId)
+            when {
+                existing != null && !existing.lost -> downloads.start(
+                    journal, warehouseId, existing.toRange(), existing.claimToken,
+                )
+                existing != null -> showMessage(existing.lostReason ?: "Your claim was lost. Claim the journal again first.")
+                journal.ranges.isNotEmpty() -> _loaded.update { it.copy(rangePickerFor = journalId) }
+                else -> claimAndDownload(journal, warehouseId, range = null)
+            }
+        }
+    }
+
+    fun pickRange(journalId: String, range: CountRange) {
+        _loaded.update { it.copy(rangePickerFor = null) }
+        val journal = _loaded.value.journals.firstOrNull { it.journalId == journalId } ?: return
+        val warehouseId = _loaded.value.warehouseId ?: return
+        viewModelScope.launch { claimAndDownload(journal, warehouseId, range) }
+    }
+
+    fun cancelRangePicker() = _loaded.update { it.copy(rangePickerFor = null) }
+
+    /** A lost claim: take it again (same range). Local counts are untouched either way. */
+    fun reclaim(journalId: String) {
+        viewModelScope.launch {
+            _loaded.update { it.copy(claiming = journalId) }
+            val outcome = claims.reclaim(journalId)
+            _loaded.update { it.copy(claiming = null) }
+            if (outcome is ClaimOutcome.Granted) {
+                showMessage("Claimed again - you can end the count now.")
+            } else {
+                showMessage(outcome.describe())
+            }
+        }
     }
 
     /** Records the first Start counting press. The caller then navigates to the count screen. */
@@ -131,21 +204,87 @@ class CountingJournalListViewModel @Inject constructor(
         viewModelScope.launch { journals.startCounting(journalId) }
     }
 
-    /** Unlocks a submitted journal so counts can be corrected or added; End count sends them again. */
+    /**
+     * Reopens a SUBMITTED journal, only once the server confirms it is still open. A journal
+     * posted in D365FO is locked on the device instead, and the worker is told why.
+     */
     fun reopenCounting(journalId: String) {
-        viewModelScope.launch { journals.reopenCounting(journalId) }
+        viewModelScope.launch {
+            _loaded.update { it.copy(checking = journalId) }
+            val result = countTasks.journalState(journalId)
+            _loaded.update { it.copy(checking = null) }
+            when (result) {
+                is NetworkResult.Success -> when (result.data) {
+                    JournalRemoteState.OPEN -> journals.reopenCounting(journalId)
+                    JournalRemoteState.POSTED -> {
+                        journals.markPostedInD365(journalId)
+                        showMessage("$journalId has been posted in D365FO, so it can't be reopened.")
+                    }
+                    JournalRemoteState.NOT_FOUND ->
+                        showMessage("$journalId no longer exists in D365FO, so it can't be reopened.")
+                }
+                is NetworkResult.Error -> showMessage(
+                    "Couldn't check whether $journalId has been posted (${result.failure.message}). " +
+                        "Reopening needs a connection to D365FO.",
+                )
+                NetworkResult.Loading -> Unit
+            }
+        }
     }
 
-    /** End count: sends the counted quantities back to D365FO in the background. */
+    /** End count: persisted and handed to WorkManager. Offline just waits for a connection. */
     fun endCount(journalId: String) {
-        val description = _loaded.value.journals.firstOrNull { it.journalId == journalId }?.description
-        downloads.submit(journalId, description)
+        viewModelScope.launch {
+            when (val result = countSubmissions.endCount(journalId)) {
+                EndCountResult.Queued -> Unit
+                is EndCountResult.Refused -> showMessage(result.message)
+            }
+        }
     }
 
-    private fun JournalEntity.toCountState(progress: CountingProgressRow?, submitting: Boolean): JournalCountState {
+    private suspend fun claimAndDownload(journal: CountingJournalSummary, warehouseId: String, range: CountRange?) {
+        _loaded.update { it.copy(claiming = journal.journalId) }
+        val outcome = claims.claim(journal.journalId, range)
+        _loaded.update { it.copy(claiming = null) }
+        when (outcome) {
+            is ClaimOutcome.Granted -> downloads.start(
+                journal,
+                warehouseId,
+                range ?: outcome.rangeId?.let { CountRange(it, it, outcome.locationFrom, outcome.locationTo, 0) },
+                outcome.claimToken,
+            )
+            else -> showMessage(outcome.describe())
+        }
+    }
+
+    private fun ClaimOutcome.describe(): String = when (this) {
+        is ClaimOutcome.Granted -> "Claimed."
+        is ClaimOutcome.Unreachable -> "Couldn't reach D365FO to claim this journal: $message"
+        is ClaimOutcome.Refused -> when (reason) {
+            ClaimRefusal.CLAIMED_BY_OTHER ->
+                claimedBy?.let { "Already claimed by $it." } ?: "Someone else has already claimed this."
+            ClaimRefusal.EXPIRED, ClaimRefusal.LOST -> "That claim is no longer valid. Try again."
+            ClaimRefusal.JOURNAL_POSTED -> "This journal has already been posted in D365FO."
+            ClaimRefusal.JOURNAL_NOT_FOUND -> "This journal is closed or no longer exists in D365FO."
+            ClaimRefusal.NOT_AVAILABLE -> "This server does not support claiming journals yet."
+            ClaimRefusal.OTHER -> message ?: "The claim was refused."
+        }
+    }
+
+    private fun CountClaimEntity.toRange(): CountRange? =
+        rangeId?.let { CountRange(it, it, locationFrom, locationTo, 0) }
+
+    private fun showMessage(text: String) = _loaded.update { it.copy(message = text) }
+
+    private fun JournalEntity.toCountState(
+        progress: CountingProgressRow?,
+        submission: CountSubmissionEntity?,
+    ): JournalCountState {
+        val submitting = submission?.state?.inProgress == true
         val phase = when (status) {
-            JournalStatus.POSTED -> CountPhase.SUBMITTED
-            // PENDING_POST with no live submission behind it means the app was killed mid-way.
+            JournalStatus.POSTED -> CountPhase.POSTED
+            JournalStatus.SUBMITTED -> CountPhase.SUBMITTED
+            // PENDING_POST with no live submission is a pre-WorkManager install's interrupted run.
             JournalStatus.PENDING_POST -> if (submitting) CountPhase.SUBMITTING else CountPhase.FAILED
             JournalStatus.FAILED -> CountPhase.FAILED
             JournalStatus.DRAFT -> if (countStartedAt != null) CountPhase.COUNTING else CountPhase.READY
@@ -153,9 +292,9 @@ class CountingJournalListViewModel @Inject constructor(
         val error = when {
             phase == CountPhase.FAILED && status == JournalStatus.PENDING_POST ->
                 "The submission was interrupted. Tap End count to send it again."
-            phase == CountPhase.FAILED -> sync.lastError ?: "The submission failed."
-            // A submitted journal keeps what D365FO refused (see markSubmittedWithWarning).
+            phase == CountPhase.FAILED -> sync.lastError ?: submission?.message ?: "The submission failed."
             phase == CountPhase.SUBMITTED -> sync.lastError
+            phase == CountPhase.SUBMITTING -> submission?.message
             else -> null
         }
         return JournalCountState(
@@ -201,4 +340,15 @@ data class CountingJournalListState(
     val refreshNotes: Map<String, String> = emptyMap(),
     /** Journals whose lines are on this device, keyed by journal id. Derived from Room. */
     val countStates: Map<String, JournalCountState> = emptyMap(),
+    val claimsEnabled: Boolean = false,
+    /** This device's own claims, keyed by journal id. */
+    val myClaims: Map<String, CountClaimEntity> = emptyMap(),
+    /** Non-null while the worker is choosing which range of this journal to claim. */
+    val rangePickerFor: String? = null,
+    /** Journal id with a claim request in flight. */
+    val claiming: String? = null,
+    /** Journal id whose server state is being checked before a reopen. */
+    val checking: String? = null,
+    /** A one-off message for the worker (claim refused, can't reopen, ...). */
+    val message: String? = null,
 )

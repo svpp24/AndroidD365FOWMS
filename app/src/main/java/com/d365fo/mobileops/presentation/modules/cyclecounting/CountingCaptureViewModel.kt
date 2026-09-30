@@ -3,8 +3,9 @@ package com.d365fo.mobileops.presentation.modules.cyclecounting
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.d365fo.mobileops.data.local.dao.CountLine
+import com.d365fo.mobileops.data.local.dao.CountingDao
 import com.d365fo.mobileops.data.local.dao.JournalDao
-import com.d365fo.mobileops.data.local.entity.JournalLineEntity
 import com.d365fo.mobileops.data.local.entity.JournalStatus
 import com.d365fo.mobileops.data.repository.CountingJournalRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -25,9 +26,8 @@ enum class LineFilter(val label: String) {
     COUNTED("Counted"),
 }
 
-/** A line is counted once it has an entered quantity OR was marked counted (an older feature). */
-val JournalLineEntity.isCounted: Boolean
-    get() = countedQuantity != null || markedCounted
+/** Once counts are on their way or accepted, the lines are read-only on the device. */
+internal val LOCKED_STATUSES = setOf(JournalStatus.PENDING_POST, JournalStatus.SUBMITTED, JournalStatus.POSTED)
 
 /**
  * View lines: a read-only overview of one imported counting journal's lines - item number and
@@ -43,6 +43,7 @@ val JournalLineEntity.isCounted: Boolean
 class CountingCaptureViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     private val journalDao: JournalDao,
+    private val countingDao: CountingDao,
     private val repository: CountingJournalRepository,
 ) : ViewModel() {
 
@@ -53,7 +54,7 @@ class CountingCaptureViewModel @Inject constructor(
     private val _resolvingNames = MutableStateFlow(false)
 
     val state: StateFlow<CountingLinesState> = combine(
-        journalDao.observeAllLines(journalId),
+        countingDao.observeCountLines(journalId),
         journalDao.observeCountingJournals().map { list -> list.firstOrNull { it.journalId == journalId } },
         _query,
         _filter,
@@ -72,7 +73,7 @@ class CountingCaptureViewModel @Inject constructor(
             counted = lines.count { it.isCounted },
             query = query,
             filter = filter,
-            locked = journal?.status == JournalStatus.POSTED || journal?.status == JournalStatus.PENDING_POST,
+            locked = journal?.status in LOCKED_STATUSES,
         )
     }.combine(_resolvingNames) { state, resolving -> state.copy(resolvingNames = resolving) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), CountingLinesState())
@@ -96,7 +97,7 @@ class CountingCaptureViewModel @Inject constructor(
 
     fun setFilter(filter: LineFilter) = _filter.update { filter }
 
-    private fun JournalLineEntity.matches(query: String): Boolean {
+    private fun CountLine.matches(query: String): Boolean {
         val q = query.trim()
         if (q.isEmpty()) return true
         return q.split(' ').filter { it.isNotBlank() }.all { token ->
@@ -112,7 +113,7 @@ class CountingCaptureViewModel @Inject constructor(
 data class CountingLinesState(
     val journalDescription: String = "",
     /** The lines matching the current search and filter. */
-    val lines: List<JournalLineEntity> = emptyList(),
+    val lines: List<CountLine> = emptyList(),
     /** Every line in the journal, whatever the search shows. */
     val totalLines: Int = 0,
     val counted: Int = 0,

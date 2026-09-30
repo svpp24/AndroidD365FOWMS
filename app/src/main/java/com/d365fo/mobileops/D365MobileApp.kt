@@ -3,6 +3,8 @@ package com.d365fo.mobileops
 import android.app.Application
 import androidx.hilt.work.HiltWorkerFactory
 import androidx.work.Configuration
+import com.d365fo.mobileops.data.counting.ClaimHeartbeat
+import com.d365fo.mobileops.data.counting.CountSubmissions
 import com.d365fo.mobileops.data.logging.AppLogTree
 import com.d365fo.mobileops.data.logging.LogStore
 import com.d365fo.mobileops.data.sync.SyncNotifier
@@ -21,6 +23,8 @@ class D365MobileApp : Application(), Configuration.Provider {
     @Inject lateinit var syncNotifier: SyncNotifier
     @Inject lateinit var applicationScope: CoroutineScope
     @Inject lateinit var logStore: LogStore
+    @Inject lateinit var claimHeartbeat: ClaimHeartbeat
+    @Inject lateinit var countSubmissions: CountSubmissions
 
     override val workManagerConfiguration: Configuration
         get() = Configuration.Builder()
@@ -77,6 +81,10 @@ class D365MobileApp : Application(), Configuration.Provider {
         // nothing; a few hundred milliseconds of startup is visible every single shift.
         applicationScope.launch {
             syncScheduler.schedulePeriodicWork()
+            // Counting: keep claims alive, and give every unfinished End count a job again.
+            claimHeartbeat.start()
+            runCatching { countSubmissions.resumePending() }
+                .onFailure { Timber.w(it, "could not resume pending count submissions") }
         }
     }
 

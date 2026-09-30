@@ -4,6 +4,7 @@ import androidx.room.Database
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
 import com.d365fo.mobileops.data.local.converter.Converters
+import com.d365fo.mobileops.data.local.dao.CountingDao
 import com.d365fo.mobileops.data.local.dao.InventDimDao
 import com.d365fo.mobileops.data.local.dao.ItemDao
 import com.d365fo.mobileops.data.local.dao.JournalDao
@@ -20,6 +21,9 @@ import com.d365fo.mobileops.data.local.dao.ValidationAuditDao
 import com.d365fo.mobileops.data.local.dao.FlowSessionDao
 import com.d365fo.mobileops.data.local.dao.WarehouseDao
 import com.d365fo.mobileops.data.local.entity.BarcodeEntity
+import com.d365fo.mobileops.data.local.entity.CountClaimEntity
+import com.d365fo.mobileops.data.local.entity.CountSubmissionEntity
+import com.d365fo.mobileops.data.local.entity.CountingLineReferenceEntity
 import com.d365fo.mobileops.data.local.entity.FailedSyncEntity
 import com.d365fo.mobileops.data.local.entity.InventDimEntity
 import com.d365fo.mobileops.data.local.entity.ItemEntity
@@ -60,6 +64,10 @@ import com.d365fo.mobileops.data.local.entity.WorkerPermissionEntity
         // journals (arrival, movement, adjustment, counting)
         JournalEntity::class,
         JournalLineEntity::class,
+        // counting
+        CountingLineReferenceEntity::class,
+        CountClaimEntity::class,
+        CountSubmissionEntity::class,
         // transfer orders
         TransferOrderEntity::class,
         TransferLineEntity::class,
@@ -74,7 +82,7 @@ import com.d365fo.mobileops.data.local.entity.WorkerPermissionEntity
         WorkerPermissionEntity::class,
         WorkerDirectoryEntity::class,
     ],
-    version = 7,
+    version = 8,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -95,6 +103,7 @@ abstract class D365Database : RoomDatabase() {
     abstract fun validationAuditDao(): ValidationAuditDao
     abstract fun stagedLineDao(): StagedLineDao
     abstract fun permissionDao(): PermissionDao
+    abstract fun countingDao(): CountingDao
 
     companion object {
         /**
@@ -247,7 +256,65 @@ abstract class D365Database : RoomDatabase() {
             }
         }
 
+        /**
+         * 7 -> 8: inventory count claims, audit and WorkManager End count.
+         *
+         * Additive, plus one move: a counting line's on-hand leaves invent_journal_line for
+         * counting_line_reference (blind counting - no counter-facing row carries it), copied
+         * before it is blanked, so a marked-only line still submits with zero variance. A counting
+         * journal at POSTED meant "counts imported" before; it becomes SUBMITTED, since the
+         * journal itself was never posted in D365FO. No count is touched.
+         */
+        private val MIGRATION_7_8 = object : androidx.room.migration.Migration(7, 8) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `invent_journal` ADD COLUMN `transferMode` TEXT NOT NULL DEFAULT 'DMF'")
+                db.execSQL("ALTER TABLE `invent_journal` ADD COLUMN `originType` TEXT NOT NULL DEFAULT 'SCHEDULED'")
+                db.execSQL("ALTER TABLE `invent_journal` ADD COLUMN `passNumber` INTEGER NOT NULL DEFAULT 1")
+                db.execSQL("ALTER TABLE `invent_journal_line` ADD COLUMN `countedBy` TEXT")
+                db.execSQL("ALTER TABLE `invent_journal_line` ADD COLUMN `countedAt` INTEGER")
+                db.execSQL("ALTER TABLE `invent_journal_line` ADD COLUMN `lineCountStartedAt` INTEGER")
+
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `counting_line_reference` (`journalLineId` TEXT NOT NULL, " +
+                        "`journalId` TEXT NOT NULL, `onHandQuantity` TEXT, PRIMARY KEY(`journalLineId`), " +
+                        "FOREIGN KEY(`journalId`) REFERENCES `invent_journal`(`journalId`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_counting_line_reference_journalId` ON `counting_line_reference` (`journalId`)",
+                )
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `count_claim` (`journalId` TEXT NOT NULL, `claimToken` TEXT NOT NULL, " +
+                        "`rangeId` TEXT, `locationFrom` TEXT, `locationTo` TEXT, `claimedBy` TEXT NOT NULL, " +
+                        "`claimedAt` INTEGER NOT NULL, `expiresAt` INTEGER, `heartbeatSeconds` INTEGER NOT NULL, " +
+                        "`lastHeartbeatAt` INTEGER, `lost` INTEGER NOT NULL, `lostReason` TEXT, PRIMARY KEY(`journalId`))",
+                )
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `count_submission` (`journalId` TEXT NOT NULL, `submissionId` TEXT NOT NULL, " +
+                        "`transferMode` TEXT NOT NULL, `state` TEXT NOT NULL, `error` TEXT, `message` TEXT, " +
+                        "`executionId` TEXT, `percent` INTEGER, `userId` TEXT NOT NULL, `deviceId` TEXT NOT NULL, " +
+                        "`originType` TEXT NOT NULL, `passNumber` INTEGER NOT NULL, `startedAt` INTEGER, " +
+                        "`submittedAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, `attempts` INTEGER NOT NULL, " +
+                        "PRIMARY KEY(`journalId`))",
+                )
+
+                val countingJournals = "SELECT `journalId` FROM `invent_journal` WHERE `type` = 'COUNTING'"
+                db.execSQL(
+                    "INSERT OR REPLACE INTO `counting_line_reference` (`journalLineId`, `journalId`, `onHandQuantity`) " +
+                        "SELECT `journalLineId`, `journalId`, `expectedQuantity` FROM `invent_journal_line` " +
+                        "WHERE `journalId` IN ($countingJournals)",
+                )
+                db.execSQL(
+                    "UPDATE `invent_journal_line` SET `quantity` = '', `expectedQuantity` = NULL " +
+                        "WHERE `journalId` IN ($countingJournals)",
+                )
+                db.execSQL(
+                    "UPDATE `invent_journal` SET `status` = 'SUBMITTED', `postedAt` = NULL " +
+                        "WHERE `type` = 'COUNTING' AND `status` = 'POSTED'",
+                )
+            }
+        }
+
         val MIGRATIONS: Array<androidx.room.migration.Migration> =
-            arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
+            arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
     }
 }

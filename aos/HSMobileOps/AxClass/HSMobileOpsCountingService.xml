@@ -143,6 +143,11 @@ class HSMobileOpsCountingService
                 row.parmDescription(inventJournalName.Description);
                 row.parmJournalDate(DateTimeUtil::date(inventJournalTable.CreatedDateTime));
                 row.parmLineCount(lineCount);
+                // TODO (X++ owner): choose DIRECT for small journals (spot, opportunity,
+                // recount, triggered) and fill Claims/Ranges from the claim and range tables.
+                row.parmTransferMode('DMF');
+                row.parmClaims(new List(Types::Class));
+                row.parmRanges(new List(Types::Class));
 
                 rows.addEnd(row);
 
@@ -174,7 +179,11 @@ class HSMobileOpsCountingService
     /// dedicated project now (see HSMobileOpsCountingExportSetup::ensureExportForJournal), so
     /// there is no shared-state race left to widen the filter against.
     /// </summary>
-    private static void filterExportToJournal(DMFDefinitionGroupName _groupName, InventJournalId _journalId)
+    private static void filterExportToJournal(
+        DMFDefinitionGroupName _groupName,
+        InventJournalId        _journalId,
+        str                    _locationFrom = '',
+        str                    _locationTo   = '')
     {
         DmfDefinitionGroupEntity definitionGroupEntity;
         container                queryData;
@@ -242,6 +251,21 @@ class HSMobileOpsCountingService
         journalIdFieldId = new DictTable(qbds.table()).fieldName2Id(journalFieldName);
 
         SysQuery::findOrCreateRange(qbds, journalIdFieldId).value(queryValue(_journalId));
+
+        // A claimed location range of a wall-to-wall journal: same mechanism, on the entity's
+        // own WarehouseLocationId field (the WAREHOUSELOCATIONID column of the export). Only
+        // written when a range was asked for - a whole-journal export stays exactly as before.
+        if (_locationFrom || _locationTo)
+        {
+            FieldId locationFieldId = new DictTable(qbds.table()).fieldName2Id('WarehouseLocationId');
+            if (!locationFieldId)
+            {
+                throw error(strFmt('%1 has no WarehouseLocationId field - cannot export a location range.',
+                    HSMobileOpsCountingExportSetup::entityName()));
+            }
+            SysQuery::findOrCreateRange(qbds, locationFieldId).value(
+                SysQuery::range(_locationFrom, _locationTo));
+        }
 
         queryRun  = new QueryRun(query);
         queryData = queryRun.pack();
@@ -360,8 +384,11 @@ class HSMobileOpsCountingService
         // `ExportToPackage`. (An earlier build of this method blamed a company mismatch for the
         // project showing no entity; the real cause was the entity NAME - see
         // HSMobileOpsCountingExportSetup::entityName.)
+        // TODO (X++ owner): once claims exist, validate _request.parmClaimToken() and take the
+        // location range from the claim rather than trusting the request's own range.
         groupName = HSMobileOpsCountingExportSetup::ensureExportForJournal(journalId);
-        HSMobileOpsCountingService::filterExportToJournal(groupName, journalId);
+        HSMobileOpsCountingService::filterExportToJournal(
+            groupName, journalId, _request.parmLocationFrom(), _request.parmLocationTo());
 
         select firstOnly definitionGroupEntity
             where definitionGroupEntity.DefinitionGroup == groupName
@@ -414,6 +441,23 @@ class HSMobileOpsCountingService
             response.parmErrorCode('INVALID_REQUEST');
             return response;
         }
+
+        // A posted or deleted journal is a definite answer the app shows as-is (never retried).
+        str journalState = HSMobileOpsCountTaskService::journalState(company, journalId);
+        if (journalState == HSMobileOpsCountTaskService::statePosted())
+        {
+            response.parmErrorCode('JOURNAL_POSTED');
+            return response;
+        }
+        if (journalState == HSMobileOpsCountTaskService::stateNotFound())
+        {
+            response.parmErrorCode('JOURNAL_NOT_FOUND');
+            return response;
+        }
+
+        // TODO (X++ owner): validate _request.parmClaimToken(), dedupe on
+        // _request.parmSubmissionId(), and store the audit fields (UserId, DeviceId,
+        // StartedAtUtc, SubmittedAtUtc, PassNumber, OriginType).
 
         changecompany (company)
         {

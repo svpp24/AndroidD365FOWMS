@@ -27,7 +27,10 @@ object Formatters {
      */
     fun serviceDateTimeToEpochMillis(value: String?): Long? = runCatching {
         value?.let { LocalDateTime.parse(it).toInstant(ZoneOffset.UTC).toEpochMilli() }
-    }.getOrNull()
+    }.getOrNull() ?: runCatching { value?.let { Instant.parse(it).toEpochMilli() } }.getOrNull()
+
+    /** ISO 8601 UTC ("2026-09-30T10:15:00Z") - how the app sends timestamps to X++. */
+    fun isoUtc(epochMs: Long): String = Instant.ofEpochMilli(epochMs).toString()
 
     /** D365FO date-only fields (Edm.Date) — delivery date, journal date. */
     fun epochMillisToODataDate(epochMs: Long, zone: ZoneId = ZoneId.systemDefault()): String =

@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsCountDirectCountRow</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// One counted line in a DIRECT submit. MarkedOnly means the worker marked the line counted
+/// without a quantity; what that means for the journal is the server's decision. Timestamps are
+/// ISO 8601 UTC strings from the device ("2026-09-30T10:15:00Z").
+/// </summary>
+[DataContractAttribute]
+class HSMobileOpsCountDirectCountRow
+{
+    real    lineNumber;
+    real    countedQuantity;
+    boolean markedOnly;
+    str     countedBy;
+    str     countedAtUtc;
+    str     countStartedAtUtc;
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmLineNumber</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('LineNumber')]
+    public real parmLineNumber(real _value = lineNumber)
+    {
+        lineNumber = _value;
+        return lineNumber;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmCountedQuantity</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('CountedQuantity')]
+    public real parmCountedQuantity(real _value = countedQuantity)
+    {
+        countedQuantity = _value;
+        return countedQuantity;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmMarkedOnly</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('MarkedOnly')]
+    public boolean parmMarkedOnly(boolean _value = markedOnly)
+    {
+        markedOnly = _value;
+        return markedOnly;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmCountedBy</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('CountedBy')]
+    public str parmCountedBy(str _value = countedBy)
+    {
+        countedBy = _value;
+        return countedBy;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmCountedAtUtc</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('CountedAtUtc')]
+    public str parmCountedAtUtc(str _value = countedAtUtc)
+    {
+        countedAtUtc = _value;
+        return countedAtUtc;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmCountStartedAtUtc</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('CountStartedAtUtc')]
+    public str parmCountStartedAtUtc(str _value = countStartedAtUtc)
+    {
+        countStartedAtUtc = _value;
+        return countStartedAtUtc;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

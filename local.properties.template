@@ -30,3 +30,7 @@ LICENSE_ROOT_PUBLIC_KEY_B64=
 # SHA-256 of the release signing certificate (keytool -list -v -keystore ... -alias ... |
 # the SHA256 line) - what the app checks its own installed signature against at startup.
 RELEASE_SIGNING_CERT_SHA256=
+
+# --- Inventory count extensions (true/false, default false) - turn on once the X++ side exists ---
+FEATURE_COUNT_CLAIMS=
+FEATURE_COUNT_DIRECT=

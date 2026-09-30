@@ -161,6 +161,9 @@ interface JournalDao {
                 reasonCode = old.reasonCode,
                 varianceOverridden = old.varianceOverridden,
                 capturedAt = old.capturedAt,
+                countedBy = old.countedBy ?: fresh.countedBy,
+                countedAt = old.countedAt ?: fresh.countedAt,
+                lineCountStartedAt = old.lineCountStartedAt,
             )
         }
         upsertLinesChunked(merged)
@@ -215,6 +218,19 @@ interface JournalDao {
         """,
     )
     suspend fun markPosted(journalId: String, serverJournalNumber: String?, postedAt: Long)
+
+    /** Counting: the counts reached D365FO. Not "posted" - the journal is still open there. */
+    @Query(
+        """
+        UPDATE invent_journal
+        SET status = 'SUBMITTED', sync_state = 'SYNCED', retry_count = 0, last_error = :warning
+        WHERE journalId = :journalId
+        """,
+    )
+    suspend fun markCountingSubmitted(journalId: String, warning: String?)
+
+    @Query("UPDATE invent_journal SET transferMode = :transferMode, originType = :originType, passNumber = :passNumber WHERE journalId = :journalId")
+    suspend fun updateCountingAttributes(journalId: String, transferMode: com.d365fo.mobileops.data.local.entity.TransferMode, originType: String, passNumber: Int)
 
     @Query("DELETE FROM invent_journal WHERE status = 'POSTED' AND postedAt < :olderThan")
     suspend fun purgePosted(olderThan: Long): Int

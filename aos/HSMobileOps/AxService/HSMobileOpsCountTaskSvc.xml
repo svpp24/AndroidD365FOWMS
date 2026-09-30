@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxService xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsCountTaskSvc</Name>
+	<Class>HSMobileOpsCountTaskService</Class>
+	<ExternalName>CountTaskService</ExternalName>
+	<Namespace>http://schemas.hs.com/mobileops</Namespace>
+	<ServiceOperations>
+		<AxServiceOperation>
+			<Name>claimJournal</Name>
+			<Method>claimJournal</Method>
+		</AxServiceOperation>
+		<AxServiceOperation>
+			<Name>heartbeatClaim</Name>
+			<Method>heartbeatClaim</Method>
+		</AxServiceOperation>
+		<AxServiceOperation>
+			<Name>releaseJournal</Name>
+			<Method>releaseJournal</Method>
+		</AxServiceOperation>
+		<AxServiceOperation>
+			<Name>getJournalState</Name>
+			<Method>getJournalState</Method>
+		</AxServiceOperation>
+		<AxServiceOperation>
+			<Name>getJournalLines</Name>
+			<Method>getJournalLines</Method>
+		</AxServiceOperation>
+		<AxServiceOperation>
+			<Name>submitCounts</Name>
+			<Method>submitCounts</Method>
+		</AxServiceOperation>
+	</ServiceOperations>
+</AxService>

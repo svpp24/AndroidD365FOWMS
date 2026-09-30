@@ -516,6 +516,36 @@ URL the same way the public `ImportFromPackage` action does, versus expecting a 
 `SharedServiceUnitFileID` the way the reference class's own call site received it, is the
 single biggest open question for the first live round on the import side.
 
+### Counting extensions — claims, audit, DIRECT mode (`HSMobileOpsCountTaskSvc`)
+
+New service `HSMobileOpsCountTaskSvc` (class `HSMobileOpsCountTaskService`), added to
+`HSMobileOpsServiceGroup` — **full service-group build required**. The app only renders and
+captures; every rule stays here. What is real and what is left for the X++ owner:
+
+| Operation | State |
+|---|---|
+| `getJournalState` | Real: OPEN / POSTED / NOT_FOUND from `InventJournalTable`. The app calls it before reopening a submitted journal and refuses to reopen a posted one. |
+| `getJournalLines` | Real read of `InventJournalTrans` + `InventDim` for DIRECT mode, optional location range, capped at 500 lines (`TOO_MANY_LINES`). Blind: no on-hand, counted or variance quantity. |
+| `claimJournal` / `heartbeatClaim` / `releaseJournal` | Request and journal-state validation real; the claim itself is **TODO** (claim table, TTL, one holder per range). Returns `NOT_IMPLEMENTED` until then. |
+| `submitCounts` (DIRECT) | Validation real; writing counts to `InventJournalTrans`, dedupe on `SubmissionId`, storing the audit and deciding what `MarkedOnly` means are **TODO**. Returns `NOT_IMPLEMENTED`. |
+
+Changes to existing objects:
+
+- `listOpenJournals` rows now carry `TransferMode` (always `DMF` today — **TODO**: choose `DIRECT`
+  for small journals), `Claims` and `Ranges` (empty — **TODO**: fill from the claim/range tables).
+- `exportOpenJournals` accepts `LocationFrom`/`LocationTo` and filters the export on the entity's
+  `WarehouseLocationId` field (same packed-query mechanism as the journal filter) — one claimed
+  range of a wall-to-wall journal. `ClaimToken` is carried; validating it is **TODO**.
+- `importCounts` now refuses a posted journal (`JOURNAL_POSTED`) or a missing one
+  (`JOURNAL_NOT_FOUND`), and receives the submission audit: `SubmissionId` (client UUID,
+  idempotency key), `UserId`, `DeviceId`, `StartedAtUtc`, `SubmittedAtUtc`, `PassNumber`,
+  `OriginType`, `ClaimToken`. Storing the audit and deduping on `SubmissionId` are **TODO**.
+
+Error codes the app acts on: `CLAIMED_BY_OTHER`, `CLAIM_EXPIRED`, `CLAIM_LOST`, `JOURNAL_POSTED`,
+`JOURNAL_NOT_FOUND`, `TOO_MANY_LINES`, `NOT_IMPLEMENTED`. App-sent timestamps are ISO 8601 UTC
+strings. On the app, claims and DIRECT mode are behind `FEATURE_COUNT_CLAIMS` /
+`FEATURE_COUNT_DIRECT` in `local.properties` (off by default).
+
 ## Licensing
 
 **Full replacement, this session — a certificate-chain design, not the earlier single-key-per-

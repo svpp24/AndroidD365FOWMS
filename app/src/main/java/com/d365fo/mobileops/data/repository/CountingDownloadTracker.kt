@@ -1,5 +1,12 @@
 package com.d365fo.mobileops.data.repository
 
+import com.d365fo.mobileops.data.counting.CountSubmissions
+import com.d365fo.mobileops.data.counting.DirectCountingRepository
+import com.d365fo.mobileops.data.local.dao.JournalDao
+import com.d365fo.mobileops.data.local.entity.CountSubmissionEntity
+import com.d365fo.mobileops.data.local.entity.CountSubmissionState
+import com.d365fo.mobileops.data.local.entity.TransferMode
+import com.d365fo.mobileops.domain.model.CountRange
 import com.d365fo.mobileops.domain.model.CountingJournalSummary
 import com.d365fo.mobileops.domain.model.ExportJobStatus
 import com.d365fo.mobileops.domain.model.ImportJobStatus
@@ -86,27 +93,35 @@ data class CountingActivity(
 )
 
 /**
- * Runs each journal's export/download/import ("Get data") and its counts submission ("End
- * count") on the application scope, not a ViewModel's - a worker who taps a button and
- * immediately navigates elsewhere must not lose the run, and the Activity page has to be able to
- * show it. Survives navigation, not the process being killed; a killed run is simply started
- * again from the card (a submission left `PENDING_POST` by a kill shows as failed-to-finish and
- * End count can be tapped again).
+ * Runs each journal's export/download/import ("Get data") on the application scope, not a
+ * ViewModel's - a worker who taps a button and immediately navigates elsewhere must not lose the
+ * run, and the Activity page has to be able to show it. A killed download is simply started
+ * again from the card.
+ *
+ * End count is not run here any more: it is a WorkManager job (CountSubmitWorker) driven by the
+ * persisted count_submission row. This class only renders those rows for the Activity page.
  */
 @Singleton
 class CountingDownloadTracker @Inject constructor(
     private val repository: CountingJournalRepository,
+    private val direct: DirectCountingRepository,
+    private val countSubmissions: CountSubmissions,
+    journalDao: JournalDao,
     private val scope: CoroutineScope,
 ) {
     private val _downloads = MutableStateFlow<Map<String, CountingDownload>>(emptyMap())
     val downloads: StateFlow<Map<String, CountingDownload>> = _downloads.asStateFlow()
 
-    private val _submissions = MutableStateFlow<Map<String, CountingSubmission>>(emptyMap())
-    val submissions: StateFlow<Map<String, CountingSubmission>> = _submissions.asStateFlow()
+    /** Every End count on the device, from Room - survives the process being killed. */
+    val submissions: StateFlow<Map<String, CountingSubmission>> =
+        combine(countSubmissions.observe(), journalDao.observeCountingJournals()) { rows, journals ->
+            val descriptions = journals.associate { it.journalId to it.description }
+            rows.associate { it.journalId to it.toSubmission(descriptions[it.journalId]) }
+        }.stateIn(scope, SharingStarted.Eagerly, emptyMap())
 
     /** Both kinds merged, newest first - what the Activity page lists. */
     val activities: StateFlow<List<CountingActivity>> =
-        combine(_downloads, _submissions) { downloads, submissions ->
+        combine(_downloads, submissions) { downloads, submissions ->
             (downloads.values.map { it.toActivity() } + submissions.values.map { it.toActivity() })
                 .sortedByDescending { it.startedAt }
         }.stateIn(scope, SharingStarted.Eagerly, emptyList())
@@ -115,24 +130,23 @@ class CountingDownloadTracker @Inject constructor(
 
     // -- Get data ---------------------------------------------------------------------------
 
+    /**
+     * [range] and [claimToken] come from the claim taken just before, when claims are on; a
+     * DIRECT journal skips DMF entirely.
+     */
     @Synchronized
-    fun start(journal: CountingJournalSummary, warehouseId: String) {
+    fun start(journal: CountingJournalSummary, warehouseId: String, range: CountRange? = null, claimToken: String? = null) {
         val key = downloadKey(journal.journalId)
         if (jobs[key]?.isActive == true) return
 
         setDownload(journal, ExportJobStatus.Enqueued, imported = false, startedAt = System.currentTimeMillis())
-        jobs[key] = scope.launch { runDownload(journal, warehouseId) }
-    }
-
-    // -- End count --------------------------------------------------------------------------
-
-    @Synchronized
-    fun submit(journalId: String, description: String?) {
-        val key = submitKey(journalId)
-        if (jobs[key]?.isActive == true) return
-
-        setSubmission(journalId, description, ImportJobStatus.Enqueued, startedAt = System.currentTimeMillis())
-        jobs[key] = scope.launch { runSubmit(journalId, description) }
+        jobs[key] = scope.launch {
+            if (journal.transferMode == TransferMode.DIRECT) {
+                runDirectDownload(journal, warehouseId, range, claimToken)
+            } else {
+                runDownload(journal, warehouseId, range, claimToken)
+            }
+        }
     }
 
     /** Removes a finished (or failed) entry from the Activity page. No effect while running. */
@@ -140,11 +154,32 @@ class CountingDownloadTracker @Inject constructor(
     fun dismiss(key: String) {
         if (jobs[key]?.isActive == true) return
         _downloads.update { it.filterKeys { id -> downloadKey(id) != key } }
-        _submissions.update { it.filterKeys { id -> submitKey(id) != key } }
+        if (key.startsWith(SUBMIT_PREFIX)) {
+            scope.launch { countSubmissions.dismiss(key.removePrefix(SUBMIT_PREFIX)) }
+        }
     }
 
-    private suspend fun runDownload(journal: CountingJournalSummary, warehouseId: String) {
-        val executionId = when (val started = repository.startExport(journal.journalId)) {
+    private suspend fun runDirectDownload(
+        journal: CountingJournalSummary,
+        warehouseId: String,
+        range: CountRange?,
+        claimToken: String?,
+    ) {
+        setDownload(journal, ExportJobStatus.Running(null), imported = false)
+        when (val result = direct.downloadLines(journal, warehouseId, range, claimToken)) {
+            is NetworkResult.Error -> failDownload(journal, result.failure.message)
+            NetworkResult.Loading -> Unit
+            is NetworkResult.Success -> setDownload(journal, ExportJobStatus.Ready(""), imported = true, note = result.data.note)
+        }
+    }
+
+    private suspend fun runDownload(
+        journal: CountingJournalSummary,
+        warehouseId: String,
+        range: CountRange?,
+        claimToken: String?,
+    ) {
+        val executionId = when (val started = repository.startExport(journal.journalId, range, claimToken)) {
             is NetworkResult.Error -> return failDownload(journal, started.failure.message)
             NetworkResult.Loading -> return failDownload(journal, "did not start")
             is NetworkResult.Success -> started.data
@@ -159,7 +194,7 @@ class CountingDownloadTracker @Inject constructor(
                 is NetworkResult.Success -> {
                     setDownload(journal, poll.data, imported = false)
                     when (val s = poll.data) {
-                        is ExportJobStatus.Ready -> return importLines(journal, s, warehouseId)
+                        is ExportJobStatus.Ready -> return importLines(journal, s, warehouseId, range)
                         is ExportJobStatus.Failed -> return
                         else -> Unit
                     }
@@ -174,8 +209,9 @@ class CountingDownloadTracker @Inject constructor(
         journal: CountingJournalSummary,
         ready: ExportJobStatus.Ready,
         warehouseId: String,
+        range: CountRange?,
     ) {
-        when (val result = repository.downloadAndImportLines(journal, ready.downloadUrl, warehouseId)) {
+        when (val result = repository.downloadAndImportLines(journal, ready.downloadUrl, warehouseId, range)) {
             is NetworkResult.Error -> failDownload(journal, result.failure.message)
             NetworkResult.Loading -> Unit
             is NetworkResult.Success -> {
@@ -186,48 +222,6 @@ class CountingDownloadTracker @Inject constructor(
                 runCatching { repository.enrichItemNames(journal.journalId) }
             }
         }
-    }
-
-    private suspend fun runSubmit(journalId: String, description: String?) {
-        repository.markSubmitting(journalId)
-
-        val executionId = when (val started = repository.submitCounts(journalId)) {
-            is NetworkResult.Error -> return failSubmit(journalId, description, started.failure.message)
-            NetworkResult.Loading -> return failSubmit(journalId, description, "did not start")
-            is NetworkResult.Success -> started.data
-        }
-
-        repeat(POLL_ATTEMPTS_MAX) {
-            delay(POLL_INTERVAL_MS)
-
-            when (val poll = repository.pollImport(executionId)) {
-                is NetworkResult.Error -> return failSubmit(journalId, description, poll.failure.message)
-                NetworkResult.Loading -> Unit
-                is NetworkResult.Success -> {
-                    when (val s = poll.data) {
-                        ImportJobStatus.Succeeded -> {
-                            repository.markSubmitted(journalId)
-                            setSubmission(journalId, description, s)
-                            return
-                        }
-                        is ImportJobStatus.PartiallySucceeded -> {
-                            repository.markSubmittedWithWarning(journalId, s.warning)
-                            setSubmission(journalId, description, s)
-                            return
-                        }
-                        is ImportJobStatus.Failed -> return failSubmit(journalId, description, s.reason)
-                        else -> setSubmission(journalId, description, s)
-                    }
-                }
-            }
-        }
-
-        failSubmit(journalId, description, "Timed out waiting for the import")
-    }
-
-    private suspend fun failSubmit(journalId: String, description: String?, reason: String) {
-        repository.markSubmitFailed(journalId, reason)
-        setSubmission(journalId, description, ImportJobStatus.Failed(reason))
     }
 
     private fun failDownload(journal: CountingJournalSummary, reason: String) =
@@ -253,22 +247,19 @@ class CountingDownloadTracker @Inject constructor(
         }
     }
 
-    private fun setSubmission(
-        journalId: String,
-        description: String?,
-        status: ImportJobStatus,
-        startedAt: Long? = null,
-    ) {
-        _submissions.update { current ->
-            val existing = current[journalId]
-            current + (journalId to CountingSubmission(
-                journalId = journalId,
-                description = description,
-                status = status,
-                startedAt = startedAt ?: existing?.startedAt ?: System.currentTimeMillis(),
-            ))
-        }
-    }
+    private fun CountSubmissionEntity.toSubmission(description: String?) = CountingSubmission(
+        journalId = journalId,
+        description = description,
+        status = when (state) {
+            CountSubmissionState.QUEUED -> ImportJobStatus.Enqueued
+            CountSubmissionState.UPLOADING -> ImportJobStatus.Running(null)
+            CountSubmissionState.IMPORTING -> ImportJobStatus.Running(percent)
+            CountSubmissionState.SUCCEEDED -> ImportJobStatus.Succeeded
+            CountSubmissionState.PARTIAL -> ImportJobStatus.PartiallySucceeded(message.orEmpty())
+            CountSubmissionState.FAILED -> ImportJobStatus.Failed(message ?: "The submission failed.")
+        },
+        startedAt = submittedAt,
+    )
 
     private fun CountingDownload.toActivity() = CountingActivity(
         key = downloadKey(journalId),
@@ -296,10 +287,11 @@ class CountingDownloadTracker @Inject constructor(
     )
 
     private fun downloadKey(journalId: String) = "download:$journalId"
-    private fun submitKey(journalId: String) = "submit:$journalId"
+    private fun submitKey(journalId: String) = "$SUBMIT_PREFIX$journalId"
 
     private companion object {
         const val POLL_INTERVAL_MS = 3_000L
         const val POLL_ATTEMPTS_MAX = 100
+        const val SUBMIT_PREFIX = "submit:"
     }
 }

@@ -270,3 +270,36 @@ class LiveD365ODataApi @Inject constructor(
     ) = delegate.get().getExecutionErrors(body)
 }
 
+
+@Singleton
+class LiveCountTaskServiceApi @Inject constructor(
+    factory: D365RetrofitFactory,
+    settings: ConnectionSettings,
+) : CountTaskServiceApi {
+
+    private val delegate = RebuildingApi(factory, CountTaskServiceApi::class.java) {
+        settings.tenant.value.servicesRoot
+    }
+
+    override suspend fun claimJournal(body: com.d365fo.mobileops.data.remote.dto.CountClaimServiceRequest) =
+        delegate.get().claimJournal(body)
+
+    override suspend fun heartbeatClaim(body: com.d365fo.mobileops.data.remote.dto.CountClaimTokenServiceRequest) =
+        delegate.get().heartbeatClaim(body)
+
+    override suspend fun releaseJournal(body: com.d365fo.mobileops.data.remote.dto.CountClaimTokenServiceRequest) =
+        delegate.get().releaseJournal(body)
+
+    override suspend fun getJournalState(
+        body: com.d365fo.mobileops.data.remote.dto.JournalStateServiceRequest,
+        tag: com.d365fo.mobileops.data.remote.interceptor.IdempotentRead,
+    ) = delegate.get().getJournalState(body, tag)
+
+    override suspend fun getJournalLines(
+        body: com.d365fo.mobileops.data.remote.dto.DirectLinesServiceRequest,
+        tag: com.d365fo.mobileops.data.remote.interceptor.IdempotentRead,
+    ) = delegate.get().getJournalLines(body, tag)
+
+    override suspend fun submitCounts(body: com.d365fo.mobileops.data.remote.dto.DirectSubmitServiceRequest) =
+        delegate.get().submitCounts(body)
+}

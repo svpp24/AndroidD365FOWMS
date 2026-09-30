@@ -75,6 +75,11 @@ android {
         buildConfigField("String", "LICENSE_ROOT_PUBLIC_KEY_B64", "\"${secret("LICENSE_ROOT_PUBLIC_KEY_B64")}\"")
         buildConfigField("String", "RELEASE_SIGNING_CERT_SHA256", "\"${secret("RELEASE_SIGNING_CERT_SHA256")}\"")
 
+        // Inventory count extensions - each off until its X++ side exists. See FeatureFlags.kt.
+        listOf("FEATURE_COUNT_CLAIMS", "FEATURE_COUNT_DIRECT").forEach { flag ->
+            buildConfigField("boolean", flag, secret(flag, "false").toBoolean().toString())
+        }
+
         ksp { arg("room.schemaLocation", "$projectDir/schemas") }
     }
 

@@ -4,15 +4,26 @@
 	<SourceCode>
 		<Declaration><![CDATA[
 /// <summary>
-/// [packageUrl] is the blob SAS URL the app already uploaded the counted-quantity package to
-/// via the public `GetAzureWriteUrl` OData action - see CountingJournalRepository.submitCounts.
+/// [PackageUrl] is the blob SAS URL the app already uploaded the counted-quantity package to via
+/// the public `GetAzureWriteUrl` OData action - see CountingJournalRepository.submitCounts.
+/// The rest is the audit carried by every submission (ISO 8601 UTC strings for timestamps);
+/// SubmissionId is the client-generated idempotency key. Storing the audit is a TODO for the
+/// X++ owner.
 /// </summary>
 [DataContractAttribute]
 class HSMobileOpsImportCountsRequest
 {
-    DataAreaId       dataAreaId;
-    InventJournalId  journalId;
-    str              packageUrl;
+    DataAreaId      dataAreaId;
+    InventJournalId journalId;
+    str             packageUrl;
+    str             claimToken;
+    str             submissionId;
+    str             userId;
+    str             deviceId;
+    str             startedAtUtc;
+    str             submittedAtUtc;
+    int             passNumber;
+    str             originType;
 
 }
 ]]></Declaration>
@@ -50,6 +61,102 @@ class HSMobileOpsImportCountsRequest
     {
         packageUrl = _value;
         return packageUrl;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmClaimToken</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ClaimToken')]
+    public str parmClaimToken(str _value = claimToken)
+    {
+        claimToken = _value;
+        return claimToken;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmSubmissionId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('SubmissionId')]
+    public str parmSubmissionId(str _value = submissionId)
+    {
+        submissionId = _value;
+        return submissionId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmUserId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('UserId')]
+    public str parmUserId(str _value = userId)
+    {
+        userId = _value;
+        return userId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmDeviceId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('DeviceId')]
+    public str parmDeviceId(str _value = deviceId)
+    {
+        deviceId = _value;
+        return deviceId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmStartedAtUtc</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('StartedAtUtc')]
+    public str parmStartedAtUtc(str _value = startedAtUtc)
+    {
+        startedAtUtc = _value;
+        return startedAtUtc;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmSubmittedAtUtc</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('SubmittedAtUtc')]
+    public str parmSubmittedAtUtc(str _value = submittedAtUtc)
+    {
+        submittedAtUtc = _value;
+        return submittedAtUtc;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmPassNumber</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('PassNumber')]
+    public int parmPassNumber(int _value = passNumber)
+    {
+        passNumber = _value;
+        return passNumber;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmOriginType</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('OriginType')]
+    public str parmOriginType(str _value = originType)
+    {
+        originType = _value;
+        return originType;
     }
 ]]></Source>
 			</Method>

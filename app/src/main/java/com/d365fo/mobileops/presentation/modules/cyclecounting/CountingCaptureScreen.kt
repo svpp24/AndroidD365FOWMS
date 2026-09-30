@@ -37,7 +37,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.d365fo.mobileops.data.local.entity.JournalLineEntity
 import com.d365fo.mobileops.presentation.common.components.AppCard as Card
 import com.d365fo.mobileops.presentation.common.components.AppTopBar as TopAppBar
 import com.d365fo.mobileops.presentation.common.components.CountProgressBar

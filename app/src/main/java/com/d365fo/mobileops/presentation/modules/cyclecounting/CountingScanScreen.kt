@@ -47,7 +47,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.d365fo.mobileops.data.local.entity.JournalLineEntity
+import com.d365fo.mobileops.data.local.dao.CountLine
 import com.d365fo.mobileops.presentation.common.components.AppCard as Card
 import com.d365fo.mobileops.presentation.common.components.AppTopBar as TopAppBar
 import com.d365fo.mobileops.presentation.common.components.CountProgressBar
@@ -296,7 +296,7 @@ private fun QuantityDialog(prompt: CountPrompt, onOk: (String) -> Unit, onCancel
 }
 /** The scanned item is on several lines: pick the location / batch to count. */
 @Composable
-private fun ChoiceDialog(lines: List<JournalLineEntity>, onPick: (String) -> Unit, onCancel: () -> Unit) {
+private fun ChoiceDialog(lines: List<CountLine>, onPick: (String) -> Unit, onCancel: () -> Unit) {
     AlertDialog(
         onDismissRequest = onCancel,
         title = { Text("${lines.first().itemId} is on ${lines.size} lines") },
@@ -334,7 +334,7 @@ private fun ChoiceDialog(lines: List<JournalLineEntity>, onPick: (String) -> Uni
 }
 
 /** "Loc A-01 · Batch B7" - where this line is, or null when it has no location/batch/serial. */
-private fun whereLine(line: JournalLineEntity): String? =
+private fun whereLine(line: CountLine): String? =
     listOfNotNull(
         line.locationId?.takeIf { it.isNotBlank() }?.let { "Loc $it" },
         line.batchId?.takeIf { it.isNotBlank() }?.let { "Batch $it" },

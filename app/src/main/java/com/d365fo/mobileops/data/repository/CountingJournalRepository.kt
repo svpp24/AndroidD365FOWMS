@@ -1,7 +1,13 @@
 package com.d365fo.mobileops.data.repository
 
 import android.content.Context
+import com.d365fo.mobileops.data.counting.SubmissionAudit
+import com.d365fo.mobileops.data.local.dao.CountingDao
 import com.d365fo.mobileops.data.local.dao.JournalDao
+import com.d365fo.mobileops.data.local.entity.CountingLineReferenceEntity
+import com.d365fo.mobileops.data.local.entity.TransferMode
+import com.d365fo.mobileops.domain.model.CountClaimInfo
+import com.d365fo.mobileops.domain.model.CountRange
 import com.d365fo.mobileops.data.local.dao.MergeResult
 import com.d365fo.mobileops.data.local.entity.JournalEntity
 import com.d365fo.mobileops.data.local.entity.JournalLineEntity
@@ -86,6 +92,7 @@ class CountingJournalRepository @Inject constructor(
     private val companyProvider: CompanyProvider,
     private val secureStore: SecureStore,
     private val journalDao: JournalDao,
+    private val countingDao: CountingDao,
     private val json: Json,
     private val ioDispatcher: CoroutineDispatcher,
     @ApplicationContext private val context: Context,
@@ -123,6 +130,27 @@ class CountingJournalRepository @Inject constructor(
                             description = row.description,
                             journalDate = Formatters.serviceDateTimeToEpochMillis(row.journalDate),
                             lineCount = row.lineCount,
+                            transferMode = TransferMode.parse(row.transferMode),
+                            claims = row.claims.map { claim ->
+                                CountClaimInfo(
+                                    claimedBy = claim.claimedBy.orEmpty(),
+                                    deviceId = claim.deviceId,
+                                    rangeId = claim.rangeId,
+                                    locationFrom = claim.locationFrom,
+                                    locationTo = claim.locationTo,
+                                    expiresAt = Formatters.serviceDateTimeToEpochMillis(claim.expiresUtc),
+                                )
+                            },
+                            ranges = row.ranges.map { range ->
+                                CountRange(
+                                    rangeId = range.rangeId,
+                                    label = range.label?.takeIf { it.isNotBlank() }
+                                        ?: listOfNotNull(range.locationFrom, range.locationTo).joinToString(" - "),
+                                    locationFrom = range.locationFrom,
+                                    locationTo = range.locationTo,
+                                    lineCount = range.lineCount,
+                                )
+                            },
                         )
                     },
                 )
@@ -143,10 +171,22 @@ class CountingJournalRepository @Inject constructor(
      *    and calls the public `ExportToPackage` OData action against that project with it, so
      *    there is no batch job to resolve into an execution id afterwards.
      */
-    suspend fun startExport(journalId: String): NetworkResult<String> = withContext(ioDispatcher) {
+    suspend fun startExport(
+        journalId: String,
+        range: CountRange? = null,
+        claimToken: String? = null,
+    ): NetworkResult<String> = withContext(ioDispatcher) {
         val scoped = errorMapper.safeCall {
             service.exportOpenJournals(
-                ScopeExportServiceRequest(ScopeExportRequestBody(company(), journalId)),
+                ScopeExportServiceRequest(
+                    ScopeExportRequestBody(
+                        dataAreaId = company(),
+                        journalId = journalId,
+                        locationFrom = range?.locationFrom,
+                        locationTo = range?.locationTo,
+                        claimToken = claimToken,
+                    ),
+                ),
             )
         }
         val projectName = when (scoped) {
@@ -229,6 +269,7 @@ class CountingJournalRepository @Inject constructor(
         journal: CountingJournalSummary,
         downloadUrl: String,
         warehouseId: String,
+        range: CountRange? = null,
     ): NetworkResult<ImportSummary> = withContext(ioDispatcher) {
         val packageBytes = try {
             blob.download(downloadUrl)
@@ -257,8 +298,13 @@ class CountingJournalRepository @Inject constructor(
         // already hold only this journal's lines - filtered again here anyway as a cheap
         // defensive check against a stale/misscoped package, so a later submitCounts() re-import
         // can never touch another journal's rows even if the export-side scoping regresses.
+        // The claimed range is filtered again here too - the server scopes the export, this only
+        // makes sure a regression there can never put another worker's aisle on this device.
         val table = fullTable.copy(
-            rows = fullTable.rows.filter { it.getCI("JournalNumber") == journal.journalId },
+            rows = fullTable.rows.filter {
+                it.getCI("JournalNumber") == journal.journalId &&
+                    (range == null || range.contains(it.getCI("WarehouseLocationId")))
+            },
         )
         if (table.rows.isEmpty()) {
             return@withContext NetworkResult.Error(
@@ -286,12 +332,14 @@ class CountingJournalRepository @Inject constructor(
                 workerId = workerId,
                 deviceId = secureStore.deviceId(),
                 status = JournalStatus.DRAFT,
+                transferMode = TransferMode.DMF,
             ),
         )
 
+        val onHandByLineNumber = HashMap<Int, String?>()
         val lines = table.rows.mapIndexed { index, row ->
             val lineNumber = row.getCI("LineNumber").toLineNumber() ?: (index + 1)
-            val onHand = row.getCI("OnHandQuantity").toPlainQuantity()
+            onHandByLineNumber[lineNumber] = row.getCI("OnHandQuantity").toPlainQuantity()
             // What D365FO already holds as this line's count - so a journal that was counted and
             // submitted earlier (or on another device) comes back with its counts instead of
             // looking untouched. A non-zero COUNTEDQUANTITY is a count. Zero is ambiguous (counted
@@ -305,17 +353,13 @@ class CountingJournalRepository @Inject constructor(
                 lineNumber = lineNumber,
                 itemId = row.getCI("ItemNumber").orEmpty(),
                 itemName = row.getCI("ItemNumber").orEmpty(),
-                // What D365FO reports on hand for this line, as exported. (An earlier version of
-                // this app believed the entity had no ONHANDQUANTITY column - that came from a
-                // package exported under a wrongly-registered entity; a properly registered one
-                // exports it, with real non-zero values.) Shown as the count field's starting
-                // value, never submitted as a count on its own.
-                quantity = onHand.orEmpty(),
+                // Blind counting: on-hand never goes on the line - see CountingLineReferenceEntity.
+                quantity = "",
                 // InventInventoryCountingJournalLineEntity has no plain unit-symbol column -
                 // only CatchWeightUnitSymbol, which is for catch-weight items specifically.
                 unitId = "",
                 countedQuantity = serverCount,
-                expectedQuantity = onHand,
+                expectedQuantity = null,
                 siteId = row.getCI("InventorySiteId"),
                 warehouseId = row.getCI("WarehouseId"),
                 locationId = row.getCI("WarehouseLocationId"),
@@ -331,6 +375,14 @@ class CountingJournalRepository @Inject constructor(
             journalDao.upsertLinesChunked(lines)
             MergeResult(added = lines.size, removed = 0)
         }
+        // After the lines, so each reference row's journal exists (foreign key), and keyed by
+        // the line id the merge actually kept.
+        countingDao.upsertReferences(
+            journalDao.getLinesOnce(journal.journalId).mapNotNull { line ->
+                if (line.lineNumber !in onHandByLineNumber) return@mapNotNull null
+                CountingLineReferenceEntity(line.journalLineId, journal.journalId, onHandByLineNumber[line.lineNumber])
+            },
+        )
 
         NetworkResult.Success(
             ImportSummary(
@@ -354,7 +406,11 @@ class CountingJournalRepository @Inject constructor(
      * [downloadAndImportLines] in the first place - there is nothing cached to rebuild a package
      * from.
      */
-    suspend fun submitCounts(journalId: String): NetworkResult<String> = withContext(ioDispatcher) {
+    suspend fun submitCounts(
+        journalId: String,
+        audit: SubmissionAudit,
+        claimToken: String?,
+    ): NetworkResult<String> = withContext(ioDispatcher) {
         val cached = readCachedPackageFiles(journalId)
             ?: return@withContext NetworkResult.Error(
                 AppFailure.Fatal("No cached package for $journalId - fetch its lines again first"),
@@ -364,6 +420,7 @@ class CountingJournalRepository @Inject constructor(
         val journal = journalDao.getJournal(journalId)
             ?: return@withContext NetworkResult.Error(AppFailure.Fatal("$journalId not found locally"))
         val countedByLine = journal.lines.associateBy { it.lineNumber }
+        val onHandByLineId = countingDao.getReferences(journalId).associate { it.journalLineId to it.onHandQuantity }
 
         // The header's own exact casing for the counted-quantity column - not assumed to be
         // "CountedQuantity" literally, since the real staging field name is upper case
@@ -395,7 +452,7 @@ class CountingJournalRepository @Inject constructor(
                 // uncounted - or, worse, counted as zero and written off. On-hand comes from the
                 // line as imported, falling back to the export's own column.
                 line.markedCounted ->
-                    line.expectedQuantity ?: row.getCI("OnHandQuantity").toPlainQuantity()
+                    onHandByLineId[line.journalLineId] ?: row.getCI("OnHandQuantity").toPlainQuantity()
                 else -> null
             }
 
@@ -413,7 +470,10 @@ class CountingJournalRepository @Inject constructor(
         }
         if (updatedRows.isEmpty()) {
             return@withContext NetworkResult.Error(
-                AppFailure.BusinessRule("Nothing has been counted yet - count or mark at least one line first."),
+                AppFailure.BusinessRule(
+                    "Nothing has been counted yet - count or mark at least one line first.",
+                    d365ErrorCode = "NOTHING_COUNTED",
+                ),
             )
         }
         val updatedCsv = DmfCsv.write(DmfCsvTable(table.header, updatedRows))
@@ -460,6 +520,14 @@ class CountingJournalRepository @Inject constructor(
                         // blob without it, versus expecting a local SharedServiceUnit file id
                         // instead - see aos/README.md's counting section for this open question.
                         packageUrl = blobUrl,
+                        claimToken = claimToken,
+                        submissionId = audit.submissionId,
+                        userId = audit.userId,
+                        deviceId = audit.deviceId,
+                        startedAtUtc = audit.startedAt?.let { Formatters.isoUtc(it) },
+                        submittedAtUtc = Formatters.isoUtc(audit.submittedAt),
+                        passNumber = audit.passNumber,
+                        originType = audit.originType,
                     ),
                 ),
             )
@@ -470,7 +538,9 @@ class CountingJournalRepository @Inject constructor(
             is NetworkResult.Success -> {
                 val body = importResult.data
                 if (!body.success) {
-                    NetworkResult.Error(AppFailure.BusinessRule(body.errorCode ?: "import failed"))
+                    NetworkResult.Error(
+                        AppFailure.BusinessRule(body.errorCode ?: "import failed", d365ErrorCode = body.errorCode),
+                    )
                 } else {
                     body.executionId?.takeIf { it.isNotBlank() }
                         ?.let { NetworkResult.Success(it) }
@@ -569,11 +639,6 @@ class CountingJournalRepository @Inject constructor(
         }
     }
 
-    suspend fun markSubmittedWithWarning(journalId: String, warning: String) = withContext(ioDispatcher) {
-        journalDao.markPosted(journalId, journalId, System.currentTimeMillis())
-        // Still submitted - the accepted lines landed - but keep what was refused where the card can show it.
-        journalDao.updateStatus(journalId, JournalStatus.POSTED, SyncState.SYNCED, warning)
-    }
     // -- Counting workflow -------------------------------------------------------------------
 
     suspend fun startCounting(journalId: String) = withContext(ioDispatcher) {
@@ -581,25 +646,19 @@ class CountingJournalRepository @Inject constructor(
     }
 
     /**
-     * Reopens a submitted journal for more counting: back to a draft that is counting, lines
-     * unlocked. Nothing is deleted - every count stays, and End count can send them again (only
-     * counted lines are ever sent, so re-sending is safe). D365FO's journal was never posted by
-     * this app, so it is still open there.
+     * Unlocks a SUBMITTED journal for more counting. Only after the caller has confirmed with
+     * the server that the journal is still open in D365FO - a posted journal is never reopened
+     * (see CountingJournalListViewModel.reopenCounting). Every count stays; End count re-sends
+     * only counted lines, so re-sending is safe.
      */
     suspend fun reopenCounting(journalId: String) = withContext(ioDispatcher) {
+        countingDao.deleteSubmission(journalId)
         journalDao.updateStatus(journalId, JournalStatus.DRAFT, SyncState.SYNCED, null)
     }
 
-    suspend fun markSubmitting(journalId: String) = withContext(ioDispatcher) {
-        journalDao.updateStatus(journalId, JournalStatus.PENDING_POST, SyncState.PENDING, null)
-    }
-
-    suspend fun markSubmitted(journalId: String) = withContext(ioDispatcher) {
+    /** The server says the journal was posted: lock it on the device for good. */
+    suspend fun markPostedInD365(journalId: String) = withContext(ioDispatcher) {
         journalDao.markPosted(journalId, journalId, System.currentTimeMillis())
-    }
-
-    suspend fun markSubmitFailed(journalId: String, reason: String) = withContext(ioDispatcher) {
-        journalDao.updateStatus(journalId, JournalStatus.FAILED, SyncState.ERROR, reason)
     }
 
     /**

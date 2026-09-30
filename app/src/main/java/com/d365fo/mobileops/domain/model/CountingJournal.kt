@@ -1,5 +1,7 @@
 package com.d365fo.mobileops.domain.model
 
+import com.d365fo.mobileops.data.local.entity.TransferMode
+
 /**
  * One open counting journal for the worker's assigned warehouse — header only.
  *
@@ -13,7 +15,37 @@ data class CountingJournalSummary(
     val description: String?,
     val journalDate: Long?,
     val lineCount: Int,
+    val transferMode: TransferMode = TransferMode.DMF,
+    /** Who currently holds this journal, or which of its ranges - display only. */
+    val claims: List<CountClaimInfo> = emptyList(),
+    /** Claimable location ranges of a wall-to-wall journal; empty means it is claimed whole. */
+    val ranges: List<CountRange> = emptyList(),
 )
+
+data class CountClaimInfo(
+    val claimedBy: String,
+    val deviceId: String?,
+    val rangeId: String?,
+    val locationFrom: String?,
+    val locationTo: String?,
+    val expiresAt: Long?,
+)
+
+data class CountRange(
+    val rangeId: String,
+    val label: String,
+    val locationFrom: String?,
+    val locationTo: String?,
+    val lineCount: Int,
+) {
+    /** Whether [locationId] falls in this range - the app's own safety filter after a download. */
+    fun contains(locationId: String?): Boolean {
+        val loc = locationId.orEmpty()
+        val from = locationFrom?.takeIf { it.isNotBlank() }
+        val to = locationTo?.takeIf { it.isNotBlank() }
+        return (from == null || loc >= from) && (to == null || loc <= to)
+    }
+}
 
 /**
  * Where a journal's bulk line export is, end to end.

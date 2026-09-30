@@ -1,0 +1,348 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsCountTaskService</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Counting task operations that sit beside HSMobileOpsCountingService's DMF export/import:
+/// claims (claimJournal / heartbeatClaim / releaseJournal), journal state, and the DIRECT
+/// transfer mode (getJournalLines / submitCounts) used for small journals.
+///
+/// The app only renders and captures. Every rule - claim TTL, who may hold which range, when a
+/// claim is lost, which transfer mode a journal uses, how a direct count is written to
+/// InventJournalTrans - belongs here, in X++. The operations marked TODO below validate their
+/// request and the journal's state for real, then return NOT_IMPLEMENTED until the claim table
+/// and the direct-count write are built. The app treats NOT_IMPLEMENTED as "feature not
+/// available on this server" and keeps every local count.
+///
+/// Registered as HSMobileOpsCountTaskSvc in HSMobileOpsServiceGroup - needs a full service
+/// group build, not a class-only build (see aos/README.md, Installing).
+/// </summary>
+class HSMobileOpsCountTaskService
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>claimJournal</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Claims a journal, or one location range of it, for one user on one device.
+    /// </summary>
+    [Wrappable(false), Hookable(false)]
+    public HSMobileOpsCountClaimResponse claimJournal(HSMobileOpsCountClaimRequest _request)
+    {
+        HSMobileOpsCountClaimResponse response = new HSMobileOpsCountClaimResponse();
+        str                           state;
+
+        response.parmSuccess(false);
+
+        if (!_request || !_request.parmDataAreaId() || !_request.parmJournalId()
+            || !_request.parmUserId() || !_request.parmDeviceId()
+            || !CompanyInfo::findDataArea(_request.parmDataAreaId()).RecId)
+        {
+            response.parmErrorCode('INVALID_REQUEST');
+            return response;
+        }
+
+        state = HSMobileOpsCountTaskService::journalState(_request.parmDataAreaId(), _request.parmJournalId());
+        if (state != HSMobileOpsCountTaskService::stateOpen())
+        {
+            response.parmErrorCode(state == HSMobileOpsCountTaskService::statePosted() ? 'JOURNAL_POSTED' : 'JOURNAL_NOT_FOUND');
+            return response;
+        }
+
+        // TODO (X++ owner): write the claim row (claim table, TTL, one holder per range), set
+        // ClaimToken/ClaimedBy/ExpiresUtc/HeartbeatSeconds, and return CLAIMED_BY_OTHER with
+        // ClaimedBy filled in when someone else already holds the journal or range.
+        response.parmErrorCode('NOT_IMPLEMENTED');
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>heartbeatClaim</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Extends a claim's expiry. CLAIM_LOST / CLAIM_EXPIRED when the token is no longer valid.
+    /// </summary>
+    [Wrappable(false), Hookable(false)]
+    public HSMobileOpsCountClaimResponse heartbeatClaim(HSMobileOpsCountClaimTokenRequest _request)
+    {
+        HSMobileOpsCountClaimResponse response = new HSMobileOpsCountClaimResponse();
+
+        response.parmSuccess(false);
+
+        if (!_request || !_request.parmDataAreaId() || !_request.parmJournalId() || !_request.parmClaimToken())
+        {
+            response.parmErrorCode('INVALID_REQUEST');
+            return response;
+        }
+
+        // TODO (X++ owner): look up the claim by token, extend ExpiresUtc, return it; or
+        // CLAIM_EXPIRED / CLAIM_LOST.
+        response.parmErrorCode('NOT_IMPLEMENTED');
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>releaseJournal</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Releases a claim - called by the app after End count succeeds. Releasing a claim that is
+    /// already gone is a success, not an error.
+    /// </summary>
+    [Wrappable(false), Hookable(false)]
+    public HSMobileOpsCountClaimResponse releaseJournal(HSMobileOpsCountClaimTokenRequest _request)
+    {
+        HSMobileOpsCountClaimResponse response = new HSMobileOpsCountClaimResponse();
+
+        response.parmSuccess(false);
+
+        if (!_request || !_request.parmDataAreaId() || !_request.parmJournalId() || !_request.parmClaimToken())
+        {
+            response.parmErrorCode('INVALID_REQUEST');
+            return response;
+        }
+
+        // TODO (X++ owner): delete/close the claim row for this token.
+        response.parmErrorCode('NOT_IMPLEMENTED');
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>getJournalState</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// OPEN, POSTED or NOT_FOUND. The app calls this before reopening a submitted journal on the
+    /// device: a journal posted in D365FO must not be reopened.
+    /// </summary>
+    public HSMobileOpsCountJournalStateResponse getJournalState(HSMobileOpsCountJournalStateRequest _request)
+    {
+        HSMobileOpsCountJournalStateResponse response = new HSMobileOpsCountJournalStateResponse();
+
+        response.parmSuccess(false);
+
+        if (!_request || !_request.parmDataAreaId() || !_request.parmJournalId()
+            || !CompanyInfo::findDataArea(_request.parmDataAreaId()).RecId)
+        {
+            response.parmErrorCode('INVALID_REQUEST');
+            return response;
+        }
+
+        response.parmState(HSMobileOpsCountTaskService::journalState(_request.parmDataAreaId(), _request.parmJournalId()));
+        response.parmSuccess(true);
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>getJournalLines</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// A small journal's lines, for DIRECT transfer mode - no DMF round trip. Blind: no on-hand,
+    /// counted or variance quantity is returned. Refuses a journal over maxDirectLines(); those
+    /// belong on the DMF path.
+    /// </summary>
+    public HSMobileOpsCountDirectLinesResponse getJournalLines(HSMobileOpsCountDirectLinesRequest _request)
+    {
+        HSMobileOpsCountDirectLinesResponse response = new HSMobileOpsCountDirectLinesResponse();
+        HSMobileOpsCountDirectLineRow       row;
+        List                                lines = new List(Types::Class);
+        InventJournalTrans                  inventJournalTrans;
+        InventDim                           inventDim;
+        str                                 state;
+        str                                 locationFrom;
+        str                                 locationTo;
+        int                                 lineCount;
+
+        response.parmSuccess(false);
+        response.parmLines(lines);
+
+        if (!_request || !_request.parmDataAreaId() || !_request.parmJournalId()
+            || !CompanyInfo::findDataArea(_request.parmDataAreaId()).RecId)
+        {
+            response.parmErrorCode('INVALID_REQUEST');
+            return response;
+        }
+
+        state = HSMobileOpsCountTaskService::journalState(_request.parmDataAreaId(), _request.parmJournalId());
+        if (state != HSMobileOpsCountTaskService::stateOpen())
+        {
+            response.parmErrorCode(state == HSMobileOpsCountTaskService::statePosted() ? 'JOURNAL_POSTED' : 'JOURNAL_NOT_FOUND');
+            return response;
+        }
+
+        // TODO (X++ owner): when claims exist, validate ClaimToken and take the range from the
+        // claim rather than from the request.
+        locationFrom = _request.parmLocationFrom();
+        locationTo   = _request.parmLocationTo();
+
+        changecompany (_request.parmDataAreaId())
+        {
+            while select LineNum, ItemId from inventJournalTrans
+                order by LineNum
+                where inventJournalTrans.JournalId == _request.parmJournalId()
+                join InventSiteId, InventLocationId, wMSLocationId, inventBatchId, inventSerialId from inventDim
+                    where inventDim.InventDimId == inventJournalTrans.InventDimId
+            {
+                if (locationFrom && inventDim.wMSLocationId < locationFrom)
+                {
+                    continue;
+                }
+                if (locationTo && inventDim.wMSLocationId > locationTo)
+                {
+                    continue;
+                }
+
+                lineCount++;
+                if (lineCount > HSMobileOpsCountTaskService::maxDirectLines())
+                {
+                    response.parmLines(new List(Types::Class));
+                    response.parmErrorCode('TOO_MANY_LINES');
+                    return response;
+                }
+
+                row = new HSMobileOpsCountDirectLineRow();
+                row.parmLineNumber(inventJournalTrans.LineNum);
+                row.parmItemNumber(inventJournalTrans.ItemId);
+                row.parmItemName(InventTable::find(inventJournalTrans.ItemId).itemName());
+                row.parmSiteId(inventDim.InventSiteId);
+                row.parmWarehouseId(inventDim.InventLocationId);
+                row.parmLocationId(inventDim.wMSLocationId);
+                row.parmBatchId(inventDim.inventBatchId);
+                row.parmSerialId(inventDim.inventSerialId);
+                // TODO (X++ owner): real pass number once recounts exist (attempt table).
+                row.parmPassNumber(1);
+                lines.addEnd(row);
+            }
+        }
+
+        response.parmLines(lines);
+        response.parmSuccess(true);
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>submitCounts</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// DIRECT transfer mode: all counted lines of a journal (or claimed range) in one call.
+    /// SubmissionId is the idempotency key - a repeat of an already-applied SubmissionId must
+    /// answer Success without applying anything twice.
+    /// </summary>
+    [Wrappable(false), Hookable(false)]
+    public HSMobileOpsCountDirectSubmitResponse submitCounts(HSMobileOpsCountDirectSubmitRequest _request)
+    {
+        HSMobileOpsCountDirectSubmitResponse response = new HSMobileOpsCountDirectSubmitResponse();
+        str                                  state;
+
+        response.parmSuccess(false);
+
+        if (!_request || !_request.parmDataAreaId() || !_request.parmJournalId() || !_request.parmSubmissionId()
+            || !CompanyInfo::findDataArea(_request.parmDataAreaId()).RecId)
+        {
+            response.parmErrorCode('INVALID_REQUEST');
+            return response;
+        }
+
+        state = HSMobileOpsCountTaskService::journalState(_request.parmDataAreaId(), _request.parmJournalId());
+        if (state != HSMobileOpsCountTaskService::stateOpen())
+        {
+            response.parmErrorCode(state == HSMobileOpsCountTaskService::statePosted() ? 'JOURNAL_POSTED' : 'JOURNAL_NOT_FOUND');
+            return response;
+        }
+
+        // TODO (X++ owner): validate ClaimToken; dedupe on SubmissionId; write each line's
+        // counted quantity to InventJournalTrans the way the standard counting form does;
+        // store the audit fields (UserId, DeviceId, StartedAtUtc, SubmittedAtUtc, PassNumber,
+        // OriginType, per-line CountedBy/CountedAtUtc); decide what MarkedOnly means.
+        response.parmErrorCode('NOT_IMPLEMENTED');
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>journalState</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// OPEN / POSTED / NOT_FOUND for one counting journal. Shared by every operation here and by
+    /// HSMobileOpsCountingService::importCounts.
+    /// </summary>
+    public static str journalState(DataAreaId _company, InventJournalId _journalId)
+    {
+        InventJournalTable inventJournalTable;
+
+        changecompany (_company)
+        {
+            select firstOnly RecId, Posted, JournalType from inventJournalTable
+                where inventJournalTable.JournalId == _journalId;
+        }
+
+        if (!inventJournalTable.RecId || inventJournalTable.JournalType != InventJournalType::Count)
+        {
+            return HSMobileOpsCountTaskService::stateNotFound();
+        }
+
+        return inventJournalTable.Posted == NoYes::Yes
+            ? HSMobileOpsCountTaskService::statePosted()
+            : HSMobileOpsCountTaskService::stateOpen();
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>stateOpen</Name>
+				<Source><![CDATA[
+
+    public static str stateOpen()
+    {
+        return 'OPEN';
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>statePosted</Name>
+				<Source><![CDATA[
+
+    public static str statePosted()
+    {
+        return 'POSTED';
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>stateNotFound</Name>
+				<Source><![CDATA[
+
+    public static str stateNotFound()
+    {
+        return 'NOT_FOUND';
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>maxDirectLines</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Ceiling for DIRECT mode. Anything bigger is a DMF journal.
+    /// </summary>
+    private static int maxDirectLines()
+    {
+        return 500;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

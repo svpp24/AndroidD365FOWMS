@@ -1,0 +1,150 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsCountClaimResponse</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// The result of claimJournal/heartbeatClaim/releaseJournal. On a refused claim, Success is
+/// false, ErrorCode says why (CLAIMED_BY_OTHER, CLAIM_EXPIRED, CLAIM_LOST, JOURNAL_POSTED,
+/// JOURNAL_NOT_FOUND, NOT_IMPLEMENTED) and ClaimedBy names the current holder where there is one.
+/// </summary>
+[DataContractAttribute]
+class HSMobileOpsCountClaimResponse
+{
+    boolean     success;
+    str         errorCode;
+    str         message;
+    str         claimToken;
+    str         claimedBy;
+    str         rangeId;
+    str         locationFrom;
+    str         locationTo;
+    utcdatetime expiresUtc;
+    int         heartbeatSeconds;
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmSuccess</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Success')]
+    public boolean parmSuccess(boolean _value = success)
+    {
+        success = _value;
+        return success;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmErrorCode</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ErrorCode')]
+    public str parmErrorCode(str _value = errorCode)
+    {
+        errorCode = _value;
+        return errorCode;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmMessage</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Message')]
+    public str parmMessage(str _value = message)
+    {
+        message = _value;
+        return message;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmClaimToken</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ClaimToken')]
+    public str parmClaimToken(str _value = claimToken)
+    {
+        claimToken = _value;
+        return claimToken;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmClaimedBy</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ClaimedBy')]
+    public str parmClaimedBy(str _value = claimedBy)
+    {
+        claimedBy = _value;
+        return claimedBy;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmRangeId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('RangeId')]
+    public str parmRangeId(str _value = rangeId)
+    {
+        rangeId = _value;
+        return rangeId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmLocationFrom</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('LocationFrom')]
+    public str parmLocationFrom(str _value = locationFrom)
+    {
+        locationFrom = _value;
+        return locationFrom;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmLocationTo</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('LocationTo')]
+    public str parmLocationTo(str _value = locationTo)
+    {
+        locationTo = _value;
+        return locationTo;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmExpiresUtc</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ExpiresUtc')]
+    public utcdatetime parmExpiresUtc(utcdatetime _value = expiresUtc)
+    {
+        expiresUtc = _value;
+        return expiresUtc;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmHeartbeatSeconds</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('HeartbeatSeconds')]
+    public int parmHeartbeatSeconds(int _value = heartbeatSeconds)
+    {
+        heartbeatSeconds = _value;
+        return heartbeatSeconds;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

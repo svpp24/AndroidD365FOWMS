@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsCountDirectLinesRequest</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// getJournalLines' request (DIRECT transfer mode). Location range blank means the whole journal,
+/// or whatever range ClaimToken holds.
+/// </summary>
+[DataContractAttribute]
+class HSMobileOpsCountDirectLinesRequest
+{
+    DataAreaId      dataAreaId;
+    InventJournalId journalId;
+    str             claimToken;
+    str             locationFrom;
+    str             locationTo;
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmDataAreaId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('DataAreaId')]
+    public DataAreaId parmDataAreaId(DataAreaId _value = dataAreaId)
+    {
+        dataAreaId = _value;
+        return dataAreaId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmJournalId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('JournalId')]
+    public InventJournalId parmJournalId(InventJournalId _value = journalId)
+    {
+        journalId = _value;
+        return journalId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmClaimToken</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ClaimToken')]
+    public str parmClaimToken(str _value = claimToken)
+    {
+        claimToken = _value;
+        return claimToken;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmLocationFrom</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('LocationFrom')]
+    public str parmLocationFrom(str _value = locationFrom)
+    {
+        locationFrom = _value;
+        return locationFrom;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmLocationTo</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('LocationTo')]
+    public str parmLocationTo(str _value = locationTo)
+    {
+        locationTo = _value;
+        return locationTo;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

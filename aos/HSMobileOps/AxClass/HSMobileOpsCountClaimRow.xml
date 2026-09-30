@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsCountClaimRow</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// One active claim on a counting journal, returned inside HSMobileOpsJournalSummaryRow.Claims
+/// so the list screen can show who holds which part of a journal. Display data only - the claim
+/// rules themselves (TTL, one claim per range, who may take over) live in X++, not on the device.
+/// </summary>
+[DataContractAttribute]
+class HSMobileOpsCountClaimRow
+{
+    str         claimedBy;
+    str         deviceId;
+    str         rangeId;
+    str         locationFrom;
+    str         locationTo;
+    utcdatetime expiresUtc;
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmClaimedBy</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ClaimedBy')]
+    public str parmClaimedBy(str _value = claimedBy)
+    {
+        claimedBy = _value;
+        return claimedBy;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmDeviceId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('DeviceId')]
+    public str parmDeviceId(str _value = deviceId)
+    {
+        deviceId = _value;
+        return deviceId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmRangeId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('RangeId')]
+    public str parmRangeId(str _value = rangeId)
+    {
+        rangeId = _value;
+        return rangeId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmLocationFrom</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('LocationFrom')]
+    public str parmLocationFrom(str _value = locationFrom)
+    {
+        locationFrom = _value;
+        return locationFrom;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmLocationTo</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('LocationTo')]
+    public str parmLocationTo(str _value = locationTo)
+    {
+        locationTo = _value;
+        return locationTo;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmExpiresUtc</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ExpiresUtc')]
+    public utcdatetime parmExpiresUtc(utcdatetime _value = expiresUtc)
+    {
+        expiresUtc = _value;
+        return expiresUtc;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

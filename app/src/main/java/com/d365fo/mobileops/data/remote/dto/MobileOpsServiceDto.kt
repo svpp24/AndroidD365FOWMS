@@ -253,6 +253,10 @@ data class JournalSummaryServiceRow(
      *  odataToEpochMillis (which requires the Z suffix and would silently drop this to null). */
     @SerialName("JournalDate") val journalDate: String = "",
     @SerialName("LineCount") val lineCount: Int = 0,
+    /** DMF or DIRECT - decided by the server per journal. Absent on an older AOS build: DMF. */
+    @SerialName("TransferMode") val transferMode: String? = null,
+    @SerialName("Claims") val claims: List<CountClaimRowDto> = emptyList(),
+    @SerialName("Ranges") val ranges: List<CountRangeRowDto> = emptyList(),
 )
 
 // -- Counting journal export -- one AOS call creates a request-private DMF project scoped to one
@@ -269,6 +273,10 @@ data class ScopeExportServiceRequest(
 data class ScopeExportRequestBody(
     @SerialName("DataAreaId") val dataAreaId: String,
     @SerialName("JournalId") val journalId: String,
+    /** A claimed location range of a wall-to-wall journal; both null exports the whole journal. */
+    @SerialName("LocationFrom") val locationFrom: String? = null,
+    @SerialName("LocationTo") val locationTo: String? = null,
+    @SerialName("ClaimToken") val claimToken: String? = null,
 )
 
 @Serializable
@@ -295,6 +303,16 @@ data class ImportCountsRequestBody(
     @SerialName("DataAreaId") val dataAreaId: String,
     @SerialName("JournalId") val journalId: String,
     @SerialName("PackageUrl") val packageUrl: String,
+    @SerialName("ClaimToken") val claimToken: String? = null,
+    /** Client-generated UUID, the server's idempotency key for this submission. */
+    @SerialName("SubmissionId") val submissionId: String? = null,
+    @SerialName("UserId") val userId: String? = null,
+    @SerialName("DeviceId") val deviceId: String? = null,
+    /** ISO 8601 UTC. */
+    @SerialName("StartedAtUtc") val startedAtUtc: String? = null,
+    @SerialName("SubmittedAtUtc") val submittedAtUtc: String? = null,
+    @SerialName("PassNumber") val passNumber: Int? = null,
+    @SerialName("OriginType") val originType: String? = null,
 )
 
 @Serializable

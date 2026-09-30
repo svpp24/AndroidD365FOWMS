@@ -23,7 +23,12 @@ enum class JournalType {
     ARRIVAL,
 }
 
-enum class JournalStatus { DRAFT, PENDING_POST, POSTED, FAILED }
+/**
+ * SUBMITTED is counting-only: the counted quantities reached D365FO, but the journal itself is
+ * not posted - a supervisor posts it there. POSTED on a counting journal means it really was
+ * posted, and it can no longer be reopened on the device.
+ */
+enum class JournalStatus { DRAFT, PENDING_POST, SUBMITTED, POSTED, FAILED }
 
 @Entity(
     tableName = "invent_journal",
@@ -56,6 +61,12 @@ data class JournalEntity(
     val postedAt: Long? = null,
     /** Counting only: when the worker pressed Start counting. Null until then. */
     val countStartedAt: Long? = null,
+    /** Counting only: decided by the server per journal. */
+    val transferMode: TransferMode = TransferMode.DMF,
+    /** Counting only: why this count exists (SCHEDULED, SPOT, RECOUNT, ...), for the audit. */
+    val originType: String = "SCHEDULED",
+    /** Counting only: 1 for a first count, 2+ for a recount pass. */
+    val passNumber: Int = 1,
     @Embedded val sync: SyncMeta = SyncMeta(),
 )
 
@@ -82,10 +93,11 @@ data class JournalLineEntity(
     val lineNumber: Int,
     val itemId: String,
     val itemName: String,
+    /** Counting lines leave this blank - on-hand lives in [CountingLineReferenceEntity]. */
     val quantity: String,
     val unitId: String,
-    /** Counting journals carry both the counted quantity and the expected on-hand. */
     val countedQuantity: String? = null,
+    /** Unused by counting since schema 8 (blind counting) - see [CountingLineReferenceEntity]. */
     val expectedQuantity: String? = null,
     val siteId: String?,
     val warehouseId: String?,
@@ -105,6 +117,11 @@ data class JournalLineEntity(
     /** Counting only: the worker marked this line counted without entering a quantity (e.g. the actual count is not available). A marker for progress tracking - nothing is written back to D365FO for it. */
     val markedCounted: Boolean = false,
     val capturedAt: Long,
+    /** Counting only: who last entered this line's count, and when. */
+    val countedBy: String? = null,
+    val countedAt: Long? = null,
+    /** Counting only: when this line was first opened for counting. */
+    val lineCountStartedAt: Long? = null,
 )
 
 data class JournalWithLines(

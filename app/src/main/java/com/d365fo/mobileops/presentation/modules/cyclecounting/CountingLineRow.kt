@@ -21,7 +21,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.d365fo.mobileops.data.local.entity.JournalLineEntity
+import com.d365fo.mobileops.data.local.dao.CountLine
 import com.d365fo.mobileops.presentation.common.components.AppCard as Card
 import com.d365fo.mobileops.presentation.common.theme.WarehouseStatusColors
 
@@ -29,7 +29,7 @@ import com.d365fo.mobileops.presentation.common.theme.WarehouseStatusColors
  * One line of the journal: status tick, item number + name + where, and the counted quantity - text only, no inputs, so a list of hundreds scrolls smoothly on a low-end handheld. Shared by View lines and the Count screen; [onClick] makes it tappable.
  */
 @Composable
-internal fun CountingLineRow(line: JournalLineEntity, onClick: (() -> Unit)? = null) {
+internal fun CountingLineRow(line: CountLine, onClick: (() -> Unit)? = null) {
     Card(modifier = Modifier.fillMaxWidth().then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)) {
         Row(
             modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),

@@ -3,9 +3,10 @@ package com.d365fo.mobileops.presentation.modules.cyclecounting
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.d365fo.mobileops.data.local.dao.CountLine
+import com.d365fo.mobileops.data.local.dao.CountingDao
 import com.d365fo.mobileops.data.local.dao.JournalDao
-import com.d365fo.mobileops.data.local.entity.JournalLineEntity
-import com.d365fo.mobileops.data.local.entity.JournalStatus
+import com.d365fo.mobileops.data.repository.WorkerSessionRepository
 import com.d365fo.mobileops.domain.repository.OnDemandLookupRepository
 import com.d365fo.mobileops.presentation.common.scan.HidScannerBridge
 import com.d365fo.mobileops.presentation.common.scan.ScanFeedback
@@ -27,7 +28,7 @@ import javax.inject.Inject
 data class ScanMessage(val text: String, val isError: Boolean)
 
 /** The quantity popup: which line, and what to start the box at. */
-data class CountPrompt(val line: JournalLineEntity, val initial: String)
+data class CountPrompt(val line: CountLine, val initial: String)
 
 /**
  * The "Start counting" page: the journal's items in a light list, a scan box, and a quantity
@@ -49,6 +50,8 @@ data class CountPrompt(val line: JournalLineEntity, val initial: String)
 class CountingScanViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     private val journalDao: JournalDao,
+    private val countingDao: CountingDao,
+    private val workerSession: WorkerSessionRepository,
     private val lookups: OnDemandLookupRepository,
     private val scannerBridge: HidScannerBridge,
     private val scanFeedback: ScanFeedback,
@@ -68,21 +71,21 @@ class CountingScanViewModel @Inject constructor(
     private data class PromptRequest(val lineId: String, val initial: String)
 
     private data class Base(
-        val lines: List<JournalLineEntity>,
+        val lines: List<CountLine>,
         val description: String,
         val locked: Boolean,
         val query: String,
     )
 
     private val base = combine(
-        journalDao.observeAllLines(journalId),
+        countingDao.observeCountLines(journalId),
         journalDao.observeCountingJournals().map { list -> list.firstOrNull { it.journalId == journalId } },
         _query,
     ) { lines, journal, query ->
         Base(
             lines = lines,
             description = journal?.description ?: journalId,
-            locked = journal?.status == JournalStatus.POSTED || journal?.status == JournalStatus.PENDING_POST,
+            locked = journal?.status in LOCKED_STATUSES,
             query = query,
         )
     }
@@ -135,7 +138,7 @@ class CountingScanViewModel @Inject constructor(
     }
 
     private suspend fun handleScan(value: String, typed: Boolean) {
-        val lines = journalDao.getLinesOnce(journalId)
+        val lines = countingDao.getCountLines(journalId)
 
         // Item number first: by far the common scan, and needs no network.
         var itemId = lines.firstOrNull { it.itemId.equals(value, ignoreCase = true) }?.itemId
@@ -186,12 +189,13 @@ class CountingScanViewModel @Inject constructor(
     }
 
     /** A tapped row: the same popup, to correct that line. */
-    fun openLine(line: JournalLineEntity) {
+    fun openLine(line: CountLine) {
         if (state.value.locked || _prompt.value != null) return
         openPrompt(line, BigDecimal.ONE)
     }
 
-    private fun openPrompt(line: JournalLineEntity, perScan: BigDecimal) {
+    private fun openPrompt(line: CountLine, perScan: BigDecimal) {
+        viewModelScope.launch { countingDao.markLineStarted(line.journalLineId, System.currentTimeMillis()) }
         val initial = line.countedQuantity
             ?: perScan.takeIf { it > BigDecimal.ONE }?.stripTrailingZeros()?.toPlainString()
             ?: ""
@@ -204,8 +208,10 @@ class CountingScanViewModel @Inject constructor(
             if (!state.value.locked) {
                 val digits = text.filter { it.isDigit() }.take(MAX_DIGITS)
                 val value = if (digits.isEmpty()) null else digits.trimStart('0').ifEmpty { "0" }
-                journalDao.setCountedQuantity(journalLineId, value)
-                if (value == null) journalDao.setMarkedCounted(journalLineId, false)
+                val by = workerSession.session.value?.userName
+                val at = System.currentTimeMillis()
+                countingDao.recordCount(journalLineId, value, by, at)
+                if (value == null) countingDao.recordMarked(journalLineId, false, by, at)
             }
             _prompt.value = null
             _refocus.update { it + 1 }
@@ -224,7 +230,7 @@ class CountingScanViewModel @Inject constructor(
         scanFeedback.error()
     }
 
-    private fun JournalLineEntity.matches(query: String): Boolean {
+    private fun CountLine.matches(query: String): Boolean {
         val q = query.trim()
         return q.split(' ').filter { it.isNotBlank() }.all { token ->
             itemId.contains(token, ignoreCase = true) ||
@@ -246,12 +252,12 @@ data class CountingScanState(
     val counted: Int = 0,
     val locked: Boolean = false,
     /** The journal's lines, narrowed by whatever is typed in the scan box. */
-    val lines: List<JournalLineEntity> = emptyList(),
+    val lines: List<CountLine> = emptyList(),
     val query: String = "",
     /** Non-null while the quantity popup is open. */
     val prompt: CountPrompt? = null,
     /** Non-empty while the worker is picking one of several lines for a scanned item. */
-    val choice: List<JournalLineEntity> = emptyList(),
+    val choice: List<CountLine> = emptyList(),
     val message: ScanMessage? = null,
     val refocusNonce: Int = 0,
 ) {
