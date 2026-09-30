@@ -74,6 +74,9 @@ data class PurchLineServiceDto(
     /** Server-derived from PurchQty − RemainPurchPhysical. No client-side receipt join. */
     @SerialName("ReceivedQty") val receivedQty: Double = 0.0,
     @SerialName("RemainingQty") val remainingQty: Double = 0.0,
+    /** Staged on some device, not yet processed. Defaults to 0 so a server without this field
+     *  deployed yet changes nothing about existing behaviour. */
+    @SerialName("UncommittedQty") val uncommittedQty: Double = 0.0,
     @SerialName("SiteId") val siteId: String? = null,
     @SerialName("WarehouseId") val warehouseId: String? = null,
     @SerialName("LocationId") val locationId: String? = null,
@@ -216,4 +219,89 @@ data class LineServiceResponse(
     /** NOT_ON_ORDER when the item is not outstanding here — a real answer, not a failure. */
     @SerialName("ErrorCode") val errorCode: String? = null,
     @SerialName("Lines") val lines: List<PurchLineServiceDto> = emptyList(),
+)
+
+// -- Counting journals -----------------------------------------------------------------------
+
+@Serializable
+data class JournalListServiceRequest(
+    @SerialName("_request") val request: JournalListRequestBody,
+)
+
+@Serializable
+data class JournalListRequestBody(
+    @SerialName("DataAreaId") val dataAreaId: String,
+    @SerialName("WarehouseId") val warehouseId: String,
+)
+
+@Serializable
+data class JournalListServiceResponse(
+    @SerialName("Success") val success: Boolean = false,
+    /** TRUNCATED when the warehouse has more open journals than HSMobileOpsCountingService will
+     *  return in one call — a real, actionable answer (close some journals), not a failure. */
+    @SerialName("ErrorCode") val errorCode: String? = null,
+    @SerialName("Rows") val rows: List<JournalSummaryServiceRow> = emptyList(),
+)
+
+@Serializable
+data class JournalSummaryServiceRow(
+    @SerialName("JournalId") val journalId: String = "",
+    @SerialName("JournalNameId") val journalNameId: String = "",
+    @SerialName("Description") val description: String? = null,
+    /** e.g. "2026-09-11T12:00:00" — no zone suffix, unlike OData's own datetime format.
+     *  Confirmed live 2026-09-23. Parsed with Formatters.serviceDateTimeToEpochMillis, not
+     *  odataToEpochMillis (which requires the Z suffix and would silently drop this to null). */
+    @SerialName("JournalDate") val journalDate: String = "",
+    @SerialName("LineCount") val lineCount: Int = 0,
+)
+
+// -- Counting journal export -- one AOS call creates a request-private DMF project scoped to one
+// journal and returns its name; the app then triggers the run itself via the public
+// ExportToPackage OData action (see DmfDto.kt). See HSMobileOpsCountingService::
+// exportOpenJournals' own doc comment and aos/README.md.
+
+@Serializable
+data class ScopeExportServiceRequest(
+    @SerialName("_request") val request: ScopeExportRequestBody,
+)
+
+@Serializable
+data class ScopeExportRequestBody(
+    @SerialName("DataAreaId") val dataAreaId: String,
+    @SerialName("JournalId") val journalId: String,
+)
+
+@Serializable
+data class ScopeExportServiceResponse(
+    @SerialName("Success") val success: Boolean = false,
+    @SerialName("ErrorCode") val errorCode: String? = null,
+    /** Set only when [success] - pass as `definitionGroupId` to ExportToPackage. */
+    @SerialName("DefinitionGroupName") val definitionGroupName: String? = null,
+)
+// -- Counting journal import -- one shared DMF project, triggered as an enqueued batch job
+// (DMFPackageImporter, not the public ImportFromPackage OData action) so concurrency safety
+// comes from D365's own batch framework rather than project isolation. See
+// HSMobileOpsCountingService::importCounts' own doc comment and aos/README.md. The app still
+// polls the enqueued execution via the public GetExecutionSummaryStatus/GetExecutionErrors
+// OData actions — see DmfDto.kt — only the trigger moved off the public REST action.
+
+@Serializable
+data class ImportCountsServiceRequest(
+    @SerialName("_request") val request: ImportCountsRequestBody,
+)
+
+@Serializable
+data class ImportCountsRequestBody(
+    @SerialName("DataAreaId") val dataAreaId: String,
+    @SerialName("JournalId") val journalId: String,
+    @SerialName("PackageUrl") val packageUrl: String,
+)
+
+@Serializable
+data class ImportCountsServiceResponse(
+    @SerialName("Success") val success: Boolean = false,
+    @SerialName("ErrorCode") val errorCode: String? = null,
+    /** Set only when [success] - poll via the public GetExecutionSummaryStatus/GetExecutionErrors
+     *  OData actions, same as any other DMF execution id. */
+    @SerialName("ExecutionId") val executionId: String? = null,
 )

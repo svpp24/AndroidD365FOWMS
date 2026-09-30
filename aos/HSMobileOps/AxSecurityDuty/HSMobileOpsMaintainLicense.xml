@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxSecurityDuty xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsMaintainLicense</Name>
+	<Label>Maintain the mobile app license</Label>
+	<HelpText>Import a new certificate and license, and see the current license status and device usage.</HelpText>
+	<Privileges>
+		<AxSecurityDutyPrivilegeReference>
+			<Name>HSMobileOpsLicenseImport</Name>
+		</AxSecurityDutyPrivilegeReference>
+	</Privileges>
+</AxSecurityDuty>

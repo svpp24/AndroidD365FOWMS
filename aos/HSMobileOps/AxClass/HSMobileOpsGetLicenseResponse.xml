@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsGetLicenseResponse</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// What HSMobileOpsLicenseSvc/getLicense returns. The app verifies LicenseKey itself, against
+/// the customer public key inside its own already-activated certificate - ServerUtcNow exists
+/// so the app's own expiry/clock-rollback checks are anchored to this server's clock, not the
+/// device's own (which a worker could wind backward) - see LicenseRepository's own doc.
+/// </summary>
+[DataContractAttribute]
+class HSMobileOpsGetLicenseResponse
+{
+    boolean success;
+    str     errorCode;
+    str     message;
+    str     licenseKey;
+    str     serverUtcNow;
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmSuccess</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Success')]
+    public boolean parmSuccess(boolean _value = success)
+    {
+        success = _value;
+        return success;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmErrorCode</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// NO_LICENSE, LICENSE_INVALID, LICENSE_EXPIRED - same codes HSMobileOpsLicense::verify()
+    /// already returns everywhere else, so the app's own error handling for this call is nothing
+    /// new relative to the sign-in path.
+    /// </summary>
+    [DataMemberAttribute('ErrorCode')]
+    public str parmErrorCode(str _value = errorCode)
+    {
+        errorCode = _value;
+        return errorCode;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmMessage</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Message')]
+    public str parmMessage(str _value = message)
+    {
+        message = _value;
+        return message;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmLicenseKey</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The raw WMSLIC1... string exactly as imported - the app verifies its signature itself
+    /// against its own stored certificate's customer public key, never trusting this response's
+    /// Success flag alone.
+    /// </summary>
+    [DataMemberAttribute('LicenseKey')]
+    public str parmLicenseKey(str _value = licenseKey)
+    {
+        licenseKey = _value;
+        return licenseKey;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmServerUtcNow</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// This server's own UTC clock at the moment of the call, ISO 8601 - what the app's clock-
+    /// rollback check compares against, instead of trusting the device's own clock alone.
+    /// </summary>
+    [DataMemberAttribute('ServerUtcNow')]
+    public str parmServerUtcNow(str _value = serverUtcNow)
+    {
+        serverUtcNow = _value;
+        return serverUtcNow;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

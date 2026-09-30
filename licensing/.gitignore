@@ -1,0 +1,3 @@
+# NEVER commit a private key - see README.md.
+*.local.pem
+*.local.xml

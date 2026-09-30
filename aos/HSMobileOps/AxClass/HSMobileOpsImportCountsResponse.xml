@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsImportCountsResponse</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// [executionId] is set on success - enqueued as a batch job, not run synchronously (unlike
+/// export's `exportOpenJournals`), so the app polls it the same way it already polls a plain
+/// `ImportFromPackage` execution id: the public `GetExecutionSummaryStatus`/`GetExecutionErrors`
+/// OData actions, unchanged - only the trigger moved off the public REST action, not the status
+/// check. See HSMobileOpsCountingService::importCounts's own doc comment.
+/// </summary>
+[DataContractAttribute]
+class HSMobileOpsImportCountsResponse
+{
+    boolean success;
+    str     errorCode;
+    str     executionId;
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmSuccess</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Success')]
+    public boolean parmSuccess(boolean _value = success)
+    {
+        success = _value;
+        return success;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmErrorCode</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ErrorCode')]
+    public str parmErrorCode(str _value = errorCode)
+    {
+        errorCode = _value;
+        return errorCode;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmExecutionId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ExecutionId')]
+    public str parmExecutionId(str _value = executionId)
+    {
+        executionId = _value;
+        return executionId;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

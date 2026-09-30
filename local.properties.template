@@ -20,3 +20,13 @@ D365_CERT_PIN_BACKUP=sha256/BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB=
 #   -keystore %USERPROFILE%\.android\debug.keystore -storepass android -keypass android \
 #   | openssl sha1 -binary | openssl base64
 MSAL_SIGNATURE_HASH=
+
+# --- Offline licensing (certificate-chain design, licensing/wms_license_tool.py) ---
+# Root public key, raw base64 SubjectPublicKeyInfo DER (no PEM header/footer/newlines) -
+# from licensing/root/root-public-key.pem. Safe to be here; it can only ever verify, never
+# forge, a certificate.
+LICENSE_ROOT_PUBLIC_KEY_B64=
+
+# SHA-256 of the release signing certificate (keytool -list -v -keystore ... -alias ... |
+# the SHA256 line) - what the app checks its own installed signature against at startup.
+RELEASE_SIGNING_CERT_SHA256=

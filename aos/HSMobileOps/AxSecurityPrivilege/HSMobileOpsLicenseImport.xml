@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxSecurityPrivilege xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsLicenseImport</Name>
+	<Label>Import mobile app license</Label>
+	<HelpText>Paste in the certificate and license the vendor issued, and see the current license status and device usage. HSMobileOpsLicenseSetup's own insert()/update() verify the pair before saving - this privilege only gates who can reach the form at all.</HelpText>
+	<EntryPoints>
+		<AxSecurityEntryPointReference>
+			<Name>HSMobileOpsLicenseSetup</Name>
+			<ObjectName>HSMobileOpsLicenseSetup</ObjectName>
+			<ObjectType>MenuItemDisplay</ObjectType>
+			<AccessLevel>Update</AccessLevel>
+		</AxSecurityEntryPointReference>
+	</EntryPoints>
+	<Tables>
+		<AxSecurityPrivilegeTablePermission>
+			<Name>HSMobileOpsLicenseSetup</Name>
+			<Delete>NoAccess</Delete>
+			<Insert>NoAccess</Insert>
+			<Read>Allow</Read>
+			<Update>Allow</Update>
+		</AxSecurityPrivilegeTablePermission>
+	</Tables>
+</AxSecurityPrivilege>

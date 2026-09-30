@@ -1,0 +1,203 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxForm xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns="Microsoft.Dynamics.AX.Metadata.V6">
+	<Name>HSMobileOpsLicenseSetup</Name>
+	<SourceCode>
+		<Methods xmlns="">
+			<Method>
+				<Name>classDeclaration</Name>
+				<Source><![CDATA[
+/// <summary>
+/// Where an administrator pastes the certificate and license the vendor issued - see
+/// HSMobileOpsLicenseSetup and HSMobileOpsLicense. One row for the whole environment;
+/// InsertIfEmpty means it always shows something to edit even before anyone has ever pasted
+/// anything in.
+///
+/// Both fields are ordinary editable bound fields on this form - the verification that keeps
+/// this table from ever holding a certificate/license pair that would not actually verify lives
+/// in HSMobileOpsLicenseSetup's own insert()/update() overrides, not in the form. A save that
+/// does not verify throws rather than persisting, the same shape the earlier design already
+/// used here for encrypting PublicKeyXml on save.
+///
+/// LicenseStatus and DeviceUsage are read-only display methods (HSMobileOpsLicenseSetup table) -
+/// not stored fields, see that table's class doc on why expiry/device-limit are never kept as
+/// their own editable columns. They re-run the exact same HSMobileOpsLicense::verify() /
+/// HSMobileOpsDevice::activeDeviceCount() calls HSMobileOpsUserService::signIn() itself uses, so
+/// what shows here can never drift from what a worker actually experiences at sign-in.
+/// </summary>
+[Form]
+public class HSMobileOpsLicenseSetup extends FormRun
+{
+}
+]]></Source>
+			</Method>
+		</Methods>
+		<DataSources xmlns="" />
+		<DataControls xmlns="" />
+		<Members xmlns="" />
+	</SourceCode>
+	<DataSources>
+		<AxFormDataSource xmlns="">
+			<Name>HSMobileOpsLicenseSetup</Name>
+			<Table>HSMobileOpsLicenseSetup</Table>
+			<Fields>
+				<AxFormDataSourceField>
+					<DataField>CertificateString</DataField>
+				</AxFormDataSourceField>
+				<AxFormDataSourceField>
+					<DataField>LicenseKey</DataField>
+				</AxFormDataSourceField>
+				<AxFormDataSourceField>
+					<DataField>licenseStatus</DataField>
+				</AxFormDataSourceField>
+				<AxFormDataSourceField>
+					<DataField>deviceUsage</DataField>
+				</AxFormDataSourceField>
+			</Fields>
+			<ReferencedDataSources />
+			<AllowCreate>No</AllowCreate>
+			<AllowDelete>No</AllowDelete>
+			<InsertIfEmpty>Yes</InsertIfEmpty>
+			<DataSourceLinks />
+			<DerivedDataSources />
+		</AxFormDataSource>
+	</DataSources>
+	<Design>
+		<Caption xmlns="">Mobile app license</Caption>
+		<DataSource xmlns="">HSMobileOpsLicenseSetup</DataSource>
+		<Pattern xmlns="">SimpleListDetails</Pattern>
+		<PatternVersion xmlns="">1.3</PatternVersion>
+		<ShowNewButton xmlns="">No</ShowNewButton>
+		<Style xmlns="">SimpleListDetails</Style>
+		<UseCaptionFromMenuItem xmlns="">Yes</UseCaptionFromMenuItem>
+		<ViewEditMode xmlns="">Edit</ViewEditMode>
+		<TitleDataSource xmlns="">HSMobileOpsLicenseSetup</TitleDataSource>
+		<Controls xmlns="">
+			<AxFormControl xmlns=""
+				i:type="AxFormActionPaneControl">
+				<Name>ActionPane</Name>
+				<Type>ActionPane</Type>
+				<FormControlExtension
+					i:nil="true" />
+				<Controls />
+				<AlignChild>No</AlignChild>
+				<AlignChildren>No</AlignChildren>
+				<ArrangeMethod>Vertical</ArrangeMethod>
+			</AxFormControl>
+			<AxFormControl xmlns=""
+				i:type="AxFormGroupControl">
+				<Name>GridContainer1</Name>
+				<HeightMode>SizeToAvailable</HeightMode>
+				<Type>Group</Type>
+				<FormControlExtension
+					i:nil="true" />
+				<Controls>
+					<AxFormControl xmlns=""
+						i:type="AxFormGridControl">
+						<Name>FormGridControl1</Name>
+						<AllowEdit>No</AllowEdit>
+						<Type>Grid</Type>
+						<WidthMode>SizeToContent</WidthMode>
+						<FormControlExtension
+							i:nil="true" />
+						<Controls>
+							<AxFormControl xmlns=""
+								i:type="AxFormStringControl">
+								<Name>Grid_CertificateString</Name>
+								<Type>String</Type>
+								<WidthMode>SizeToAvailable</WidthMode>
+								<FormControlExtension
+									i:nil="true" />
+								<DataField>CertificateString</DataField>
+								<DataSource>HSMobileOpsLicenseSetup</DataSource>
+							</AxFormControl>
+							<AxFormControl xmlns=""
+								i:type="AxFormStringControl">
+								<Name>Grid_LicenseKey</Name>
+								<Type>String</Type>
+								<WidthMode>SizeToAvailable</WidthMode>
+								<FormControlExtension
+									i:nil="true" />
+								<DataField>LicenseKey</DataField>
+								<DataSource>HSMobileOpsLicenseSetup</DataSource>
+							</AxFormControl>
+						</Controls>
+						<DataSource>HSMobileOpsLicenseSetup</DataSource>
+						<MultiSelect>No</MultiSelect>
+						<ShowRowLabels>No</ShowRowLabels>
+						<Style>List</Style>
+					</AxFormControl>
+				</Controls>
+				<FrameType>None</FrameType>
+				<Style>SidePanel</Style>
+			</AxFormControl>
+			<AxFormControl xmlns=""
+				i:type="AxFormGroupControl">
+				<Name>DetailsHeader</Name>
+				<Pattern>FieldsFieldGroups</Pattern>
+				<PatternVersion>1.1</PatternVersion>
+				<Type>Group</Type>
+				<WidthMode>SizeToAvailable</WidthMode>
+				<FormControlExtension
+					i:nil="true" />
+				<Controls>
+					<AxFormControl xmlns=""
+						i:type="AxFormStringControl">
+						<Name>CertificateString</Name>
+						<Type>String</Type>
+						<FormControlExtension
+							i:nil="true" />
+						<DataField>CertificateString</DataField>
+						<DataSource>HSMobileOpsLicenseSetup</DataSource>
+					</AxFormControl>
+					<AxFormControl xmlns=""
+						i:type="AxFormStringControl">
+						<Name>LicenseKey</Name>
+						<Type>String</Type>
+						<FormControlExtension
+							i:nil="true" />
+						<DataField>LicenseKey</DataField>
+						<DataSource>HSMobileOpsLicenseSetup</DataSource>
+					</AxFormControl>
+					<AxFormControl xmlns=""
+						i:type="AxFormStringControl">
+						<Name>LicenseStatus</Name>
+						<Label>License status</Label>
+						<Type>String</Type>
+						<FormControlExtension
+							i:nil="true" />
+						<DataField>licenseStatus</DataField>
+						<DataSource>HSMobileOpsLicenseSetup</DataSource>
+					</AxFormControl>
+					<AxFormControl xmlns=""
+						i:type="AxFormStringControl">
+						<Name>DeviceUsage</Name>
+						<Label>Devices in use</Label>
+						<Type>String</Type>
+						<FormControlExtension
+							i:nil="true" />
+						<DataField>deviceUsage</DataField>
+						<DataSource>HSMobileOpsLicenseSetup</DataSource>
+					</AxFormControl>
+				</Controls>
+				<ColumnsMode>Fill</ColumnsMode>
+				<FrameType>None</FrameType>
+			</AxFormControl>
+			<!-- Required by the SimpleListDetails - List Grid pattern (flagged "Missing" by the
+			     designer's own pattern check without it) even though this form has nothing more
+			     to put in it beyond what DetailsHeader already shows. -->
+			<AxFormControl xmlns=""
+				i:type="AxFormTabControl">
+				<Name>Tab</Name>
+				<Type>Tab</Type>
+				<FormControlExtension
+					i:nil="true" />
+				<Controls />
+				<AlignChild>No</AlignChild>
+				<ArrangeMethod>Vertical</ArrangeMethod>
+				<DataSource>HSMobileOpsLicenseSetup</DataSource>
+				<Style>FastTabs</Style>
+			</AxFormControl>
+		</Controls>
+	</Design>
+	<Parts />
+</AxForm>

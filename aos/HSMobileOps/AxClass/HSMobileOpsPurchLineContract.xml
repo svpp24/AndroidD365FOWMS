@@ -23,6 +23,7 @@ class HSMobileOpsPurchLineContract
     PurchQty            orderedQty;
     PurchQty            receivedQty;
     PurchQty            remainingQty;
+    PurchQty            uncommittedQty;
 
     InventSiteId        siteId;
     InventLocationId    warehouseId;
@@ -149,6 +150,23 @@ class HSMobileOpsPurchLineContract
     {
         remainingQty = _value;
         return remainingQty;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmUncommittedQty</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Already staged on a device (a HSMobileOpsPostQueue row landed, not yet processed), in the
+    /// purchase unit. Netted out of RemainingQty on this same line so two offline sessions on the
+    /// same order cannot jointly over-receive; see HSMobileOpsReceivingService::stagedQtyByLine.
+    /// </summary>
+    [DataMemberAttribute('UncommittedQty')]
+    public PurchQty parmUncommittedQty(PurchQty _value = uncommittedQty)
+    {
+        uncommittedQty = _value;
+        return uncommittedQty;
     }
 ]]></Source>
 			</Method>

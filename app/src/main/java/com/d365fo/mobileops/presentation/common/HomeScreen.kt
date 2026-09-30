@@ -1,40 +1,56 @@
 package com.d365fo.mobileops.presentation.common
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextAlign
+import com.d365fo.mobileops.R
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Logout
-import androidx.compose.material.icons.automirrored.filled.ManageSearch
 import androidx.compose.material.icons.filled.Checklist
-import androidx.compose.material.icons.filled.EditNote
-import androidx.compose.material.icons.filled.Inbox
+import androidx.compose.material.icons.filled.Fingerprint
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Inventory
 import androidx.compose.material.icons.filled.LocalShipping
+import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.MoveToInbox
-import androidx.compose.material.icons.filled.ShoppingBasket
+import androidx.compose.material.icons.filled.Store
+import androidx.compose.material.icons.filled.Today
 import androidx.compose.material.icons.filled.Warehouse
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Card
+import com.d365fo.mobileops.presentation.common.components.AppCard as Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import com.d365fo.mobileops.presentation.common.components.SquareTextButton as TextButton
-import androidx.compose.material3.TopAppBar
+import com.d365fo.mobileops.presentation.common.components.raised
+import com.d365fo.mobileops.presentation.common.components.AppTopBar as TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -47,9 +63,9 @@ import com.d365fo.mobileops.data.repository.UnfinishedWork
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
-import com.d365fo.mobileops.presentation.common.components.MenuRow
 import com.d365fo.mobileops.presentation.common.components.StatusChip
 import com.d365fo.mobileops.presentation.common.theme.WarehouseDimens
 import com.d365fo.mobileops.presentation.common.theme.WarehouseStatusColors
@@ -71,19 +87,26 @@ private data class ModuleTile(
     val title: String,
     /** One line on the card. Kept short enough not to wrap at 360dp. */
     val summary: String,
-    /** The fuller explanation, shown only from the info button. */
+    /** The fuller explanation, shown on a long-press - see [ModuleInfoDialog]. */
     val detail: String,
     /** What this posts in D365FO — the thing an implementer actually needs to know. */
     val d365: String,
     val icon: ImageVector,
     val route: String?,
+    /**
+     * Null for every tile except the four an admin can gate from the Admin Center - see
+     * [HomeAccessViewModel]. Distinct from [available]: this is a *second*, independent reason
+     * a built module can still be unusable, checked against the signed-in worker's own
+     * permissions rather than whether the screen exists.
+     */
+    val workflow: com.d365fo.mobileops.domain.model.WarehouseWorkflow? = null,
 ) {
     val available: Boolean get() = route != null
 }
 
 /**
  * The menu: everything built, plus whatever is actually planned next - each unbuilt module
- * still gets a real tile (`route = null`), greyed out and marked "Planned" by [ModuleCard]
+ * still gets a real tile (`route = null`), greyed out and marked "Planned" by [ModuleTileCard]
  * rather than omitted, so the scope of this app is honest about where it's going, not just
  * where it already is. A worker seeing "Planned" knows the app isn't broken and the feature
  * isn't forgotten; an omitted module reads as neither. A tile moves to "Ready" the day its
@@ -100,9 +123,10 @@ private val MODULES = listOf(
         d365 = "PurchTable / PurchLine, posted via PurchFormLetter as a product receipt",
         icon = Icons.Default.MoveToInbox,
         route = Routes.RECEIVE_FLOW,
+        workflow = com.d365fo.mobileops.domain.model.WarehouseWorkflow.PO_RECEIVING,
     ),
     ModuleTile(
-        title = "Transfer — ship",
+        title = "Transfer — Ship",
         summary = "Scan a transfer to send",
         detail = "Scan a transfer order, then each item and quantity leaving this warehouse. " +
             "Only lines with something still to ship are offered, and the order has to belong " +
@@ -111,9 +135,10 @@ private val MODULES = listOf(
         d365 = "InventTransferTable / InventTransferLine, posted via InventTransferUpdShip",
         icon = Icons.Default.LocalShipping,
         route = Routes.TRANSFER_SHIP,
+        workflow = com.d365fo.mobileops.domain.model.WarehouseWorkflow.TRANSFER_SHIP,
     ),
     ModuleTile(
-        title = "Transfer — receive",
+        title = "Transfer — Receive",
         summary = "Scan a transfer to book in",
         detail = "Scan an arriving transfer order, then each item, quantity and put-away " +
             "location. Bounded by what was actually shipped, not by what was ordered - a line " +
@@ -121,27 +146,79 @@ private val MODULES = listOf(
         d365 = "InventTransferTable / InventTransferLine, posted via InventTransferUpdReceive",
         icon = Icons.Default.Warehouse,
         route = Routes.TRANSFER_RECEIVE,
+        workflow = com.d365fo.mobileops.domain.model.WarehouseWorkflow.TRANSFER_RECEIVE,
     ),
     ModuleTile(
         title = "Inventory count",
-        summary = "Scan a location to count",
-        detail = "Scan a location (or an item, for a spot count), enter the counted quantity " +
-            "for each item found there, and post the variance as a counting journal. Not built " +
-            "yet - shown here, greyed out, rather than omitted, so the scope of this app is " +
-            "honest about what it does and does not do yet.",
-        d365 = "InventJournalTable / InventJournalTransCount, posted as a counting journal",
+        summary = "Open a counting journal for this warehouse",
+        detail = "Counting journals are created in D365FO, not on the device - this lists the " +
+            "ones open for your assigned warehouse. Opening one to actually count against it " +
+            "is not built yet (its lines are a separate, bulk fetch), so the list is live but " +
+            "each row is read-only for now.",
+        d365 = "InventJournalTable / InventJournalTransCount, list only - lines not yet fetched",
         icon = Icons.Default.Checklist,
+        route = Routes.COUNTING_JOURNALS,
+        workflow = com.d365fo.mobileops.domain.model.WarehouseWorkflow.INVENTORY_COUNT,
+    ),
+    // The former "Data enquiry" sub-menu's six rows, promoted to first-class tiles here rather
+    // than sitting behind an intermediate menu screen - on explicit instruction, since a tap to
+    // open a menu just to tap again was a wasted step for lookups a worker reaches for often.
+    // Same order DataEnquiryScreen used to list them in; the three with route = null are exactly
+    // the three that screen's own EnquiryTile list already marked not built yet.
+    ModuleTile(
+        title = "Location inquiry",
+        summary = "Scan or type a location",
+        detail = "Scan or type a warehouse and location. Answers whether it exists and " +
+            "whether it can be received into right now.",
+        d365 = "WarehouseLocations (OData reads only)",
+        icon = Icons.Default.LocationOn,
+        route = Routes.INQUIRY_LOCATION,
+    ),
+    ModuleTile(
+        title = "PO's of today",
+        summary = "POs due today in your warehouse",
+        detail = "Every purchase order requested for delivery today in your warehouse.",
+        d365 = "PurchaseOrderHeadersV2 (OData reads only)",
+        icon = Icons.Default.Today,
+        route = Routes.INQUIRY_PO_TODAY,
+    ),
+    ModuleTile(
+        title = "PO lines",
+        summary = "Scan or type a PO number",
+        detail = "Scan or type a purchase order number to see its lines - ordered, received " +
+            "and outstanding quantities. Read-only: nothing here starts a receipt.",
+        d365 = "PurchaseOrderLinesV2 (OData reads only)",
+        icon = Icons.Default.Inventory,
+        route = Routes.INQUIRY_PO_LINES,
+    ),
+    ModuleTile(
+        title = "TO's by Store",
+        summary = "List of transfer orders by store",
+        detail = "Not built yet. There is no list-of-orders query for transfers today - only " +
+            "one-at-a-time lookups, the same ones Transfer - ship/receive already use - so " +
+            "this needs a new AOS service method before it can be built.",
+        d365 = "No AOS list query exists yet for transfer orders",
+        icon = Icons.Default.Store,
         route = null,
     ),
     ModuleTile(
-        title = "Data enquiry",
-        summary = "Look up a location, PO or line",
-        detail = "Read-only lookups: a warehouse location, purchase orders due today, and the " +
-            "lines on a purchase order you already have the number for. Nothing here changes " +
-            "D365FO - every screen behind this tile only ever reads.",
-        d365 = "WarehouseLocations, PurchaseOrderHeadersV2 / PurchaseOrderLinesV2 (OData reads only)",
-        icon = Icons.AutoMirrored.Filled.ManageSearch,
-        route = Routes.DATA_ENQUIRY,
+        title = "Transfer orders",
+        summary = "List of transfer order headers",
+        detail = "Not built yet, for the same reason as \"TO's by Store\" - no list query " +
+            "exists on this deployment for transfer order headers yet.",
+        d365 = "No AOS list query exists yet for transfer orders",
+        icon = Icons.Default.Inventory,
+        route = null,
+    ),
+    ModuleTile(
+        title = "Picked serials",
+        summary = "History of picked serial numbers",
+        detail = "Not built yet. Serials captured on this device only exist while a job is " +
+            "still in progress and are cleared the moment it posts, so there is nothing " +
+            "durable to query yet - a history of what was picked would need a new AOS query.",
+        d365 = "No durable AOS query exists yet",
+        icon = Icons.Default.Fingerprint,
+        route = null,
     ),
     // On-hand inquiry is deliberately not a tile here - it has its own bottom-nav tab (see
     // AppNavGraph's BOTTOM_TABS), and a tile that opens the exact same screen as a tab one
@@ -160,13 +237,16 @@ fun HomeScreen(
      */
     onSignOut: (() -> Unit)? = null,
     unfinishedViewModel: UnfinishedWorkViewModel = hiltViewModel(),
+    accessViewModel: HomeAccessViewModel = hiltViewModel(),
 ) {
     var infoFor by remember { mutableStateOf<ModuleTile?>(null) }
     var confirmSignOut by remember { mutableStateOf(false) }
     val unfinished by unfinishedViewModel.unfinished.collectAsStateWithLifecycle()
+    val blockedWorkflows by accessViewModel.blockedWorkflows.collectAsStateWithLifecycle()
 
     infoFor?.let { module ->
-        ModuleInfoDialog(module = module, onDismiss = { infoFor = null })
+        val enabled = module.workflow == null || module.workflow !in blockedWorkflows
+        ModuleInfoDialog(module = module, enabled = enabled, onDismiss = { infoFor = null })
     }
 
     // A second, faster path to sign out - alongside, not instead of, the one on the Settings
@@ -197,18 +277,23 @@ fun HomeScreen(
         topBar = {
             TopAppBar(
                 title = {
-                    Text("ForeFront Mobile", style = MaterialTheme.typography.titleMedium)
+                    Text(stringResource(R.string.app_name_launcher), style = MaterialTheme.typography.titleMedium)
                 },
                 // On the far right of the bar, not beside the title - still visible at a glance
                 // on the screen an operator actually looks at, not buried in Settings, but out
                 // of the title's way rather than crowding it on the left. See
                 // WorkerSessionRepository for where it comes from.
                 actions = {
+                    // Outlined pill, like the reference layout's site selector - reads as "where
+                    // I am" chrome rather than loose text in the header.
                     Text(
                         text = warehouseId?.takeIf { it.isNotBlank() } ?: "No warehouse assigned",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(end = 8.dp),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = WarehouseStatusColors.accent,
+                        modifier = Modifier
+                            .padding(end = 4.dp)
+                            .border(1.dp, WarehouseStatusColors.accent, RoundedCornerShape(50))
+                            .padding(horizontal = 12.dp, vertical = 5.dp),
                     )
                     if (onSignOut != null) {
                         IconButton(onClick = { confirmSignOut = true }) {
@@ -244,42 +329,49 @@ fun HomeScreen(
                         modifier = Modifier.padding(top = 4.dp, bottom = 4.dp),
                     )
                 }
-                items(unfinished, key = { ":" }) { work ->
+                items(
+                    unfinished,
+                    key = { "${it.flowType}:${it.orderId}" },
+                    contentType = { "unfinished" },
+                ) { work ->
                     UnfinishedWorkCard(
                         work = work,
                         onResume = {
-                            onModuleSelected(UnfinishedWorkViewModel.routeFor(work.flowType))
+                            if (!unfinishedViewModel.justScanned()) {
+                                onModuleSelected(unfinishedViewModel.resume(work))
+                            }
                         },
                         onDiscard = { unfinishedViewModel.discard(work) },
                     )
                 }
             }
 
-            // One continuous list, not a card per module - the WMS mobile app's own "Main Menu"
-            // pattern, and a real space win on top of it: four separate 64dp+ cards with 10dp
-            // gaps between them cost more height than four rows sharing one surface and a
-            // divider each. A single `item` rather than `items(MODULES)` because the point of
-            // lazy items - not composing rows that never scroll into view - buys nothing for a
-            // menu this short, and the whole thing needs to be one visual surface.
-            item(key = "module-menu") {
-                Card(
-                    shape = RoundedCornerShape(WarehouseDimens.CardCorner),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-                    modifier = Modifier.fillMaxWidth(),
+            // Two columns of white cards, each with a gradient arrow bar along the bottom - the
+            // reference layout's menu grid, on explicit instruction. Chunked into rows rather than
+            // a lazy grid: ten tiles gain nothing from lazy grid composition, and chunking keeps
+            // both cards in a row equal-width via weight(1f).
+            items(MODULES.chunked(2), key = { row -> row.joinToString { it.title } }, contentType = { "module-row" }) { row ->
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min),
                 ) {
-                    Column {
-                        MODULES.forEachIndexed { index, module ->
-                            ModuleRow(
-                                module = module,
-                                onClick = { module.route?.let(onModuleSelected) },
-                                onInfo = { infoFor = module },
-                            )
-                            if (index != MODULES.lastIndex) {
-                                HorizontalDivider(color = WarehouseStatusColors.border)
-                            }
-                        }
+                    row.forEach { module ->
+                        val enabled = module.workflow == null || module.workflow !in blockedWorkflows
+                        ModuleTileCard(
+                            module = module,
+                            enabled = enabled,
+                            onClick = {
+                                if (!unfinishedViewModel.justScanned()) {
+                                    if (enabled) module.route?.let(onModuleSelected)
+                                }
+                            },
+                            onInfo = { infoFor = module },
+                            modifier = Modifier.weight(1f).fillMaxHeight(),
+                        )
                     }
+                    // An odd count leaves the last row one card short - a spacer keeps that card
+                    // at the same half-width instead of stretching across the row.
+                    if (row.size == 1) Spacer(modifier = Modifier.weight(1f))
                 }
             }
         }
@@ -287,32 +379,83 @@ fun HomeScreen(
 }
 
 /**
- * One row: icon, title, status, a tap target to open it - the WMS mobile app's own Main Menu
- * rhythm. The summary line and the top accent stripe the card version carried are gone; a list
- * this short reads at a glance without them, and a chevron already says "tap to enter" the way
- * the stripe used to say "this one works."
- *
- * Thin wrapper over [MenuRow] - see that composable for the shared implementation. The info
- * button stays enabled even on an unbuilt module: knowing what a module *will* do is exactly
- * the question a greyed-out row provokes.
+ * One menu card: white, rounded, icon and centred title, with a gradient bar and arrow along the
+ * bottom edge - the reference layout's card, replacing the earlier solid-accent button rows.
+ * An unavailable module keeps the same card but greys the bar and the content, so "not built
+ * yet" still reads at a glance. Tap opens the module; long-press shows what it does (the
+ * separate info button the earlier version carried is gone, per the reference).
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun ModuleRow(
+private fun ModuleTileCard(
     module: ModuleTile,
+    enabled: Boolean,
     onClick: () -> Unit,
     onInfo: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
-    MenuRow(
-        icon = module.icon,
-        title = module.title,
-        available = module.available,
-        onClick = onClick,
-        onInfo = onInfo,
-    )
+    val usable = module.available && enabled
+    val shape = RoundedCornerShape(WarehouseDimens.CardCorner)
+    val contentColor = if (usable) MaterialTheme.colorScheme.onSurface else WarehouseStatusColors.text3
+    val barBrush = if (usable) WarehouseStatusColors.accentGradient else WarehouseStatusColors.mutedGradient
+
+    Surface(
+        shape = shape,
+        color = Color.White,
+        modifier = modifier
+            .heightIn(min = 144.dp)
+            .raised(shape)
+            .clip(shape)
+            .combinedClickable(
+                enabled = true,
+                onClick = { if (usable) onClick() else onInfo() },
+                onLongClick = onInfo,
+            ),
+    ) {
+        Column {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center,
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 14.dp),
+            ) {
+                Icon(
+                    imageVector = module.icon,
+                    contentDescription = null,
+                    modifier = Modifier.size(30.dp),
+                    tint = if (usable) WarehouseStatusColors.accent else WarehouseStatusColors.text3,
+                )
+                Text(
+                    text = module.title,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = contentColor,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(top = 8.dp),
+                )
+            }
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(30.dp)
+                    .background(barBrush),
+            ) {
+                Icon(
+                    Icons.AutoMirrored.Filled.ArrowForward,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(20.dp),
+                )
+            }
+        }
+    }
 }
 
 @Composable
-private fun ModuleInfoDialog(module: ModuleTile, onDismiss: () -> Unit) {
+private fun ModuleInfoDialog(module: ModuleTile, enabled: Boolean, onDismiss: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
         icon = { Icon(module.icon, contentDescription = null) },
@@ -334,9 +477,18 @@ private fun ModuleInfoDialog(module: ModuleTile, onDismiss: () -> Unit) {
                     )
                 }
 
+                // Two independent reasons a built module can still be unusable - see
+                // ModuleTile.workflow. Not built yet is checked first: an unbuilt module has
+                // no workflow to be blocked on in the first place.
                 if (!module.available) {
                     Text(
                         text = "This module is not built yet.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                } else if (!enabled) {
+                    Text(
+                        text = "Ask your supervisor to enable this module.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.error,
                     )
@@ -387,7 +539,10 @@ private fun UnfinishedWorkCard(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(WarehouseDimens.ScreenPadding),
-                verticalAlignment = Alignment.CenterVertically,
+                // Top, not centre - the left column is three lines tall (title, subtitle,
+                // warehouse) while Discard is one. Centering it against the whole column pushed
+                // it down away from the title row it belongs next to - confirmed live.
+                verticalAlignment = Alignment.Top,
             ) {
                 Column(modifier = Modifier.weight(1f)) {
                     Row(

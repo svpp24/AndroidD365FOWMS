@@ -27,9 +27,11 @@ class ThemePreferences @Inject constructor(
     private fun loadPalette(): ColorPalette =
         secureStore.getString(KEY_PALETTE)
             ?.let { runCatching { ColorPalette.valueOf(it) }.getOrNull() }
-            ?: ColorPalette.BLUE
+            ?: ColorPalette.MICROSOFT
 
     private companion object {
-        const val KEY_PALETTE = "color_palette"
+        // Bumped from "color_palette" so devices that had a different colour saved reset once to the
+        // new Microsoft-blue default rather than keeping the old choice.
+        const val KEY_PALETTE = "color_palette_v2"
     }
 }

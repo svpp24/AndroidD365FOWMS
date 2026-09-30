@@ -1,6 +1,11 @@
 package com.d365fo.mobileops.data.remote.api
 
+import com.d365fo.mobileops.data.remote.dto.ExecutionIdRequest
+import com.d365fo.mobileops.data.remote.dto.ExportToPackageRequest
+import com.d365fo.mobileops.data.remote.dto.GetAzureWriteUrlRequest
+import com.d365fo.mobileops.data.remote.dto.ImportFromPackageRequest
 import com.d365fo.mobileops.data.remote.dto.InventoryLocationDto
+import com.d365fo.mobileops.data.remote.dto.ODataActionResult
 import com.d365fo.mobileops.data.remote.dto.ODataCollection
 import com.d365fo.mobileops.data.remote.dto.OnHandDto
 import com.d365fo.mobileops.data.remote.dto.ProductBarcodeDto
@@ -12,7 +17,9 @@ import com.d365fo.mobileops.data.remote.dto.SerialNumberDto
 import com.d365fo.mobileops.data.remote.dto.TrackingDimensionGroupDto
 import com.d365fo.mobileops.data.remote.dto.WarehouseDto
 import retrofit2.Response
+import retrofit2.http.Body
 import retrofit2.http.GET
+import retrofit2.http.POST
 import retrofit2.http.Query
 import retrofit2.http.Url
 
@@ -195,4 +202,29 @@ interface D365ODataApi {
     suspend fun followPurchaseLinesLink(
         @Url nextLink: String,
     ): Response<ODataCollection<PurchaseOrderLineDto>>
+
+    // -- Data management package REST API -------------------------------------------------
+    //
+    // Unbound OData actions on DataManagementDefinitionGroups - Microsoft's own documented
+    // trigger/poll/blob-URL surface for DMF exports and imports, called through this same
+    // `/data/` root. Replaces the custom X++ trigger/poll pair the counting-journal export
+    // used to guess at. See DmfDto.kt's own doc comment and aos/README.md.
+
+    @POST("DataManagementDefinitionGroups/Microsoft.Dynamics.DataEntities.GetAzureWriteUrl")
+    suspend fun getAzureWriteUrl(@Body body: GetAzureWriteUrlRequest): Response<ODataActionResult>
+
+    @POST("DataManagementDefinitionGroups/Microsoft.Dynamics.DataEntities.ExportToPackage")
+    suspend fun exportToPackage(@Body body: ExportToPackageRequest): Response<ODataActionResult>
+
+    @POST("DataManagementDefinitionGroups/Microsoft.Dynamics.DataEntities.ImportFromPackage")
+    suspend fun importFromPackage(@Body body: ImportFromPackageRequest): Response<ODataActionResult>
+
+    @POST("DataManagementDefinitionGroups/Microsoft.Dynamics.DataEntities.GetExecutionSummaryStatus")
+    suspend fun getExecutionSummaryStatus(@Body body: ExecutionIdRequest): Response<ODataActionResult>
+
+    @POST("DataManagementDefinitionGroups/Microsoft.Dynamics.DataEntities.GetExportedPackageUrl")
+    suspend fun getExportedPackageUrl(@Body body: ExecutionIdRequest): Response<ODataActionResult>
+
+    @POST("DataManagementDefinitionGroups/Microsoft.Dynamics.DataEntities.GetExecutionErrors")
+    suspend fun getExecutionErrors(@Body body: ExecutionIdRequest): Response<ODataActionResult>
 }

@@ -2,7 +2,9 @@ package com.d365fo.mobileops.util
 
 import java.math.BigDecimal
 import java.time.Instant
+import java.time.LocalDateTime
 import java.time.ZoneId
+import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
@@ -15,6 +17,16 @@ object Formatters {
 
     fun odataToEpochMillis(value: String?): Long? = runCatching {
         value?.let { Instant.parse(it).toEpochMilli() }
+    }.getOrNull()
+
+    /**
+     * A D365FO custom-service datetime, e.g. "2026-09-11T12:00:00" — no zone suffix, unlike
+     * OData's own format. Confirmed live against HSMobileOpsCountingSvc::listOpenJournals
+     * (2026-09-23): the field is a `utcdatetime` in X++, serialized without a Z, so the naive
+     * local value here is treated as UTC rather than the device's zone.
+     */
+    fun serviceDateTimeToEpochMillis(value: String?): Long? = runCatching {
+        value?.let { LocalDateTime.parse(it).toInstant(ZoneOffset.UTC).toEpochMilli() }
     }.getOrNull()
 
     /** D365FO date-only fields (Edm.Date) — delivery date, journal date. */

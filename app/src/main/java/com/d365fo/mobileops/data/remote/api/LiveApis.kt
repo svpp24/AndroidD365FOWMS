@@ -100,6 +100,15 @@ class LiveMobileOpsServiceApi @Inject constructor(
         body: com.d365fo.mobileops.data.remote.dto.ChangePasswordServiceRequest,
     ) = delegate.get().changePassword(body)
 
+    override suspend fun setModulePermission(
+        body: com.d365fo.mobileops.data.remote.dto.SetModulePermissionServiceRequest,
+    ) = delegate.get().setModulePermission(body)
+
+    override suspend fun getWorkerDirectory(
+        body: com.d365fo.mobileops.data.remote.dto.WorkerDirectoryServiceRequest,
+        tag: com.d365fo.mobileops.data.remote.interceptor.IdempotentRead,
+    ) = delegate.get().getWorkerDirectory(body, tag)
+
     override suspend fun getLinesForItem(
         body: com.d365fo.mobileops.data.remote.dto.LineServiceRequest,
         tag: com.d365fo.mobileops.data.remote.interceptor.IdempotentRead,
@@ -125,6 +134,19 @@ class LiveMobileOpsServiceApi @Inject constructor(
         tag: com.d365fo.mobileops.data.remote.interceptor.IdempotentRead,
     ) = delegate.get().getOnHand(body, tag)
 
+    override suspend fun listOpenJournals(
+        body: com.d365fo.mobileops.data.remote.dto.JournalListServiceRequest,
+        tag: com.d365fo.mobileops.data.remote.interceptor.IdempotentRead,
+    ) = delegate.get().listOpenJournals(body, tag)
+
+    override suspend fun exportOpenJournals(
+        body: com.d365fo.mobileops.data.remote.dto.ScopeExportServiceRequest,
+    ) = delegate.get().exportOpenJournals(body)
+
+    override suspend fun importCounts(
+        body: com.d365fo.mobileops.data.remote.dto.ImportCountsServiceRequest,
+    ) = delegate.get().importCounts(body)
+
     override suspend fun postProductReceipt(
         body: com.d365fo.mobileops.data.remote.dto.PostServiceRequest,
     ) = delegate.get().postProductReceipt(body)
@@ -144,6 +166,19 @@ class LiveMobileOpsServiceApi @Inject constructor(
     override suspend fun getQueueStatus(
         body: com.d365fo.mobileops.data.remote.dto.PostQueueServiceRequest,
     ) = delegate.get().getQueueStatus(body)
+
+    override suspend fun exportSkuMaster(
+        body: com.d365fo.mobileops.data.remote.dto.SkuExportServiceRequest,
+    ) = delegate.get().exportSkuMaster(body)
+
+    override suspend fun getLicense(
+        body: com.d365fo.mobileops.data.remote.dto.GetLicenseServiceRequest,
+        tag: com.d365fo.mobileops.data.remote.interceptor.IdempotentRead,
+    ) = delegate.get().getLicense(body, tag)
+
+    override suspend fun registerDevice(
+        body: com.d365fo.mobileops.data.remote.dto.RegisterDeviceServiceRequest,
+    ) = delegate.get().registerDevice(body)
 }
 
 @Singleton
@@ -209,5 +244,29 @@ class LiveD365ODataApi @Inject constructor(
 
     override suspend fun followPurchaseLinesLink(nextLink: String) =
         delegate.get().followPurchaseLinesLink(nextLink)
+
+    override suspend fun getAzureWriteUrl(
+        body: com.d365fo.mobileops.data.remote.dto.GetAzureWriteUrlRequest,
+    ) = delegate.get().getAzureWriteUrl(body)
+
+    override suspend fun exportToPackage(
+        body: com.d365fo.mobileops.data.remote.dto.ExportToPackageRequest,
+    ) = delegate.get().exportToPackage(body)
+
+    override suspend fun importFromPackage(
+        body: com.d365fo.mobileops.data.remote.dto.ImportFromPackageRequest,
+    ) = delegate.get().importFromPackage(body)
+
+    override suspend fun getExecutionSummaryStatus(
+        body: com.d365fo.mobileops.data.remote.dto.ExecutionIdRequest,
+    ) = delegate.get().getExecutionSummaryStatus(body)
+
+    override suspend fun getExportedPackageUrl(
+        body: com.d365fo.mobileops.data.remote.dto.ExecutionIdRequest,
+    ) = delegate.get().getExportedPackageUrl(body)
+
+    override suspend fun getExecutionErrors(
+        body: com.d365fo.mobileops.data.remote.dto.ExecutionIdRequest,
+    ) = delegate.get().getExecutionErrors(body)
 }
 

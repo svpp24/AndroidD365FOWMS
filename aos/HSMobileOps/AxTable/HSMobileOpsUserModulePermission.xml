@@ -1,0 +1,111 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxTable xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsUserModulePermission</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Per-worker, per-module allow/block for the four handheld warehouse workflows.
+///
+/// **Absence means allowed.** No row for a (user, module) pair is not "blocked" - it is "never
+/// restricted", which is what every worker's account already means today, before this table
+/// existed. A row only ever appears once an admin has explicitly touched that module for that
+/// worker, in either direction - see HSMobileOpsUserService::appendModulePermissions and its own
+/// note on why the app-side cache mirrors this exactly rather than defaulting to deny-all.
+///
+/// Modeled directly on HSMobileOpsUserWarehouse - a small per-user child table, one row per
+/// thing being assigned - rather than a new mechanism.
+/// </summary>
+public class HSMobileOpsUserModulePermission extends common
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>isAllowed</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Whether a worker may use a module, applying the absence-means-allowed rule: no row for
+    /// this (user, module) pair returns true, exactly like a worker an admin has never touched.
+    /// </summary>
+    public static boolean isAllowed(RefRecId _userRecId, HSMobileOpsModule _module)
+    {
+        HSMobileOpsUserModulePermission permission;
+
+        select firstOnly IsAllowed from permission
+            where permission.UserRecId == _userRecId
+               && permission.Module    == _module;
+
+        if (!permission.RecId)
+        {
+            return true;
+        }
+
+        return permission.IsAllowed == NoYes::Yes;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+	<Label>Mobile user module permission</Label>
+	<TitleField1>Module</TitleField1>
+	<CacheLookup>NotInTTS</CacheLookup>
+	<ClusteredIndex>UserModuleIdx</ClusteredIndex>
+	<PrimaryIndex>UserModuleIdx</PrimaryIndex>
+	<Fields>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldInt64">
+			<Name>UserRecId</Name>
+			<Label>Mobile user</Label>
+			<ExtendedDataType>RefRecId</ExtendedDataType>
+			<Mandatory>Yes</Mandatory>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldEnum">
+			<Name>Module</Name>
+			<EnumType>HSMobileOpsModule</EnumType>
+			<Mandatory>Yes</Mandatory>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldEnum">
+			<Name>IsAllowed</Name>
+			<Label>Allowed</Label>
+			<EnumType>NoYes</EnumType>
+		</AxTableField>
+	</Fields>
+	<FullTextIndexes />
+	<Indexes>
+		<AxTableIndex>
+			<Name>UserModuleIdx</Name>
+			<AllowDuplicates>No</AllowDuplicates>
+			<Fields>
+				<AxTableIndexField>
+					<DataField>UserRecId</DataField>
+				</AxTableIndexField>
+				<AxTableIndexField>
+					<DataField>Module</DataField>
+				</AxTableIndexField>
+			</Fields>
+		</AxTableIndex>
+	</Indexes>
+	<Mappings />
+	<Relations>
+		<AxTableRelation xmlns=""
+			i:type="AxTableRelationForeignKey">
+			<Name>HSMobileOpsUser</Name>
+			<Cardinality>ZeroMore</Cardinality>
+			<RelatedTable>HSMobileOpsUser</RelatedTable>
+			<RelatedTableCardinality>ExactlyOne</RelatedTableCardinality>
+			<RelationshipType>Association</RelationshipType>
+			<Constraints>
+				<AxTableRelationConstraint xmlns=""
+					i:type="AxTableRelationConstraintField">
+					<Name>UserRecId</Name>
+					<Field>UserRecId</Field>
+					<RelatedField>RecId</RelatedField>
+				</AxTableRelationConstraint>
+			</Constraints>
+		</AxTableRelation>
+	</Relations>
+	<StateMachines />
+</AxTable>

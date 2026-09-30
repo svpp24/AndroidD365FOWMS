@@ -59,6 +59,9 @@ class SyncQueueRepository @Inject constructor(
     suspend fun leaseBatch(limit: Int = LEASE_BATCH_SIZE): List<SyncQueueEntity> =
         dao.leaseBatch(limit)
 
+    /** See [SyncQueueDao.leaseOne]. Null means something else (a background worker run) already claimed it. */
+    suspend fun leaseOne(queueId: String): SyncQueueEntity? = dao.leaseOne(queueId)
+
     suspend fun releaseLease(entries: List<SyncQueueEntity>) =
         dao.releaseLease(entries.map { it.queueId })
 

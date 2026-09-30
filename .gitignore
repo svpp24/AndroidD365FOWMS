@@ -6,3 +6,5 @@ local.properties.bak
 build/
 *.apk
 *.keystore
+*.jks
+keystore/

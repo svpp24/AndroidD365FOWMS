@@ -1,16 +1,22 @@
 package com.d365fo.mobileops.data.repository
 
+import android.content.Context
 import com.d365fo.mobileops.BuildConfig
+import com.d365fo.mobileops.data.local.dao.PermissionDao
+import com.d365fo.mobileops.data.local.entity.WorkerPermissionEntity
 import com.d365fo.mobileops.data.remote.api.MobileOpsServiceApi
 import com.d365fo.mobileops.data.remote.dto.ChangePasswordRequestBody
 import com.d365fo.mobileops.data.remote.dto.ChangePasswordServiceRequest
+import com.d365fo.mobileops.data.remote.dto.ModulePermissionDto
 import com.d365fo.mobileops.data.remote.dto.SignInRequestBody
 import com.d365fo.mobileops.data.remote.dto.SignInServiceRequest
 import com.d365fo.mobileops.data.remote.error.D365ErrorMapper
 import com.d365fo.mobileops.data.security.CompanyProvider
 import com.d365fo.mobileops.data.security.SecureStore
+import com.d365fo.mobileops.domain.model.WarehouseWorkflow
 import com.d365fo.mobileops.util.AppFailure
 import com.d365fo.mobileops.util.NetworkResult
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -42,6 +48,8 @@ class WorkerSessionRepository @Inject constructor(
     private val ioDispatcher: CoroutineDispatcher,
     private val secureStore: SecureStore,
     private val json: Json,
+    private val permissionDao: PermissionDao,
+    @ApplicationContext private val context: Context,
 ) {
 
     private val _session = MutableStateFlow<WorkerSession?>(
@@ -54,12 +62,64 @@ class WorkerSessionRepository @Inject constructor(
     )
     val session: StateFlow<WorkerSession?> = _session.asStateFlow()
 
-    private fun restoreDebugSession(): WorkerSession? =
-        secureStore.getString(SecureStore.KEY_DEBUG_WORKER_SESSION)?.let { raw ->
+    // Not part of WorkerSession itself - that's the session's identity/warehouses, cached
+    // verbatim across a debug rebuild (see restoreDebugSession); a license-expiry notice is a
+    // one-off "just signed in" moment, not something that should reappear from a stale cache on
+    // every app restart. Cleared once shown - see dismissLicenseWarning.
+    private val _licenseWarning = MutableStateFlow<String?>(null)
+    val licenseWarning: StateFlow<String?> = _licenseWarning.asStateFlow()
+
+    fun dismissLicenseWarning() {
+        _licenseWarning.value = null
+    }
+
+    /**
+     * The installed APK's own file modification time - changes on every install/reinstall,
+     * same signal as PackageInfo.lastUpdateTime, without paying for it.
+     *
+     * context.applicationInfo is already resident in this process (handed to it by
+     * ActivityThread at launch), so reading sourceDir off it is free. Calling
+     * packageManager.getPackageInfo() instead - the first version of this - is a Binder round
+     * trip to PackageManagerService, and doing that synchronously on the app's cold-start path,
+     * before Hilt has even finished building this singleton, added a real, measurable delay to
+     * every launch. Confirmed live: reported as "coming to signin page is slow" the moment this
+     * was added, gone once replaced with this.
+     */
+    private fun currentInstallTime(): Long = runCatching {
+        java.io.File(context.applicationInfo.sourceDir).lastModified()
+    }.getOrDefault(0L)
+
+    /**
+     * Restores the cached session only across a rebuild, never across a bare close-and-reopen
+     * of the same install.
+     *
+     * Those two look identical from a cold start alone - both are "no in-memory session, check
+     * the cache" - so [SecureStore.KEY_DEBUG_SESSION_INSTALL_TIME] records the APK's own
+     * `lastUpdateTime` at the moment the session was cached. Unchanged since means nothing was
+     * reinstalled - an ordinary close-and-reopen, which must require login the same as
+     * production does. Changed means a new build landed since - the actual case this cache
+     * exists for - so this restores and immediately re-stamps the marker to the *current*
+     * install time, so the next close-and-reopen of *this* build correctly requires login too
+     * rather than surviving indefinitely off one rebuild.
+     */
+    private fun restoreDebugSession(): WorkerSession? {
+        val cachedInstallTime = secureStore.getString(SecureStore.KEY_DEBUG_SESSION_INSTALL_TIME)
+            ?.toLongOrNull()
+        if (cachedInstallTime == null || cachedInstallTime == currentInstallTime()) return null
+
+        val restored = secureStore.getString(SecureStore.KEY_DEBUG_WORKER_SESSION)?.let { raw ->
             runCatching { json.decodeFromString(WorkerSession.serializer(), raw) }
                 .onFailure { Timber.w(it, "could not restore debug worker session") }
                 .getOrNull()
         }
+        if (restored != null) {
+            secureStore.putString(
+                SecureStore.KEY_DEBUG_SESSION_INSTALL_TIME,
+                currentInstallTime().toString(),
+            )
+        }
+        return restored
+    }
 
     private fun company(): String =
         companyProvider()?.takeIf { it.isNotBlank() }?.lowercase().orEmpty()
@@ -105,6 +165,9 @@ class WorkerSessionRepository @Inject constructor(
             is NetworkResult.Success -> {
                 val body = result.data
                 if (!body.success) {
+                    // Logged by errorCode, never the password - see the comment two lines down
+                    // on why INVALID_CREDENTIALS itself is already deliberately ambiguous.
+                    Timber.w("sign-in refused for '%s': %s", name, body.errorCode)
                     // The wording follows the server's code, never guesses beyond it. In
                     // particular a wrong user name and a wrong password are one message, because
                     // telling them apart tells an attacker which accounts exist.
@@ -118,6 +181,14 @@ class WorkerSessionRepository @Inject constructor(
                                     ?: "Too many failed attempts. Try again shortly."
                                 "NO_WAREHOUSE" ->
                                     "No warehouse is assigned to you. Ask a supervisor."
+                                // Licensing problems, checked server-side before credentials are
+                                // even looked at - see HSMobileOpsLicense and the signIn hook in
+                                // HSMobileOpsUserService. The server's own message already names
+                                // the specifics (an expiry date, the configured device count), so
+                                // it's shown as-is rather than replaced with a generic string.
+                                "NO_LICENSE", "LICENSE_INVALID", "LICENSE_EXPIRED",
+                                "DEVICE_LIMIT_REACHED" ->
+                                    body.message ?: "This app is not licensed. Contact your administrator."
                                 else -> body.message ?: "Could not sign in"
                             },
                         ),
@@ -159,11 +230,28 @@ class WorkerSessionRepository @Inject constructor(
                     selected = warehouses.firstOrNull { it.isDefault }
                         ?: warehouses.singleOrNull(),
                 )
+                Timber.i("signed in: '%s', %d warehouse(s)%s", body.userName, warehouses.size,
+                    body.licenseWarning?.takeIf { it.isNotBlank() }?.let { " - license warning: $it" }.orEmpty())
                 _session.value = session
+                _licenseWarning.value = body.licenseWarning?.takeIf { it.isNotBlank() }
+                // Down-sync: replaces this worker's whole permission set with whatever the
+                // server just sent, every sign-in - see PermissionDao.replaceFor and
+                // ModulePermissionDto's own doc on why an empty/missing list means "nothing
+                // restricted" rather than "everything denied." Best-effort: a write failure here
+                // must never fail the sign-in itself over a module-gating cache.
+                runCatching {
+                    permissionDao.replaceFor(body.userName, body.modulePermissions.toEntities(body.userName))
+                }.onFailure { Timber.w(it, "could not cache module permissions for '%s'", body.userName) }
                 if (BuildConfig.DEBUG) {
                     secureStore.putString(
                         SecureStore.KEY_DEBUG_WORKER_SESSION,
                         json.encodeToString(WorkerSession.serializer(), session),
+                    )
+                    // Stamped to this install so a bare close-and-reopen right after signing in
+                    // still requires login next time - see restoreDebugSession.
+                    secureStore.putString(
+                        SecureStore.KEY_DEBUG_SESSION_INSTALL_TIME,
+                        currentInstallTime().toString(),
                     )
                 }
                 NetworkResult.Success(session)
@@ -180,8 +268,13 @@ class WorkerSessionRepository @Inject constructor(
     }
 
     fun signOut() {
+        Timber.i("signed out: '%s'", _session.value?.userName ?: "unknown")
         _session.value = null
-        if (BuildConfig.DEBUG) secureStore.remove(SecureStore.KEY_DEBUG_WORKER_SESSION)
+        _licenseWarning.value = null
+        if (BuildConfig.DEBUG) {
+            secureStore.remove(SecureStore.KEY_DEBUG_WORKER_SESSION)
+            secureStore.remove(SecureStore.KEY_DEBUG_SESSION_INSTALL_TIME)
+        }
     }
 
     suspend fun changePassword(
@@ -225,6 +318,18 @@ class WorkerSessionRepository @Inject constructor(
                 )
             }
     }
+
+    /**
+     * Only the rows the server actually named survive this mapping - an unrecognised `module`
+     * string (an older client talking to a newer AOS that adds a fifth workflow some day, or a
+     * typo) is dropped rather than crashing the sign-in over a display concern.
+     */
+    private fun List<ModulePermissionDto>.toEntities(userName: String): List<WorkerPermissionEntity> =
+        mapNotNull { dto ->
+            runCatching { WarehouseWorkflow.valueOf(dto.module) }.getOrNull()?.let { workflow ->
+                WorkerPermissionEntity(userName = userName, workflow = workflow, allowed = dto.isAllowed)
+            }
+        }
 }
 
 /**

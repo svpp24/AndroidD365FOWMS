@@ -12,8 +12,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
+import com.d365fo.mobileops.presentation.common.components.AppCard as Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -21,7 +20,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
+import com.d365fo.mobileops.presentation.common.components.AppTopBar as TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -32,6 +31,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.d365fo.mobileops.domain.model.OrderStatus
 import com.d365fo.mobileops.domain.repository.PurchaseOrderSummary
+import com.d365fo.mobileops.presentation.common.components.ErrorBanner
 import com.d365fo.mobileops.presentation.common.components.StatusChip
 import com.d365fo.mobileops.presentation.common.theme.WarehouseDimens
 import com.d365fo.mobileops.presentation.common.theme.WarehouseStatusColors
@@ -74,21 +74,12 @@ fun PoOfTodayScreen(
                 }
 
                 state.error != null -> {
-                    Card(
-                        colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.errorContainer,
-                        ),
+                    ErrorBanner(
+                        message = state.error.orEmpty(),
                         modifier = Modifier
                             .align(Alignment.Center)
-                            .fillMaxWidth()
                             .padding(WarehouseDimens.ScreenPadding),
-                    ) {
-                        Text(
-                            text = state.error.orEmpty(),
-                            modifier = Modifier.padding(12.dp),
-                            color = MaterialTheme.colorScheme.onErrorContainer,
-                        )
-                    }
+                    )
                 }
 
                 state.orders.isEmpty() -> {

@@ -1,0 +1,236 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxTable xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsLicenseSetup</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// The one certificate and license that control whether ForeFront Mobile will sign anyone in
+/// at all.
+///
+/// A single row, environment-wide - see SaveDataPerCompany below - not one row per company. The
+/// app is licensed as a whole, not per legal entity, so there is exactly one pair to import,
+/// wherever in the environment an administrator happens to be working.
+///
+/// **Replaces the earlier per-client-public-key design.** That design trusted whatever public
+/// key an administrator had pasted into this table directly - which meant a customer's own
+/// SysAdmin, who can edit any table in their own tenant, could paste in their own keypair and
+/// self-sign an unlimited license. CertificateString closes that: it is signed by a ROOT private
+/// key the vendor alone ever holds, verified here against a root public key hardcoded in
+/// HSMobileOpsLicense (never stored in a table a customer can edit), and only once that
+/// certificate verifies is the customer public key it carries trusted to check LicenseKey
+/// against. See licensing/README.md for the full chain and HSMobileOpsLicense::verify() for
+/// where all of this is actually checked.
+///
+/// This table only stores the opaque signed strings; it never stores the expiry, device limit,
+/// customer or tenant id as their own editable fields. Those live only inside the signed
+/// artifacts themselves (see HSMobileOpsLicense) - storing a second, editable copy alongside
+/// them would let someone change what's granted without a new signed key, which defeats the
+/// entire point of signing in the first place.
+///
+/// **Verified on every save, not just displayed as a status afterward.** insert()/update() below
+/// call HSMobileOpsLicense's own certificate-then-license check before writing anything; a pair
+/// that would not actually verify throws instead of saving. Same shape the earlier design
+/// already used here for encrypting PublicKeyXml on save - the table itself is what refuses bad
+/// input, not a separate gate the form has to remember to call.
+/// </summary>
+public class HSMobileOpsLicenseSetup extends common
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>find</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The one setup row, or an unsaved empty one when nobody has imported a license yet.
+    ///
+    /// Mirrors HSMobileOpsProcessSetup::find - an unconfigured system hands back blank fields
+    /// rather than throwing, so HSMobileOpsLicense::verify() has one place to handle "nothing
+    /// imported yet" as an ordinary, expected outcome (NO_LICENSE) instead of every caller
+    /// needing its own null check.
+    ///
+    /// `internal` - HSMobileOpsLicense::verify() (same package) is the only external caller this
+    /// needs; narrowing visibility to the package also narrows who could target this with a
+    /// Chain of Command extension, on top of the class-level protections on HSMobileOpsLicense
+    /// itself.
+    /// </summary>
+    internal static HSMobileOpsLicenseSetup find(boolean _forUpdate = false)
+    {
+        HSMobileOpsLicenseSetup setup;
+
+        setup.selectForUpdate(_forUpdate);
+
+        select firstOnly setup;
+
+        return setup;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>insert</Name>
+				<Source><![CDATA[
+
+    public void insert()
+    {
+        this.validateBeforeSave();
+        super();
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>update</Name>
+				<Source><![CDATA[
+
+    public void update()
+    {
+        this.validateBeforeSave();
+        super();
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>validateBeforeSave</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Runs the same certificate-then-license chain HSMobileOpsLicense::verify() runs at every
+    /// live call, before this row is ever written - a pasted pair that would fail a real sign-in
+    /// is refused here too, rather than being saved and only discovered broken the next time
+    /// someone tries to use the app. `throw error(...)` rolls the form's own save back; nothing
+    /// half-valid is ever persisted.
+    /// </summary>
+    private void validateBeforeSave()
+    {
+        container certResult, licResult;
+        str       customerPublicKeyXml;
+        str       certCustomerId, certTenantId;
+        str       licCustomerId, licTenantId;
+
+        if (!this.CertificateString || !this.LicenseKey)
+        {
+            throw error('Both a certificate and a license are required.');
+        }
+
+        certResult = HSMobileOpsLicense::verifyCertificateAndExtractCustomerKeyXml(this.CertificateString);
+
+        if (conLen(certResult) != 3)
+        {
+            throw error(
+                'This certificate did not verify against the root key, or is outside its '
+              + 'validity window. Check it was pasted in full, with no extra whitespace.');
+        }
+        customerPublicKeyXml = conPeek(certResult, 1);
+        certCustomerId       = conPeek(certResult, 2);
+        certTenantId         = conPeek(certResult, 3);
+
+        licResult = HSMobileOpsLicense::verifyLicenseAgainstCustomerKey(this.LicenseKey, customerPublicKeyXml);
+
+        if (conLen(licResult) != 2)
+        {
+            throw error(
+                'This license did not verify against the customer key carried by that '
+              + 'certificate. Check it was pasted in full, and that it was issued for this certificate.');
+        }
+        licCustomerId = conPeek(licResult, 1);
+        licTenantId   = conPeek(licResult, 2);
+
+        if (licCustomerId != certCustomerId || licTenantId != certTenantId)
+        {
+            throw error('This license was not issued for this certificate (customer/tenant mismatch).');
+        }
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>licenseStatus</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Read-only summary shown on the setup form - re-runs the exact same check
+    /// HSMobileOpsUserService::signIn() applies to every sign-in attempt, so what an administrator
+    /// sees here can never drift from what a worker actually experiences. Deliberately not a stored
+    /// field - see the class doc on why expiry/device-limit are never kept as their own editable
+    /// columns.
+    /// </summary>
+    display str licenseStatus()
+    {
+        HSMobileOpsLicenseStatus status = HSMobileOpsLicense::verify();
+
+        switch (status.parmErrorCode())
+        {
+            case 'NO_LICENSE':
+                return 'No license configured';
+
+            case 'LICENSE_EXPIRED':
+                return strFmt('Expired %1', status.parmExpiryUtc());
+
+            case 'LICENSE_INVALID':
+                return strFmt('Invalid - %1', status.parmMessage());
+
+            default:
+                return strFmt(
+                    'Valid until %1 (%2 day(s) left) - %3',
+                    status.parmExpiryUtc(),
+                    status.parmDaysUntilExpiry(),
+                    status.parmCustomerId());
+        }
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>deviceUsage</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// "N of M devices in use", read from the same HSMobileOpsLicense::verify() call as
+    /// licenseStatus() and from HSMobileOpsDevice::activeDeviceCount() - the same count
+    /// HSMobileOpsUserService::signIn() itself compares against the license's device limit.
+    ///
+    /// maxDevices is only ever meaningful once a license has actually been parsed - never for
+    /// NO_LICENSE (nothing imported) or a LICENSE_INVALID key (bad certificate/signature/expiry,
+    /// none of which get as far as reading a device limit out of it) - so this shows a dash
+    /// rather than a misleading "0 of 0" for either of those.
+    /// </summary>
+    display str deviceUsage()
+    {
+        HSMobileOpsLicenseStatus status = HSMobileOpsLicense::verify();
+
+        if (!status.parmValid() && status.parmErrorCode() != 'LICENSE_EXPIRED')
+        {
+            return '-';
+        }
+
+        return strFmt('%1 of %2 devices in use', HSMobileOpsDevice::activeDeviceCount(), status.parmMaxDevices());
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+	<Label>Mobile app license</Label>
+	<TitleField1>LicenseKey</TitleField1>
+	<CacheLookup>NotInTTS</CacheLookup>
+	<!-- One row for the whole environment, not one per legal entity - see the class doc. -->
+	<SaveDataPerCompany>No</SaveDataPerCompany>
+	<Fields>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>CertificateString</Name>
+			<Label>Certificate</Label>
+			<HelpText>The WMSCERT1... certificate string the vendor issued during onboarding, signed with the vendor's root key and carrying this environment's own customer public key. Paste it here together with a matching license string - see licensing/README.md. A pair that does not verify together is refused on save, not silently accepted.</HelpText>
+			<StringSize>3000</StringSize>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>LicenseKey</Name>
+			<Label>License key</Label>
+			<HelpText>The WMSLIC1... signed license string provided by the vendor - pasted together with a matching certificate above. Encodes its own expiry date and device limit; nothing here can change what it grants without a new signed key. A pair that does not verify together is refused on save, not silently accepted.</HelpText>
+			<StringSize>1500</StringSize>
+		</AxTableField>
+	</Fields>
+	<FullTextIndexes />
+	<Indexes />
+	<Mappings />
+	<Relations />
+	<StateMachines />
+</AxTable>

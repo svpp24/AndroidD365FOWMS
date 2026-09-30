@@ -28,6 +28,9 @@ class HSMobileOpsUserService
 {
     private const int MaxFailedAttempts = 5;
     private const int LockoutMinutes    = 15;
+    // How long before expiry an otherwise-successful sign-in starts carrying a renewal warning -
+    // see the license-check block in signIn and HSMobileOpsSignInResponse::parmLicenseWarning.
+    private const int LicenseWarningDays = 30;
 
 }
 ]]></Declaration>
@@ -38,24 +41,38 @@ class HSMobileOpsUserService
 
     /// <summary>
     /// Signs a worker in and returns their identity and the warehouses they may work in.
+    ///
+    /// `final`, `[Wrappable(false)]` and `[Hookable(false)]` - not overridable and not a Chain of
+    /// Command or event-handler extension point, by any of the three mechanisms - so nothing can
+    /// wrap this method to skip or override the license/device-limit gate at its top. See the
+    /// class doc on HSMobileOpsLicense for why that gate would otherwise be pointless no matter
+    /// how strong its own cryptography is. This gate is a defense-in-depth safety net beneath the
+    /// Android app's own pre-flight certificate/license/device checks (HSMobileOpsLicenseSvc) -
+    /// kept here, not removed, since a modified client could in principle skip its own checks and
+    /// call signIn directly.
     /// </summary>
-    public HSMobileOpsSignInResponse signIn(HSMobileOpsSignInRequest _request)
+    [Wrappable(false), Hookable(false)]
+    public final HSMobileOpsSignInResponse signIn(HSMobileOpsSignInRequest _request)
     {
         HSMobileOpsSignInResponse response = new HSMobileOpsSignInResponse();
+        HSMobileOpsLicenseStatus  license;
         HSMobileOpsUser           user;
         DataAreaId                company;
         str                       userName;
         str                       password;
+        str                       deviceId;
         boolean                   ok;
 
         response.parmSuccess(false);
         response.parmWarehouses(new List(Types::Class));
+        response.parmModulePermissions(new List(Types::Class));
 
         if (_request)
         {
             company  = _request.parmDataAreaId();
             userName = _request.parmUserName();
             password = _request.parmPassword();
+            deviceId = _request.parmDeviceId();
         }
 
         if (!company || !userName || !password || !CompanyInfo::findDataArea(company).RecId)
@@ -63,6 +80,41 @@ class HSMobileOpsUserService
             response.parmErrorCode('INVALID_REQUEST');
             response.parmMessage('Company, user name and password are all required');
             return response;
+        }
+
+        // License and device-fleet state are both environment-wide (HSMobileOpsLicenseSetup is
+        // SaveDataPerCompany=No; HSMobileOpsDevice's own methods query crossCompany) - checked here,
+        // ahead of changecompany and ahead of touching HSMobileOpsUser at all, so a license problem
+        // is never confused with a wrong password and blocks every company alike. See
+        // HSMobileOpsLicense for the certificate/license chain and HSMobileOpsDevice::checkDeviceLimit
+        // for why this only ever turns away a device D365FO has never seen before - a device already
+        // in the fleet always passes, exactly the same "never kicks someone already in" spirit as the
+        // account-lockout and inactive-account checks below.
+        license = HSMobileOpsLicense::verify();
+        if (!license.parmValid())
+        {
+            response.parmErrorCode(license.parmErrorCode());
+            response.parmMessage(license.parmMessage());
+            return response;
+        }
+
+        if (deviceId && !HSMobileOpsDevice::checkDeviceLimit(deviceId, license.parmMaxDevices()))
+        {
+            response.parmErrorCode('DEVICE_LIMIT_REACHED');
+            response.parmMessage(strFmt(
+                'This app is licensed for %1 device(s), and that many are already active. Contact your administrator.',
+                license.parmMaxDevices()));
+            return response;
+        }
+
+        // Renewal notice, not a block - the license is valid, this sign-in proceeds either way.
+        // Set now so it survives every path below (credential failures return before reaching
+        // here are unaffected; a successful sign-in carries it through untouched).
+        if (license.parmDaysUntilExpiry() <= LicenseWarningDays)
+        {
+            response.parmLicenseWarning(strFmt(
+                "This app's license expires in %1 day(s) (on %2). Contact your administrator to renew.",
+                license.parmDaysUntilExpiry(), license.parmExpiryUtc()));
         }
 
         changecompany (company)
@@ -125,6 +177,7 @@ class HSMobileOpsUserService
             response.parmMustChangePassword(user.MustChangePassword == NoYes::Yes);
 
             HSMobileOpsUserService::appendWarehouses(response, user.RecId);
+            HSMobileOpsUserService::appendModulePermissions(response, user.RecId);
 
             if (!response.parmWarehouses().elements())
             {
@@ -189,6 +242,76 @@ class HSMobileOpsUserService
 ]]></Source>
 			</Method>
 			<Method>
+				<Name>appendModulePermissions</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Every module this worker has been explicitly touched for - see
+    /// HSMobileOpsSignInResponse::parmModulePermissions for what an empty list means.
+    /// </summary>
+    private static void appendModulePermissions(HSMobileOpsSignInResponse _response, RefRecId _userRecId)
+    {
+        HSMobileOpsUserModulePermission permission;
+        HSMobileOpsModulePermission     contract;
+        List                            modulePermissions = _response.parmModulePermissions();
+
+        while select Module, IsAllowed from permission
+            where permission.UserRecId == _userRecId
+        {
+            contract = new HSMobileOpsModulePermission();
+            contract.parmModule(HSMobileOpsUserService::moduleToCode(permission.Module));
+            contract.parmIsAllowed(permission.IsAllowed == NoYes::Yes);
+            modulePermissions.addEnd(contract);
+        }
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>moduleToCode</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// HSMobileOpsModule -> the wire string the app's WarehouseWorkflow enum matches by exact
+    /// name. Kept as an explicit switch, not enum2str - the wire contract must survive the
+    /// X++ enum being reordered or relabeled, and a switch is what makes that a one-line review
+    /// instead of a silent break.
+    /// </summary>
+    private static str moduleToCode(HSMobileOpsModule _module)
+    {
+        switch (_module)
+        {
+            case HSMobileOpsModule::PO_RECEIVING:    return 'PO_RECEIVING';
+            case HSMobileOpsModule::TRANSFER_SHIP:   return 'TRANSFER_SHIP';
+            case HSMobileOpsModule::TRANSFER_RECEIVE: return 'TRANSFER_RECEIVE';
+            case HSMobileOpsModule::INVENTORY_COUNT: return 'INVENTORY_COUNT';
+            default: return '';
+        }
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>moduleFromCode</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The inverse of moduleToCode. Returns -1 for anything unrecognised (an older app talking
+    /// to a newer AOS, or a typo) - callers check for that rather than silently defaulting to
+    /// element 0, which would quietly target the wrong module.
+    /// </summary>
+    private static HSMobileOpsModule moduleFromCode(str _code)
+    {
+        switch (_code)
+        {
+            case 'PO_RECEIVING':     return HSMobileOpsModule::PO_RECEIVING;
+            case 'TRANSFER_SHIP':    return HSMobileOpsModule::TRANSFER_SHIP;
+            case 'TRANSFER_RECEIVE': return HSMobileOpsModule::TRANSFER_RECEIVE;
+            case 'INVENTORY_COUNT':  return HSMobileOpsModule::INVENTORY_COUNT;
+            default: return -1;
+        }
+    }
+]]></Source>
+			</Method>
+			<Method>
 				<Name>registerDevice</Name>
 				<Source><![CDATA[
 
@@ -200,6 +323,14 @@ class HSMobileOpsUserService
     /// in hand. Wrapped in its own try/catch so that a problem in the fleet table - a full disk,
     /// a lock timeout, anything - never turns into a worker unable to start their shift over a
     /// feature that exists purely for IT's benefit.
+    ///
+    /// Catches plain `catch` (every Exception value), not `catch (Exception::Error)` - confirmed
+    /// live as a real gap, not a theoretical one: a DuplicateKeyException from registerSignIn
+    /// propagated straight through the narrower clause and turned into an HTTP 500 that blocked
+    /// sign-in entirely, exactly the outcome this try/catch exists to prevent. X++'s Exception
+    /// enum has many distinct values (Error, DuplicateKeyException, Deadlock, CLRError, ...) and
+    /// a clause naming one only ever catches that one - "anything" in the paragraph above needs
+    /// the catch-all to actually mean anything.
     /// </summary>
     private static void registerDevice(
         HSMobileOpsSignInRequest  _request,
@@ -236,7 +367,7 @@ class HSMobileOpsUserService
                 siteId,
                 warehouseId);
         }
-        catch (Exception::Error)
+        catch
         {
             // Deliberately not HSMobileOpsPostingService::lastError() - that method is private
             // to its own class, and this failure is a diagnostic nicety, not something worth a
@@ -344,6 +475,173 @@ class HSMobileOpsUserService
             user.LockedUntilUtc     = DateTimeUtil::minValue();
             user.update();
             ttscommit;
+
+            response.parmSuccess(true);
+        }
+
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>setModulePermission</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// An admin toggling one worker's access to one of the four handheld modules.
+    ///
+    /// **The client's own claim of being a supervisor is never trusted for the write itself** -
+    /// only for the local UI gating that got the operator to this screen in the first place. This
+    /// method re-looks-up ActingUserName and checks HSMobileOpsUser.IsSupervisor fresh, the same
+    /// way HSMobileOpsUserAdmin's form-side methods rely on D365FO's own security instead of a
+    /// client-supplied flag. A rooted device that patches its own cached role can change what its
+    /// own UI shows; it cannot grant itself, or anyone else, a permission that survives this
+    /// check.
+    ///
+    /// No password re-check, deliberately consistent with the rest of this app: postings already
+    /// identify their acting worker by UserName alone (see HSMobileOpsPostRequest), trusting the
+    /// device to report whichever worker is currently signed in - there is no per-call session
+    /// token anywhere in this service today for this to plug into. IsSupervisor is exactly the
+    /// same trust boundary applied one level up.
+    /// </summary>
+    public HSMobileOpsSetModulePermissionResponse setModulePermission(
+        HSMobileOpsSetModulePermissionRequest _request)
+    {
+        HSMobileOpsSetModulePermissionResponse response = new HSMobileOpsSetModulePermissionResponse();
+        HSMobileOpsUser                        actingUser;
+        HSMobileOpsUser                        targetUser;
+        HSMobileOpsModule                      module;
+        HSMobileOpsUserModulePermission        permission;
+        DataAreaId                             company;
+
+        response.parmSuccess(false);
+
+        if (!_request
+         || !_request.parmDataAreaId()
+         || !_request.parmActingUserName()
+         || !_request.parmTargetUserName()
+         || !_request.parmModule())
+        {
+            response.parmErrorCode('INVALID_REQUEST');
+            response.parmMessage('Company, acting user, target user and module are all required');
+            return response;
+        }
+
+        company = _request.parmDataAreaId();
+        module  = HSMobileOpsUserService::moduleFromCode(_request.parmModule());
+
+        if (module == -1)
+        {
+            response.parmErrorCode('INVALID_MODULE');
+            response.parmMessage(strFmt('Unrecognised module %1', _request.parmModule()));
+            return response;
+        }
+
+        changecompany (company)
+        {
+            actingUser = HSMobileOpsUser::find(_request.parmActingUserName());
+            if (!actingUser.RecId)
+            {
+                response.parmErrorCode('ACTING_USER_NOT_FOUND');
+                response.parmMessage('The signed-in user could not be re-verified');
+                return response;
+            }
+
+            if (actingUser.IsSupervisor != NoYes::Yes)
+            {
+                response.parmErrorCode('NOT_SUPERVISOR');
+                response.parmMessage('Only a supervisor may change module access');
+                return response;
+            }
+
+            targetUser = HSMobileOpsUser::find(_request.parmTargetUserName());
+            if (!targetUser.RecId)
+            {
+                response.parmErrorCode('TARGET_USER_NOT_FOUND');
+                response.parmMessage(strFmt('No mobile user %1', _request.parmTargetUserName()));
+                return response;
+            }
+
+            ttsbegin;
+            select forUpdate permission
+                where permission.UserRecId == targetUser.RecId
+                   && permission.Module    == module;
+
+            if (!permission.RecId)
+            {
+                permission.UserRecId = targetUser.RecId;
+                permission.Module    = module;
+                permission.insert();
+            }
+
+            permission.IsAllowed = _request.parmIsAllowed() ? NoYes::Yes : NoYes::No;
+            permission.update();
+            ttscommit;
+
+            response.parmSuccess(true);
+        }
+
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>getWorkerDirectory</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Every active mobile worker, for the Admin Center's own list. Re-validates
+    /// ActingUserName is a current supervisor server-side, same reasoning as
+    /// setModulePermission - the Admin Center menu entry being hidden client-side for a
+    /// non-supervisor is UX, not the security boundary.
+    /// </summary>
+    public HSMobileOpsWorkerDirectoryResponse getWorkerDirectory(
+        HSMobileOpsWorkerDirectoryRequest _request)
+    {
+        HSMobileOpsWorkerDirectoryResponse response = new HSMobileOpsWorkerDirectoryResponse();
+        HSMobileOpsUser                    actingUser;
+        HSMobileOpsUser                    worker;
+        HSMobileOpsWorkerSummary           contract;
+        List                               workers = new List(Types::Class);
+        DataAreaId                         company;
+
+        response.parmSuccess(false);
+        response.parmWorkers(workers);
+
+        if (!_request || !_request.parmDataAreaId() || !_request.parmActingUserName())
+        {
+            response.parmErrorCode('INVALID_REQUEST');
+            return response;
+        }
+
+        company = _request.parmDataAreaId();
+
+        changecompany (company)
+        {
+            actingUser = HSMobileOpsUser::find(_request.parmActingUserName());
+            if (!actingUser.RecId)
+            {
+                response.parmErrorCode('ACTING_USER_NOT_FOUND');
+                return response;
+            }
+
+            if (actingUser.IsSupervisor != NoYes::Yes)
+            {
+                response.parmErrorCode('NOT_SUPERVISOR');
+                response.parmMessage('Only a supervisor may browse other workers');
+                return response;
+            }
+
+            while select UserName, DisplayName, IsSupervisor from worker
+                order by worker.DisplayName
+                where worker.IsActive == NoYes::Yes
+            {
+                contract = new HSMobileOpsWorkerSummary();
+                contract.parmUserName(worker.UserName);
+                contract.parmDisplayName(worker.DisplayName);
+                contract.parmIsSupervisor(worker.IsSupervisor == NoYes::Yes);
+                workers.addEnd(contract);
+            }
 
             response.parmSuccess(true);
         }

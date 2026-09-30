@@ -9,6 +9,7 @@ import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
+import com.d365fo.mobileops.data.sync.worker.SkuSyncWorker
 import com.d365fo.mobileops.data.sync.worker.TransactionPushWorker
 import com.d365fo.mobileops.util.Constants
 import java.util.concurrent.TimeUnit
@@ -22,6 +23,18 @@ class SyncScheduler @Inject constructor(context: Context) {
 
     private val connectedOnly = Constraints.Builder()
         .setRequiredNetworkType(NetworkType.CONNECTED)
+        .build()
+
+    /**
+     * First constraint of this kind in this app - see `SkuSyncWorker`'s own doc comment. A 1M+
+     * row master-data download is exactly the bandwidth-contention risk that got the old
+     * `WORK_PULL_MASTER_DATA` worker removed (see the doc below); Wi-Fi-and-charging means this
+     * only ever runs while the handheld is docked, never mid-shift on the same radio a scan is
+     * waiting on.
+     */
+    private val wifiAndCharging = Constraints.Builder()
+        .setRequiredNetworkType(NetworkType.UNMETERED)
+        .setRequiresCharging(true)
         .build()
 
     /**
@@ -63,6 +76,18 @@ class SyncScheduler @Inject constructor(context: Context) {
                 .build(),
         )
 
+        // Once a day is enough for master data that changes on the order of days, not minutes -
+        // and WorkManager only runs it at all once the Wi-Fi-and-charging constraint above is
+        // actually met, so a device that never sits on Wi-Fi while charging simply never
+        // triggers this and keeps serving whatever it cached last, same as before this existed.
+        workManager.enqueueUniquePeriodicWork(
+            Constants.WORK_SYNC_SKU_MASTER,
+            ExistingPeriodicWorkPolicy.KEEP,
+            PeriodicWorkRequestBuilder<SkuSyncWorker>(1, TimeUnit.DAYS)
+                .setConstraints(wifiAndCharging)
+                .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 1, TimeUnit.HOURS)
+                .build(),
+        )
     }
 
 

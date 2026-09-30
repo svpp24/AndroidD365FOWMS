@@ -1,11 +1,11 @@
 package com.d365fo.mobileops.presentation.common
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -18,8 +18,8 @@ import androidx.compose.material.icons.automirrored.filled.Assignment
 import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Inventory2
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Warehouse
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Icon
@@ -36,8 +36,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -55,12 +57,14 @@ import com.d365fo.mobileops.data.sync.SyncStatus
 import com.d365fo.mobileops.domain.model.TransferMode
 import com.d365fo.mobileops.presentation.common.theme.WarehouseDimens
 import com.d365fo.mobileops.presentation.common.theme.WarehouseStatusColors
-import com.d365fo.mobileops.presentation.modules.dataenquiry.DataEnquiryScreen
 import com.d365fo.mobileops.presentation.modules.dataenquiry.LocationEntryScreen
 import com.d365fo.mobileops.presentation.modules.dataenquiry.LocationInquiryScreen
 import com.d365fo.mobileops.presentation.modules.dataenquiry.PoLinesEntryScreen
 import com.d365fo.mobileops.presentation.modules.dataenquiry.PoLinesScreen
 import com.d365fo.mobileops.presentation.modules.dataenquiry.PoOfTodayScreen
+import com.d365fo.mobileops.presentation.modules.cyclecounting.CountingCaptureScreen
+import com.d365fo.mobileops.presentation.modules.cyclecounting.CountingJournalListScreen
+import com.d365fo.mobileops.presentation.modules.cyclecounting.CountingScanScreen
 import com.d365fo.mobileops.presentation.modules.stepflow.OnHandEntryScreen
 import com.d365fo.mobileops.presentation.modules.stepflow.OnHandInquiryScreen
 import com.d365fo.mobileops.presentation.modules.transfer.TransferEntryScreen
@@ -99,8 +103,22 @@ object Routes {
     const val FAILED_SYNC = "sync/failures"
     const val SETTINGS = "settings"
 
-    /** The read-only lookups menu, and the three built behind it. See DataEnquiryScreen. */
-    const val DATA_ENQUIRY = "enquiry/menu"
+    /** Open counting journals for the worker's assigned warehouse. See CountingJournalListScreen. */
+    const val COUNTING_JOURNALS = "counting/journals"
+
+    /** Start counting one imported journal - scan an item, enter its quantity. See CountingScanScreen. */
+    const val COUNTING_CAPTURE = "counting/capture/{journalId}"
+    fun countingCapture(journalId: String) = "counting/capture/$journalId"
+
+    /** The same lines, read-only (search, counted/not-counted filter, marker) - View lines. */
+    const val COUNTING_LINES = "counting/lines/{journalId}"
+    fun countingLines(journalId: String) = "counting/lines/$journalId"
+
+    /**
+     * The read-only lookups - promoted to first-class Home tiles directly (see HomeScreen's own
+     * `MODULES`) rather than sitting behind an intermediate menu screen, so there is no
+     * "enquiry/menu" route any more, just these three destinations.
+     */
     const val INQUIRY_LOCATION = "enquiry/location"
     const val INQUIRY_PO_TODAY = "enquiry/po-today"
     const val INQUIRY_PO_LINES = "enquiry/po-lines"
@@ -134,9 +152,13 @@ private data class BottomTab(
     val icon: ImageVector,
 )
 
+// On-hand used the Warehouse glyph originally - swapped for Inventory2 (still Icons.Filled,
+// same family as Home/Assignment/Settings below) because Warehouse's own silhouette is
+// noticeably heavier/blockier than the other three, reading as a different icon style even
+// though it technically wasn't one.
 private val BOTTOM_TABS = listOf(
     BottomTab(Routes.HOME, "Home", Icons.Default.Home),
-    BottomTab(Routes.ON_HAND, "On-hand", Icons.Default.Warehouse),
+    BottomTab(Routes.ON_HAND, "On-hand", Icons.Default.Inventory2),
     BottomTab(Routes.FAILED_SYNC, "Activity", Icons.AutoMirrored.Filled.Assignment),
     BottomTab(Routes.SETTINGS, "Settings", Icons.Default.Settings),
 )
@@ -244,13 +266,6 @@ fun AppNavGraph(
                 )
             }
 
-            composable(Routes.DATA_ENQUIRY) {
-                DataEnquiryScreen(
-                    onBack = { navController.popBackStack() },
-                    onEnquirySelected = { navController.navigate(it) },
-                )
-            }
-
             composable(Routes.INQUIRY_LOCATION) {
                 LocationInquiryScreen(
                     onBack = { navController.popBackStack() },
@@ -281,6 +296,32 @@ fun AppNavGraph(
                     viewModel = hiltViewModel(navController.getBackStackEntry(Routes.INQUIRY_PO_LINES)),
                     onBack = { navController.popBackStack() },
                 )
+            }
+
+            composable(Routes.COUNTING_JOURNALS) {
+                CountingJournalListScreen(
+                    onBack = { navController.popBackStack() },
+                    onViewLines = { journalId ->
+                        navController.navigate(Routes.countingLines(journalId))
+                    },
+                    onStartCounting = { journalId ->
+                        navController.navigate(Routes.countingCapture(journalId))
+                    },
+                )
+            }
+
+            composable(
+                Routes.COUNTING_CAPTURE,
+                arguments = listOf(navArgument("journalId") { type = NavType.StringType }),
+            ) {
+                CountingScanScreen(onBack = { navController.popBackStack() })
+            }
+
+            composable(
+                Routes.COUNTING_LINES,
+                arguments = listOf(navArgument("journalId") { type = NavType.StringType }),
+            ) {
+                CountingCaptureScreen(onBack = { navController.popBackStack() })
             }
 
             composable(Routes.SETTINGS) {
@@ -357,9 +398,12 @@ fun AppNavGraph(
 
 /**
  * The entire connectivity signal, now: nothing while online, this strip the moment D365FO isn't
- * reachable. Deliberately not red/alarming - going offline is a normal, handled state here (every
+ * reachable. Still amber, not red - going offline is a normal, handled state here (every
  * capture still queues locally and posts once the connection returns), not a failure; a failed
- * posting has its own loud red badge on the Activity tab already.
+ * posting has its own loud red badge on the Activity tab already. Solid fill rather than the
+ * pale tint this used to have: an operator needs to actually notice their captures are queuing
+ * locally instead of posting, and the tint alone read as too easy to miss against the rest of
+ * the chrome.
  */
 @Composable
 private fun OfflineStatusBar() {
@@ -368,30 +412,30 @@ private fun OfflineStatusBar() {
         horizontalArrangement = Arrangement.spacedBy(6.dp),
         modifier = Modifier
             .fillMaxWidth()
-            .background(WarehouseStatusColors.amberDim)
-            .padding(horizontal = WarehouseDimens.ScreenPadding, vertical = 6.dp),
+            .background(WarehouseStatusColors.amber)
+            .padding(horizontal = WarehouseDimens.ScreenPadding, vertical = 8.dp),
     ) {
         Icon(
             Icons.Default.CloudOff,
             contentDescription = null,
-            tint = WarehouseStatusColors.amber,
-            modifier = Modifier.size(14.dp),
+            tint = Color.White,
+            modifier = Modifier.size(16.dp),
         )
         Text(
             text = stringResource(R.string.status_offline),
-            style = MaterialTheme.typography.labelSmall,
-            color = WarehouseStatusColors.amber,
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.Bold,
+            color = Color.White,
         )
     }
 }
 
 /**
  * The other half of the "not the same problem" pair with [OfflineStatusBar] - this device has
- * internet, but D365FO itself is not answering. Same amber, same non-alarming framing, same
- * icon even: both strips are "D365FO cannot be reached right now" from the operator's chair,
- * and the reason only matters for what a supervisor does next, not for what the operator sees.
- * Only the wording differs, so it does not send anyone looking at their Wi-Fi for a tenant
- * outage.
+ * internet, but D365FO itself is not answering. Same amber, same solid fill, same icon even:
+ * both strips are "D365FO cannot be reached right now" from the operator's chair, and the
+ * reason only matters for what a supervisor does next, not for what the operator sees. Only the
+ * wording differs, so it does not send anyone looking at their Wi-Fi for a tenant outage.
  */
 @Composable
 private fun D365UnreachableStatusBar() {
@@ -400,19 +444,20 @@ private fun D365UnreachableStatusBar() {
         horizontalArrangement = Arrangement.spacedBy(6.dp),
         modifier = Modifier
             .fillMaxWidth()
-            .background(WarehouseStatusColors.amberDim)
-            .padding(horizontal = WarehouseDimens.ScreenPadding, vertical = 6.dp),
+            .background(WarehouseStatusColors.amber)
+            .padding(horizontal = WarehouseDimens.ScreenPadding, vertical = 8.dp),
     ) {
         Icon(
             Icons.Default.CloudOff,
             contentDescription = null,
-            tint = WarehouseStatusColors.amber,
-            modifier = Modifier.size(14.dp),
+            tint = Color.White,
+            modifier = Modifier.size(16.dp),
         )
         Text(
             text = stringResource(R.string.status_d365_unreachable),
-            style = MaterialTheme.typography.labelSmall,
-            color = WarehouseStatusColors.amber,
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.Bold,
+            color = Color.White,
         )
     }
 }
@@ -456,6 +501,10 @@ private fun BackOnlineStatusBar() {
  * reliable way to shrink it from outside. [WarehouseDimens.BottomBarHeight] gets this bar down to
  * a real gloved-fingertip touch target and nothing more, giving the screen above it back the
  * space Material3's default spends on padding no warehouse screen here needs.
+ *
+ * White bar with a soft top shadow, matching the white top bar ([AppTopBar]); the selected tab
+ * gets a round accent-filled icon (the reference layout's round Home button, generalised to
+ * whichever tab is current) and an accent label, the rest sit in muted grey.
  */
 @Composable
 private fun AppBottomBar(
@@ -464,12 +513,11 @@ private fun AppBottomBar(
     onTabSelected: (String) -> Unit,
 ) {
     Surface(
-        color = WarehouseStatusColors.surface2,
-        contentColor = WarehouseStatusColors.text3,
+        color = Color.White,
+        shadowElevation = 8.dp,
         modifier = Modifier
             .fillMaxWidth()
-            .height(WarehouseDimens.BottomBarHeight)
-            .border(BorderStroke(1.dp, WarehouseStatusColors.border)),
+            .height(WarehouseDimens.BottomBarHeight),
     ) {
         Row(modifier = Modifier.fillMaxWidth().fillMaxHeight()) {
             BOTTOM_TABS.forEach { tab ->
@@ -487,26 +535,37 @@ private fun AppBottomBar(
                             onClick = { onTabSelected(tab.route) },
                         ),
                 ) {
-                    // The one badge worth putting on a tab icon: failed postings are the one
-                    // thing on this bar that means "something needs you", the same reason a
-                    // real Android app puts a badge on a bottom tab rather than only in a menu
-                    // three taps away.
-                    if (tab.route == Routes.FAILED_SYNC && failedCount > 0) {
-                        BadgedBox(badge = { Badge { Text("$failedCount") } }) {
+                    val iconTint = if (selected) Color.White else WarehouseStatusColors.text3
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = Modifier
+                            .size(30.dp)
+                            .background(
+                                if (selected) WarehouseStatusColors.accent else Color.Transparent,
+                                CircleShape,
+                            ),
+                    ) {
+                        // The one badge worth putting on a tab icon: failed postings are the
+                        // one thing on this bar that means "something needs you", the same
+                        // reason a real Android app puts a badge on a bottom tab rather than
+                        // only in a menu three taps away.
+                        if (tab.route == Routes.FAILED_SYNC && failedCount > 0) {
+                            BadgedBox(badge = { Badge { Text("$failedCount") } }) {
+                                Icon(
+                                    tab.icon,
+                                    contentDescription = tab.label,
+                                    tint = iconTint,
+                                    modifier = Modifier.size(18.dp),
+                                )
+                            }
+                        } else {
                             Icon(
                                 tab.icon,
                                 contentDescription = tab.label,
-                                tint = tint,
-                                modifier = Modifier.size(20.dp),
+                                tint = iconTint,
+                                modifier = Modifier.size(18.dp),
                             )
                         }
-                    } else {
-                        Icon(
-                            tab.icon,
-                            contentDescription = tab.label,
-                            tint = tint,
-                            modifier = Modifier.size(20.dp),
-                        )
                     }
                     Text(
                         text = tab.label,

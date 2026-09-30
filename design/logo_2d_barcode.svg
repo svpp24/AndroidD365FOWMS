@@ -1,0 +1,19 @@
+<svg width="400" height="400" viewBox="0 0 400 400" xmlns="http://www.w3.org/2000/svg">
+  <title>Inventory hub logo</title>
+  <polygon points="70,40 170,40 140,360 40,360" fill="#A31E34" />
+  <polygon points="260,40 360,40 330,360 230,360" fill="#A31E34" />
+  <g fill="#1A1A1A">
+    <rect x="150" y="140" width="4" height="120" />
+    <rect x="158" y="150" width="3" height="100" />
+    <rect x="165" y="150" width="6" height="100" />
+    <rect x="176" y="150" width="3" height="100" />
+    <rect x="183" y="150" width="8" height="100" />
+    <rect x="196" y="140" width="3" height="120" />
+    <rect x="203" y="150" width="3" height="100" />
+    <rect x="210" y="150" width="6" height="100" />
+    <rect x="220" y="150" width="3" height="100" />
+    <rect x="227" y="150" width="8" height="100" />
+    <rect x="239" y="150" width="3" height="100" />
+    <rect x="246" y="140" width="4" height="120" />
+  </g>
+</svg>

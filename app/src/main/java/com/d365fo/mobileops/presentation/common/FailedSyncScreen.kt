@@ -12,15 +12,16 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import com.d365fo.mobileops.presentation.common.components.SquareButton as Button
-import androidx.compose.material3.Card
+import com.d365fo.mobileops.presentation.common.components.AppCard as Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import com.d365fo.mobileops.presentation.common.components.SquareTextButton as TextButton
-import androidx.compose.material3.TopAppBar
+import com.d365fo.mobileops.presentation.common.components.AppTopBar as TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -34,12 +35,17 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.d365fo.mobileops.R
 import com.d365fo.mobileops.data.local.entity.FailedSyncEntity
+import com.d365fo.mobileops.data.remote.dto.PostLineDto
+import com.d365fo.mobileops.data.repository.CountingActivity
+import com.d365fo.mobileops.data.repository.CountingDownloadTracker
 import com.d365fo.mobileops.data.security.CompanyProvider
 import com.d365fo.mobileops.data.sync.PostQueueEntry
 import com.d365fo.mobileops.data.sync.PostingDispatcher
 import com.d365fo.mobileops.data.sync.SyncQueueRepository
 import com.d365fo.mobileops.data.sync.SyncScheduler
+import com.d365fo.mobileops.presentation.common.components.ErrorBanner
 import com.d365fo.mobileops.presentation.common.theme.WarehouseDimens
+import com.d365fo.mobileops.presentation.common.theme.WarehouseStatusColors
 import com.d365fo.mobileops.util.Formatters
 import com.d365fo.mobileops.util.NetworkResult
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -47,8 +53,11 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.json.Json
 import javax.inject.Inject
 
 @HiltViewModel
@@ -57,7 +66,14 @@ class FailedSyncViewModel @Inject constructor(
     private val scheduler: SyncScheduler,
     private val postingDispatcher: PostingDispatcher,
     private val companyProvider: CompanyProvider,
+    private val stagedLines: com.d365fo.mobileops.data.repository.StagedLineRepository,
+    private val countingDownloads: CountingDownloadTracker,
 ) : ViewModel() {
+
+    /** Counting-journal downloads and submissions, newest first - see [CountingDownloadTracker]. */
+    val countingActivities: StateFlow<List<CountingActivity>> = countingDownloads.activities
+
+    fun dismissActivity(key: String) = countingDownloads.dismiss(key)
 
     val failures: StateFlow<List<FailedSyncEntity>> = syncQueue.observeFailures()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
@@ -97,6 +113,7 @@ class FailedSyncViewModel @Inject constructor(
                 is NetworkResult.Success -> {
                     _queueStatus.value = result.data
                     _queueError.value = null
+                    clearSettledStagedLines(result.data)
                 }
                 is NetworkResult.Error -> _queueError.value = result.failure.message
                 NetworkResult.Loading -> Unit
@@ -104,6 +121,42 @@ class FailedSyncViewModel @Inject constructor(
             _queueLoading.value = false
         }
     }
+
+    /**
+     * Frees an order's [com.d365fo.mobileops.data.repository.StagedLineRepository] hold as soon
+     * as D365FO's own queue confirms a row for it exists at all - Pending, Registered or Failed.
+     *
+     * Not "no longer Pending": AOS nets Pending *and* Registered rows itself now
+     * (HSMobileOpsReceivingService::stagedQtyByLine - registration never posts a packing slip, so
+     * RemainPurchPhysical never reflects it any other way). The moment a row is visible here it is
+     * already visible to that query, so holding the local copy past that point only double-counts
+     * it on top of the server's own netting. See
+     * [ReceivingFlowViewModel.sessionRemaining][com.d365fo.mobileops.presentation.modules.stepflow.ReceivingFlowViewModel]
+     * for why the hold exists in the first place - it only needs to cover the gap before a row has
+     * synced at all. Grouped by sourceId (the order number - the one stable id every row for an
+     * order shares) rather than tracking individual queue rows, since that is all the local ledger
+     * is keyed on too.
+     */
+    private fun clearSettledStagedLines(rows: List<PostQueueEntry>) {
+        val settledOrderIds = rows.map { it.sourceId }.toSet()
+        if (settledOrderIds.isEmpty()) return
+
+        viewModelScope.launch {
+            val byOrder = rows.groupBy { it.sourceId }
+            settledOrderIds.forEach { orderId ->
+                val flowType = flowTypeFor(byOrder[orderId]?.firstOrNull()?.documentType)
+                if (flowType != null) stagedLines.clearForOrder(flowType, orderId)
+            }
+        }
+    }
+
+    private fun flowTypeFor(documentType: String?): com.d365fo.mobileops.data.local.entity.FlowType? =
+        when (documentType) {
+            "Registration" -> com.d365fo.mobileops.data.local.entity.FlowType.RECEIVING
+            "TransferShipment" -> com.d365fo.mobileops.data.local.entity.FlowType.TRANSFER_SHIP
+            "TransferReceipt" -> com.d365fo.mobileops.data.local.entity.FlowType.TRANSFER_RECEIVE
+            else -> null
+        }
 
     /**
      * Works every Pending row on D365FO's side - see the class doc on
@@ -167,6 +220,7 @@ fun FailedSyncScreen(
     viewModel: FailedSyncViewModel = hiltViewModel(),
 ) {
     val failures by viewModel.failures.collectAsStateWithLifecycle()
+    val activities by viewModel.countingActivities.collectAsStateWithLifecycle()
     val queueStatus by viewModel.queueStatus.collectAsStateWithLifecycle()
     val queueLoading by viewModel.queueLoading.collectAsStateWithLifecycle()
     val processing by viewModel.processing.collectAsStateWithLifecycle()
@@ -197,6 +251,19 @@ fun FailedSyncScreen(
                 .padding(horizontal = WarehouseDimens.ScreenPadding),
             verticalArrangement = Arrangement.spacedBy(WarehouseDimens.ItemSpacing),
         ) {
+            if (activities.isNotEmpty()) {
+                item {
+                    Text(
+                        text = "Counting",
+                        style = MaterialTheme.typography.titleMedium,
+                        modifier = Modifier.padding(top = WarehouseDimens.ItemSpacing),
+                    )
+                }
+                items(activities, key = { it.key }) { activity ->
+                    ActivityCard(activity, onDismiss = { viewModel.dismissActivity(activity.key) })
+                }
+            }
+
             item {
                 Text(
                     text = "Registration queue",
@@ -229,11 +296,7 @@ fun FailedSyncScreen(
             }
             queueError?.let { message ->
                 item {
-                    Text(
-                        text = message,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.error,
-                    )
+                    ErrorBanner(message = message)
                 }
             }
             if (queueLoading) {
@@ -290,6 +353,43 @@ fun FailedSyncScreen(
 }
 
 @Composable
+private fun ActivityCard(activity: CountingActivity, onDismiss: () -> Unit) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.padding(WarehouseDimens.ScreenPadding),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Text(text = activity.journalId, style = MaterialTheme.typography.titleMedium)
+            Text(
+                text = listOfNotNull(activity.title, activity.description?.takeIf { it.isNotBlank() })
+                    .joinToString(" · "),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            if (activity.failed) {
+                ErrorBanner(message = activity.label)
+            } else {
+                Text(
+                    text = activity.label,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = if (activity.warning) WarehouseStatusColors.amber else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            if (activity.inProgress) {
+                val percent = activity.percent
+                if (percent != null) {
+                    LinearProgressIndicator(progress = { percent / 100f }, modifier = Modifier.fillMaxWidth())
+                } else {
+                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                }
+            } else {
+                TextButton(onClick = onDismiss) { Text("Dismiss") }
+            }
+        }
+    }
+}
+
+@Composable
 private fun QueueStatusCard(entry: PostQueueEntry) {
     val statusColor = when (entry.status) {
         "Registered" -> MaterialTheme.colorScheme.secondary
@@ -322,16 +422,51 @@ private fun QueueStatusCard(entry: PostQueueEntry) {
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            entry.errorMessage?.takeIf { it.isNotBlank() }?.let { message ->
+            // Prefers processedUtc (when D365FO actually actioned it) over receivedUtc (when
+            // this device's request landed) - the more useful of the two once both exist, since
+            // "when did this finish" is what a supervisor scanning this list is really asking.
+            (entry.processedUtc ?: entry.receivedUtc)
+                ?.let(Formatters::odataToEpochMillis)
+                ?.let { epochMs ->
+                    Text(
+                        text = (if (entry.processedUtc != null) "Processed " else "Received ") +
+                            Formatters.clockTime(epochMs),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            parseQueueLines(entry.linesJson).takeIf { it.isNotEmpty() }?.let { queueLines ->
                 Text(
-                    text = message,
+                    text = queueLines.joinToString(", ") { "${it.itemId} ×${formatQty(it.quantity)}" },
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.error,
                 )
+            }
+            entry.userName?.takeIf { it.isNotBlank() }?.let { userName ->
+                Text(
+                    text = "by $userName",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            entry.errorMessage?.takeIf { it.isNotBlank() }?.let { message ->
+                ErrorBanner(message = message)
             }
         }
     }
 }
+
+private val queueLinesJson = Json { ignoreUnknownKeys = true }
+
+/**
+ * Best-effort only - this is a status list, not the posting path, so a shape it does not
+ * recognise just shows nothing extra rather than breaking the whole screen.
+ */
+private fun parseQueueLines(linesJson: String?): List<PostLineDto> = linesJson
+    ?.let { runCatching { queueLinesJson.decodeFromString(ListSerializer(PostLineDto.serializer()), it) }.getOrNull() }
+    ?: emptyList()
+
+private fun formatQty(value: Double): String =
+    if (value == value.toLong().toDouble()) value.toLong().toString() else value.toString()
 
 @Composable
 private fun FailureCard(
@@ -354,11 +489,7 @@ private fun FailureCard(
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            Text(
-                text = failure.errorMessage,
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.error,
-            )
+            ErrorBanner(message = failure.errorMessage)
             Text(
                 text = "${failure.attempts} attempts · failed " +
                     Formatters.clockTime(failure.failedAt),

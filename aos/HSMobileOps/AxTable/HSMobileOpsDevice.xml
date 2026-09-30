@@ -18,6 +18,31 @@
 /// the life of an install, not a hardware serial - a factory reset or reinstall registers what
 /// looks like a new device, which is the correct behaviour for a fleet MDM that should not need
 /// privileged access to read real hardware identifiers.
+///
+/// `SaveDataPerCompany = No` - one fleet for the whole environment, not one per legal entity. A
+/// physical handheld was never a per-company concept the way an order or an item is; the table
+/// defaulted to per-company scoping anyway (the ordinary AX default for any table that doesn't
+/// say otherwise) until this was confirmed live as a real bug, not just a theoretical one: a
+/// device that had already signed in successfully under one company came back HTTP 500 -
+/// DuplicateKeyException - the moment it signed in under a second one, because
+/// registerSignIn's own lookup couldn't see the row it had already created elsewhere, concluded
+/// "new device", and collided with an index that is unique regardless of company. Flipping this
+/// on an already-populated table needed its existing rows cleared first (done by hand before the
+/// build that carries this change) rather than a data-upgrade script - there was nothing worth
+/// preserving row-by-row in a fleet-bookkeeping table that regenerates itself on every sign-in
+/// anyway.
+///
+/// **A second, unrelated DuplicateKeyException, confirmed live afterward: LastWarehouseIdx
+/// (below) needs AllowDuplicates=Yes stated explicitly.** Left unstated, it built as a unique
+/// index on LastWarehouseId alone - meaning only one device in the whole fleet could ever be
+/// recorded against any given warehouse, which is never true (a warehouse normally has several
+/// handhelds working it at once). Every device after the first to share a warehouse collided on
+/// this index during registerSignIn's insert, not DeviceIdIdx - producing the exact same
+/// DuplicateKeyException/HTTP 500 shape as the bug above, including for a DeviceId that had never
+/// been inserted anywhere. The two bugs looked identical from the app/API side (same exception
+/// type, same generic "record already exists" message, which names the record's title fields -
+/// FriendlyName/DeviceId - regardless of which index was actually violated) but had nothing to do
+/// with each other.
 /// </summary>
 public class HSMobileOpsDevice extends common
 {
@@ -38,6 +63,7 @@ public class HSMobileOpsDevice extends common
     /// question this table answers - and are only ever overwritten with a non-blank value, so a
     /// client that cannot read them (or an older app build that does not send them yet) does not
     /// blank out what a previous sign-in already recorded.
+    ///
     /// </summary>
     public static void registerSignIn(
         str                   _deviceId,
@@ -131,12 +157,110 @@ public class HSMobileOpsDevice extends common
     }
 ]]></Source>
 			</Method>
+			<Method>
+				<Name>isKnownDevice</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Whether this device has ever signed in before - see HSMobileOpsLicense and the signIn hook
+    /// in HSMobileOpsUserService. A known device always passes the license's device-count check,
+    /// no matter how full the fleet is; only a device D365FO has never seen before can be turned
+    /// away for that.
+    ///
+    /// `final`, `[Wrappable(false)]` and `internal` for the same reason HSMobileOpsLicense::verify()
+    /// and HSMobileOpsUserService::signIn() are - a Chain of Command extension that always answered
+    /// true here would let any never-before-seen device silently skip the license's device-count
+    /// gate; only HSMobileOpsUserService (same package) needs to call this at all.
+    /// </summary>
+    [Wrappable(false), Hookable(false)]
+    internal static final boolean isKnownDevice(str _deviceId)
+    {
+        HSMobileOpsDevice device;
+
+        if (!_deviceId)
+        {
+            return false;
+        }
+
+        select firstOnly RecId from device
+            where device.DeviceId == _deviceId;
+
+        return device.RecId != 0;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>activeDeviceCount</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// How many devices currently count against the license's device limit - see
+    /// HSMobileOpsLicense and the signIn hook in HSMobileOpsUserService. One row per device now
+    /// that this table is environment-wide (see the class doc's SaveDataPerCompany note), so a
+    /// plain row count is exactly right - no more risk of the same physical handheld being
+    /// counted once per company it has signed into.
+    ///
+    /// `final`, `[Wrappable(false)]` and `internal` - see the same note on isKnownDevice.
+    /// </summary>
+    [Wrappable(false), Hookable(false)]
+    internal static final int activeDeviceCount()
+    {
+        HSMobileOpsDevice device;
+        int                deviceCount;
+
+        while select device
+            where device.IsActive == NoYes::Yes
+        {
+            deviceCount++;
+        }
+
+        return deviceCount;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>checkDeviceLimit</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// True when _deviceId may proceed under _maxDevices - either it is already known (see
+    /// isKnownDevice's own note: a known device always passes, regardless of fleet fullness), or
+    /// the fleet has room for one more. False means DEVICE_LIMIT_REACHED.
+    ///
+    /// The one gate both HSMobileOpsUserService::signIn's own inline check and
+    /// HSMobileOpsLicenseService::registerDevice call, so the two can never drift apart -
+    /// signIn's check predates this method and is kept as a defense-in-depth safety net beneath
+    /// the app's own pre-flight license/registerDevice calls (see HSMobileOpsLicense's class
+    /// doc), not removed now that a second call site exists.
+    ///
+    /// `final`, `[Wrappable(false)]` and `internal` for the same reason isKnownDevice/
+    /// activeDeviceCount are.
+    /// </summary>
+    [Wrappable(false), Hookable(false)]
+    internal static final boolean checkDeviceLimit(str _deviceId, int _maxDevices)
+    {
+        if (!_deviceId)
+        {
+            return true;
+        }
+
+        if (HSMobileOpsDevice::isKnownDevice(_deviceId))
+        {
+            return true;
+        }
+
+        return HSMobileOpsDevice::activeDeviceCount() < _maxDevices;
+    }
+]]></Source>
+			</Method>
 		</Methods>
 	</SourceCode>
 	<Label>Mobile device</Label>
 	<TitleField1>FriendlyName</TitleField1>
 	<TitleField2>DeviceId</TitleField2>
 	<CacheLookup>NotInTTS</CacheLookup>
+	<!-- One fleet for the whole environment, not one per legal entity - see the class doc. -->
+	<SaveDataPerCompany>No</SaveDataPerCompany>
 	<ClusteredIndex>DeviceIdIdx</ClusteredIndex>
 	<PrimaryIndex>DeviceIdIdx</PrimaryIndex>
 	<ReplacementKey>DeviceIdIdx</ReplacementKey>
@@ -234,7 +358,7 @@ public class HSMobileOpsDevice extends common
 			i:type="AxTableFieldEnum">
 			<Name>IsActive</Name>
 			<Label>Active</Label>
-			<HelpText>Deactivate a device that has been retired or lost. It can still sign in - deactivating a device is fleet bookkeeping, not a remote lock - but drops off the active-fleet view.</HelpText>
+			<HelpText>Deactivate a device that has been retired or lost. It can still sign in - this is not a remote lock on that device itself - but it drops off the active-fleet view, and, unlike before licensing existed, deactivating it now also frees up one of the license's device slots for a replacement handheld. See HSMobileOpsLicense.</HelpText>
 			<EnumType>NoYes</EnumType>
 		</AxTableField>
 	</Fields>
@@ -251,6 +375,16 @@ public class HSMobileOpsDevice extends common
 		</AxTableIndex>
 		<AxTableIndex>
 			<Name>LastWarehouseIdx</Name>
+			<!-- Explicit, not relying on the property's default - confirmed live as a real bug,
+			     not theoretical: without this, the index enforced uniqueness on LastWarehouseId
+			     alone, meaning only one device in the entire fleet could ever be recorded against
+			     any given warehouse. Every device after the first to share a warehouse collided on
+			     THIS index during registerSignIn's insert - not DeviceIdIdx - producing a
+			     DuplicateKeyException that had nothing to do with the device itself, including for
+			     a DeviceId that had never been inserted before. A plain lookup index (multiple
+			     devices per warehouse is the normal case) needs AllowDuplicates=Yes stated
+			     explicitly, not assumed. -->
+			<AllowDuplicates>Yes</AllowDuplicates>
 			<Fields>
 				<AxTableIndexField>
 					<DataField>LastWarehouseId</DataField>

@@ -299,6 +299,8 @@ class HSMobileOpsPostingService
         entry.parmErrorMessage(_postQueue.ErrorMessage);
         entry.parmReceivedUtc(_postQueue.ReceivedUtc);
         entry.parmProcessedUtc(_postQueue.ProcessedUtc);
+        entry.parmUserName(_postQueue.UserName);
+        entry.parmLinesJson(_postQueue.LinesJson);
 
         return entry;
     }
@@ -1020,8 +1022,13 @@ class HSMobileOpsPostingService
     /// itself in the cast exception this whole change exists to route around. An empty or
     /// unparseable string returns an empty list rather than throwing; callers already treat an
     /// empty list of lines as INVALID_REQUEST, which is the right answer for malformed input too.
+    ///
+    /// Public rather than the private this started as - HSMobileOpsReceivingService now reuses it
+    /// too, to read back a Pending row's own LinesJson when computing how much of a purchase
+    /// order line is already staged (see HSMobileOpsReceivingService::stagedQtyByLine). One parser
+    /// for the one JSON shape both classes read, not two that can drift apart.
     /// </summary>
-    private static List parseLines(str _linesJson)
+    public static List parseLines(str _linesJson)
     {
         List                          result = new List(Types::Class);
         System.Object                 parsedObj;

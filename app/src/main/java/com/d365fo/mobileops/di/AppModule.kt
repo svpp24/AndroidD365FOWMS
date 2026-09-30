@@ -1,13 +1,12 @@
 package com.d365fo.mobileops.di
 
 import android.content.Context
-import com.d365fo.mobileops.data.repository.GoodsReceiptRepositoryImpl
 import com.d365fo.mobileops.data.repository.CachedLookupRepository
 import com.d365fo.mobileops.data.repository.OnDemandLookupRepositoryImpl
 import com.d365fo.mobileops.data.repository.ServiceLookupRepository
 import com.d365fo.mobileops.data.remote.api.LiveMobileOpsServiceApi
 import com.d365fo.mobileops.data.remote.api.MobileOpsServiceApi
-import com.d365fo.mobileops.data.repository.ScanRepositoryImpl
+import com.d365fo.mobileops.data.logging.LogFilePersistence
 import com.d365fo.mobileops.data.repository.WorkerContextRepositoryImpl
 import com.d365fo.mobileops.data.repository.WorkerSessionRepository
 import com.d365fo.mobileops.data.security.ConnectionSettings
@@ -16,9 +15,7 @@ import com.d365fo.mobileops.data.security.TokenProvider
 import com.d365fo.mobileops.data.security.AuthTokenProviderRouter
 import com.d365fo.mobileops.data.sync.ConnectivityMonitor
 import com.d365fo.mobileops.data.sync.SyncScheduler
-import com.d365fo.mobileops.domain.repository.GoodsReceiptRepository
 import com.d365fo.mobileops.domain.repository.OnDemandLookupRepository
-import com.d365fo.mobileops.domain.repository.ScanRepository
 import com.d365fo.mobileops.domain.repository.WorkerContextRepository
 import dagger.Binds
 import dagger.Module
@@ -62,6 +59,11 @@ object AppModule {
 
     @Provides
     @Singleton
+    fun provideLogFilePersistence(@ApplicationContext context: Context): LogFilePersistence =
+        LogFilePersistence(context)
+
+    @Provides
+    @Singleton
     fun provideConnectivityMonitor(@ApplicationContext context: Context): ConnectivityMonitor =
         ConnectivityMonitor(context)
 
@@ -73,12 +75,11 @@ object AppModule {
     @Provides
     @Singleton
     fun provideWorkerContextRepositoryImpl(
-        @ApplicationContext context: Context,
         secureStore: SecureStore,
         tokenProvider: TokenProvider,
         workerSession: WorkerSessionRepository,
     ): WorkerContextRepositoryImpl =
-        WorkerContextRepositoryImpl(context, secureStore, tokenProvider, workerSession)
+        WorkerContextRepositoryImpl(secureStore, tokenProvider, workerSession)
 }
 
 @Module
@@ -86,11 +87,8 @@ object AppModule {
 abstract class RepositoryModule {
 
     /**
-     * The router, not either concrete provider directly - see [AuthTokenProviderRouter]'s own
-     * doc comment for why. `ClientCredentialsTokenProvider` and `DeviceCodeTokenProvider` are
-     * still plain `@Inject`-constructed singletons (no `@Binds` of their own needed - only the
-     * router depends on them, by concrete type), so Hilt wires them into the router without any
-     * further declaration here.
+     * Routes between client-credentials and device-code at runtime, per the active profile's
+     * [com.d365fo.mobileops.data.security.AuthType] - see [AuthTokenProviderRouter].
      */
     @Binds
     @Singleton
@@ -113,16 +111,6 @@ abstract class RepositoryModule {
     @Binds
     @Singleton
     abstract fun bindMobileOpsServiceApi(impl: LiveMobileOpsServiceApi): MobileOpsServiceApi
-
-    @Binds
-    @Singleton
-    abstract fun bindGoodsReceiptRepository(
-        impl: GoodsReceiptRepositoryImpl,
-    ): GoodsReceiptRepository
-
-    @Binds
-    @Singleton
-    abstract fun bindScanRepository(impl: ScanRepositoryImpl): ScanRepository
 
     @Binds
     @Singleton

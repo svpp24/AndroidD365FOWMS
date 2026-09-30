@@ -1,0 +1,106 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxTable xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsSkuSyncSetup</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Which standard D365FO data entities the bulk SKU/barcode sync exports from.
+///
+/// A single row, environment-wide - see SaveDataPerCompany below, same reasoning as
+/// HSMobileOpsLicenseSetup: which entities carry item and barcode master data is a property of
+/// this AOS deployment, not of any one legal entity.
+///
+/// **Both fields are configurable rather than compiled in, on purpose.** `HSMobileOpsSkuExportSetup`
+/// ships with best-known defaults for a standard, unmodified D365FO environment
+/// (`EcoResReleasedProductV2Entity` for items, `InventItemBarcodeEntity` for barcodes) - the AOT
+/// names behind the public `ReleasedProductsV2`/barcode entities - but neither name has been
+/// confirmed against a live environment the way every other DMF entity name in this app has (see
+/// HSMobileOpsCountingExportSetup's own class doc for what that confirmation process looks like).
+/// An environment where these differ - a different version, a customization, a renamed entity -
+/// can be pointed at the right one here without an AOS code change or redeployment. A blank field
+/// means "use the built-in default" - see HSMobileOpsSkuExportSetup::itemEntityAotName/
+/// barcodeEntityAotName.
+/// </summary>
+public class HSMobileOpsSkuSyncSetup extends common
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>find</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The one setup row, or an unsaved empty one before anyone has configured anything - mirrors
+    /// HSMobileOpsLicenseSetup::find. An empty row is a perfectly good answer here: every accessor
+    /// on this table already treats a blank field as "use the default."
+    /// </summary>
+    public static HSMobileOpsSkuSyncSetup find(boolean _forUpdate = false)
+    {
+        HSMobileOpsSkuSyncSetup setup;
+
+        setup.selectForUpdate(_forUpdate);
+
+        select firstOnly setup;
+
+        return setup;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>effectiveItemEntityName</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Read-only display of what HSMobileOpsSkuExportSetup::itemEntityAotName() will actually use
+    /// - the configured override if one is set, otherwise the compiled-in default. Shown on the
+    /// setup form so "what will this actually export against" never requires reading X++ to answer.
+    /// </summary>
+    display str effectiveItemEntityName()
+    {
+        return this.ItemEntityName ? this.ItemEntityName : HSMobileOpsSkuExportSetup::defaultItemEntityAotName();
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>effectiveBarcodeEntityName</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// See effectiveItemEntityName - the same idea for the barcode entity.
+    /// </summary>
+    display str effectiveBarcodeEntityName()
+    {
+        return this.BarcodeEntityName ? this.BarcodeEntityName : HSMobileOpsSkuExportSetup::defaultBarcodeEntityAotName();
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+	<Label>Mobile SKU sync setup</Label>
+	<TitleField1>ItemEntityName</TitleField1>
+	<CacheLookup>NotInTTS</CacheLookup>
+	<!-- One row for the whole environment, not one per legal entity - see the class doc. -->
+	<SaveDataPerCompany>No</SaveDataPerCompany>
+	<Fields>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>ItemEntityName</Name>
+			<Label>Item master entity (AOT name)</Label>
+			<HelpText>The AOT name of the data entity item master data exports from - blank uses the built-in default (EcoResReleasedProductV2Entity, the entity behind the ReleasedProductsV2 OData collection this app's on-demand item lookup already uses live). Override only if this environment's item master entity is named differently.</HelpText>
+			<StringSize>100</StringSize>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>BarcodeEntityName</Name>
+			<Label>Barcode entity (AOT name)</Label>
+			<HelpText>The AOT name of the data entity barcode data exports from - blank uses the built-in default (EcoResProductBarcodeV3Entity, the entity behind the ProductBarcodesV3 OData collection this app's on-demand barcode lookup already uses live). Override only if this environment's barcode entity is named differently.</HelpText>
+			<StringSize>100</StringSize>
+		</AxTableField>
+	</Fields>
+	<FullTextIndexes />
+	<Indexes />
+	<Mappings />
+	<Relations />
+	<StateMachines />
+</AxTable>

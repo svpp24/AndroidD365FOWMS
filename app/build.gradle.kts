@@ -53,20 +53,9 @@ android {
         // Azure AD
         buildConfigField("String", "AAD_TENANT_ID", "\"${secret("AAD_TENANT_ID")}\"")
         buildConfigField("String", "AAD_CLIENT_ID", "\"${secret("AAD_CLIENT_ID")}\"")
-
-        // The app registration's client secret, compiled in.
-        //
-        // This ships INSIDE THE APK. BuildConfig fields are string constants in the compiled
-        // dex, so anyone who can copy the apk off a handheld can read it with a decompiler in
-        // about a minute - and it is a tenant-wide credential, not a device-scoped one.
-        //
-        // Set deliberately, for a dev environment where typing a 40-character secret on a
-        // handheld keyboard is the worse problem. It must not travel to production: use
-        // interactive worker sign-in there, which needs no secret on the device at all.
-        //
-        // Read from local.properties, which is gitignored, so the value stays out of source
-        // control even though it reaches the binary. Blank by default - a build without the
-        // line simply has no compiled secret and falls back to whatever Settings holds.
+        // Restored after device-code-only auth proved too operationally painful to run with
+        // day to day (admin consent, the public-client-flow toggle, slow AAD polling). Back to
+        // compiling in a device-identity client secret, same as before that removal.
         buildConfigField("String", "AAD_CLIENT_SECRET", "\"${secret("AAD_CLIENT_SECRET")}\"")
 
         // Certificate pins (applied to whichever AOS host is active)
@@ -78,6 +67,13 @@ android {
         buildConfigField("String", "D365_DEV_RESOURCE", "\"${secret("D365_DEV_RESOURCE")}\"")
         buildConfigField("String", "D365_UAT_RESOURCE", "\"${secret("D365_UAT_RESOURCE")}\"")
         buildConfigField("String", "D365_PROD_RESOURCE", "\"${secret("D365_PROD_RESOURCE")}\"")
+
+        // Offline licensing (certificate-chain design) — see LicenseRootTrustAnchor.kt and
+        // licensing/wms_license_tool.py. The root key is public by design (it only ever
+        // verifies); RELEASE_SIGNING_CERT_SHA256 is what the app's own startup self-check
+        // compares its installed signature against — see D365MobileApp.onCreate.
+        buildConfigField("String", "LICENSE_ROOT_PUBLIC_KEY_B64", "\"${secret("LICENSE_ROOT_PUBLIC_KEY_B64")}\"")
+        buildConfigField("String", "RELEASE_SIGNING_CERT_SHA256", "\"${secret("RELEASE_SIGNING_CERT_SHA256")}\"")
 
         ksp { arg("room.schemaLocation", "$projectDir/schemas") }
     }

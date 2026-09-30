@@ -1,8 +1,5 @@
 package com.d365fo.mobileops.data.repository
 
-import com.d365fo.mobileops.data.local.entity.GoodsReceiptEntity
-import com.d365fo.mobileops.data.local.entity.GoodsReceiptLineEntity
-import com.d365fo.mobileops.data.local.entity.GoodsReceiptWithLines
 import com.d365fo.mobileops.data.local.entity.ItemEntity
 import com.d365fo.mobileops.data.local.entity.PurchLineEntity
 import com.d365fo.mobileops.data.local.entity.PurchOrderEntity
@@ -15,15 +12,11 @@ import com.d365fo.mobileops.data.remote.dto.ReleasedProductDto
 import com.d365fo.mobileops.data.local.entity.BarcodeEntity
 import com.d365fo.mobileops.data.local.entity.LocationEntity
 import com.d365fo.mobileops.data.local.entity.PurchaseOrderStatus
-import com.d365fo.mobileops.data.local.entity.ReceiptStatus as ReceiptStatusEntity
 import com.d365fo.mobileops.data.local.entity.TrackingRequirement as TrackingEntity
 import com.d365fo.mobileops.domain.model.DeliveryTolerance
-import com.d365fo.mobileops.domain.model.GoodsReceipt
-import com.d365fo.mobileops.domain.model.GoodsReceiptLine
 import com.d365fo.mobileops.domain.model.OrderStatus
 import com.d365fo.mobileops.domain.model.PurchaseOrder
 import com.d365fo.mobileops.domain.model.PurchaseOrderLine
-import com.d365fo.mobileops.domain.model.ReceiptStatus
 import com.d365fo.mobileops.domain.model.TrackingRequirement
 import com.d365fo.mobileops.util.Formatters
 import java.math.BigDecimal
@@ -108,72 +101,6 @@ fun TrackingEntity.toDomain(): TrackingRequirement = when (this) {
     TrackingEntity.SERIAL -> TrackingRequirement.SERIAL
     TrackingEntity.BATCH_AND_SERIAL -> TrackingRequirement.BATCH_AND_SERIAL
 }
-
-fun GoodsReceiptWithLines.toDomain(): GoodsReceipt = GoodsReceipt(
-    receiptId = receipt.receiptId,
-    purchId = receipt.purchId,
-    workerId = receipt.workerId,
-    deviceId = receipt.deviceId,
-    vendorPackingSlipId = receipt.vendorPackingSlipId,
-    receiptDate = receipt.receiptDate,
-    status = receipt.status.toDomain(),
-    serverPackingSlipId = receipt.serverPackingSlipId,
-    lines = lines.map { it.toDomain() },
-    lastError = receipt.sync.lastError,
-)
-
-fun ReceiptStatusEntity.toDomain(): ReceiptStatus = when (this) {
-    ReceiptStatusEntity.DRAFT -> ReceiptStatus.DRAFT
-    ReceiptStatusEntity.PENDING_POST -> ReceiptStatus.PENDING_POST
-    ReceiptStatusEntity.POSTED -> ReceiptStatus.POSTED
-    ReceiptStatusEntity.FAILED -> ReceiptStatus.FAILED
-}
-
-fun GoodsReceiptLineEntity.toDomain(): GoodsReceiptLine = GoodsReceiptLine(
-    receiptLineId = receiptLineId,
-    purchLineId = purchLineId,
-    lineNumber = lineNumber,
-    itemId = itemId,
-    itemName = itemName,
-    enteredQuantity = enteredQuantity.toBigDecimalOrNull() ?: BigDecimal.ZERO,
-    enteredUnit = enteredUnit,
-    inventoryQuantity = inventoryQuantity.toBigDecimalOrNull() ?: BigDecimal.ZERO,
-    inventoryUnit = inventoryUnit,
-    siteId = siteId,
-    warehouseId = warehouseId,
-    locationId = locationId,
-    batchId = batchId,
-    serialId = serialId,
-    toleranceOverridden = toleranceOverridden,
-    capturedAt = capturedAt,
-)
-
-// ---------------------------------------------------------------------------------------
-// Domain -> Room
-// ---------------------------------------------------------------------------------------
-
-fun GoodsReceiptLine.toEntity(receiptId: String, purchId: String): GoodsReceiptLineEntity =
-    GoodsReceiptLineEntity(
-        receiptLineId = receiptLineId,
-        receiptId = receiptId,
-        purchLineId = purchLineId,
-        purchId = purchId,
-        lineNumber = lineNumber,
-        itemId = itemId,
-        itemName = itemName,
-        enteredQuantity = enteredQuantity.toPlainString(),
-        enteredUnit = enteredUnit,
-        inventoryQuantity = inventoryQuantity.toPlainString(),
-        inventoryUnit = inventoryUnit,
-        siteId = siteId,
-        warehouseId = warehouseId,
-        locationId = locationId,
-        batchId = batchId,
-        serialId = serialId,
-        toleranceOverridden = toleranceOverridden,
-        overrideReason = null,
-        capturedAt = capturedAt,
-    )
 
 // ---------------------------------------------------------------------------------------
 // DTO -> Room

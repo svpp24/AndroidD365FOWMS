@@ -111,4 +111,7 @@ data class PostQueueEntryDto(
     @SerialName("ErrorMessage") val errorMessage: String? = null,
     @SerialName("ReceivedUtc") val receivedUtc: String? = null,
     @SerialName("ProcessedUtc") val processedUtc: String? = null,
+    @SerialName("UserName") val userName: String? = null,
+    /** Same shape as [PostRequestBody.linesJson] - a JSON array of [PostLineDto]. */
+    @SerialName("LinesJson") val linesJson: String? = null,
 )

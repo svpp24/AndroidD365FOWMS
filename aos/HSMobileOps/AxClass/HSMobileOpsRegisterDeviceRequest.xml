@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsRegisterDeviceRequest</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Same device-identity fields HSMobileOpsSignInRequest already carries - deliberately, so
+/// HSMobileOpsDevice::registerSignIn's own upsert can be called identically from either call
+/// site. Sent at launch time, before any worker has signed in, which is why there is no
+/// UserName/SiteId/WarehouseId here the way signIn's own registerDevice call has - those three
+/// stay blank on this call and are filled in properly the first time a worker actually signs in.
+/// </summary>
+[DataContractAttribute]
+class HSMobileOpsRegisterDeviceRequest
+{
+    DataAreaId dataAreaId;
+    str        deviceId;
+    str        deviceBrand;
+    str        deviceModel;
+    str        platform;
+    str        platformVersion;
+    str        appVersionName;
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmDataAreaId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('DataAreaId')]
+    public DataAreaId parmDataAreaId(DataAreaId _value = dataAreaId)
+    {
+        dataAreaId = _value;
+        return dataAreaId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmDeviceId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('DeviceId')]
+    public str parmDeviceId(str _value = deviceId)
+    {
+        deviceId = _value;
+        return deviceId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmDeviceBrand</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('DeviceBrand')]
+    public str parmDeviceBrand(str _value = deviceBrand)
+    {
+        deviceBrand = _value;
+        return deviceBrand;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmDeviceModel</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('DeviceModel')]
+    public str parmDeviceModel(str _value = deviceModel)
+    {
+        deviceModel = _value;
+        return deviceModel;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmPlatform</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Platform')]
+    public str parmPlatform(str _value = platform)
+    {
+        platform = _value;
+        return platform;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmPlatformVersion</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('PlatformVersion')]
+    public str parmPlatformVersion(str _value = platformVersion)
+    {
+        platformVersion = _value;
+        return platformVersion;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmAppVersionName</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('AppVersionName')]
+    public str parmAppVersionName(str _value = appVersionName)
+    {
+        appVersionName = _value;
+        return appVersionName;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

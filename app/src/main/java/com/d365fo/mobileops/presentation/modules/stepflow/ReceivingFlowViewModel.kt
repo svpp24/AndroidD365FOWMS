@@ -13,6 +13,7 @@ import com.d365fo.mobileops.domain.model.stepsFor
 import com.d365fo.mobileops.data.local.entity.FlowType
 import com.d365fo.mobileops.data.local.entity.SyncOperation
 import com.d365fo.mobileops.data.repository.FlowSessionRepository
+import com.d365fo.mobileops.data.repository.PendingFlowResume
 import com.d365fo.mobileops.data.repository.StoredLine
 import com.d365fo.mobileops.data.repository.WorkerSessionRepository
 import com.d365fo.mobileops.data.security.CompanyProvider
@@ -73,6 +74,8 @@ class ReceivingFlowViewModel @Inject constructor(
     private val database: com.d365fo.mobileops.data.local.D365Database,
     private val notifier: com.d365fo.mobileops.data.sync.SyncNotifier,
     private val postingDispatcher: com.d365fo.mobileops.data.sync.PostingDispatcher,
+    private val pendingFlowResume: PendingFlowResume,
+    private val stagedLines: com.d365fo.mobileops.data.repository.StagedLineRepository,
 ) : ViewModel() {
 
     init {
@@ -89,6 +92,9 @@ class ReceivingFlowViewModel @Inject constructor(
 
     /** Camera decode, routed through the same path as a wedge scan. */
     fun onCameraDecoded(value: String) = scannerBridge.submitCameraScan(value)
+
+    /** See [HidScannerBridge.justScanned] - used by the screen's BackHandler. */
+    fun justScanned(): Boolean = scannerBridge.justScanned()
 
     /**
      * Suspends wedge interception while a text field holds focus.
@@ -123,6 +129,20 @@ class ReceivingFlowViewModel @Inject constructor(
     // value repeated within this window is dropped rather than resubmitted.
     private var lastRaw: String? = null
     private var lastRawAtMs: Long = 0L
+
+    init {
+        // "Continue where you left off" on Home hands the PO number off here rather than
+        // carrying it as a nav argument - see PendingFlowResume. Submitted exactly like a real
+        // scan of that same number would be, which is what re-triggers the lookup that restores
+        // this order's already-banked lines from disk.
+        //
+        // Deliberately its own init block, placed after _state/pending/lastRaw above rather than
+        // folded into the first one at the top of the class: submit() reads all three, and a
+        // NullPointerException confirmed live - Kotlin runs init blocks and property
+        // initializers in file order, so calling submit() from an init block any earlier than
+        // this one hit _state while it was still null.
+        pendingFlowResume.consume(FlowType.RECEIVING)?.let(::submit)
+    }
 
     /** Answers the current step. [raw] is whatever was scanned or typed. */
     fun submit(raw: String) {
@@ -304,9 +324,19 @@ class ReceivingFlowViewModel @Inject constructor(
         val state = _state.value
         val purchId = state.capture.purchId
         if (purchId.isNullOrBlank() || state.captured.isEmpty()) return
+        // Re-entrancy guard - confirmed live as a real gap, not a theoretical one: nothing
+        // previously stopped a second tap (or a second call from a different entry point -
+        // this button and the captured-lines sheet's own Post both call this) landing while the
+        // first call's coroutine was still running. Each call mints its own idempotencyKey, so
+        // two calls from the *same* still-captured lines is not one request retried - it is two
+        // distinct receipts, and D365FO durably registers both. That is real double-received
+        // inventory, not a cosmetic UI glitch, which is why this returns rather than merely
+        // disabling the button - a disabled Compose button can still be reached by an event
+        // already queued before recomposition catches up.
+        if (state.posting || state.postOutcome != null) return
 
         pending?.cancel()
-        _state.update { it.copy(busy = true, error = null) }
+        _state.update { it.copy(posting = true, error = null) }
 
         viewModelScope.launch {
             val session = workerSession.session.value
@@ -355,6 +385,19 @@ class ReceivingFlowViewModel @Inject constructor(
                 flowSessions.clear(FlowType.RECEIVING, purchId)
             }
 
+            // Written unconditionally, before the live-dispatch attempt below even starts -
+            // these lines are spoken for the instant they are durably enqueued, regardless of
+            // whether that attempt succeeds, fails, or loses the lease race to a background
+            // worker run. See StagedLineRepository's class doc and sessionRemaining. Cleared
+            // later by FailedSyncViewModel once D365FO's own queue confirms this order has
+            // nothing left Pending.
+            stagedLines.stage(
+                flowType = FlowType.RECEIVING,
+                orderId = purchId,
+                queueId = entry.queueId,
+                lines = state.captured.map { it.lineNumber to it.quantity },
+            )
+
             // Tried live, right here, instead of only ever handing this to the background
             // worker and telling the operator "queued" without knowing whether it actually
             // went anywhere. The entry is already durably enqueued above, so this attempt
@@ -362,6 +405,18 @@ class ReceivingFlowViewModel @Inject constructor(
             // have made anyway, just not deferred to WorkManager's own schedule. A real
             // network condition (offline, a slow tenant, a timeout) fails the same way it
             // always would and falls straight back to the normal queue and retry ladder.
+            //
+            // Leased first, via the exact same claiming mechanism the background worker itself
+            // uses (see SyncQueueDao.leaseOne) - enqueue() above already made this row visible
+            // to a worker run, and SyncStatusProvider reactively requests an immediate push the
+            // instant the pending count changes, which this enqueue itself just did. Dispatching
+            // the freshly-built entry directly, unleased, raced exactly that: confirmed live,
+            // two postProductReceipt calls 151ms apart with an identical payload size - this
+            // code and a worker run each independently dispatching the same row. leaseOne
+            // returning null means the worker won the race this time; this path then backs off
+            // completely rather than touching an entry it does not own, and the summary below
+            // reports it as queued rather than confirmed - accurate, since this code truly does
+            // not know the outcome, the worker does.
             //
             // Bounded to LIVE_POST_TIMEOUT_MS specifically, well under the shared OkHttp
             // client's own 60s read timeout - confirmed live that a slow tenant can actually
@@ -371,31 +426,66 @@ class ReceivingFlowViewModel @Inject constructor(
             // and, with it, the underlying call - the server may still be working when that
             // happens, which is exactly what the durable queue and idempotency key already
             // exist to make safe to walk away from.
-            val postedLive = when (
-                val result = withTimeoutOrNull(LIVE_POST_TIMEOUT_MS) { postingDispatcher.dispatch(entry) }
-            ) {
-                is NetworkResult.Success -> {
-                    syncQueue.onSuccess(entry)
-                    true
+            val postedLive = syncQueue.leaseOne(entry.queueId)?.let { leased ->
+                when (
+                    val result =
+                        withTimeoutOrNull(LIVE_POST_TIMEOUT_MS) { postingDispatcher.dispatch(leased) }
+                ) {
+                    is NetworkResult.Success -> {
+                        syncQueue.onSuccess(leased)
+                        true
+                    }
+                    is NetworkResult.Error -> {
+                        syncQueue.onFailure(leased, result.failure)
+                        false
+                    }
+                    NetworkResult.Loading, null -> {
+                        syncQueue.onFailure(
+                            leased,
+                            AppFailure.Transient("D365FO did not respond in time"),
+                        )
+                        false
+                    }
                 }
-                is NetworkResult.Error -> {
-                    syncQueue.onFailure(entry, result.failure)
-                    false
-                }
-                NetworkResult.Loading, null -> {
-                    syncQueue.onFailure(
-                        entry,
-                        AppFailure.Transient("D365FO did not respond in time"),
-                    )
-                    false
-                }
-            }
+            } ?: false
             if (!postedLive) syncScheduler.requestImmediatePush()
 
             scanFeedback.success()
             notifier.notifyWorkCompleted(purchId, postedLive)
-            _state.value = ReceivingFlowState()
+            // Deliberately not a full reset back to ReceivingFlowState() here any more - the
+            // operator gets a summary of what was just registered instead of the screen
+            // silently jumping back to a blank order prompt, and captured/capture/openLines
+            // etc. all stay exactly as they were so that summary (and a retry, if it did not
+            // post live) has something to show. dismissPostOutcome is what actually resets, once
+            // the operator has seen it.
+            _state.update {
+                it.copy(
+                    posting = false,
+                    postOutcome = PostOutcome(
+                        purchId = purchId,
+                        lineCount = state.captured.size,
+                        postedAtEpochMs = System.currentTimeMillis(),
+                        postedLive = postedLive,
+                    ),
+                )
+            }
         }
+    }
+
+    /** Leaves the post summary and returns to a fresh order prompt. */
+    fun dismissPostOutcome() {
+        _state.value = ReceivingFlowState()
+    }
+
+    /**
+     * Nudges the background push worker to try again right now, for a posting that is durably
+     * queued but did not get a live answer in time - see [PostOutcome.postedLive]. Does not
+     * retry the live HTTP call inline: the entry is already safely on the same durable queue
+     * [postReceipt] itself uses, so this is the one true way anything gets pushed, live tap or
+     * background schedule alike - no second code path to keep in sync with it.
+     */
+    fun retryPost() {
+        syncScheduler.requestImmediatePush()
     }
 
     /**
@@ -456,6 +546,22 @@ class ReceivingFlowViewModel @Inject constructor(
                 // Anything banked against this order in an earlier session comes back with it.
                 val resumed = flowSessions.restore(FlowType.RECEIVING, order.purchId)
                     .map { it.toCaptured() }
+                // See ReceivingFlowState.stagedElsewhere and StagedLineRepository's class doc -
+                // one fast local read, right alongside this network call, not one per line.
+                val staged = stagedLines.stagedFor(FlowType.RECEIVING, order.purchId)
+
+                // Fails right here, at the order level, when every line the server still calls
+                // outstanding has in fact already been staged under an earlier "Register" - the
+                // server does not know that yet (see sessionRemaining), but this device does.
+                // Scoped to linesInline: on a large order open.isEmpty() by design (see below),
+                // so there is nothing here to check against without a call per line, which would
+                // cost exactly the round trip this check exists to avoid.
+                if (lookup.linesInline && open.isNotEmpty() &&
+                    open.all { (it.outstandingQuantity - (staged[it.lineNumber] ?: BigDecimal.ZERO)).signum() <= 0 }
+                ) {
+                    return fail("${order.purchId} has already been staged for registration")
+                }
+
                 _state.update {
                     it.copy(
                         order = order,
@@ -470,6 +576,7 @@ class ReceivingFlowViewModel @Inject constructor(
                         // the wrong one; carrying them within one is how a half-done pallet
                         // survives the app being killed.
                         captured = resumed,
+                        stagedElsewhere = staged,
                         error = null,
                     )
                 }
@@ -505,6 +612,21 @@ class ReceivingFlowViewModel @Inject constructor(
         // first: on a small order it is answered from lines already in hand, at no network cost.
         linesFor(value)?.let { return chooseAmong(it, quantityPerScan = BigDecimal.ONE) }
 
+        // Fails fast here, before ever reaching the barcode-lookup fallback below, when the
+        // scanned text is unmistakably this order's own item number for a line that is simply
+        // done - not "unrecognised", which is what that fallback exists to resolve. Confirmed
+        // live: without this, re-scanning an already-fully-received item fell through to a
+        // barcode lookup for its own item number, which can only ever end in "not a known
+        // barcode" - after paying for a full network round trip (up to this client's 60s read
+        // timeout on a slow tenant) to learn what was already known for free from openLines,
+        // already in hand. Scoped to the small-order case (linesInline) - the large-order path
+        // would need its own network call just to tell the two apart, which defeats the point.
+        if (_state.value.linesInline &&
+            _state.value.openLines.any { it.itemId.equals(value, ignoreCase = true) }
+        ) {
+            return fail("$value has already been fully received on this order")
+        }
+
         when (val result = lookups.lookupBarcode(value)) {
             is NetworkResult.Error -> fail(result.failure.message)
             NetworkResult.Loading -> Unit
@@ -536,7 +658,7 @@ class ReceivingFlowViewModel @Inject constructor(
 
         if (state.linesInline) {
             return state.openLines
-                .filter { it.itemId.equals(itemNumber, ignoreCase = true) }
+                .filter { it.itemId.equals(itemNumber, ignoreCase = true) && sessionRemaining(it).signum() > 0 }
                 .takeIf { it.isNotEmpty() }
         }
 
@@ -547,9 +669,47 @@ class ReceivingFlowViewModel @Inject constructor(
             }
             NetworkResult.Loading -> null
             is NetworkResult.Success ->
-                result.data.filter { it.hasOutstanding }.takeIf { it.isNotEmpty() }
+                result.data.filter { it.hasOutstanding && sessionRemaining(it).signum() > 0 }
+                    .takeIf { it.isNotEmpty() }
         }
     }
+
+    /**
+     * What [line] still has left *right now*, in the middle of this in-progress flow.
+     *
+     * [PurchaseOrderLine.outstandingQuantity] claims to subtract
+     * [PurchaseOrderLine.uncommittedQuantity] - work already handed to D365FO but not yet
+     * actually registered - but AOS never computes that field (confirmed by reading
+     * `HSMobileOpsReceivingService`: no reference to the post queue exists there at all), so it
+     * is always zero and this has to net out two things itself instead:
+     *
+     * 1. [ReceivingFlowState.captured] - banked in *this* in-progress flow a moment ago, not
+     *    even staged yet (postReceipt does that once the whole order is done).
+     * 2. [ReceivingFlowState.stagedElsewhere] - handed to D365FO by an earlier "Register" on
+     *    this same order (this session or a previous one) and landed as Pending, but AOS runs no
+     *    automatic job that turns Pending into Registered - see
+     *    [com.d365fo.mobileops.data.repository.StagedLineRepository]'s class doc - so nothing
+     *    server-side reflects it until someone taps "Process pending", which can be a long wait.
+     *
+     * Without both, banking (or registering) a line's only unit and returning to the item step
+     * still offers that same item with its original quantity - confirmed live for both cases,
+     * including two receipts staged for the same one-pack line minutes apart, neither aware of
+     * the other because the server genuinely did not know yet either.
+     */
+    /** Not private - the item-search sheet shows this per line so an operator can see it before picking. */
+    internal fun sessionRemaining(line: PurchaseOrderLine): BigDecimal =
+        (line.outstandingQuantity - capturedThisSessionFor(line) - stagedElsewhereFor(line))
+            .coerceAtLeast(BigDecimal.ZERO)
+
+    /** See [sessionRemaining] - the part of [line] already banked into captured, this flow, right now. */
+    private fun capturedThisSessionFor(line: PurchaseOrderLine): BigDecimal =
+        _state.value.captured
+            .filter { it.lineNumber == line.lineNumber }
+            .fold(BigDecimal.ZERO) { total, entry -> total + entry.quantity }
+
+    /** See [sessionRemaining] - the part of [line] already staged under an earlier "Register", not yet confirmed off the queue. */
+    private fun stagedElsewhereFor(line: PurchaseOrderLine): BigDecimal =
+        _state.value.stagedElsewhere[line.lineNumber] ?: BigDecimal.ZERO
 
     /**
      * The same item can appear on several lines of one order, and they are not interchangeable:
@@ -630,7 +790,7 @@ class ReceivingFlowViewModel @Inject constructor(
                     // keep asking regardless.
                     locationId = line.locationId?.takeIf { loc -> loc.isNotBlank() },
                 ),
-                suggestedQuantity = line.outstandingQuantity,
+                suggestedQuantity = sessionRemaining(line),
                 suggestedLocation = line.locationId?.takeIf { loc -> loc.isNotBlank() },
                 scannedPackSize = quantityPerScan.takeIf { size -> size > BigDecimal.ONE },
                 error = null,
@@ -650,8 +810,14 @@ class ReceivingFlowViewModel @Inject constructor(
             return fail("${item.itemNumber} is serial tracked, so it is received in whole units")
         }
 
+        // Nets out everything already spoken for against this line's tolerance ceiling: posted
+        // (receivedQuantity), staged under an earlier "Register" but not yet actually
+        // registered (stagedElsewhereFor - uncommittedQuantity itself is always zero, AOS never
+        // computes it, see sessionRemaining), and banked into this same in-progress flow a
+        // moment ago but not even staged yet (capturedThisSessionFor).
         val ceiling = effectiveMaximum(line)
-        val maximum = ceiling - line.receivedQuantity
+        val maximum = ceiling - line.receivedQuantity - line.uncommittedQuantity -
+            capturedThisSessionFor(line) - stagedElsewhereFor(line)
         if (entered > maximum) {
             val over = entered - maximum
             return fail(
@@ -856,6 +1022,14 @@ data class ReceivingFlowState(
     val linesInline: Boolean = true,
     /** Lines banked in this session against this order, most recent last. */
     val captured: List<CapturedLine> = emptyList(),
+    /**
+     * lineNumber -> quantity already staged for this order (this device, an earlier "Register"
+     * on this same order) but not yet confirmed off D365FO's own queue - see
+     * [com.d365fo.mobileops.data.repository.StagedLineRepository]'s class doc for why this
+     * exists and [ReceivingFlowViewModel.sessionRemaining] for how it is used. Fetched once, in
+     * [ReceivingFlowViewModel.onPurchaseOrder], not re-queried per line.
+     */
+    val stagedElsewhere: Map<Double, BigDecimal> = emptyMap(),
     val showingCaptured: Boolean = false,
     /** Non-empty when one scan matched several lines and the operator has to pick. */
     val lineChoices: List<PurchaseOrderLine> = emptyList(),
@@ -866,6 +1040,31 @@ data class ReceivingFlowState(
     val suggestedLocation: String? = null,
     val busy: Boolean = false,
     val error: String? = null,
+    /** True from the moment "Register scanned so far" is tapped until [postOutcome] is set. */
+    val posting: Boolean = false,
+    /** Set once a post attempt finishes; cleared only when the operator dismisses the summary. */
+    val postOutcome: PostOutcome? = null,
+)
+
+/**
+ * What happened the last time this order's captured lines were registered - shown as a summary
+ * once posting finishes, in place of silently resetting straight back to a fresh order prompt.
+ * [lineCount] and [purchId] are captured at post time rather than read back off [ReceivingFlowState]
+ * afterward, because [ReceivingFlowViewModel.postReceipt] keeps [ReceivingFlowState.captured]
+ * around unchanged until the operator dismisses this summary - see its class doc.
+ */
+data class PostOutcome(
+    val purchId: String,
+    val lineCount: Int,
+    val postedAtEpochMs: Long,
+    /**
+     * True only when this device got a live answer from D365FO before [postReceipt]'s own
+     * timeout. False means the posting is durably queued and will still go through on its own
+     * via the background retry ladder - never a sign of data loss - but the operator standing
+     * there gets to know that and retrigger a live attempt now instead of only finding out on
+     * the Activity screen later.
+     */
+    val postedLive: Boolean,
 )
 
 /**

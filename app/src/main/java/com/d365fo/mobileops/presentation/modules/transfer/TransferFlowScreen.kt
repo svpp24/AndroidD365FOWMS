@@ -28,7 +28,7 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import com.d365fo.mobileops.presentation.common.components.SquareButton as Button
-import androidx.compose.material3.Card
+import com.d365fo.mobileops.presentation.common.components.AppCard as Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -40,7 +40,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import com.d365fo.mobileops.presentation.common.components.SquareTextButton as TextButton
-import androidx.compose.material3.TopAppBar
+import com.d365fo.mobileops.presentation.common.components.AppTopBar as TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -61,6 +61,11 @@ import com.d365fo.mobileops.domain.model.TransferMode
 import com.d365fo.mobileops.domain.model.TransferOrderLine
 import com.d365fo.mobileops.domain.model.TransferStep
 import com.d365fo.mobileops.domain.model.stepsForTransfer
+import com.d365fo.mobileops.presentation.common.components.ErrorBanner
+import com.d365fo.mobileops.presentation.common.components.HeroEnterBadge
+import com.d365fo.mobileops.presentation.common.components.HeroFieldShape
+import com.d365fo.mobileops.presentation.common.components.PromptHeroCard
+import com.d365fo.mobileops.presentation.common.components.heroFieldColors
 import com.d365fo.mobileops.presentation.common.components.TextEntryScreen
 import com.d365fo.mobileops.presentation.common.scan.CameraScannerSheet
 import com.d365fo.mobileops.presentation.common.theme.WarehouseDimens
@@ -92,10 +97,15 @@ fun TransferFlowScreen(
 
     LaunchedEffect(mode) { viewModel.setMode(mode) }
 
-    // See the identical BackHandler on ReceivingFlowScreen: without it, system back (hardware
-    // button, or an accidental edge-swipe on this device's immersive-hidden bars) skips the top
-    // bar's step-back logic entirely and pops straight to Home from any step.
-    val stepBack = { if (state.step == TransferStep.TRANSFER_ORDER) onBack() else viewModel.back() }
+    // See the identical guard on ReceivingFlowScreen - applied here to both BackHandler and the
+    // top bar's own IconButton onClick, since live tracing ruled out a real KEYCODE_BACK and
+    // Compose's own predictive-back callback as the phantom's delivery mechanism, pointing at a
+    // phantom touch on the icon's tap target instead.
+    val stepBack = {
+        if (!viewModel.justScanned()) {
+            if (state.step == TransferStep.TRANSFER_ORDER) onBack() else viewModel.back()
+        }
+    }
     BackHandler(onBack = stepBack)
 
     Scaffold(
@@ -248,19 +258,7 @@ private fun StepPrompt(
             modifier = Modifier.weight(1f).verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Text(
-                text = promptFor(state),
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.SemiBold,
-            )
-            hintFor(state)?.let {
-                Text(
-                    text = it,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-
+            PromptHeroCard(prompt = promptFor(state), hint = hintFor(state)) {
             // Read-only and empty, always - see the identical note on PO receiving's own
             // StepPrompt: a scan never lands here, and typing now happens on a dedicated
             // screen. What remains is a tap target styled like the field it replaces.
@@ -279,6 +277,9 @@ private fun StepPrompt(
                     } else {
                         MaterialTheme.typography.headlineSmall
                     },
+                    shape = HeroFieldShape,
+                    colors = heroFieldColors(),
+                    trailingIcon = { HeroEnterBadge() },
                     modifier = Modifier
                         .fillMaxWidth()
                         .heightIn(min = 64.dp)
@@ -289,6 +290,7 @@ private fun StepPrompt(
                         .matchParentSize()
                         .clickable(enabled = !state.busy, onClick = onTypeManually),
                 )
+            }
             }
         }
 
@@ -627,26 +629,7 @@ private fun CaptureSummary(state: TransferFlowState) {
 
 @Composable
 private fun ErrorPanel(message: String, onDismiss: () -> Unit) {
-    Card(
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.errorContainer,
-        ),
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Row(
-            modifier = Modifier.padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Text(
-                text = message,
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onErrorContainer,
-                modifier = Modifier.weight(1f),
-            )
-            TextButton(onClick = onDismiss) { Text("OK") }
-        }
-    }
+    ErrorBanner(message = message, onDismiss = onDismiss)
 }
 
 @Composable

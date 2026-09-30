@@ -84,14 +84,21 @@ interface ItemDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertBarcodes(barcodes: List<BarcodeEntity>)
 
-    /** Master-data pull writes in bounded transactions so a 100k-row sync stays responsive. */
+    /**
+     * Master-data pull writes in bounded transactions so a large sync stays responsive.
+     *
+     * `chunkSize` defaults to the shared interactive-write size but is a real parameter, not
+     * just documentation - `SkuSyncWorker` calls this with `Constants.SKU_SYNC_BATCH_SIZE`
+     * (5000) for a 1M-row master load, where `DB_BATCH_SIZE` (100) would mean 10,000+
+     * individual transactions.
+     */
     @Transaction
-    suspend fun upsertItemsChunked(items: List<ItemEntity>) =
-        items.chunked(Constants.DB_BATCH_SIZE).forEach { upsertItems(it) }
+    suspend fun upsertItemsChunked(items: List<ItemEntity>, chunkSize: Int = Constants.DB_BATCH_SIZE) =
+        items.chunked(chunkSize).forEach { upsertItems(it) }
 
     @Transaction
-    suspend fun upsertBarcodesChunked(barcodes: List<BarcodeEntity>) =
-        barcodes.chunked(Constants.DB_BATCH_SIZE).forEach { upsertBarcodes(it) }
+    suspend fun upsertBarcodesChunked(barcodes: List<BarcodeEntity>, chunkSize: Int = Constants.DB_BATCH_SIZE) =
+        barcodes.chunked(chunkSize).forEach { upsertBarcodes(it) }
 
     @Query("DELETE FROM item")
     suspend fun clearItems()

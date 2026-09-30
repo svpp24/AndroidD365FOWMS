@@ -6,6 +6,7 @@ import com.d365fo.mobileops.util.AppFailure
 import com.d365fo.mobileops.util.NetworkResult
 import kotlinx.serialization.json.Json
 import retrofit2.Response
+import timber.log.Timber
 import java.io.IOException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
@@ -20,6 +21,13 @@ import javax.net.ssl.SSLPeerUnverifiedException
  * whether a queued product receipt is retried with backoff or parked in the dead-letter
  * queue for a supervisor. Getting it wrong either spams AAD with doomed retries or strands
  * a recoverable timeout in front of a human.
+ *
+ * Every call through [safeCall] is also logged - this is the one place every D365FO call in
+ * the app passes through (repositories call this, not Retrofit directly), so it is where "key
+ * business events" (scan/posting attempts and their outcomes, in particular) get covered without
+ * instrumenting each repository individually. Failures log the method/URL when available (a
+ * thrown exception, unlike an HTTP error response, has no Response to read it from) so a bad
+ * outcome in the log viewer says which call, not just that one failed somewhere.
  */
 @Singleton
 class D365ErrorMapper @Inject constructor(
@@ -29,18 +37,25 @@ class D365ErrorMapper @Inject constructor(
     /** Wraps a Retrofit call, mapping both HTTP failures and thrown transport exceptions. */
     suspend fun <T> safeCall(block: suspend () -> Response<T>): NetworkResult<T> = try {
         val response = block()
+        val request = response.raw().request
         if (response.isSuccessful) {
             val body = response.body()
             if (body == null) {
+                Timber.w("D365 %s %s succeeded with an empty body", request.method, request.url)
                 NetworkResult.Error(AppFailure.Fatal("empty response body"))
             } else {
+                Timber.d("D365 %s %s ok", request.method, request.url)
                 NetworkResult.Success(body, response.headers()["ETag"])
             }
         } else {
-            NetworkResult.Error(fromResponse(response))
+            val failure = fromResponse(response)
+            Timber.w("D365 %s %s failed: %s", request.method, request.url, failure.message)
+            NetworkResult.Error(failure)
         }
     } catch (e: Throwable) {
-        NetworkResult.Error(fromThrowable(e))
+        val failure = fromThrowable(e)
+        Timber.e(e, "D365 call threw: %s", failure.message)
+        NetworkResult.Error(failure)
     }
 
     fun fromThrowable(e: Throwable): AppFailure = when (e) {

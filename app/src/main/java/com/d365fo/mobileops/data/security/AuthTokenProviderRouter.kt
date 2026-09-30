@@ -5,20 +5,18 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * The [TokenProvider] Hilt actually wires up - see [di.AppModule][com.d365fo.mobileops.di.AppModule].
+ * Picks which device credential is in force, per the active [TenantConfig.authType] - the one
+ * `TokenProvider` the rest of the app injects never needs to know which grant is behind it.
  *
- * Hilt's `@Binds` picks one concrete implementation at compile time, but which grant this
- * device uses is a runtime setting a supervisor can change from Settings, the same way the
- * target environment (Dev/UAT/Prod) already is. This class is the seam that makes that work:
- * it holds both real providers and reads [ConnectionSettings.tenant] fresh on every call, never
- * caching which one is active, so a mode switch in Settings takes effect on the very next call
- * rather than needing an app restart.
+ * Re-reads [ConnectionSettings.tenant] on every call rather than caching the choice, so flipping
+ * [AuthType] in Settings and saving takes effect on the very next token request, not after a
+ * restart.
  */
 @Singleton
 class AuthTokenProviderRouter @Inject constructor(
+    private val connectionSettings: ConnectionSettings,
     private val clientCredentials: ClientCredentialsTokenProvider,
     private val deviceCode: DeviceCodeTokenProvider,
-    private val connectionSettings: ConnectionSettings,
 ) : TokenProvider {
 
     private fun active(): TokenProvider = when (connectionSettings.tenant.value.authType) {
@@ -31,4 +29,15 @@ class AuthTokenProviderRouter @Inject constructor(
     override suspend fun signOut() = active().signOut()
 
     override fun cachedTokenOrNull(): AccessToken? = active().cachedTokenOrNull()
+
+    /**
+     * Clears both providers' caches, not just whichever is active now - a profile switch can
+     * change [AuthType] too (a device-code profile to a client-credentials one, say), and the
+     * provider that was active a moment ago is exactly the one whose stale cache would otherwise
+     * survive the switch.
+     */
+    override fun invalidateCache() {
+        clientCredentials.invalidateCache()
+        deviceCode.invalidateCache()
+    }
 }

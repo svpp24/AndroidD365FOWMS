@@ -4,13 +4,13 @@ import androidx.room.TypeConverter
 import com.d365fo.mobileops.data.local.entity.JournalStatus
 import com.d365fo.mobileops.data.local.entity.JournalType
 import com.d365fo.mobileops.data.local.entity.PurchaseOrderStatus
-import com.d365fo.mobileops.data.local.entity.ReceiptStatus
 import com.d365fo.mobileops.data.local.entity.SalesOrderStatus
 import com.d365fo.mobileops.data.local.entity.SyncOperation
 import com.d365fo.mobileops.data.local.entity.SyncState
 import com.d365fo.mobileops.data.local.entity.FlowType
 import com.d365fo.mobileops.data.local.entity.TrackingRequirement
 import com.d365fo.mobileops.data.local.entity.TransferStatus
+import com.d365fo.mobileops.domain.model.WarehouseWorkflow
 
 /**
  * Enums are stored by name, never by ordinal: reordering an enum must not silently
@@ -32,9 +32,6 @@ class Converters {
     @TypeConverter fun stringToPurchStatus(v: String): PurchaseOrderStatus =
         PurchaseOrderStatus.valueOf(v)
 
-    @TypeConverter fun receiptStatusToString(v: ReceiptStatus): String = v.name
-    @TypeConverter fun stringToReceiptStatus(v: String): ReceiptStatus = ReceiptStatus.valueOf(v)
-
     @TypeConverter fun flowTypeToString(v: FlowType): String = v.name
     @TypeConverter fun stringToFlowType(v: String): FlowType = FlowType.valueOf(v)
 
@@ -55,4 +52,7 @@ class Converters {
     @TypeConverter fun salesStatusToString(v: SalesOrderStatus): String = v.name
     @TypeConverter fun stringToSalesStatus(v: String): SalesOrderStatus =
         SalesOrderStatus.valueOf(v)
+
+    @TypeConverter fun workflowToString(v: WarehouseWorkflow): String = v.name
+    @TypeConverter fun stringToWorkflow(v: String): WarehouseWorkflow = WarehouseWorkflow.valueOf(v)
 }

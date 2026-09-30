@@ -6,10 +6,11 @@
 /// <summary>
 /// Activates or deactivates a device's fleet row.
 ///
-/// A device can still sign in either way - see the field help on HSMobileOpsDevice.IsActive.
-/// This is bookkeeping for "what is actually in service", not a remote kill switch; a lost or
+/// That specific device can still sign in either way - see the field help on
+/// HSMobileOpsDevice.IsActive. This is not a remote kill switch on the device itself; a lost or
 /// stolen handheld needs its worker accounts locked and the client secret rotated, neither of
-/// which lives on this table.
+/// which lives on this table. It does, however, now feed HSMobileOpsLicense's device-count check
+/// - deactivating a retired handheld frees the license slot it was holding for a replacement.
 /// </summary>
 class HSMobileOpsToggleDeviceActive
 {

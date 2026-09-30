@@ -15,8 +15,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.PhotoCamera
 import com.d365fo.mobileops.presentation.common.components.SquareOutlinedButton as OutlinedButton
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
+import com.d365fo.mobileops.presentation.common.components.AppCard as Card
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -25,7 +24,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
+import com.d365fo.mobileops.presentation.common.components.AppTopBar as TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -40,6 +39,11 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.d365fo.mobileops.domain.model.PurchaseOrderLine
+import com.d365fo.mobileops.presentation.common.components.ErrorBanner
+import com.d365fo.mobileops.presentation.common.components.HeroEnterBadge
+import com.d365fo.mobileops.presentation.common.components.HeroFieldShape
+import com.d365fo.mobileops.presentation.common.components.PromptHeroCard
+import com.d365fo.mobileops.presentation.common.components.heroFieldColors
 import com.d365fo.mobileops.presentation.common.components.TextEntryScreen
 import com.d365fo.mobileops.presentation.common.scan.CameraScannerSheet
 import com.d365fo.mobileops.presentation.common.theme.WarehouseDimens
@@ -92,14 +96,17 @@ fun PoLinesScreen(
             // Read-only tap target - overlaid Box, not clickable() on the field itself. See the
             // identical note on OnHandInquiryScreen: a read-only field's own pointer input
             // swallows a tap before an outer clickable on the same chain ever sees it.
+            PromptHeroCard(prompt = "Scan or enter PO number") {
             Box {
                 OutlinedTextField(
                     value = "",
                     onValueChange = {},
                     readOnly = true,
-                    label = { Text("Scan or enter PO number") },
                     singleLine = true,
                     textStyle = MaterialTheme.typography.titleLarge,
+                    shape = HeroFieldShape,
+                    colors = heroFieldColors(),
+                    trailingIcon = { HeroEnterBadge() },
                     modifier = Modifier
                         .fillMaxWidth()
                         .heightIn(min = 64.dp)
@@ -110,6 +117,7 @@ fun PoLinesScreen(
                         .matchParentSize()
                         .clickable(onClick = onManualEntryRequested),
                 )
+            }
             }
 
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -122,18 +130,7 @@ fun PoLinesScreen(
             }
 
             state.error?.let { message ->
-                Card(
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.errorContainer,
-                    ),
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Text(
-                        text = message,
-                        modifier = Modifier.padding(12.dp),
-                        color = MaterialTheme.colorScheme.onErrorContainer,
-                    )
-                }
+                ErrorBanner(message = message)
             }
 
             state.purchId?.let { purchId ->

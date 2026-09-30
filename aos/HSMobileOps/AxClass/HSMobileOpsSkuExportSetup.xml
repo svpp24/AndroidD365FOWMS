@@ -1,0 +1,273 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsSkuExportSetup</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Creates the two DMF export definition groups the bulk SKU sync flows through - one for item
+/// master data, one for barcode data - entirely by code, on first use.
+///
+/// **Shared, idempotent projects, not one-per-request** - the opposite of
+/// HSMobileOpsCountingExportSetup's per-journal isolation. That class creates a fresh project
+/// every call because two concurrent requests can be scoped to *different* journals and must not
+/// share a packed query. A full SKU sync has no per-request scope at all - every run exports
+/// everything - so there is nothing for two concurrent runs to collide on inside a shared project,
+/// and reusing one avoids accumulating a new project on every periodic sync (this one is expected
+/// to run nightly, on every device, indefinitely).
+///
+/// Built on the same confirmed production APIs as HSMobileOpsCountingExportSetup
+/// (`DataManagementIntegrationUtils`'s own pattern: `DmfDefinitionGroup` fields, `DMFParameters::find`,
+/// `DMFEntityBase::addEntityForProcessingV3`) - see that class's own doc comment for what is and
+/// is not independently confirmed about the positional arguments reused here unchanged.
+///
+/// **The two AOT entity names are configurable, not hardcoded** - see HSMobileOpsSkuSyncSetup and
+/// [itemEntityAotName]/[barcodeEntityAotName]. Neither default name below has been confirmed
+/// against a live environment the way HSMobileOpsCountingExportSetup's entity name was (that one
+/// was found by dumping a UI-built project's rows next to code-built ones on a real tenant); they
+/// are this app's best-known standard D365FO entity names as of when this was written. If
+/// `entityName()` throws "DMF has no entity whose target is ..." for either one, the fix is
+/// pasting the correct AOT name into HSMobileOpsSkuSyncSetup, not an AOS code change.
+/// </summary>
+class HSMobileOpsSkuExportSetup
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>ensureItemExport</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Creates (or confirms) the shared item-master export project. Returns its name.
+    /// </summary>
+    public static DMFDefinitionGroupName ensureItemExport()
+    {
+        DMFDefinitionGroupName groupName = HSMobileOpsSkuExportSetup::itemDefinitionGroupName();
+
+        HSMobileOpsSkuExportSetup::ensureDefinitionGroup(groupName, DMFOperationType::Export);
+        HSMobileOpsSkuExportSetup::ensureEntityInGroup(groupName, HSMobileOpsSkuExportSetup::itemEntityAotName());
+
+        return groupName;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>ensureBarcodeExport</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Creates (or confirms) the shared barcode export project. Returns its name.
+    /// </summary>
+    public static DMFDefinitionGroupName ensureBarcodeExport()
+    {
+        DMFDefinitionGroupName groupName = HSMobileOpsSkuExportSetup::barcodeDefinitionGroupName();
+
+        HSMobileOpsSkuExportSetup::ensureDefinitionGroup(groupName, DMFOperationType::Export);
+        HSMobileOpsSkuExportSetup::ensureEntityInGroup(groupName, HSMobileOpsSkuExportSetup::barcodeEntityAotName());
+
+        return groupName;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>ensureDefinitionGroup</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// See HSMobileOpsCountingExportSetup::ensureDefinitionGroup - identical pattern, duplicated
+    /// here rather than shared because the two classes' surrounding concerns (per-request-unique
+    /// vs. shared-idempotent naming) differ enough that a shared helper would need its own
+    /// parameterization for no real benefit at this size.
+    /// </summary>
+    private static void ensureDefinitionGroup(DMFDefinitionGroupName _groupName, DMFOperationType _direction)
+    {
+        DmfDefinitionGroup definitionGroup = DmfDefinitionGroup::find(_groupName);
+
+        if (!definitionGroup.RecId)
+        {
+            ttsbegin;
+
+            definitionGroup.clear();
+            definitionGroup.Adapter              = DMFAdapter::SSISAdapter;
+            definitionGroup.DefinitionGroupName  = _groupName;
+            definitionGroup.Description          = _groupName;
+            definitionGroup.OperationType        = _direction;
+            definitionGroup.GenerateDataPackage  = true;
+            definitionGroup.insert();
+
+            ttscommit;
+
+            info(strFmt('Created DmfDefinitionGroup %1 (%2).', _groupName, enum2Str(_direction)));
+        }
+
+        DMFParameters::find(false, true, false);
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>ensureEntityInGroup</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// See HSMobileOpsCountingExportSetup::ensureEntityInGroup - identical self-healing pattern,
+    /// parameterized by AOT entity name since this class manages two different entities rather
+    /// than one.
+    /// </summary>
+    private static void ensureEntityInGroup(DMFDefinitionGroupName _groupName, str _aotEntityName)
+    {
+        str entityName = HSMobileOpsSkuExportSetup::entityName(_aotEntityName);
+        DmfDefinitionGroupEntity existing = DMFDefinitionGroupEntity::find(_groupName, entityName);
+
+        if (existing.RecId)
+        {
+            if (existing.Source == 'CSV')
+            {
+                return;
+            }
+
+            str staleSource = existing.Source;
+
+            ttsbegin;
+            existing.selectForUpdate(true);
+            existing.delete();
+            ttscommit;
+
+            info(strFmt('Removed stale %1/%2 registration (Source was %3) before re-adding.',
+                _groupName, entityName, staleSource));
+        }
+
+        DMFEntityBase::addEntityForProcessingV3(
+            _groupName,
+            _groupName,
+            entityName,
+            'CSV',
+            '',
+            '@SYS6047',
+            false,
+            true,
+            '',
+            false,
+            DMFRefreshType::FullPush,
+            false);
+
+        info(strFmt('Added %1 to %2.', entityName, _groupName));
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>itemDefinitionGroupName</Name>
+				<Source><![CDATA[
+
+    public static str itemDefinitionGroupName()
+    {
+        return 'HSMobileOpsSkuItemExport';
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>barcodeDefinitionGroupName</Name>
+				<Source><![CDATA[
+
+    public static str barcodeDefinitionGroupName()
+    {
+        return 'HSMobileOpsSkuBarcodeExport';
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>itemEntityAotName</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// HSMobileOpsSkuSyncSetup's configured override, or defaultItemEntityAotName() when none is
+    /// set. See this class's own doc comment on why this is configurable rather than a constant.
+    /// </summary>
+    public static str itemEntityAotName()
+    {
+        HSMobileOpsSkuSyncSetup setup = HSMobileOpsSkuSyncSetup::find();
+
+        return setup.ItemEntityName ? setup.ItemEntityName : HSMobileOpsSkuExportSetup::defaultItemEntityAotName();
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>barcodeEntityAotName</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// See itemEntityAotName - the same idea for the barcode entity.
+    /// </summary>
+    public static str barcodeEntityAotName()
+    {
+        HSMobileOpsSkuSyncSetup setup = HSMobileOpsSkuSyncSetup::find();
+
+        return setup.BarcodeEntityName ? setup.BarcodeEntityName : HSMobileOpsSkuExportSetup::defaultBarcodeEntityAotName();
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>defaultItemEntityAotName</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Best-known AOT name of the standard entity behind the public `ReleasedProductsV2` OData
+    /// collection - which this app's own on-demand item lookup already uses live, confirmed
+    /// (`D365ODataApi.getReleasedProducts`, `ReleasedProductDto`). The OData collection name is
+    /// confirmed; the AOT *class* name backing it (what DMF needs) follows Microsoft's standard
+    /// `<Collection singular>Entity` convention but is not independently confirmed the way
+    /// HSMobileOpsCountingExportSetup's entity name was - see this class's own doc comment.
+    /// </summary>
+    public static str defaultItemEntityAotName()
+    {
+        return 'EcoResReleasedProductV2Entity';
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>defaultBarcodeEntityAotName</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Best-known AOT name of the standard entity behind the public `ProductBarcodesV3` OData
+    /// collection - same reasoning and same caveat as defaultItemEntityAotName: the collection
+    /// name is confirmed live (`D365ODataApi.getBarcodes`, `ProductBarcodeDto`), the AOT class
+    /// name is this app's best guess at the convention, not independently confirmed.
+    /// </summary>
+    public static str defaultBarcodeEntityAotName()
+    {
+        return 'EcoResProductBarcodeV3Entity';
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>entityName</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// See HSMobileOpsCountingExportSetup::entityName - the DMF display name for _aotEntityName,
+    /// looked up dynamically rather than hardcoded so it follows whatever this environment calls
+    /// it, and throws a clear, actionable error (pointing at HSMobileOpsSkuSyncSetup, not at code)
+    /// when the configured or default AOT name is not enabled in this environment's DMF catalog.
+    /// </summary>
+    private static str entityName(str _aotEntityName)
+    {
+        DMFEntity dmfEntity;
+
+        select firstOnly EntityName from dmfEntity
+            where dmfEntity.TargetEntity == _aotEntityName;
+
+        if (!dmfEntity.EntityName)
+        {
+            throw error(strFmt(
+                'DMF has no entity whose target is %1 - check it is enabled for this environment, '
+              + 'or correct the entity name in Mobile SKU sync setup.',
+                _aotEntityName));
+        }
+
+        return dmfEntity.EntityName;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

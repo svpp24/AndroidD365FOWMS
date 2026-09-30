@@ -20,4 +20,7 @@ data class PostQueueEntry(
     val errorMessage: String?,
     val receivedUtc: String?,
     val processedUtc: String?,
+    val userName: String?,
+    /** Same shape this device sends when posting - a JSON array of [com.d365fo.mobileops.data.remote.dto.PostLineDto]. */
+    val linesJson: String?,
 )

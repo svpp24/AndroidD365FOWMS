@@ -10,14 +10,16 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.d365fo.mobileops.R
+import com.d365fo.mobileops.data.security.DisplayScale
 
 /**
  * A fixed light industrial identity, not a light/dark pair.
@@ -30,25 +32,7 @@ import com.d365fo.mobileops.R
  * to screen, so a supervisor's device matches a picker's and status colours cannot be recoloured
  * by a system setting. See [D365MobileTheme] - there is deliberately no `darkTheme` parameter to
  * branch on any more.
- *
- * Two families carry the whole identity. Rajdhani - a compressed, technical display face - for
- * anything that is read at a glance: item counts, quantities, order numbers, section titles.
- * JetBrains Mono - a coding monospace - for anything that reads as *data*: item codes,
- * timestamps, status chips, dimension labels. Body copy stays on the platform's own sans
- * (Roboto) rather than bundling a third family for text nobody scans at speed.
  */
-private val RajdhaniFamily = FontFamily(
-    Font(R.font.rajdhani_medium, FontWeight.Medium),
-    Font(R.font.rajdhani_semibold, FontWeight.SemiBold),
-    Font(R.font.rajdhani_bold, FontWeight.Bold),
-)
-
-private val JetBrainsMonoFamily = FontFamily(
-    Font(R.font.jetbrains_mono_regular, FontWeight.Normal),
-    // No separate semibold cut was bundled - Compose synthesizes it from Regular, which is
-    // close enough at the small sizes this face is used at (labels, codes, chips).
-    Font(R.font.jetbrains_mono_regular, FontWeight.SemiBold),
-)
 
 /**
  * The light industrial palette - the mockup's own `@media (prefers-color-scheme: light)` /
@@ -56,7 +40,9 @@ private val JetBrainsMonoFamily = FontFamily(
  * `rgba(accent, 10-12%)` over a white surface; translated to flat colours by blending at the
  * same alpha over white, since Compose colour roles here are drawn as solid fills, not overlays.
  */
-private val Bg = Color(0xFFE8ECF5)
+// Very light blue-white page, so white cards read as cards without needing heavy borders - the layout
+// reference this app was restyled to match (white cards, blue accents) uses the same.
+private val Bg = Color(0xFFF2F6FC)
 private val Bg2 = Color(0xFFF0F3FA)
 private val Surface = Color(0xFFFFFFFF)
 private val Surface2 = Color(0xFFF5F7FC)
@@ -68,8 +54,6 @@ private val Surface2 = Color(0xFFF5F7FC)
 // the same direction for the same reason: a card edge or field outline that all but disappears
 // against Bg/Surface is a real "which one is my input" question, not just a look.
 private val Border = Color(0xFFAEB9D4)
-private val Accent = Color(0xFF0066CC)
-private val AccentDim = Color(0xFFE6F0F9)
 private val Green = Color(0xFF16A34A)
 private val GreenDim = Color(0xFFE3F4E9)
 private val Amber = Color(0xFFD97706)
@@ -87,13 +71,91 @@ private val Text3 = Color(0xFF5B6472)
  * gives for not branching on system dark mode: a supervisor's screen and a picker's screen still
  * have to agree on what "blocked" or "posted" looks like. Accent is the one role that's purely
  * identity, not meaning, so it's the one exposed as a choice.
+ *
+ * BLUE's own tone was retuned to match a reference WMS app's own brand blue directly - its
+ * primary CTA colour (`rgb(41,175,232)`) and link colour (`rgb(2,116,190)`), read straight off
+ * its live site rather than approximated from a screenshot. `accent` takes the darker of the
+ * two (better contrast for text/icons on white); `accentDim` is the lighter one blended to
+ * roughly 10% over white, the same "flat colour standing in for a translucent tint" technique
+ * this file's own class doc already uses for every other dim token.
  */
-enum class ColorPalette(val label: String, val accent: Color, val accentDim: Color) {
-    BLUE("Blue", Color(0xFF0066CC), Color(0xFFE6F0F9)),
+enum class ColorPalette(
+    val label: String,
+    val accent: Color,
+    val accentDim: Color,
+    /**
+     * A real second hue for a two-tone gradient identity - null for every flat entry below,
+     * which instead gets an auto-generated light-to-full sweep of its own single [accent] (see
+     * [WarehouseStatusColors.accentGradient]). Set only by the dedicated gradient entries at the
+     * end of this list, so picking one of *those* is the one way to get a genuinely two-coloured
+     * identity rather than one colour faded toward white.
+     */
+    val gradientStart: Color? = null,
+) {
+    MICROSOFT("Microsoft blue", Color(0xFF0078D4), Color(0xFFEFF6FC)),
+    BLUE("Blue", Color(0xFF0274BE), Color(0xFFEAF7FD)),
     GREEN("Green", Color(0xFF15803D), Color(0xFFE1F3E8)),
     AMBER("Amber", Color(0xFFB45309), Color(0xFFF8EADC)),
     PURPLE("Purple", Color(0xFF7C3AED), Color(0xFFEEE5FC)),
+
+    // Added from D365 Finance & Operations' own "User options > Visual > Color theme" picker -
+    // approximated by eye from a screenshot, not pixel-sampled/colour-picked the way BLUE's own
+    // tone above was read straight off a live site. Close enough for an accent choice; nudge any
+    // of these if one reads off once seen live. Named distinctly from the four above (SKY/PINE
+    // rather than reusing "Blue"/"Green") since they're visually close but not the same tone -
+    // this app's own BLUE and GREEN are tuned to a different reference and kept as-is, not
+    // replaced. The picker's black/white "high contrast" swatch isn't included here - it's an
+    // accessibility mode, not a colour, and doesn't fit a single-accent-Color model.
+    SKY("Sky", Color(0xFF3B82C4), Color(0xFFEBF3F9)),
+    MAROON("Maroon", Color(0xFF9B2242), Color(0xFFF5E9EC)),
+    ORCHID("Orchid", Color(0xFFA83FAE), Color(0xFFF6ECF7)),
+    SIENNA("Sienna", Color(0xFFC1501E), Color(0xFFF9EEE8)),
+    PINE("Pine", Color(0xFF1E8A1E), Color(0xFFE8F3E8)),
+    NAVY("Navy", Color(0xFF1B2A47), Color(0xFFE8EAEC)),
+    PLUM("Plum", Color(0xFF452659), Color(0xFFECE9EE)),
+    COBALT("Cobalt", Color(0xFF1D7FE0), Color(0xFFE8F2FB)),
+    OLIVE("Olive", Color(0xFF7C8C1E), Color(0xFFF2F4E8)),
+    MAGENTA("Magenta", Color(0xFFBE1FAE), Color(0xFFF8E8F7)),
+    TEAL("Teal", Color(0xFF048C8C), Color(0xFFE6F3F3)),
+    STEEL("Steel", Color(0xFF08566B), Color(0xFFE6EEF0)),
+    WINE("Wine", Color(0xFF7A1022), Color(0xFFF2E7E9)),
+    ESPRESSO("Espresso", Color(0xFF2E0C0C), Color(0xFFEAE6E6)),
+
+    // Dedicated gradient identities - a real second hue via [gradientStart], not one accent faded
+    // toward white the way every flat entry above gets automatically. `accent` on each of these
+    // is still a real, solid, white-contrasting colour in its own right (used everywhere a single
+    // flat fill is needed - status bar tint, a plain icon tint, etc.); `gradientStart` only comes
+    // into play on the surfaces that already draw [WarehouseStatusColors.accentGradient] (hero
+    // cards, tile arrow bars). Picked as light-start -> accent-end sweeps in the same direction
+    // every flat entry's auto-gradient already runs, so nothing about *where* the gradient goes
+    // changes, only how many real hues are in it.
+    SUNSET("Sunset", Color(0xFFD6266B), Color(0xFFFCEAF1), Color(0xFFF4A340)),
+    OCEAN("Ocean", Color(0xFF0C6FA8), Color(0xFFE7F3FA), Color(0xFF23C2B7)),
+    DUSK("Dusk", Color(0xFF3A2A66), Color(0xFFECE8F5), Color(0xFF8A5FC4)),
+    FOREST("Forest", Color(0xFF0B4F3C), Color(0xFFE6F2ED), Color(0xFF6FBE63)),
+    ;
+
+    /** True only for the dedicated gradient entries above - see [gradientStart]. */
+    val isGradient: Boolean get() = gradientStart != null
+
+    /** [WarehouseStatusColors.accentGradient]'s own two stops for this palette specifically -
+     *  what a picker swatch previews, since it's exactly what the app renders once this is
+     *  selected. */
+    val gradientBrush: Brush
+        get() = Brush.linearGradient(listOf(gradientStart ?: lerp(accent, Color.White, 0.30f), accent))
 }
+
+/**
+ * A darker shade of [ColorPalette.accent], scaled toward black rather than looked up from a
+ * second per-palette colour - so every flat [ColorPalette] entry gets a
+ * matching dark variant for free, instead of needing an `accentDark` hand-tuned alongside each
+ * `accent`/`accentDim` pair the way the picker screenshot's own colours already were.
+ */
+private fun Color.darken(factor: Float = 0.72f): Color = copy(
+    red = red * factor,
+    green = green * factor,
+    blue = blue * factor,
+)
 
 /**
  * The "dim" tints (badge backgrounds behind a status colour) aren't part of Material3's own
@@ -108,10 +170,34 @@ enum class ColorPalette(val label: String, val accent: Color, val accentDim: Col
  * `State` during composition.
  */
 object WarehouseStatusColors {
-    var accent by mutableStateOf(ColorPalette.BLUE.accent)
+    var accent by mutableStateOf(ColorPalette.MICROSOFT.accent)
         internal set
-    var accentDim by mutableStateOf(ColorPalette.BLUE.accentDim)
+    var accentDim by mutableStateOf(ColorPalette.MICROSOFT.accentDim)
         internal set
+    /** The top and bottom bars' fill - a shade darker than [accent] so the chrome framing a
+     * screen reads as distinct from the accent-filled tiles/buttons inside it, rather than the
+     * whole screen bleeding into one flat colour top to bottom. */
+    var accentDark by mutableStateOf(ColorPalette.MICROSOFT.accent.darken())
+        internal set
+    /** [ColorPalette.gradientStart] of whichever palette is active - a real second hue for a
+     *  dedicated gradient entry, or null for a flat one (in which case [accentGradient] falls
+     *  back to fading [accent] toward white, as it always did). */
+    var accentGradientStart by mutableStateOf<Color?>(null)
+        internal set
+    /** Light-to-full accent sweep, top-left to bottom-right - the hero cards' and tile arrow
+     * bars' fill. Two real hues for a gradient palette ([accentGradientStart]); one colour faded
+     * toward white for a flat one - either way it follows the chosen palette like everything
+     * else. */
+    val accentGradient: Brush
+        get() = Brush.linearGradient(listOf(accentGradientStart ?: lerp(accent, Color.White, 0.30f), accent))
+    /**
+     * The "not available" tile bar - deliberately not palette-derived like [accentGradient].
+     * A greyed-out card reads as "unavailable" precisely because it steps outside whichever
+     * palette is active; tinting it toward the chosen accent would make it look like a dim
+     * version of an enabled tile instead. Shared by both reasons a tile can be unusable - not
+     * built yet, and blocked by an admin - see HomeScreen's ModuleTileCard.
+     */
+    val mutedGradient: Brush = Brush.linearGradient(listOf(Color(0xFFB8C0CC), Color(0xFF8E98A6)))
     val green = Green
     val greenDim = GreenDim
     val amber = Amber
@@ -138,6 +224,8 @@ private fun industrialColors(palette: ColorPalette) = lightColorScheme(
     onSurface = Text1,
     surfaceVariant = Surface2,
     onSurfaceVariant = Text2,
+
+
     outline = Border,
 )
 
@@ -148,73 +236,109 @@ private fun industrialColors(palette: ColorPalette) = lightColorScheme(
  * length. The mockup's *relative* hierarchy and letter-spacing character carry over; the
  * absolute sizes do not. Item numbers, quantities and order numbers stay large - those are what
  * a wrong reading actually costs.
+ *
+ * Roboto throughout ([FontFamily.Default] resolves to it on Android without bundling anything -
+ * it already ships with the OS), but not one uniform weight any more. Light (300) was tried
+ * everywhere on explicit request and then partly reverted: this app's own founding reason for
+ * its type choices is legibility at arm's length, through a scratched screen protector, under
+ * dock/sodium lighting - conditions where thin strokes lose first. Display/headline/title roles
+ * (read as headers and at-a-glance numbers, often a size or a bold override away from needing
+ * the extra weight anyway) keep a light-ish Medium; body copy (paragraphs, descriptions - the
+ * text most likely to actually be read start to finish in bad light) goes back to Normal; label
+ * roles (small text: codes, chips, timestamps) get Medium too since small-and-thin is the worst
+ * combination of the three.
+ *
+ * Takes [scale] rather than being a fixed `val` so the Settings "Appearance" size picker
+ * (see [DisplayScale]) can grow every size at once - called fresh from [D365MobileTheme] on
+ * every recomposition, the same as [industrialColors] already is for the accent colour.
+ * Letter-spacing is left unscaled: it's already small and isn't what "text size" means here.
  */
-val WarehouseTypography = Typography(
+private fun warehouseTypography(scale: Float) = Typography(
     displaySmall = TextStyle(
-        fontFamily = RajdhaniFamily, fontWeight = FontWeight.Bold,
-        fontSize = 34.sp, lineHeight = 38.sp, letterSpacing = 0.3.sp,
+        fontFamily = FontFamily.Default, fontWeight = FontWeight.Medium,
+        fontSize = 34.sp * scale, lineHeight = 38.sp * scale, letterSpacing = 0.3.sp,
     ),
     headlineMedium = TextStyle(
-        fontFamily = RajdhaniFamily, fontWeight = FontWeight.Bold,
-        fontSize = 27.sp, lineHeight = 32.sp, letterSpacing = 0.3.sp,
+        fontFamily = FontFamily.Default, fontWeight = FontWeight.Medium,
+        fontSize = 27.sp * scale, lineHeight = 32.sp * scale, letterSpacing = 0.3.sp,
     ),
     headlineSmall = TextStyle(
-        fontFamily = RajdhaniFamily, fontWeight = FontWeight.SemiBold,
-        fontSize = 23.sp, lineHeight = 28.sp, letterSpacing = 0.2.sp,
+        fontFamily = FontFamily.Default, fontWeight = FontWeight.Medium,
+        fontSize = 23.sp * scale, lineHeight = 28.sp * scale, letterSpacing = 0.2.sp,
     ),
     titleLarge = TextStyle(
-        fontFamily = RajdhaniFamily, fontWeight = FontWeight.SemiBold,
-        fontSize = 20.sp, lineHeight = 25.sp, letterSpacing = 0.2.sp,
+        fontFamily = FontFamily.Default, fontWeight = FontWeight.Medium,
+        fontSize = 20.sp * scale, lineHeight = 25.sp * scale, letterSpacing = 0.2.sp,
     ),
     titleMedium = TextStyle(
-        fontFamily = RajdhaniFamily, fontWeight = FontWeight.SemiBold,
-        fontSize = 17.sp, lineHeight = 22.sp, letterSpacing = 0.2.sp,
+        fontFamily = FontFamily.Default, fontWeight = FontWeight.Medium,
+        fontSize = 17.sp * scale, lineHeight = 22.sp * scale, letterSpacing = 0.2.sp,
     ),
-    bodyLarge = TextStyle(fontSize = 16.sp, lineHeight = 22.sp),
-    bodyMedium = TextStyle(fontSize = 14.sp, lineHeight = 19.sp),
+    bodyLarge = TextStyle(
+        fontFamily = FontFamily.Default, fontWeight = FontWeight.Normal,
+        fontSize = 16.sp * scale, lineHeight = 22.sp * scale,
+    ),
+    bodyMedium = TextStyle(
+        fontFamily = FontFamily.Default, fontWeight = FontWeight.Normal,
+        fontSize = 14.sp * scale, lineHeight = 19.sp * scale,
+    ),
     labelLarge = TextStyle(
-        fontFamily = JetBrainsMonoFamily, fontWeight = FontWeight.SemiBold,
-        fontSize = 13.sp, lineHeight = 17.sp, letterSpacing = 0.4.sp,
+        fontFamily = FontFamily.Default, fontWeight = FontWeight.Medium,
+        fontSize = 13.sp * scale, lineHeight = 17.sp * scale, letterSpacing = 0.4.sp,
     ),
     labelMedium = TextStyle(
-        fontFamily = JetBrainsMonoFamily, fontWeight = FontWeight.Normal,
-        fontSize = 11.sp, lineHeight = 15.sp, letterSpacing = 0.3.sp,
+        fontFamily = FontFamily.Default, fontWeight = FontWeight.Medium,
+        fontSize = 11.sp * scale, lineHeight = 15.sp * scale, letterSpacing = 0.3.sp,
     ),
     labelSmall = TextStyle(
-        fontFamily = JetBrainsMonoFamily, fontWeight = FontWeight.Normal,
-        fontSize = 10.sp, lineHeight = 13.sp, letterSpacing = 0.6.sp,
+        fontFamily = FontFamily.Default, fontWeight = FontWeight.Medium,
+        fontSize = 10.sp * scale, lineHeight = 13.sp * scale, letterSpacing = 0.6.sp,
     ),
 )
 
 /**
- * Square, not Material's own default pill/rounded set - a Compose `Button` is fully rounded
- * (`MaterialTheme.shapes.full`) unless a theme overrides it, and every other unshaped component
- * (Card, OutlinedTextField, dialogs) reaches for one of these five tokens too. Left at Compose's
- * defaults, this whole app would render soft rounded-corner shapes at every one of those call
- * sites without a single line here saying so - not a look this identity chose, just an
- * unclaimed default. Zero corners are also strictly cheaper to draw than a rounded rect: no
- * corner path, no extra anti-aliasing pass at each of the four corners - real, if usually small,
- * savings repeated on every button and card on a screen redrawn every scan.
+ * Softly rounded (8-20dp), replacing the square-everywhere set this app used to carry, on
+ * request: the layout it was restyled to match (white cards, rounded inputs, pill-ish buttons)
+ * is rounded throughout. Every unshaped component (Card, OutlinedTextField, dialogs) reaches for
+ * one of these five tokens; buttons and hand-built surfaces use [WarehouseDimens.CardCorner]
+ * instead, which is kept in step with `medium` here.
  */
-private val SquareShapes = Shapes(
-    extraSmall = RoundedCornerShape(0.dp),
-    small = RoundedCornerShape(0.dp),
-    medium = RoundedCornerShape(0.dp),
-    large = RoundedCornerShape(0.dp),
-    extraLarge = RoundedCornerShape(0.dp),
+private val AppShapes = Shapes(
+    extraSmall = RoundedCornerShape(8.dp),
+    small = RoundedCornerShape(10.dp),
+    medium = RoundedCornerShape(12.dp),
+    large = RoundedCornerShape(16.dp),
+    extraLarge = RoundedCornerShape(20.dp),
 )
 
+/** Unscaled bases for [WarehouseDimens.MinTouchTarget]/[WarehouseDimens.StepperButton] - see
+ * [D365MobileTheme]'s `SideEffect`, which multiplies these by the worker's chosen [DisplayScale]. */
+private val BaseMinTouchTarget = 56.dp
+private val BaseStepperButton = 64.dp
+
 object WarehouseDimens {
-    /** Minimum interactive size. Sized for a gloved fingertip, not a bare one. */
-    val MinTouchTarget = 56.dp
+    /**
+     * Minimum interactive size. Sized for a gloved fingertip, not a bare one.
+     *
+     * `mutableStateOf`-backed, not a plain `val` - same reason as
+     * [WarehouseStatusColors.accent]: [D365MobileTheme] updates this when the worker's chosen
+     * [DisplayScale] changes, and every composable already reading `WarehouseDimens.MinTouchTarget`
+     * recomposes, without needing a `CompositionLocal` plumbed through the app for it. Never goes
+     * below [BaseMinTouchTarget] - [DisplayScale] only ever scales up from 100%, so this floor
+     * can't be shrunk out from under a gloved fingertip by the setting meant to help reach it.
+     */
+    var MinTouchTarget by mutableStateOf(BaseMinTouchTarget)
+        internal set
     val ScreenPadding = 16.dp
     val ItemSpacing = 12.dp
-    /** Square - see [SquareShapes]. Kept as its own token rather than folded away: call sites
-     * that build a shape by hand (`RoundedCornerShape(WarehouseDimens.CardCorner)`, for a
-     * `Box`/custom-drawn surface Material's own `Shapes` slots never reach) still name what they
-     * want, they just all currently want zero. */
-    val CardCorner = 0.dp
-    val StepperButton = 64.dp
+    /** Card/button corner - see [AppShapes]. Kept as its own token: call sites that build a
+     * shape by hand (`RoundedCornerShape(WarehouseDimens.CardCorner)`, for a `Box`/custom-drawn
+     * surface Material's own `Shapes` slots never reach, and the button wrappers) all follow it. */
+    val CardCorner = 12.dp
+
+    /** Same `mutableStateOf` treatment as [MinTouchTarget], and the same reason. */
+    var StepperButton by mutableStateOf(BaseStepperButton)
+        internal set
 
     /**
      * Chrome, not content - shrunk below Material3's own defaults (64dp / 80dp) on the same
@@ -228,29 +352,38 @@ object WarehouseDimens {
      * whose own container only takes a *minimum* height (`defaultMinSize`), not a settable one.
      */
     val TopBarHeight = 52.dp
-    val BottomBarHeight = MinTouchTarget
+    /** A `get()`, not a one-time copy of [MinTouchTarget] - [MinTouchTarget] itself changes live
+     * with [DisplayScale], and a plain `val` here would have frozen at whatever it was on first
+     * read instead of tracking it. */
+    val BottomBarHeight: Dp get() = MinTouchTarget
 }
 
 @Composable
 fun D365MobileTheme(
-    palette: ColorPalette = ColorPalette.BLUE,
+    palette: ColorPalette = ColorPalette.MICROSOFT,
+    scale: DisplayScale = DisplayScale.STANDARD,
     content: @Composable () -> Unit,
 ) {
     // SideEffect, not a plain assignment in the composable body directly: this runs after every
     // successful (re)composition rather than during composition itself, which is where Compose
     // expects a side effect that writes shared/global state (as opposed to a Composable-scoped
     // remember) to live - see the official guidance on SideEffect for publishing Compose state
-    // to non-Compose code. WarehouseStatusColors is read all over this app as a plain object,
-    // not through this composable's own scope, so this is what keeps it in sync with [palette].
+    // to non-Compose code. WarehouseStatusColors/WarehouseDimens are read all over this app as
+    // plain objects, not through this composable's own scope, so this is what keeps them in sync
+    // with [palette]/[scale].
     SideEffect {
         WarehouseStatusColors.accent = palette.accent
         WarehouseStatusColors.accentDim = palette.accentDim
+        WarehouseStatusColors.accentDark = palette.accent.darken()
+        WarehouseStatusColors.accentGradientStart = palette.gradientStart
+        WarehouseDimens.MinTouchTarget = BaseMinTouchTarget * scale.factor
+        WarehouseDimens.StepperButton = BaseStepperButton * scale.factor
     }
 
     MaterialTheme(
         colorScheme = industrialColors(palette),
-        typography = WarehouseTypography,
-        shapes = SquareShapes,
+        typography = warehouseTypography(scale.factor),
+        shapes = AppShapes,
         content = content,
     )
 }

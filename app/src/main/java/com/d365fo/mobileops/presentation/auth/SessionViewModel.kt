@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.d365fo.mobileops.data.repository.WorkerContextRepositoryImpl
 import com.d365fo.mobileops.data.security.ConnectionSettings
 import com.d365fo.mobileops.data.security.TokenProvider
+import com.d365fo.mobileops.util.NetworkResult
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.withContext
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -20,9 +21,16 @@ import javax.inject.Inject
  * Whether the *device* may talk to D365FO at all.
  *
  * This gate is about the handheld, not the person. Every call to D365FO needs an AAD bearer
- * token, and the device gets one as itself — a service principal, from a configured client
- * secret, acquired silently. There is nothing here for a human to answer, so there is no
- * sign-in screen: the only question is whether the tenant has been configured.
+ * token, and the device gets one as itself, either silently from a configured client secret
+ * (`AuthType.CLIENT_CREDENTIALS`) or from a one-time interactive device-code sign-in done during
+ * commissioning (`AuthType.DEVICE_CODE` - see [DeviceCodeTokenProvider]). Only the *field*
+ * completeness of the connection settings used to gate [SessionState.Ready] - confirmed live as
+ * a real gap once device-code became the compiled default: a device whose fields are filled in
+ * but that has never actually completed the interactive step (or whose refresh token has since
+ * been revoked) still read as Ready, so the failure only ever surfaced later, confusingly, at a
+ * worker's own sign-in attempt. [refresh] now also waits on the token check itself before
+ * confirming Ready, precisely so a device that cannot actually get a token lands on
+ * [NotConfiguredScreen]'s "Ask a supervisor..." message instead.
  *
  * Who is holding the device is a separate question, asked by [WorkerLoginScreen] against
  * `HSMobileOpsUser`. That is the identity a posting is attributed to.
@@ -73,11 +81,24 @@ class SessionViewModel @Inject constructor(
      *
      * Firing it here instead overlaps that 9 s with however long the worker spends typing a
      * user name and password — which is normally longer than 9 s on its own. By the time they
-     * tap Sign in, [ClientCredentialsTokenProvider] usually already holds a cached token, and
+     * tap Sign in, [DeviceCodeTokenProvider] usually already holds a cached token, and
      * [AuthInterceptor] finds it instantly instead of blocking the request on a fresh fetch.
-     * Launched on its own coroutine, not awaited: a slow or failed token fetch must not delay
-     * the sign-in screen appearing, and a real failure still surfaces normally on whichever
-     * call needs the token first.
+     * Launched on its own coroutine, not awaited by the [SessionState.Ready] decision above it -
+     * a slow token fetch must not delay the sign-in screen appearing, and the overwhelmingly
+     * common case (a cached, still-valid token) resolves instantly with no network call and
+     * never touches [_state] at all.
+     *
+     * A genuine **failure** does though: it corrects [_state] away from the optimistic Ready set
+     * above, to [SessionState.SignedOut] with the real reason. Confirmed live as a real gap
+     * before this existed - [canGoLive] only checks that the connection *fields* are filled in,
+     * which is true for a device that has never completed device-code sign-in at all (or whose
+     * refresh token has since been revoked) just as much as for one that has, so Ready used to
+     * mean nothing more than "somebody typed something into Settings once". The failure used to
+     * surface only much later, confusingly, at a worker's own sign-in attempt, which had nothing
+     * to do with the actual problem. Safe to overwrite unconditionally here because [refresh] is
+     * only ever called right after launch or right after [signOut] - never mid-shift while a
+     * worker is already past this gate - so this can't yank an active worker out from under
+     * themselves over an unrelated API call's own, separately-handled failure elsewhere.
      */
     fun refresh() {
         viewModelScope.launch(handler) {
@@ -94,23 +115,40 @@ class SessionViewModel @Inject constructor(
             }
 
             _state.value = if (ready == null) {
+                Timber.i("device session: not configured")
                 SessionState.NotConfigured
             } else {
+                Timber.i("device session: ready ('%s')", ready.displayName)
                 SessionState.Ready(ready.displayName.ifBlank { "Service account" })
             }
         }
 
         if (connectionSettings.canGoLive()) {
-            viewModelScope.launch(handler) { tokenProvider.acquireSilent() }
+            viewModelScope.launch(handler) {
+                when (val result = tokenProvider.acquireSilent()) {
+                    is NetworkResult.Error -> {
+                        Timber.w("device session: token check failed - %s", result.failure.message)
+                        _state.value = SessionState.SignedOut(result.failure.message)
+                    }
+                    NetworkResult.Loading, is NetworkResult.Success -> Unit
+                }
+            }
         }
     }
 
     fun signOut() {
+        Timber.i("device session: signing out")
         viewModelScope.launch(handler) {
             // Drops the cached device token too. The next person to pick the handheld up
-            // starts from nothing rather than inheriting a live connection.
+            // starts from nothing rather than inheriting a live connection - refresh() right
+            // after re-proves that connection immediately, the same check a fresh launch does,
+            // so a normal sign-out lands the next worker on the sign-in screen instead of
+            // parking on NotConfiguredScreen's "cannot reach D365FO" until something else
+            // happens to call refresh() again. If the device genuinely cannot reconnect,
+            // refresh() surfaces that for real - this only removes the pointless detour for
+            // the ordinary case where it can.
             tokenProvider.signOut()
-            _state.value = SessionState.SignedOut()
+            refresh()
         }
     }
 }

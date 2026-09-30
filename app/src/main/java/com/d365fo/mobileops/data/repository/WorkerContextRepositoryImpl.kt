@@ -1,7 +1,5 @@
 package com.d365fo.mobileops.data.repository
 
-import android.content.Context
-import android.provider.Settings
 import com.d365fo.mobileops.data.security.SecureStore
 import com.d365fo.mobileops.data.security.TokenProvider
 import com.d365fo.mobileops.domain.model.WorkerContext
@@ -14,7 +12,6 @@ import javax.inject.Singleton
 
 @Singleton
 class WorkerContextRepositoryImpl @Inject constructor(
-    private val context: Context,
     private val secureStore: SecureStore,
     private val tokenProvider: TokenProvider,
     private val workerSession: WorkerSessionRepository,
@@ -43,10 +40,11 @@ class WorkerContextRepositoryImpl @Inject constructor(
     override suspend fun current(): WorkerContext = load()
 
     /**
-     * Establishes an identity for client-credentials mode.
+     * Establishes a device-level fallback identity, ahead of and independent of any worker
+     * completing sign-in against HSMobileOpsUser.
      *
-     * That grant returns no user, so [load] would find no worker id and hand back
-     * UNAUTHENTICATED — which filters the worklist down to nothing and looks like an empty
+     * Without this, [load] would find no worker id and hand back UNAUTHENTICATED before anyone
+     * has signed in — which filters the worklist down to nothing and looks like an empty
      * warehouse. The id is prefixed `service:` and carries the device id so that the app's
      * own audit rows can still distinguish handhelds, even though D365FO will record the
      * same CreatedBy for all of them.
@@ -96,23 +94,13 @@ class WorkerContextRepositoryImpl @Inject constructor(
     }
 
     /**
-     * A stable per-install device identifier.
-     *
-     * Generated and stored rather than read from hardware: ANDROID_ID is scoped per app
-     * signing key and resets on factory reset, which is exactly the behaviour we want for a
-     * registration record, but reading a hardware serial would require privileged
-     * permissions that a warehouse fleet MDM should not have to grant.
+     * A stable per-install device identifier - was a second, independent copy of exactly the
+     * logic in [SecureStore.deviceId], reading and writing the very same [SecureStore.KEY_DEVICE_ID]
+     * key. Delegating instead of duplicating means there is exactly one place this can drift from
+     * (see that method's own doc for the logging this now inherits) rather than two that happened
+     * to agree only because both always ran against the same underlying key.
      */
-    private fun deviceId(): String =
-        secureStore.getString(SecureStore.KEY_DEVICE_ID) ?: run {
-            @Suppress("HardwareIds")
-            val generated = Settings.Secure.getString(
-                context.contentResolver,
-                Settings.Secure.ANDROID_ID,
-            ) ?: java.util.UUID.randomUUID().toString()
-            secureStore.putString(SecureStore.KEY_DEVICE_ID, generated)
-            generated
-        }
+    private fun deviceId(): String = secureStore.deviceId()
 
     private companion object {
         const val KEY_PERSONNEL_NUMBER = "worker_personnel_number"

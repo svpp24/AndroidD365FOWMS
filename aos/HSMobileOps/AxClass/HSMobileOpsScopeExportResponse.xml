@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsScopeExportResponse</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Response from HSMobileOpsCountingService::exportOpenJournals.
+///
+/// [definitionGroupName] is the request-private project that method just created and scoped to
+/// one journal. It does not start the export: the app passes this name to the public
+/// `ExportToPackage` OData action (with an execution id it generates itself), then polls
+/// `GetExecutionSummaryStatus` and fetches `GetExportedPackageUrl` - see that method's own doc
+/// comment.
+/// </summary>
+[DataContractAttribute]
+class HSMobileOpsScopeExportResponse
+{
+    boolean success;
+    str     errorCode;
+    str     definitionGroupName;
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmSuccess</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Success')]
+    public boolean parmSuccess(boolean _value = success)
+    {
+        success = _value;
+        return success;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmErrorCode</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ErrorCode')]
+    public str parmErrorCode(str _value = errorCode)
+    {
+        errorCode = _value;
+        return errorCode;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmDefinitionGroupName</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Set only when [parmSuccess]. Pass as `definitionGroupId` to `ExportToPackage`.
+    /// </summary>
+    [DataMemberAttribute('DefinitionGroupName')]
+    public str parmDefinitionGroupName(str _value = definitionGroupName)
+    {
+        definitionGroupName = _value;
+        return definitionGroupName;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

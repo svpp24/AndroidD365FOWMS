@@ -1,5 +1,6 @@
 package com.d365fo.mobileops.presentation.auth
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -11,8 +12,6 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import com.d365fo.mobileops.presentation.common.components.SquareButton as Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import com.d365fo.mobileops.presentation.common.components.SquareOutlinedButton as OutlinedButton
@@ -27,6 +26,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -34,6 +35,9 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.d365fo.mobileops.R
+import com.d365fo.mobileops.presentation.common.components.ErrorBanner
+import com.d365fo.mobileops.presentation.common.theme.WarehouseStatusColors
 
 /**
  * Worker sign-in.
@@ -85,9 +89,37 @@ fun WorkerLoginScreen(
         verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterVertically),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
+        // At the top, not tucked between the button and "Connection settings" - a worker
+        // scanning down the screen after a failed attempt should see why before they see
+        // anything else, not after scrolling past fields they already filled in correctly.
+        state.error?.let { message ->
+            ErrorBanner(message = message)
+        }
+
+        // Same artwork as the launcher icon, but its own drawable (res/drawable-nodpi/ic_app_logo.png)
+        // rather than reusing ic_launcher_foreground directly - this one is laid out at full
+        // rectangular size on a plain background, not recentred/cropped into an adaptive icon's
+        // safe zone. Sits after the error card, not before it - the error staying the first thing
+        // a worker sees on a failed attempt is the whole reason it's placed above everything else,
+        // see this screen's own class doc.
+        Image(
+            painter = painterResource(id = R.drawable.ic_app_logo),
+            contentDescription = null,
+            modifier = Modifier.heightIn(max = 104.dp),
+        )
+
+        // Ownership/trademark notice, right under the mark it names - the one screen every
+        // worker sees on every device, signed in or not, so it doesn't depend on anyone
+        // finding it under Settings.
+        Text(
+            text = stringResource(R.string.copyright_notice),
+            style = MaterialTheme.typography.labelSmall,
+            color = WarehouseStatusColors.text3,
+        )
+
         Text(
             text = "Sign in",
-            style = MaterialTheme.typography.headlineMedium,
+            style = MaterialTheme.typography.headlineSmall,
             fontWeight = FontWeight.SemiBold,
         )
 
@@ -138,22 +170,6 @@ fun WorkerLoginScreen(
                 CircularProgressIndicator(modifier = Modifier.heightIn(max = 24.dp))
             } else {
                 Text("Sign in")
-            }
-        }
-
-        state.error?.let { message ->
-            Card(
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.errorContainer,
-                ),
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text(
-                    text = message,
-                    modifier = Modifier.padding(12.dp),
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onErrorContainer,
-                )
             }
         }
 

@@ -23,5 +23,17 @@
 			<Name>HSMobileOpsPostingSvc</Name>
 			<Service>HSMobileOpsPostingSvc</Service>
 		</AxServiceGroupService>
+		<AxServiceGroupService>
+			<Name>HSMobileOpsCountingSvc</Name>
+			<Service>HSMobileOpsCountingSvc</Service>
+		</AxServiceGroupService>
+		<AxServiceGroupService>
+			<Name>HSMobileOpsSkuSvc</Name>
+			<Service>HSMobileOpsSkuSvc</Service>
+		</AxServiceGroupService>
+		<AxServiceGroupService>
+			<Name>HSMobileOpsLicenseSvc</Name>
+			<Service>HSMobileOpsLicenseSvc</Service>
+		</AxServiceGroupService>
 	</Services>
 </AxServiceGroup>

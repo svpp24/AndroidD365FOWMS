@@ -18,7 +18,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
+import com.d365fo.mobileops.presentation.common.components.AppTopBar as TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -45,9 +45,9 @@ import com.d365fo.mobileops.presentation.common.theme.WarehouseDimens
  * Unlike every scan-first field this replaces, the keyboard shows immediately here - that is the
  * one reason this screen exists, so there is nothing to hide.
  *
- * No ViewModel of its own: purely presentational, parameterised by whoever navigates here (the
- * same pattern already set by [MenuRow]) so one implementation covers PO/transfer/item/location/
- * batch/serial numbers, PO/transfer/location lookups, and the quantity step's numeric entry.
+ * No ViewModel of its own: purely presentational, parameterised by whoever navigates here so one
+ * implementation covers PO/transfer/item/location/batch/serial numbers, PO/transfer/location
+ * lookups, and the quantity step's numeric entry.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -66,7 +66,10 @@ fun TextEntryScreen(
 
     LaunchedEffect(Unit) {
         runCatching { focusRequester.requestFocus() }
-        keyboardController?.show()
+        // The numeric-keypad step (Quantity) supplies its own tap-only pad below - showing the
+        // system IME too would stack both keyboards on screen at once, confirmed live. Hiding it
+        // here, and the field itself is readOnly in that case so a later tap can't bring it back.
+        if (showNumericKeypad) keyboardController?.hide() else keyboardController?.show()
     }
 
     val submit = {
@@ -104,6 +107,7 @@ fun TextEntryScreen(
             OutlinedTextField(
                 value = entry,
                 onValueChange = { entry = it },
+                readOnly = showNumericKeypad,
                 singleLine = true,
                 textStyle = if (keyboardType == KeyboardType.Decimal) {
                     MaterialTheme.typography.headlineSmall.copy(textAlign = TextAlign.Center)

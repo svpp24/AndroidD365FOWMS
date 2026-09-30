@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxMenuItemDisplay xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsLicenseSetup</Name>
+	<Label>Mobile app license</Label>
+	<HelpText>Paste the vendor-issued license key that controls whether ForeFront Mobile will sign anyone in.</HelpText>
+	<Object>HSMobileOpsLicenseSetup</Object>
+	<ObjectType>Form</ObjectType>
+</AxMenuItemDisplay>

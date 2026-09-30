@@ -1,0 +1,154 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsLicenseService</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// The launch-time half of the certificate-chain licensing design - called before any worker has
+/// signed in, unlike HSMobileOpsUserService::signIn's own license/device gate which only ever
+/// runs once someone is already attempting to sign in.
+///
+/// **getLicense** hands back the raw signed license string; the app verifies it itself against
+/// its own already-activated, root-verified certificate - this service never asserts "the
+/// license is valid," only "here is what is on file," the same "app is the primary verifier"
+/// design HSMobileOpsLicense's own class doc describes.
+///
+/// **registerDevice** is this design's explicit device-limit gate, called by the app once per
+/// launch - HSMobileOpsUserService::signIn keeps its own inline gate too (see that method's own
+/// doc), so a device that has never called this at all is still caught there the first time a
+/// worker actually tries to sign in. The two share one implementation
+/// (HSMobileOpsDevice::checkDeviceLimit) so they can never disagree.
+/// </summary>
+class HSMobileOpsLicenseService
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>getLicense</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Returns the configured license string and this server's own UTC clock. Re-runs
+    /// HSMobileOpsLicense::verify() in full (not just "is a license configured") so a bad
+    /// certificate, a bad signature, an expired license or a customer/tenant mismatch all come
+    /// back as the same ErrorCode the app already knows how to show - see
+    /// HSMobileOpsSignInResponse's own error codes, reused verbatim here.
+    ///
+    /// `[Wrappable(false), Hookable(false)]` and `final` - same reasoning as
+    /// HSMobileOpsUserService::signIn: nothing may wrap or hook this to force a result the actual
+    /// verify() call did not produce.
+    /// </summary>
+    [Wrappable(false), Hookable(false)]
+    public final HSMobileOpsGetLicenseResponse getLicense(HSMobileOpsGetLicenseRequest _request)
+    {
+        HSMobileOpsGetLicenseResponse response = new HSMobileOpsGetLicenseResponse();
+        HSMobileOpsLicenseStatus      license;
+        HSMobileOpsLicenseSetup       setup;
+        DataAreaId                    company;
+
+        response.parmSuccess(false);
+        response.parmServerUtcNow(System.DateTime::get_UtcNow().ToString('yyyy-MM-ddTHH:mm:ssZ'));
+
+        if (_request)
+        {
+            company = _request.parmDataAreaId();
+        }
+
+        if (!company || !CompanyInfo::findDataArea(company).RecId)
+        {
+            response.parmErrorCode('INVALID_REQUEST');
+            response.parmMessage('Company is required');
+            return response;
+        }
+
+        license = HSMobileOpsLicense::verify();
+        if (!license.parmValid())
+        {
+            response.parmErrorCode(license.parmErrorCode());
+            response.parmMessage(license.parmMessage());
+            return response;
+        }
+
+        // Not gated by changecompany - license state is environment-wide, the same reasoning
+        // HSMobileOpsUserService::signIn's own license check documents.
+        setup = HSMobileOpsLicenseSetup::find();
+        response.parmLicenseKey(setup.LicenseKey);
+        response.parmSuccess(true);
+
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>registerDevice</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The app's own launch-time device-registration call, before any worker has signed in - see
+    /// the class doc. Re-verifies the license (a device with no valid license should not be able
+    /// to consume a device slot at all), checks the device-limit gate, and on success upserts the
+    /// device row via HSMobileOpsDevice::registerSignIn with a blank user/site/warehouse - those
+    /// three get filled in properly the first time a worker actually signs in on this device.
+    ///
+    /// `[Wrappable(false), Hookable(false)]` and `final` - same reasoning as getLicense.
+    /// </summary>
+    [Wrappable(false), Hookable(false)]
+    public final HSMobileOpsRegisterDeviceResponse registerDevice(HSMobileOpsRegisterDeviceRequest _request)
+    {
+        HSMobileOpsRegisterDeviceResponse response = new HSMobileOpsRegisterDeviceResponse();
+        HSMobileOpsLicenseStatus          license;
+        DataAreaId                        company;
+        str                                deviceId;
+
+        response.parmSuccess(false);
+
+        if (_request)
+        {
+            company  = _request.parmDataAreaId();
+            deviceId = _request.parmDeviceId();
+        }
+
+        if (!company || !deviceId || !CompanyInfo::findDataArea(company).RecId)
+        {
+            response.parmErrorCode('INVALID_REQUEST');
+            response.parmMessage('Company and device id are required');
+            return response;
+        }
+
+        license = HSMobileOpsLicense::verify();
+        if (!license.parmValid())
+        {
+            response.parmErrorCode(license.parmErrorCode());
+            response.parmMessage(license.parmMessage());
+            return response;
+        }
+
+        if (!HSMobileOpsDevice::checkDeviceLimit(deviceId, license.parmMaxDevices()))
+        {
+            response.parmErrorCode('DEVICE_LIMIT_REACHED');
+            response.parmMessage(strFmt(
+                'This app is licensed for %1 device(s), and that many are already active. Contact your administrator.',
+                license.parmMaxDevices()));
+            return response;
+        }
+
+        HSMobileOpsDevice::registerSignIn(
+            deviceId,
+            _request.parmDeviceBrand(),
+            _request.parmDeviceModel(),
+            _request.parmPlatform(),
+            _request.parmPlatformVersion(),
+            _request.parmAppVersionName(),
+            '',
+            '',
+            '');
+
+        response.parmSuccess(true);
+        return response;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

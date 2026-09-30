@@ -1,0 +1,302 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsCountingExportSetup</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Creates the DMF definition groups counting-journal lines flow through, entirely by code, on
+/// first use. Both target `InventInventoryCountingJournalLineEntity`.
+///
+/// **Export creates a new definition group for every request** (`ensureExportForJournal`, unique
+/// name each call) - the strongest form of the per-journal isolation described next. Historical
+/// context follows.
+///
+/// **Export is one definition group per journal, not one shared group.** The first version
+/// shared a single `HSMobileOpsCountingExport` project across every journal, scoped by rewriting
+/// its packed `QueryData` per request - which broke under two workers requesting *different*
+/// journals close together (both rewrite the same row; whichever write lands last wins) and,
+/// even after being widened to scope to every open journal at once to close that race, still
+/// left concurrent *executions* sharing the same project's staging infrastructure underneath the
+/// filter - the same category of risk Microsoft's own docs flag for `ImportFromPackage` ("don't
+/// call this in parallel"), just undocumented for the synchronous `exportToFile` path this app
+/// uses. A project per journal (`ensureExportForJournal`) removes the shared state entirely:
+/// nothing two concurrent requests for different journals can collide on, because each gets its
+/// own project. Only became practical once `ensureDefinitionGroup`/`ensureEntityInGroup` below
+/// were confirmed reliable - creating one project used to be the riskiest, most-guessed part of
+/// this whole model; creating N of them was out of the question until then.
+///
+/// **Import stays on one shared project** (`HSMobileOpsCountingImport`) - see
+/// `HSMobileOpsCountingService::importCounts`'s own doc comment for why: it moved to
+/// `DMFPackageImporter`'s enqueue-a-batch-job pattern, which gets its concurrency safety from
+/// D365's own batch framework rather than from project isolation, so it doesn't need the same
+/// per-request fix export does.
+///
+/// Rebuilt around confirmed production APIs found in a real, shipped integration class
+/// (`DataManagementIntegrationUtils`, from the Personnel/HCM integration module) rather than the
+/// raw `DmfDefinitionGroup`/`DmfDefinitionGroupEntity` table inserts this class started with.
+/// That reference is what unblocked two separate live failures:
+///
+/// - `DmfDefinitionGroup.OperationType` is the real export/import direction field - on the
+///   definition group (parent), not the entity row, contrary to this class's own first guess.
+///   `Adapter` and `GenerateDataPackage` are two more real fields the earlier raw insert never
+///   set at all.
+/// - `DMFEntityBase::addEntityForProcessingV3(...)` is the real, complete "add this entity to
+///   this project" API. It handles field mapping and whatever registration
+///   `DMFEntityExporter::exportToFile` needs internally - confirmed missing before:
+///   `exportToFile` threw `Entity 'InventInventoryCountingJournalLineEntity' not found` against
+///   a project whose entity row this class had inserted by hand, with no mapping generated at
+///   all. One call replaces this class's whole earlier guess-one-field-at-a-time approach.
+///
+/// **What's confirmed vs guessed in the `addEntityForProcessingV3` call, precisely**: the
+/// reference passes twelve positional arguments; this class mirrors all twelve exactly as shown
+/// there, substituting only this app's own definition group/entity names. Which of the
+/// unlabelled `true`/`false`/`''` arguments matter for *this* entity, versus being
+/// Personnel-integration-specific defaults that happen to work here too, is not independently
+/// verified - reproduced faithfully because guessing new values at any of those positions would
+/// be a worse bet than reusing values known to work in real, shipped code.
+/// </summary>
+class HSMobileOpsCountingExportSetup
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>ensureExportForJournal</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Creates a brand-new export definition group for this one request and attaches the
+    /// counting-journal-line entity to it - a new project on every call, never reused, so
+    /// concurrent requests (different journals, or even the same journal) can never share a
+    /// project, its packed query, or its staging state, and a project left half-configured by an
+    /// earlier failed attempt can never poison a later one. Returns the group's name, ready for
+    /// HSMobileOpsCountingService to scope and export it. Projects accumulate (one per request)
+    /// and are not removed here.
+    /// </summary>
+    public static DMFDefinitionGroupName ensureExportForJournal(InventJournalId _journalId)
+    {
+        DMFDefinitionGroupName groupName = HSMobileOpsCountingExportSetup::exportDefinitionGroupName(_journalId);
+
+        HSMobileOpsCountingExportSetup::ensureDefinitionGroup(groupName, DMFOperationType::Export);
+        HSMobileOpsCountingExportSetup::ensureEntityInGroup(groupName);
+
+        return groupName;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>ensureImport</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Creates (or confirms) the shared counted-quantity-back import definition group - see this
+    /// class's own doc comment on why import stays on one shared project while export does not.
+    /// Called from `HSMobileOpsCountingService::importCounts` before every enqueue.
+    /// </summary>
+    public static void ensureImport()
+    {
+        HSMobileOpsCountingExportSetup::ensureDefinitionGroup(
+            HSMobileOpsCountingExportSetup::importDefinitionGroupName(), DMFOperationType::Import);
+        HSMobileOpsCountingExportSetup::ensureEntityInGroup(
+            HSMobileOpsCountingExportSetup::importDefinitionGroupName());
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>ensureDefinitionGroup</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// `DataManagementIntegrationUtils::createDefinitionGroup`'s own pattern, confirmed from
+    /// real shipped code: `Adapter`, `DefinitionGroupName`, `Description`, `OperationType`,
+    /// `GenerateDataPackage` are the fields it sets - none of them guessed this time, all copied
+    /// from a working reference. The reference also calls `DMFParameters::find(false, true,
+    /// false)` after creating a group ("make sure the entity and data source types tables have
+    /// been populated before attempting to use them") - confirmed live to be what actually
+    /// registers an entity into DMF's own internal catalog (`DMFEntity`), which this class's
+    /// earlier raw insert never did and which `exportToFile`'s "Entity not found" pointed at.
+    /// </summary>
+    private static void ensureDefinitionGroup(DMFDefinitionGroupName _groupName, DMFOperationType _direction)
+    {
+        DmfDefinitionGroup definitionGroup = DmfDefinitionGroup::find(_groupName);
+
+        if (!definitionGroup.RecId)
+        {
+            ttsbegin;
+
+            definitionGroup.clear();
+            definitionGroup.Adapter              = DMFAdapter::SSISAdapter;
+            definitionGroup.DefinitionGroupName  = _groupName;
+            definitionGroup.Description          = _groupName;
+            definitionGroup.OperationType        = _direction;
+            definitionGroup.GenerateDataPackage  = true;
+            definitionGroup.insert();
+
+            ttscommit;
+
+            info(strFmt('Created DmfDefinitionGroup %1 (%2).', _groupName, enum2Str(_direction)));
+        }
+
+        DMFParameters::find(false, true, false);
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>ensureEntityInGroup</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// `DataManagementIntegrationUtils::addEntityToDefinitionGroup`'s own pattern, confirmed
+    /// from real shipped code - `DMFEntityBase::addEntityForProcessingV3` in place of a raw
+    /// `DmfDefinitionGroupEntity` insert. See this class's own doc comment on exactly what is
+    /// and is not independently confirmed about the positional arguments below.
+    ///
+    /// **The entity name passed here must be DMF's own name for it, not the AOT name.** This is
+    /// what kept every earlier attempt failing: `DmfDefinitionGroupEntity.Entity` holds
+    /// `DMFEntity.EntityName` (`Inventory counting journal lines`), and rows written with the AOT
+    /// name (`InventInventoryCountingJournalLineEntity`) were invisible to the Data Management UI
+    /// and to DMF itself - `Entity ... not found`, or an export stuck at `NotRun`. See
+    /// [entityName]. The source is `'CSV'` (a real `DMFDataSource` row, matching the format this
+    /// app parses) and `SkipStaging` is false, matching the row the UI's own "Add entity" wrote.
+    /// </summary>
+    private static void ensureEntityInGroup(DMFDefinitionGroupName _groupName)
+    {
+        str entityName = HSMobileOpsCountingExportSetup::entityName();
+        DmfDefinitionGroupEntity existing = DMFDefinitionGroupEntity::find(_groupName, entityName);
+
+        if (existing.RecId)
+        {
+            if (existing.Source == 'CSV')
+            {
+                return;
+            }
+
+            // Self-heals a row this method itself left behind before the source was corrected
+            // from 'XML-Element' to 'CSV' - without this, the find() above would keep finding
+            // the same stale, mismatched-source row forever and never re-add it correctly, the
+            // same trap this class hit once already with a whole stale definition group. Safe
+            // to delete outright: this row only ever exists because this method created it.
+            str staleSource = existing.Source;
+
+            ttsbegin;
+            existing.selectForUpdate(true);
+            existing.delete();
+            ttscommit;
+
+            info(strFmt('Removed stale %1/%2 registration (Source was %3) before re-adding.',
+                _groupName, entityName, staleSource));
+        }
+
+        DMFEntityBase::addEntityForProcessingV3(
+            _groupName,
+            _groupName,
+            entityName,
+            'CSV',
+            '',
+            '@SYS6047',
+            false,
+            true,
+            '',
+            false,
+            DMFRefreshType::FullPush,
+            false);
+
+        info(strFmt('Added %1 to %2.', entityName, _groupName));
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>run</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Convenience entry point for running this by hand from Visual Studio (right-click > Run).
+    /// Only ensures the shared import project - export projects are per-journal now and don't
+    /// exist to pre-create; kept only because a job needs an Args-taking static method to show
+    /// up as runnable in the designer.
+    /// </summary>
+    public static void run(Args _args)
+    {
+        HSMobileOpsCountingExportSetup::ensureImport();
+
+        info(strFmt('Done. %1 exists.', HSMobileOpsCountingExportSetup::importDefinitionGroupName()));
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>exportDefinitionGroupName</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// A new, unique name on every call - `HCE_<last 12 chars of journal id>_<8 chars of a
+    /// fresh GUID>` - because every "Get data" request gets its own project (see
+    /// [ensureExportForJournal]). Short on purpose: `DmfDefinitionGroupName`'s real maximum
+    /// length is unconfirmed, so this keeps to 25 characters, well under any plausible limit
+    /// (`HCE_JN_000552000` at 16 characters is the longest name confirmed to work live).
+    /// </summary>
+    public static DMFDefinitionGroupName exportDefinitionGroupName(InventJournalId _journalId)
+    {
+        str sanitized = strReplace(_journalId, '-', '_');
+        str journalPart = strLen(sanitized) > 12 ? subStr(sanitized, strLen(sanitized) - 11, 12) : sanitized;
+        str uniquePart = subStr(strRem(guid2Str(newGuid()), '{}-'), 1, 8);
+
+        return 'HCE_' + journalPart + '_' + uniquePart;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>importDefinitionGroupName</Name>
+				<Source><![CDATA[
+
+    public static str importDefinitionGroupName()
+    {
+        return 'HSMobileOpsCountingImport';
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>entityName</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The entity's name *as DMF knows it* - `DMFEntity.EntityName`, which for this entity is the
+    /// label `Inventory counting journal lines`, not the AOT name
+    /// [aotEntityName]. `DmfDefinitionGroupEntity.Entity` holds the DMF name: confirmed live by
+    /// dumping the rows of a UI-built project next to code-built ones - the UI's own row carried
+    /// `Inventory counting journal lines` and was the only one that showed in the "Selected
+    /// entities" grid and the only one that ever exported, while every row this class wrote with
+    /// the AOT name was invisible to the UI and to DMF (`Entity ... not found`, exports stuck at
+    /// `NotRun`). Looked up from the AOT name via `DMFEntity.TargetEntity` rather than hardcoded
+    /// so it follows whatever this environment calls it.
+    /// </summary>
+    public static str entityName()
+    {
+        DMFEntity dmfEntity;
+
+        select firstOnly EntityName from dmfEntity
+            where dmfEntity.TargetEntity == HSMobileOpsCountingExportSetup::aotEntityName();
+
+        if (!dmfEntity.EntityName)
+        {
+            throw error(strFmt(
+                'DMF has no entity whose target is %1 - is it enabled for this environment?',
+                HSMobileOpsCountingExportSetup::aotEntityName()));
+        }
+
+        return dmfEntity.EntityName;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>aotEntityName</Name>
+				<Source><![CDATA[
+
+    public static str aotEntityName()
+    {
+        return 'InventInventoryCountingJournalLineEntity';
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

@@ -132,21 +132,6 @@ interface PurchOrderDao {
     @Query("DELETE FROM purch_line WHERE purchId = :purchId")
     suspend fun deleteLinesFor(purchId: String)
 
-    /**
-     * Housekeeping. Orders that left receivable status are dropped so the worklist stays
-     * small; anything still referenced by an unsynced receipt is retained.
-     */
-    @Query(
-        """
-        DELETE FROM purch_order
-        WHERE status IN ('RECEIVED', 'INVOICED', 'CANCELED')
-          AND purchId NOT IN (
-            SELECT DISTINCT purchId FROM goods_receipt WHERE status != 'POSTED'
-          )
-        """,
-    )
-    suspend fun purgeClosedOrders(): Int
-
     @Query("DELETE FROM purch_order")
     suspend fun clear()
 }

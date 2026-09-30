@@ -41,10 +41,13 @@ data class SignInRequestBody(
 data class SignInServiceResponse(
     @SerialName("Success") val success: Boolean = false,
     /**
-     * INVALID_CREDENTIALS, INACTIVE, LOCKED_OUT, NO_WAREHOUSE, INVALID_REQUEST.
+     * INVALID_CREDENTIALS, INACTIVE, LOCKED_OUT, NO_WAREHOUSE, INVALID_REQUEST, NO_LICENSE,
+     * LICENSE_INVALID, LICENSE_EXPIRED, DEVICE_LIMIT_REACHED.
      *
      * A wrong user name and a wrong password both come back as INVALID_CREDENTIALS by design, so
-     * the client must not try to be more specific than the server was.
+     * the client must not try to be more specific than the server was. The four license-related
+     * codes are checked server-side before credentials are even looked at - see
+     * WorkerSessionRepository.signIn.
      */
     @SerialName("ErrorCode") val errorCode: String? = null,
     @SerialName("Message") val message: String? = null,
@@ -59,6 +62,21 @@ data class SignInServiceResponse(
     @SerialName("MaxOverQty") val maxOverQty: Double = 0.0,
     @SerialName("MustChangePassword") val mustChangePassword: Boolean = false,
     @SerialName("Warehouses") val warehouses: List<WarehouseAssignmentDto> = emptyList(),
+    /**
+     * Set only alongside Success = true, when the app's license expires within the server's
+     * renewal-warning window (HSMobileOpsUserService.LicenseWarningDays) - never blocks the
+     * sign-in, unlike every ErrorCode above. Blank the rest of the time.
+     */
+    @SerialName("LicenseWarning") val licenseWarning: String? = null,
+    /**
+     * Explicit *restrictions* only - an empty list (every worker today, and any worker an admin
+     * has never touched) means every module stays allowed. See
+     * WorkerSessionRepository.signIn's own note on why absence must mean "allowed," never
+     * "denied": this field did not exist before this feature, and every current worker already
+     * has unrestricted access - defaulting to deny-all the moment this ships would silently lock
+     * every module for every worker until an admin explicitly re-granted each one.
+     */
+    @SerialName("ModulePermissions") val modulePermissions: List<ModulePermissionDto> = emptyList(),
 )
 
 @Serializable
@@ -68,6 +86,19 @@ data class WarehouseAssignmentDto(
     /** Shown in the switcher, so it reads "Main store" rather than "100011". */
     @SerialName("WarehouseName") val warehouseName: String = "",
     @SerialName("IsDefault") val isDefault: Boolean = false,
+)
+
+/**
+ * One row of [SignInServiceResponse.modulePermissions] - `module` is a
+ * [com.d365fo.mobileops.domain.model.WarehouseWorkflow] name (`"PO_RECEIVING"` etc.), matched by
+ * `WorkerSessionRepository.signIn()` against that enum. An AOS build that predates this feature,
+ * or one where an admin has never touched a given worker, simply never sends this field or sends
+ * it empty - handled the same way either way (see the field doc above).
+ */
+@Serializable
+data class ModulePermissionDto(
+    @SerialName("Module") val module: String = "",
+    @SerialName("IsAllowed") val isAllowed: Boolean = true,
 )
 
 // -- Password change --------------------------------------------------------------------------

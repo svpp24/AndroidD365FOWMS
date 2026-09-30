@@ -18,6 +18,8 @@ class HSMobileOpsSignInResponse
     real    maxOverQty;
     boolean mustChangePassword;
     List    warehouses;
+    str     licenseWarning;
+    List    modulePermissions;
 
 }
 ]]></Declaration>
@@ -39,11 +41,16 @@ class HSMobileOpsSignInResponse
 				<Source><![CDATA[
 
     /// <summary>
-    /// INVALID_CREDENTIALS, INACTIVE, LOCKED_OUT, NO_WAREHOUSE, INVALID_REQUEST.
+    /// INVALID_CREDENTIALS, INACTIVE, LOCKED_OUT, NO_WAREHOUSE, INVALID_REQUEST, NO_LICENSE,
+    /// LICENSE_INVALID, LICENSE_EXPIRED, DEVICE_LIMIT_REACHED.
     ///
     /// A wrong user name and a wrong password both return INVALID_CREDENTIALS, deliberately.
     /// Distinguishing them tells an attacker which user names exist, which is the first half of
     /// the problem solved for them.
+    ///
+    /// The four license-related codes are checked before any of the others - see
+    /// HSMobileOpsUserService::signIn - so a licensing problem is never mistaken for a wrong
+    /// password, and vice versa.
     /// </summary>
     [DataMemberAttribute('ErrorCode')]
     public str parmErrorCode(str _value = errorCode)
@@ -200,6 +207,44 @@ class HSMobileOpsSignInResponse
     {
         warehouses = _value;
         return warehouses;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmLicenseWarning</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Set only on an otherwise-successful sign-in (Success = true) when the app's license expires
+    /// within HSMobileOpsUserService's renewal-warning window - blank the rest of the time. Never
+    /// blocks the sign-in itself, unlike every ErrorCode on this contract; the app shows it as a
+    /// dismissible notice, not a rejection.
+    /// </summary>
+    [DataMemberAttribute('LicenseWarning')]
+    public str parmLicenseWarning(str _value = licenseWarning)
+    {
+        licenseWarning = _value;
+        return licenseWarning;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmModulePermissions</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Every module this worker has been explicitly touched for, in either direction. Empty for
+    /// every worker an admin has never touched - which means every module stays allowed, not
+    /// that none do. See HSMobileOpsUserModulePermission's class doc for the absence-means-
+    /// allowed rule this list depends on, and the app's own ModulePermissionDto for the same
+    /// note on the receiving end.
+    /// </summary>
+    [DataMemberAttribute('ModulePermissions'),
+     DataCollectionAttribute(Types::Class, classStr(HSMobileOpsModulePermission))]
+    public List parmModulePermissions(List _value = modulePermissions)
+    {
+        modulePermissions = _value;
+        return modulePermissions;
     }
 ]]></Source>
 			</Method>

@@ -3,7 +3,6 @@ package com.d365fo.mobileops.di
 import android.content.Context
 import androidx.room.Room
 import com.d365fo.mobileops.data.local.D365Database
-import com.d365fo.mobileops.data.local.dao.GoodsReceiptDao
 import com.d365fo.mobileops.data.local.dao.InventDimDao
 import com.d365fo.mobileops.data.local.dao.ItemDao
 import com.d365fo.mobileops.data.local.dao.FlowSessionDao
@@ -11,8 +10,10 @@ import com.d365fo.mobileops.data.local.dao.WarehouseDao
 import com.d365fo.mobileops.data.local.dao.JournalDao
 import com.d365fo.mobileops.data.local.dao.LocationDao
 import com.d365fo.mobileops.data.local.dao.OnHandDao
+import com.d365fo.mobileops.data.local.dao.PermissionDao
 import com.d365fo.mobileops.data.local.dao.PurchOrderDao
 import com.d365fo.mobileops.data.local.dao.SalesOrderDao
+import com.d365fo.mobileops.data.local.dao.StagedLineDao
 import com.d365fo.mobileops.data.local.dao.SyncQueueDao
 import com.d365fo.mobileops.data.local.dao.SyncWatermarkDao
 import com.d365fo.mobileops.data.local.dao.TransferOrderDao
@@ -50,7 +51,6 @@ object DatabaseModule {
         .build()
 
     @Provides fun providePurchOrderDao(db: D365Database): PurchOrderDao = db.purchOrderDao()
-    @Provides fun provideGoodsReceiptDao(db: D365Database): GoodsReceiptDao = db.goodsReceiptDao()
     @Provides fun provideItemDao(db: D365Database): ItemDao = db.itemDao()
     @Provides fun provideWarehouseDao(db: D365Database): WarehouseDao = db.warehouseDao()
     @Provides fun provideFlowSessionDao(db: D365Database): FlowSessionDao = db.flowSessionDao()
@@ -63,4 +63,6 @@ object DatabaseModule {
     @Provides fun provideSyncQueueDao(db: D365Database): SyncQueueDao = db.syncQueueDao()
     @Provides fun provideWatermarkDao(db: D365Database): SyncWatermarkDao = db.syncWatermarkDao()
     @Provides fun provideAuditDao(db: D365Database): ValidationAuditDao = db.validationAuditDao()
+    @Provides fun provideStagedLineDao(db: D365Database): StagedLineDao = db.stagedLineDao()
+    @Provides fun providePermissionDao(db: D365Database): PermissionDao = db.permissionDao()
 }

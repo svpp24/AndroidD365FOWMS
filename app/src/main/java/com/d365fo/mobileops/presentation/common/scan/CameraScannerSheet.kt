@@ -4,9 +4,12 @@ import android.Manifest
 import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import android.util.Size
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.Preview
+import androidx.camera.core.resolutionselector.ResolutionSelector
+import androidx.camera.core.resolutionselector.ResolutionStrategy
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.compose.foundation.background
@@ -166,6 +169,22 @@ private fun CameraPreview(onDecoded: (String) -> Unit) {
                     val analysis = ImageAnalysis.Builder()
                         // Drop stale frames rather than queue them; a backlog reads as lag.
                         .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                        // Without this, CameraX's default analysis resolution (well under
+                        // 1080p) is fine for a coarse EAN/CODE128 barcode but not nearly
+                        // enough pixels to resolve a dense QR's fine module grid - this was
+                        // the actual cause of the license-certificate QR never scanning, not
+                        // the QR's own density (confirmed: an independent decoder read the
+                        // same QR image fine at full resolution).
+                        .setResolutionSelector(
+                            ResolutionSelector.Builder()
+                                .setResolutionStrategy(
+                                    ResolutionStrategy(
+                                        Size(1920, 1080),
+                                        ResolutionStrategy.FALLBACK_RULE_CLOSEST_HIGHER_THEN_LOWER,
+                                    ),
+                                )
+                                .build(),
+                        )
                         .build()
                         .also { it.setAnalyzer(executor, analyzer) }
 

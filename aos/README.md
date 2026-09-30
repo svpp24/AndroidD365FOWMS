@@ -9,6 +9,7 @@ POST /api/services/HSMobileOpsServiceGroup/ReceivingService/getPurchaseOrder
 POST /api/services/HSMobileOpsServiceGroup/InquiryService/validateLocation
 POST /api/services/HSMobileOpsServiceGroup/InquiryService/validateSerial
 POST /api/services/HSMobileOpsServiceGroup/InquiryService/getOnHand
+POST /api/services/HSMobileOpsServiceGroup/CountingService/listOpenJournals
 ```
 
 Same AAD bearer token as OData; same resource (the environment URL). Nothing new to authenticate.
@@ -334,6 +335,255 @@ meaning in each context. In the simple `.update(...)` overload it meant "build y
 for the whole order's remaining quantity." Passed to `.specQty()` once the parm lines already exist
 with `ReceiveNow` explicitly set, it means "process every parm line that was inserted" — which is
 now only the ones this method built, from the request.
+
+## Counting journals — list confirmed live; lines deliberately not started
+
+Different shape from everything above it in this file. A counting journal is **created in
+D365FO** — a planner running a cycle count, not the worker starting one from the device — and
+scoped to the worker's assigned warehouse. `HSMobileOpsCountingService::listOpenJournals` follows
+the same load reasoning as the rest of this service group: a direct, indexed, warehouse-scoped
+read of journal headers, cheap because a warehouse has a handful of open counts, not thousands.
+
+**Confirmed live against the DEV environment, 2026-09-23**, curled directly (client-side device
+code sign-in, `DataAreaId=BSP`, `WarehouseId=AAC`):
+
+```
+HTTP 200, 3.56s
+{"Success":true,"ErrorCode":"","Rows":[{"JournalId":"BSP-JN-000552000","JournalNameId":"InvCJ",
+"Description":"Inventory Counting Journal","JournalDate":"2026-09-11T12:00:00","LineCount":231}]}
+```
+
+231 lines on one journal is a real, useful data point for the size this app has to plan around —
+not a toy number, and a fair justification for not fetching those lines through this same
+request/response shape.
+
+Two real mistakes on the way to that result, both worth naming so they don't repeat:
+
+- **`InventJournalType::Counting` doesn't exist — the enum value is `InventJournalType::Count`.**
+  Wrong in both the header filter and the `InventJournalName` join condition; fixed in both places.
+- **`exists join`/`notexists join` have to come last in a join chain.** They're pure semi-join
+  filters with no field access, and the original query put `outer join inventJournalName` *after*
+  the two `exists join`s — which compiled fine (AOT metadata doesn't catch this) but failed at
+  runtime with `Cannot select a record in Inventory journal table (InventJournalTable)`, X++'s
+  generic wrapper for a SELECT that fails at the SQL level. Reordered so `outer join` comes
+  immediately after the base `where`, both `exists join`s last. First real evidence in this file
+  that "compiles" and "the AOT accepted the metadata" are not the same claim as "the SQL is valid"
+  — everything else here was curled before being trusted for exactly this reason; this one nearly
+  wasn't, and it's the reason it should keep being the rule.
+
+One more thing the live response caught: `JournalDate` comes back as `"2026-09-11T12:00:00"` — no
+zone suffix, unlike OData's own datetime format. The Android side originally reused
+`Formatters.odataToEpochMillis` (which requires the `Z` and would have silently parsed this to
+`null`); fixed with a dedicated `Formatters.serviceDateTimeToEpochMillis` that treats the naive
+value as UTC, matching `CreatedDateTime`'s real X++ type.
+
+**The DMF half.** The source entity is settled: **`InventInventoryCountingJournalLineEntity`**, a
+standard data entity confirmed present on this tenant — not a custom one, no `AxDataEntityView`
+needed. Its field list is confirmed too, from Microsoft's Common Data Model docs: `JournalNumber`,
+`LineNumber`, `ItemNumber`, `InventorySiteId`, `WarehouseId`, `WarehouseLocationId`,
+`ItemBatchNumber`, `ItemSerialNumber`, `OnHandQuantity`, `CountedQuantity`, among others —
+`CountedQuantity` is what the counted-data-back direction below writes.
+
+**Export and import are no longer symmetric — deliberately, after working through a real
+multi-worker concurrency question.** The original design shared one DMF project across every
+worker in both directions, scoped per-request by rewriting a packed query. That closes the
+*filter* race (two workers targeting different journals overwriting each other's scope) but not
+the deeper one underneath it: two concurrent DMF *executions* sharing one project's staging
+infrastructure, which is exactly the class of risk Microsoft's own docs flag for
+`ImportFromPackage` ("parallel processing rules must be used... don't call this in parallel"),
+just never documented for the synchronous `exportToFile` path this app uses on export. The fix
+ended up different on each side, because the two directions have genuinely different concurrency
+primitives available to them:
+
+- **Export: a brand-new DMF definition group for every request**, never reused (named
+  `HCE_<last 12 chars of journal id>_<8 hex of a GUID>`). Nothing is shared between two workers -
+  different journals or even the same one - and a project half-configured by an earlier failed
+  attempt can't poison a later one. Projects accumulate, one per request; nothing purges them yet.- **Import: still one shared project, but triggered as an enqueued batch job instead of run
+  synchronously.** `DMFPackageImporter::PrepareDefinitionGroupForImport`/`importFromPackageV2` —
+  confirmed from a real, shipped integration class (`DataManagementIntegrationUtils`, Personnel/HCM
+  integration module) — hands the run to D365's own batch framework, which gets its concurrency
+  safety from the framework itself rather than from project isolation. This is the same mechanism
+  Microsoft's parallel-processing-rules configuration for `ImportFromPackage` ultimately routes
+  through; enqueuing through code sidesteps needing that manual configuration step at all.
+
+**Export: AOS builds the project, the app triggers it - the way Microsoft's Recurring Integrations
+Scheduler does.** `HSMobileOpsCountingService::exportOpenJournals` only creates the request-private
+project (`HSMobileOpsCountingExportSetup::ensureExportForJournal`), scopes it to one journal
+(`filterExportToJournal`, a packed-`QueryData` rewrite) and returns its name. The app then generates
+its own execution id (`{project}-{yyyy-MM-dd_HH-mm-ss}-{guid}`, RIS's format), calls the public
+`ExportToPackage` OData action with it (`reExecute=false`), polls `GetExecutionSummaryStatus`
+(`NotRun` -> `Executing` -> `Succeeded`) and fetches `GetExportedPackageUrl`. Verified live: from
+`ExportToPackage` to a package URL took ~12 s, and the package's CSV has the expected columns
+(`JOURNALNUMBER`, `LINENUMBER`, `COUNTEDQUANTITY`, `ITEMNUMBER`, `WAREHOUSELOCATIONID`, ... - **no
+`ONHANDQUANTITY`**, so the count screen has no pre-filled "expected" value).
+
+**Root cause of every earlier export failure: the entity name.** `DmfDefinitionGroupEntity.Entity`
+holds DMF's own entity name - `Inventory counting journal lines` - not the AOT name
+`InventInventoryCountingJournalLineEntity`. Rows written with the AOT name were invisible to the
+Data Management UI (empty "Selected entities" grid) and to DMF: a synchronous
+`DMFEntityExporter::exportToFile` threw `Entity ... not found`, and `ExportToPackage` on such a
+project sat at `NotRun` indefinitely (200 s+, no errors) while a UI-built project ran in ~15 s.
+Found by dumping every `DmfDefinitionGroupEntity` row of a UI-built project beside code-built ones:
+the UI's own row carried the label and `SkipStaging=0`. `HSMobileOpsCountingExportSetup::entityName`
+now resolves the DMF name from the AOT name via `DMFEntity.TargetEntity`, and `SkipStaging` is
+false. RIS itself never creates a data project - it exports a pre-built one by name - so project
+creation and scoping is the one part that stays in X++.
+
+**Import is enqueued, not awaited — `HSMobileOpsCountingService::importCounts`.** Ensures the
+shared `HSMobileOpsCountingImport` project exists (`HSMobileOpsCountingExportSetup::ensureImport`),
+then calls `DMFPackageImporter::PrepareDefinitionGroupForImport` + `new
+DMFPackageImporter().importFromPackageV2(packageUrl, groupName, executionId, true, true,
+curExt())` and returns immediately with the executionId — deliberately not calling the reference
+class's own `waitForImport` (which polls every 30s for up to 12 hours; fine for a batch job,
+wrong for something an HTTP service method returns synchronously to a phone). The app polls the
+same way it always would have: the public `GetExecutionSummaryStatus`/`GetExecutionErrors` OData
+actions, documented at
+https://learn.microsoft.com/en-us/dynamics365/fin-ops-core/dev-itpro/data-entities/data-management-api
+— only the *trigger* moved off the public `ImportFromPackage` action, not the status check, since
+reading a `DMFDefinitionGroupExecution` row carries none of the concurrency risk triggering one
+does. `GetAzureWriteUrl` (uniqueFileName → writable blob SAS URL) is still used as-is for the
+upload step ahead of `importCounts`.
+
+**Both kinds of project are created entirely by code, on first use — no manual Data Management
+workspace step, on either side.** `HSMobileOpsCountingExportSetup` went through several live
+rounds to get here, each one replacing a guess with something confirmed:
+
+1. A raw `DmfDefinitionGroupEntity` insert threw `validateWrite() refused ...` behind this
+   class's own generic guessed message - masking the real reason. Removing the wrapper (same
+   fix applied everywhere in this file: let native X++ exceptions propagate rather than guess
+   at them) surfaced that the insert itself was the problem, not the message.
+2. The next attempt got past the insert but failed inside `filterExportToOpenJournals` with
+   `Object 'QueryRun' could not be created` - `DMFUtil::getDefaultQueryForEntityV3` (inherited,
+   never independently confirmed) was returning an empty container. Confirmed via the same
+   diagnostic technique: stop swallowing, check the container length directly.
+3. Manually running "Generate" on the project in Data Management workspace made no difference,
+   ruling out a missing staging table as the cause. Replaced with a bare `new Query()` +
+   `addDataSource(tableNum(InventJournalTrans))` - the entity's real backing query doesn't need
+   reconstructing for this method's one job (scoping to a `JournalId` range).
+4. That got past query construction, but `DMFEntityExporter::exportToFile` then threw
+   `Entity 'InventInventoryCountingJournalLineEntity' not found` - confirmed via the D365 UI
+   that this is the entity's real technical name, ruling out a naming mistake. The actual cause:
+   a hand-inserted `DmfDefinitionGroupEntity` row was never registered in DMF's own internal
+   entity catalog (`DMFEntity`), which is a different, DMF-specific table from the general data
+   entity list the UI picker searches.
+
+**Fixed by switching to a real, shipped, production integration class**
+(`DataManagementIntegrationUtils`, from the Personnel/HCM integration module) instead of
+continuing to guess at raw table fields. It revealed two things this model had wrong from the
+start: `DmfDefinitionGroup.OperationType` is the real export/import direction field - on the
+definition group (parent), not the entity row - and `DMFEntityBase::addEntityForProcessingV3(...)`
+is the real, complete "add this entity to this project" API, handling field mapping and DMF
+catalog registration in one call instead of a raw insert. `HSMobileOpsCountingExportSetup::ensure()`
+(export) and the new `ensureImport()` (import) both now go through
+`Adapter`/`DefinitionGroupName`/`Description`/`OperationType`/`GenerateDataPackage` on
+`DmfDefinitionGroup`, `DMFParameters::find(false, true, false)` (refreshes DMF's entity/data-
+source-type catalog - likely what registration was actually missing), then
+`addEntityForProcessingV3` with the same twelve positional arguments the reference class uses,
+substituting only this app's own names - see that class's own doc comment for exactly which of
+those twelve are independently confirmed versus reproduced faithfully from a working reference.
+`ensureImport()` is called from inside `HSMobileOpsCountingService::importCounts` itself now
+(there is no longer a separate `ensureImportSetup` service operation — folding the two into one
+call removes a round trip the app used to need before every submit).
+
+**No manual "scope to every open journal" workaround needed any more.** The earlier design (one
+shared export project, scoped per-request) had to widen its filter to every currently-open journal
+to survive two workers requesting *different* journals close together, because a narrower,
+single-journal filter on a shared project raced: whichever `scopeExport` call landed last would
+silently point the other worker's export at the wrong journal. Per-journal projects remove the
+shared state that race depended on — `exportOpenJournals` filters straight to the one journal the
+request actually asked for (`filterExportToJournal`), because there is no other worker's request
+left that could still be sharing that project's `DmfDefinitionGroupEntity` row.
+
+The counted-data-back direction reuses the export's own package rather than constructing DMF
+package XML from scratch: the app downloads a journal's real exported package, unzips it, changes
+only the `CountedQuantity` column per line in the CSV using the counted values captured on the
+device, and re-zips it with the **same** `Manifest.xml`/`PackageHeader.xml` D365FO itself
+generated — then uploads via `GetAzureWriteUrl` and imports via `HSMobileOpsCountingService::
+importCounts` (enqueue) against the shared `HSMobileOpsCountingImport` project. Every identity/
+dimension column (`JournalNumber`, `LineNumber`, `ItemNumber`, `WarehouseLocationId`,
+`ItemBatchNumber`, `ItemSerialNumber`, ...) round-trips unchanged, so DMF's own target-matching has
+exactly what it needs without this app ever having to know how that matching works internally.
+
+**The Android side is being rewired against this new contract** — see the app's own plan/commit
+history for `CountingJournalRepository`, `CountingJournalListViewModel` and the new
+`CountingCaptureScreen`. None of it has been exercised against a real run yet: the export side got
+as far as a real, specific AOS error (`ENTITY_NOT_REGISTERED`, since fixed by the
+`addEntityForProcessingV3` switch above) before the design moved to per-journal projects and
+enqueued import, so the full pipeline — export, download, Room import, count entry, enqueue
+import, poll — has not yet had an end-to-end live run against the rebuilt AOS model. Whether
+`DMFPackageImporter::PrepareDefinitionGroupForImport`/`importFromPackageV2` accept a remote blob
+URL the same way the public `ImportFromPackage` action does, versus expecting a local
+`SharedServiceUnitFileID` the way the reference class's own call site received it, is the
+single biggest open question for the first live round on the import side.
+
+## Licensing
+
+**Full replacement, this session — a certificate-chain design, not the earlier single-key-per-
+client one.** The old design's trust anchor (`HSMobileOpsLicenseSetup.PublicKeyXml`) was an
+ordinary, admin-editable table field inside the *customer's own* tenant — which meant a
+customer's own SysAdmin could paste in their own keypair and self-sign an unlimited license;
+nothing outside their own database was ever consulted. See `licensing/README.md` for the full
+chain and the threat model it closes.
+
+**Two signed artifacts now, not one, each with its own signer.** A **certificate**
+(`WMSCERT1.<payload>.<signature>`) binds one customer/tenant identity to that customer's own
+public key, signed by a **root** private key the vendor alone ever holds — its public half is
+compiled into every Android build *and* hardcoded in `HSMobileOpsLicense::rootPublicKeyXml()`
+(never a table field, which is the actual fix: a compiled constant cannot be edited by a
+customer's own admin the way a database row could). A **license**
+(`WMSLIC1.<payload>.<signature>`) carries the actual customer/tenant/expiry/device-limit grant,
+signed by that same customer's own private key — the one the certificate just vouched for.
+Both are JSON payloads, base64url-encoded, signed over the base64url text itself (not the
+decoded bytes) — same "sign the encoded text" convention the old design already used, so
+verification anywhere is just "split on the two dots, verify the first segment's own bytes."
+See `HSMobileOpsLicense.xml`'s own class doc for the exact format and
+`licensing/wms_license_tool.py` for the one tool that produces both.
+
+**The app is the primary verifier, not this AOS.** The Android app performs this exact same
+certificate-then-license chain itself, against its own compiled-in root key, before it will
+even show a sign-in screen (`LicenseRepository`, `AppRoot`'s licensing gate) — activation is a
+one-time QR scan of the certificate, and every launch re-verifies it and fetches the current
+license from `HSMobileOpsLicenseSvc/getLicense`. This AOS's own `HSMobileOpsLicense::verify()`
+runs the identical chain as a secondary, defense-in-depth check — both because
+`HSMobileOpsUserService::signIn` still gates on it directly (a modified client could in
+principle skip its own pre-flight checks and call `signIn` straight), and because
+`HSMobileOpsLicenseSetup`'s own `insert()`/`update()` refuse to save a certificate/license pair
+that would not actually verify together (customer/tenant match included, not just each
+signature individually).
+
+`HSMobileOpsLicenseSetup` stays `SaveDataPerCompany=No` — one pair for the whole environment.
+An administrator pastes both strings into the **Mobile app license** form's two plain fields and
+saves; `validateBeforeSave()` runs the full chain and throws (rolling the save back) on anything
+that does not verify — the same shape the earlier design already used here for encrypting
+`PublicKeyXml` on save, not a separate import action or unbound staging controls (an earlier
+draft of this form used both and failed to even deserialize in Visual Studio — "cannot be
+deserialized as ... AxForm" — so the design was simplified back to plain bound fields, which are
+already proven to work in this exact form). `licensing/wms_license_tool.py` (Python, replacing
+the old PowerShell scripts) mints the root keypair once, a keypair per customer, signs each
+customer's certificate with the root key, renders it as a QR image, and signs each license with
+that customer's own key.
+
+**Device registration moved earlier, and gained a second, independent call site.**
+`HSMobileOpsUserService::signIn`'s own inline license/device-limit gate is unchanged in
+behaviour (kept as the safety net described above) but now calls the same
+`HSMobileOpsDevice::checkDeviceLimit` helper a brand-new `HSMobileOpsLicenseSvc/registerDevice`
+operation also calls — the app invokes that one at launch, before any worker has signed in, so
+a device that will never pass the device-limit gate finds out immediately rather than only once
+someone tries to sign in on it. Both call sites can never disagree, since neither duplicates the
+gate logic. `getLicense`/`registerDevice` need a **full service-group build** to register, same
+gotcha as every other service in this model — see "Verification status" below.
+
+New `HSMobileOpsGetLicenseResponse`/`HSMobileOpsRegisterDeviceResponse.ErrorCode` values reuse
+`HSMobileOpsSignInResponse`'s own vocabulary: `NO_LICENSE`, `LICENSE_INVALID`,
+`LICENSE_EXPIRED`, `DEVICE_LIMIT_REACHED`.
+
+**Not yet built or verified against the tenant** — written this session, awaiting the next
+Visual Studio build. The single biggest open technical question: whether
+`Newtonsoft.Json.Linq.JObject::Parse` (already confirmed present and working on this exact
+server for `HSMobileOpsPostingService::parseLines`'s `LinesJson`) parses these certificate/
+license payloads the same way — reused deliberately rather than risking an unverified JSON API,
+but not yet exercised for *this* shape of JSON specifically. See "Verification status" below.
+
 ## Verification status
 
 **The whole model compiled clean in Visual Studio on 3 September 2026** — every class, the two

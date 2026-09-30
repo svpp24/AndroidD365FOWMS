@@ -1,6 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">ForeFront Mobile</string>
+    <string name="app_name">Inventory hub by headstart global fz llc</string>
+    <!-- Shown under the launcher icon, where the full name would wrap or truncate. -->
+    <string name="app_name_launcher">Inventory hub</string>
+    <string name="copyright_notice">Inventory hub™ · © 2026 Headstart Global FZ LLC</string>
 
     <!-- Generic -->
     <string name="action_retry">Retry</string>

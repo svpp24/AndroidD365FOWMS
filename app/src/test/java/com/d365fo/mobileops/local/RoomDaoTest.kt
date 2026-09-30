@@ -7,14 +7,11 @@ import androidx.test.core.app.ApplicationProvider
 import com.d365fo.mobileops.data.local.D365Database
 import com.d365fo.mobileops.data.local.entity.BarcodeEntity
 import com.d365fo.mobileops.data.local.entity.FailedSyncEntity
-import com.d365fo.mobileops.data.local.entity.GoodsReceiptEntity
-import com.d365fo.mobileops.data.local.entity.GoodsReceiptLineEntity
 import com.d365fo.mobileops.data.local.entity.ItemEntity
 import com.d365fo.mobileops.data.local.entity.LocationEntity
 import com.d365fo.mobileops.data.local.entity.PurchLineEntity
 import com.d365fo.mobileops.data.local.entity.PurchOrderEntity
 import com.d365fo.mobileops.data.local.entity.PurchaseOrderStatus
-import com.d365fo.mobileops.data.local.entity.ReceiptStatus
 import com.d365fo.mobileops.data.local.entity.SyncOperation
 import com.d365fo.mobileops.data.local.entity.SyncQueueEntity
 import com.d365fo.mobileops.data.local.entity.TrackingRequirement
@@ -139,43 +136,6 @@ class RoomDaoTest {
         modifiedAt = 1_000L,
     )
 
-    private fun receipt(id: String, po: String, status: ReceiptStatus) = GoodsReceiptEntity(
-        receiptId = id,
-        purchId = po,
-        workerId = "worker-1",
-        deviceId = "device-1",
-        dataAreaId = "USMF",
-        personnelNumber = "000418",
-        vendorPackingSlipId = "DN-500",
-        receiptDate = 3_000L,
-        status = status,
-        serverPackingSlipId = null,
-        postedAt = null,
-    )
-
-    private fun receiptLine(id: String, receiptId: String, purchLineId: String, qty: String) =
-        GoodsReceiptLineEntity(
-            receiptLineId = id,
-            receiptId = receiptId,
-            purchLineId = purchLineId,
-            purchId = purchLineId.substringBefore(':'),
-            lineNumber = 1.0,
-            itemId = "ITEM-1",
-            itemName = "Item ITEM-1",
-            enteredQuantity = qty,
-            enteredUnit = "ea",
-            inventoryQuantity = qty,
-            inventoryUnit = "ea",
-            siteId = "S-01",
-            warehouseId = "WH1",
-            locationId = "RECV-01",
-            batchId = null,
-            serialId = null,
-            toleranceOverridden = false,
-            overrideReason = null,
-            capturedAt = 3_000L,
-        )
-
     // -- scan resolution -----------------------------------------------------------------
 
     @Test
@@ -298,99 +258,6 @@ class RoomDaoTest {
         val stored = dao.getOrder("PO-1")!!
 
         assertThat(stored.lines.map { it.lineNumber }).containsExactly(2.0)
-    }
-
-    // -- uncommitted quantity ------------------------------------------------------------
-
-    @Test
-    fun `uncommittedQuantityForLine counts drafts and queued receipts but not posted ones`() =
-        runTest {
-            val receipts = db.goodsReceiptDao()
-            db.purchOrderDao().replaceOrderWithLines(
-                order("PO-1"),
-                listOf(line("PO-1", 1.0, "ITEM-1", "500")),
-            )
-
-            receipts.upsertReceipt(receipt("r-draft", "PO-1", ReceiptStatus.DRAFT))
-            receipts.upsertReceipt(receipt("r-queued", "PO-1", ReceiptStatus.PENDING_POST))
-            receipts.upsertReceipt(receipt("r-posted", "PO-1", ReceiptStatus.POSTED))
-            receipts.upsertLines(
-                listOf(
-                    receiptLine("rl-1", "r-draft", "PO-1:1.0", "10"),
-                    receiptLine("rl-2", "r-queued", "PO-1:1.0", "25"),
-                    // Already in the D365FO ledger — counting it again would double-subtract
-                    // from what the line still owes.
-                    receiptLine("rl-3", "r-posted", "PO-1:1.0", "100"),
-                ),
-            )
-
-            assertThat(receipts.uncommittedQuantityForLine("PO-1:1.0")).isEqualTo(35.0)
-        }
-
-    @Test
-    fun `uncommittedQuantityForLine is zero when nothing is captured`() = runTest {
-        assertThat(db.goodsReceiptDao().uncommittedQuantityForLine("PO-9:1.0")).isEqualTo(0.0)
-    }
-
-    @Test
-    fun `findDraftFor resumes this worker's draft only`() = runTest {
-        val receipts = db.goodsReceiptDao()
-        receipts.upsertReceipt(receipt("r-mine", "PO-1", ReceiptStatus.DRAFT))
-        receipts.upsertReceipt(
-            receipt("r-theirs", "PO-1", ReceiptStatus.DRAFT).copy(workerId = "worker-2"),
-        )
-
-        val found = receipts.findDraftFor("PO-1", "worker-1")
-
-        assertThat(found?.receipt?.receiptId).isEqualTo("r-mine")
-    }
-
-    @Test
-    fun `countLocalSerialUses sees a serial captured on this device`() = runTest {
-        val receipts = db.goodsReceiptDao()
-        receipts.upsertReceipt(receipt("r-1", "PO-1", ReceiptStatus.DRAFT))
-        receipts.upsertLines(
-            listOf(receiptLine("rl-1", "r-1", "PO-1:1.0", "1").copy(serialId = "SN-1")),
-        )
-
-        assertThat(receipts.countLocalSerialUses("ITEM-1", "SN-1")).isEqualTo(1)
-        assertThat(receipts.countLocalSerialUses("ITEM-1", "SN-2")).isEqualTo(0)
-    }
-
-    // -- housekeeping --------------------------------------------------------------------
-
-    @Test
-    fun `purgeClosedOrders keeps an order that an unsynced receipt still references`() = runTest {
-        val orders = db.purchOrderDao()
-        orders.upsertOrders(
-            listOf(
-                order("PO-CLOSED", status = PurchaseOrderStatus.RECEIVED),
-                order("PO-REFERENCED", status = PurchaseOrderStatus.INVOICED),
-            ),
-        )
-        // Deleting this order would cascade its lines away underneath a receipt that has
-        // not reached D365FO yet.
-        db.goodsReceiptDao()
-            .upsertReceipt(receipt("r-1", "PO-REFERENCED", ReceiptStatus.PENDING_POST))
-
-        orders.purgeClosedOrders()
-
-        val remaining = orders.getOrder("PO-REFERENCED")
-        assertThat(remaining).isNotNull()
-        assertThat(orders.getOrder("PO-CLOSED")).isNull()
-    }
-
-    @Test
-    fun `deleting an order cascades to its lines`() = runTest {
-        val orders = db.purchOrderDao()
-        orders.replaceOrderWithLines(
-            order("PO-1", status = PurchaseOrderStatus.RECEIVED),
-            listOf(line("PO-1", 1.0, "ITEM-1", "10")),
-        )
-
-        orders.purgeClosedOrders()
-
-        assertThat(orders.getLine("PO-1:1.0")).isNull()
     }
 
     // -- sync queue ----------------------------------------------------------------------

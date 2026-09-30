@@ -14,6 +14,7 @@ import androidx.compose.runtime.getValue
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import com.d365fo.mobileops.data.security.DisplayPreferences
 import com.d365fo.mobileops.data.security.SessionGuard
 import com.d365fo.mobileops.data.security.ThemePreferences
 import com.d365fo.mobileops.data.sync.SyncStatus
@@ -34,6 +35,7 @@ class MainActivity : ComponentActivity() {
     @Inject lateinit var syncStatusProvider: SyncStatusProvider
     @Inject lateinit var scanFeedback: ScanFeedback
     @Inject lateinit var themePreferences: ThemePreferences
+    @Inject lateinit var displayPreferences: DisplayPreferences
 
     /**
      * Registered only while the app is in the foreground; see [OemScannerReceiver] for why.
@@ -68,7 +70,8 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             val palette by themePreferences.palette.collectAsState()
-            D365MobileTheme(palette = palette) {
+            val scale by displayPreferences.scale.collectAsState()
+            D365MobileTheme(palette = palette, scale = scale) {
                 val status by syncStatusProvider.status.collectAsState(initial = SyncStatus.UNKNOWN)
                 AppRoot(syncStatus = status)
             }
@@ -82,19 +85,18 @@ class MainActivity : ComponentActivity() {
      * into whichever text field happens to hold focus — the single most common failure mode
      * for wedge-scanner apps.
      *
-     * Also swallows a phantom BACK key here - confirmed live on this handheld: pressing the
-     * physical scan trigger fires the barcode broadcast (see OemScannerReceiver) *and* a raw
-     * BACK key event, at the hardware level, on the same press. On a successful scan that was
-     * invisible - the flow had already advanced a step, so "back" just re-landed on it - but on
-     * a failed lookup, which leaves the flow on its first step, the same phantom key popped the
-     * whole screen to Home instants after the error was set, discarding it before anyone could
-     * read it. A genuine user back-press never lands within [HidScannerBridge.justScanned]'s
-     * window of an actual scan, so this only ever swallows the phantom one.
+     * This handheld's physical scan trigger also fires a phantom system Back shortly after
+     * the scan - see [HidScannerBridge.justScanned] for the live-traced evidence. That does
+     * NOT arrive here as a KEYCODE_BACK KeyEvent (confirmed with diagnostic logging: nothing
+     * from this method ever logged around the phantom back, only the screen's own BackHandler
+     * did) - this app's target SDK routes back through the predictive-back
+     * OnBackInvokedCallback channel instead, which bypasses dispatchKeyEvent entirely. The
+     * suppression lives in each step-flow screen's BackHandler instead - see
+     * ReceivingFlowScreen/TransferFlowScreen.
      */
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         sessionGuard.touch()
         if (scannerBridge.onKeyEvent(event)) return true
-        if (event.keyCode == KeyEvent.KEYCODE_BACK && scannerBridge.justScanned()) return true
         return super.dispatchKeyEvent(event)
     }
 

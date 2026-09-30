@@ -14,6 +14,27 @@
 					<MenuItemName>HSMobileOpsUser</MenuItemName>
 					<ObjectType>Display</ObjectType>
 				</AxMenuElement>
+				<!-- These three menu items already existed but were never referenced anywhere in
+				     this menu - confirmed unreachable from the app's own menu tree. Fixed here
+				     rather than left as-is. -->
+				<AxMenuElement xmlns=""
+					i:type="AxMenuElementReference">
+					<Name>HSMobileOpsLicenseSetup</Name>
+					<MenuItemName>HSMobileOpsLicenseSetup</MenuItemName>
+					<ObjectType>Display</ObjectType>
+				</AxMenuElement>
+				<AxMenuElement xmlns=""
+					i:type="AxMenuElementReference">
+					<Name>HSMobileOpsDevice</Name>
+					<MenuItemName>HSMobileOpsDevice</MenuItemName>
+					<ObjectType>Display</ObjectType>
+				</AxMenuElement>
+				<AxMenuElement xmlns=""
+					i:type="AxMenuElementReference">
+					<Name>HSMobileOpsSkuSyncSetup</Name>
+					<MenuItemName>HSMobileOpsSkuSyncSetup</MenuItemName>
+					<ObjectType>Display</ObjectType>
+				</AxMenuElement>
 			</MenuItems>
 		</AxMenuElement>
 	</MenuItems>

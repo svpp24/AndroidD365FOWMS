@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsSetModulePermissionRequest</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+[DataContractAttribute]
+class HSMobileOpsSetModulePermissionRequest
+{
+    DataAreaId dataAreaId;
+    str        actingUserName;
+    str        targetUserName;
+    str        module;
+    boolean    isAllowed;
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmDataAreaId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('DataAreaId')]
+    public DataAreaId parmDataAreaId(DataAreaId _value = dataAreaId)
+    {
+        dataAreaId = _value;
+        return dataAreaId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmActingUserName</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Who is making this change - re-checked server-side for IsSupervisor before anything is
+    /// written. Never trusted from a client-supplied boolean: the device's own idea of whether
+    /// it is signed in as a supervisor is exactly the thing a modified client could lie about,
+    /// so HSMobileOpsUserService::setModulePermission looks this user up itself.
+    /// </summary>
+    [DataMemberAttribute('ActingUserName')]
+    public str parmActingUserName(str _value = actingUserName)
+    {
+        actingUserName = _value;
+        return actingUserName;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmTargetUserName</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Whose permission is being changed. May be the same as ActingUserName, though the Admin
+    /// Center has no reason to offer that - nothing stops a supervisor from blocking their own
+    /// access, and nothing needs to.
+    /// </summary>
+    [DataMemberAttribute('TargetUserName')]
+    public str parmTargetUserName(str _value = targetUserName)
+    {
+        targetUserName = _value;
+        return targetUserName;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmModule</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// An HSMobileOpsModule element name - see HSMobileOpsModulePermission::parmModule for the
+    /// same convention on the read side.
+    /// </summary>
+    [DataMemberAttribute('Module')]
+    public str parmModule(str _value = module)
+    {
+        module = _value;
+        return module;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmIsAllowed</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('IsAllowed')]
+    public boolean parmIsAllowed(boolean _value = isAllowed)
+    {
+        isAllowed = _value;
+        return isAllowed;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

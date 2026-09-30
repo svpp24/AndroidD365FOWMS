@@ -54,6 +54,8 @@ data class JournalEntity(
     /** Counting only: variance percentage above which a supervisor PIN is required. */
     val varianceThresholdPercent: String? = null,
     val postedAt: Long? = null,
+    /** Counting only: when the worker pressed Start counting. Null until then. */
+    val countStartedAt: Long? = null,
     @Embedded val sync: SyncMeta = SyncMeta(),
 )
 
@@ -100,6 +102,8 @@ data class JournalLineEntity(
     val toWarehouseId: String? = null,
     val toLocationId: String? = null,
     val varianceOverridden: Boolean = false,
+    /** Counting only: the worker marked this line counted without entering a quantity (e.g. the actual count is not available). A marker for progress tracking - nothing is written back to D365FO for it. */
+    val markedCounted: Boolean = false,
     val capturedAt: Long,
 )
 

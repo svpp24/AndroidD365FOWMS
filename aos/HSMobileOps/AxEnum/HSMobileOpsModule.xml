@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxEnum xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsModule</Name>
+	<Label>Mobile module</Label>
+	<HelpText>One of the four warehouse workflows an admin can allow or block per worker on the handheld app. Element names are also the wire format - see HSMobileOpsModulePermission::parmModule and the app's own WarehouseWorkflow enum, which matches these names exactly rather than translating between the two.</HelpText>
+	<EnumValues>
+		<AxEnumValue>
+			<Name>PO_RECEIVING</Name>
+			<Label>PO receiving</Label>
+			<Value>0</Value>
+		</AxEnumValue>
+		<AxEnumValue>
+			<Name>TRANSFER_SHIP</Name>
+			<Label>Transfer - ship</Label>
+			<Value>1</Value>
+		</AxEnumValue>
+		<AxEnumValue>
+			<Name>TRANSFER_RECEIVE</Name>
+			<Label>Transfer - receive</Label>
+			<Value>2</Value>
+		</AxEnumValue>
+		<AxEnumValue>
+			<Name>INVENTORY_COUNT</Name>
+			<Label>Inventory count</Label>
+			<Value>3</Value>
+		</AxEnumValue>
+	</EnumValues>
+	<UseEnumValueForDisplayValue>No</UseEnumValueForDisplayValue>
+</AxEnum>

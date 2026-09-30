@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxService xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsCountingSvc</Name>
+	<Class>HSMobileOpsCountingService</Class>
+	<ExternalName>CountingService</ExternalName>
+	<Namespace>http://schemas.hs.com/mobileops</Namespace>
+	<ServiceOperations>
+		<AxServiceOperation>
+			<Name>listOpenJournals</Name>
+			<Method>listOpenJournals</Method>
+		</AxServiceOperation>
+		<AxServiceOperation>
+			<Name>exportOpenJournals</Name>
+			<Method>exportOpenJournals</Method>
+		</AxServiceOperation>
+		<AxServiceOperation>
+			<Name>importCounts</Name>
+			<Method>importCounts</Method>
+		</AxServiceOperation>
+	</ServiceOperations>
+</AxService>

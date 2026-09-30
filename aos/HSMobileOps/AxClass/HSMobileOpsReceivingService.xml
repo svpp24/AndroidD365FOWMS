@@ -383,11 +383,24 @@ class HSMobileOpsReceivingService
         int                          lineCount;
         boolean                      claimsActive = _concurrencyMode
             == HSMobileOpsProcessSetup::modeLineClaim();
+        InventQty                    orderedForLine;
+        PurchQty                     stagedForLine;
+        PurchQty                     remainingAfterStaged;
 
         // Keyed by item, not by line. An order routinely carries several lines of the same item,
         // and without these the per-item lookups below run once per line instead of once per item.
         Map unitByItem = new Map(Types::String, Types::String);
         Map dimsByItem = new Map(Types::String, Types::Class);
+
+        // RemainPurchPhysical is not the truth here: registerLine (HSMobileOpsPostingService)
+        // converts an Ordered InventTrans to Registered directly and never posts a packing slip,
+        // so RemainPurchPhysical stays at its original value regardless of how much has actually
+        // been registered, by this app or by any other channel. orderedQtyByLine and
+        // stagedQtyByLine are what is actually true, and both cost one query for the whole order
+        // rather than one per line - see their own doc comments. Both come back empty on an order
+        // with nothing mid-flight or already fully registered, the common cases.
+        Map ordered = HSMobileOpsReceivingService::orderedQtyByLine(_purchId);
+        Map staged  = HSMobileOpsReceivingService::stagedQtyByLine(_purchId);
 
         while select LineNumber, ItemId, Name, PurchUnit, PurchQty, RemainPurchPhysical,
                      PurchStatus, InventDimId, OverDeliveryPct, UnderDeliveryPct
@@ -400,6 +413,19 @@ class HSMobileOpsReceivingService
             join InventSiteId, InventLocationId, wMSLocationId from inventDim
                 where inventDim.InventDimId == purchLine.InventDimId
         {
+            orderedForLine = ordered.exists(purchLine.LineNumber)
+                ? ordered.lookup(purchLine.LineNumber) : 0;
+            stagedForLine = staged.exists(purchLine.LineNumber)
+                ? staged.lookup(purchLine.LineNumber) : 0;
+            remainingAfterStaged = orderedForLine - stagedForLine;
+
+            if (remainingAfterStaged <= 0)
+            {
+                // Either already registered - by this app or by any other channel - or fully
+                // spoken for by a device that has not yet been processed.
+                continue;
+            }
+
             line     = new HSMobileOpsPurchLineContract();
             dimSetup = HSMobileOpsReceivingService::dimensionsOf(purchLine.ItemId, dimsByItem);
 
@@ -411,10 +437,12 @@ class HSMobileOpsReceivingService
                 HSMobileOpsReceivingService::inventUnitOf(purchLine.ItemId, unitByItem));
 
             line.parmOrderedQty(purchLine.PurchQty);
-            line.parmRemainingQty(purchLine.RemainPurchPhysical);
-            // Both operands are columns on the row already read. No join, no second query - and
-            // over OData this number did not exist at all.
-            line.parmReceivedQty(purchLine.PurchQty - purchLine.RemainPurchPhysical);
+            line.parmRemainingQty(remainingAfterStaged);
+            // PurchQty - RemainPurchPhysical would always read zero on this path - see the
+            // comment above. orderedForLine is already in hand from orderedQtyByLine, so this
+            // reads real registrations instead of staying permanently wrong.
+            line.parmReceivedQty(purchLine.PurchQty - orderedForLine);
+            line.parmUncommittedQty(stagedForLine);
 
             line.parmSiteId(inventDim.InventSiteId);
             line.parmWarehouseId(inventDim.InventLocationId);
@@ -464,19 +492,154 @@ class HSMobileOpsReceivingService
     /// <summary>
     /// How many lines still have something to receive.
     ///
-    /// A count in SQL rather than a fetch-and-count. On a five-thousand-line order the difference
-    /// is between reading an index and materialising every row to throw them away.
+    /// orderedQtyByLine's join already excludes anything no longer Ordered - by this app or any
+    /// other channel - so its result set is naturally bounded to genuinely-open lines rather than
+    /// the whole order's history. Counting its entries costs nothing beyond the two queries
+    /// orderedQtyByLine and stagedQtyByLine already run once each for the whole order; there is no
+    /// separate fetch-and-count over PurchLine itself.
     /// </summary>
     private static int outstandingLineCount(PurchId _purchId)
     {
-        PurchLine purchLine;
+        Map            ordered = HSMobileOpsReceivingService::orderedQtyByLine(_purchId);
+        Map            staged  = HSMobileOpsReceivingService::stagedQtyByLine(_purchId);
+        MapEnumerator  orderedEnum = ordered.getEnumerator();
+        LineNum        lineNumber;
+        InventQty      orderedQty;
+        PurchQty       stagedQty;
+        int            outstandingCount;
 
-        select count(RecId) from purchLine
-            where purchLine.PurchId             == _purchId
-               && purchLine.PurchStatus         != PurchStatus::Canceled
-               && purchLine.RemainPurchPhysical  > 0;
+        while (orderedEnum.moveNext())
+        {
+            lineNumber = orderedEnum.currentKey();
+            orderedQty = orderedEnum.currentValue();
+            stagedQty  = staged.exists(lineNumber) ? staged.lookup(lineNumber) : 0;
 
-        return any2Int(purchLine.RecId);
+            if (orderedQty - stagedQty > 0)
+            {
+                outstandingCount++;
+            }
+        }
+
+        return outstandingCount;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>stagedQtyByLine</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Quantity per line staged on a device but not yet processed into InventTrans at all.
+    ///
+    /// Once a row processes - Registered or Failed - it is no longer this method's concern: a
+    /// Registered row is already visible directly on InventTrans (see orderedQtyByLine), and a
+    /// Failed one claimed nothing. Only Pending rows are quantity nobody but this method can see
+    /// yet - claimed by a device, but not something a fresh InventTrans read reflects until
+    /// someone triggers "Process pending".
+    ///
+    /// Keyed by LineNum, summed across every pending row on the order: two receiving sessions on
+    /// the same PO each stage their own row, and both must be netted out together. Registration
+    /// is the only DocumentType that can name this PurchId, so no further narrowing is needed.
+    /// </summary>
+    private static Map stagedQtyByLine(PurchId _purchId)
+    {
+        HSMobileOpsPostQueue postQueue;
+        Map                  staged = new Map(Types::Real, Types::Real);
+        List                 lines;
+        ListEnumerator       lineEnum;
+        HSMobileOpsPostLine  postLine;
+        LineNum              lineNumber;
+        InventQty            quantity;
+
+        while select LinesJson from postQueue
+            index hint SourceIdx
+            where postQueue.SourceId     == _purchId
+               && postQueue.DocumentType == 'Registration'
+               && postQueue.Status       == HSMobileOpsPostQueue::statusPending()
+        {
+            lines    = HSMobileOpsPostingService::parseLines(postQueue.LinesJson);
+            lineEnum = lines.getEnumerator();
+
+            while (lineEnum.moveNext())
+            {
+                postLine   = lineEnum.current();
+                lineNumber = postLine.parmLineNumber();
+                quantity   = postLine.parmQuantity();
+
+                if (staged.exists(lineNumber))
+                {
+                    quantity += staged.lookup(lineNumber);
+                    staged.remove(lineNumber);
+                }
+
+                staged.insert(lineNumber, quantity);
+            }
+        }
+
+        return staged;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>orderedQtyByLine</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Quantity per line still genuinely Ordered in InventTrans - the real, live outstanding
+    /// balance, however it got that way.
+    ///
+    /// RemainPurchPhysical cannot be trusted for this: registerLine (HSMobileOpsPostingService)
+    /// converts a line's Ordered InventTrans to Registered directly and never posts a packing
+    /// slip, on explicit instruction, so RemainPurchPhysical stays at PurchLine's original value
+    /// no matter how much has actually been registered - by this app or by any other channel.
+    /// StatusReceipt is what registerLine itself changes, so reading it back is what is actually
+    /// true.
+    ///
+    /// PurchLine.InventTransId does not join straight onto InventTrans - it matches
+    /// InventTransOrigin.InventTransId, and InventTransOrigin.RecId is what InventTrans.
+    /// InventTransOrigin points at. This is the same two-hop link InventTrans::findTransId
+    /// itself uses (exists join InventTransOrigin where InventTransOrigin.RecId ==
+    /// InventTrans.InventTransOrigin && InventTransOrigin.InventTransId == _transId) - reused
+    /// here rather than guessed, and widened from that method's firstOnly single lookup to sum
+    /// every Ordered-status row per line, in case a line has been through more than one partial
+    /// registration and so carries more than one such row.
+    ///
+    /// One query for the whole order, not one per line - same shape as stagedQtyByLine, and for
+    /// the same reason: the join's own StatusReceipt filter means only lines with something
+    /// genuinely still Ordered come back at all, so an order that is already fully registered
+    /// costs nothing more than this one query returning empty.
+    /// </summary>
+    private static Map orderedQtyByLine(PurchId _purchId)
+    {
+        PurchLine          purchLine;
+        InventTrans        inventTrans;
+        InventTransOrigin  inventTransOrigin;
+        Map                ordered = new Map(Types::Real, Types::Real);
+        LineNum            lineNumber;
+        InventQty          quantity;
+
+        while select LineNumber from purchLine
+            where purchLine.PurchId     == _purchId
+               && purchLine.PurchStatus != PurchStatus::Canceled
+            join Qty from inventTrans
+                where inventTrans.StatusReceipt == StatusReceipt::Ordered
+            exists join inventTransOrigin
+                where inventTransOrigin.RecId         == inventTrans.InventTransOrigin
+                   && inventTransOrigin.InventTransId == purchLine.InventTransId
+        {
+            lineNumber = purchLine.LineNumber;
+            quantity   = inventTrans.Qty;
+
+            if (ordered.exists(lineNumber))
+            {
+                quantity += ordered.lookup(lineNumber);
+                ordered.remove(lineNumber);
+            }
+
+            ordered.insert(lineNumber, quantity);
+        }
+
+        return ordered;
     }
 ]]></Source>
 			</Method>

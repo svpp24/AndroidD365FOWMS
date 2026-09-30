@@ -41,6 +41,31 @@ interface SyncQueueDao {
     )
     suspend fun selectDue(now: Long, limit: Int): List<SyncQueueEntity>
 
+    /**
+     * Claims one specific, just-enqueued entry for an immediate inline post attempt - see
+     * [com.d365fo.mobileops.presentation.modules.stepflow.ReceivingFlowViewModel.postReceipt]'s
+     * "tried live, right here" step. Same due-and-unleased condition as [leaseBatch], scoped to
+     * one row: whichever caller reaches this row first, inline attempt or a background worker
+     * run racing it after [enqueue]'s own commit made the row visible to both, wins it, and the
+     * other sees leasedUntil already in the future and backs off. Without this, the inline
+     * attempt dispatched an entry it never claimed, which a concurrent worker run could claim
+     * and dispatch at the same time - confirmed live: two postProductReceipt calls, 151ms apart,
+     * identical payload size, matching a caller and a worker run each unaware of the other.
+     */
+    @Transaction
+    suspend fun leaseOne(
+        queueId: String,
+        now: Long = System.currentTimeMillis(),
+        leaseMs: Long = 5 * 60 * 1000L,
+    ): SyncQueueEntity? {
+        val entry = selectOneIfDue(queueId, now) ?: return null
+        lease(listOf(entry.queueId), now + leaseMs)
+        return entry
+    }
+
+    @Query("SELECT * FROM sync_queue WHERE queueId = :queueId AND nextAttemptAt <= :now AND leasedUntil <= :now LIMIT 1")
+    suspend fun selectOneIfDue(queueId: String, now: Long): SyncQueueEntity?
+
     @Query("UPDATE sync_queue SET leasedUntil = :until WHERE queueId IN (:queueIds)")
     suspend fun lease(queueIds: List<String>, until: Long)
 

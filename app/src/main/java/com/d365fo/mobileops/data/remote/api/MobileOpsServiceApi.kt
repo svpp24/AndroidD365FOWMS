@@ -2,8 +2,22 @@ package com.d365fo.mobileops.data.remote.api
 
 import com.d365fo.mobileops.data.remote.dto.BatchServiceRequest
 import com.d365fo.mobileops.data.remote.dto.BatchServiceResponse
+import com.d365fo.mobileops.data.remote.dto.GetLicenseServiceRequest
+import com.d365fo.mobileops.data.remote.dto.GetLicenseServiceResponse
+import com.d365fo.mobileops.data.remote.dto.RegisterDeviceServiceRequest
+import com.d365fo.mobileops.data.remote.dto.RegisterDeviceServiceResponse
+import com.d365fo.mobileops.data.remote.dto.SetModulePermissionServiceRequest
+import com.d365fo.mobileops.data.remote.dto.SetModulePermissionServiceResponse
+import com.d365fo.mobileops.data.remote.dto.SkuExportServiceRequest
+import com.d365fo.mobileops.data.remote.dto.SkuExportServiceResponse
+import com.d365fo.mobileops.data.remote.dto.WorkerDirectoryServiceRequest
+import com.d365fo.mobileops.data.remote.dto.WorkerDirectoryServiceResponse
 import com.d365fo.mobileops.data.remote.dto.ChangePasswordServiceResponse
 import com.d365fo.mobileops.data.remote.dto.ChangePasswordServiceRequest
+import com.d365fo.mobileops.data.remote.dto.ImportCountsServiceRequest
+import com.d365fo.mobileops.data.remote.dto.ImportCountsServiceResponse
+import com.d365fo.mobileops.data.remote.dto.JournalListServiceRequest
+import com.d365fo.mobileops.data.remote.dto.JournalListServiceResponse
 import com.d365fo.mobileops.data.remote.dto.LineServiceRequest
 import com.d365fo.mobileops.data.remote.dto.LineServiceResponse
 import com.d365fo.mobileops.data.remote.dto.LocationServiceRequest
@@ -16,6 +30,8 @@ import com.d365fo.mobileops.data.remote.dto.PostServiceRequest
 import com.d365fo.mobileops.data.remote.dto.PostServiceResponse
 import com.d365fo.mobileops.data.remote.dto.PurchOrderServiceRequest
 import com.d365fo.mobileops.data.remote.dto.PurchOrderServiceResponse
+import com.d365fo.mobileops.data.remote.dto.ScopeExportServiceRequest
+import com.d365fo.mobileops.data.remote.dto.ScopeExportServiceResponse
 import com.d365fo.mobileops.data.remote.dto.SerialServiceRequest
 import com.d365fo.mobileops.data.remote.dto.SignInServiceRequest
 import com.d365fo.mobileops.data.remote.dto.SignInServiceResponse
@@ -99,6 +115,25 @@ interface MobileOpsServiceApi {
         @Body body: ChangePasswordServiceRequest,
     ): Response<ChangePasswordServiceResponse>
 
+    /**
+     * An admin toggling one worker's access to one of the four handheld modules. NOT tagged
+     * [IdempotentRead] - it is a write, and the sync queue (not `RetryAfterInterceptor`) owns
+     * retrying it, same as every posting call. See `PostingDispatcher` and
+     * `HSMobileOpsUserService::setModulePermission` for the server-side re-validation this
+     * relies on rather than trusting the device's own cached role.
+     */
+    @POST("HSMobileOpsServiceGroup/HSMobileOpsUserSvc/setModulePermission")
+    suspend fun setModulePermission(
+        @Body body: SetModulePermissionServiceRequest,
+    ): Response<SetModulePermissionServiceResponse>
+
+    /** The Admin Center's worker list - a plain read, tagged [IdempotentRead] like the others. */
+    @POST("HSMobileOpsServiceGroup/HSMobileOpsUserSvc/getWorkerDirectory")
+    suspend fun getWorkerDirectory(
+        @Body body: WorkerDirectoryServiceRequest,
+        @Tag tag: IdempotentRead = IdempotentRead,
+    ): Response<WorkerDirectoryServiceResponse>
+
     @POST("HSMobileOpsServiceGroup/HSMobileOpsInquirySvc/validateLocation")
     suspend fun validateLocation(
         @Body body: LocationServiceRequest,
@@ -122,6 +157,53 @@ interface MobileOpsServiceApi {
         @Body body: OnHandServiceRequest,
         @Tag tag: IdempotentRead = IdempotentRead,
     ): Response<OnHandServiceResponse>
+
+    // -- Counting journals ----------------------------------------------------------------------
+    //
+    // Headers only — cheap, same load shape as the inquiry reads above. A journal's lines are a
+    // separate, bulk, DMF-backed fetch once the worker actually opens one; see
+    // HSMobileOpsCountingService's own class doc and CountingJournalRepository.
+
+    /**
+     * Open counting journals with at least one line in [JournalListRequestBody.warehouseId].
+     */
+    @POST("HSMobileOpsServiceGroup/HSMobileOpsCountingSvc/listOpenJournals")
+    suspend fun listOpenJournals(
+        @Body body: JournalListServiceRequest,
+        @Tag tag: IdempotentRead = IdempotentRead,
+    ): Response<JournalListServiceResponse>
+
+    /**
+     * Creates/reuses [ScopeExportRequestBody.journalId]'s own DMF export definition group,
+     * scopes it to just that journal, then runs the export synchronously and hands back a
+     * download URL directly, via a confirmed internal DMF API (see
+     * HSMobileOpsCountingService::exportOpenJournals' own doc comment). One project per journal
+     * — not shared — so two workers exporting different journals never race to overwrite each
+     * other's filter; see HSMobileOpsCountingExportSetup::ensureExportForJournal. No polling:
+     * this one call is the whole export. NOT tagged [IdempotentRead] — it rewrites server-side
+     * state (the export project's packed query) and kicks off a real export each time, so a 429
+     * must not be silently retried the way a read would be.
+     */
+    @POST("HSMobileOpsServiceGroup/HSMobileOpsCountingSvc/exportOpenJournals")
+    suspend fun exportOpenJournals(
+        @Body body: ScopeExportServiceRequest,
+    ): Response<ScopeExportServiceResponse>
+
+    /**
+     * Enqueues an import of [ImportCountsRequestBody.packageUrl] (already uploaded via the
+     * public `GetAzureWriteUrl` OData action) as a D365 batch job, against the shared
+     * `HSMobileOpsCountingImport` DMF project — `DMFPackageImporter`, not the public
+     * `ImportFromPackage` OData action, so concurrency safety comes from D365's own batch
+     * framework. Returns immediately with an execution id; poll it the same way a plain
+     * `ImportFromPackage` execution id would be polled, via the public
+     * `GetExecutionSummaryStatus`/`GetExecutionErrors` OData actions. See
+     * HSMobileOpsCountingService::importCounts' own doc comment. NOT tagged [IdempotentRead] —
+     * it enqueues a real import each time.
+     */
+    @POST("HSMobileOpsServiceGroup/HSMobileOpsCountingSvc/importCounts")
+    suspend fun importCounts(
+        @Body body: ImportCountsServiceRequest,
+    ): Response<ImportCountsServiceResponse>
 
     // -- Posting ------------------------------------------------------------------------------
     //
@@ -154,4 +236,30 @@ interface MobileOpsServiceApi {
     suspend fun getQueueStatus(
         @Body body: PostQueueServiceRequest,
     ): Response<PostQueueServiceResponse>
+
+    // -- Bulk SKU sync ------------------------------------------------------------------------
+    //
+    // Sets up the two DMF export projects only - the actual export is driven by the app itself
+    // via the public ExportToPackage/.../GetExportedPackageUrl OData actions (see DmfDto.kt),
+    // same flow CountingJournalRepository already uses. NOT tagged IdempotentRead - it creates
+    // DMF definition groups server-side on first call, so it is a write, even though a repeat
+    // call is idempotent by construction (HSMobileOpsSkuExportSetup finds-or-creates).
+
+    @POST("HSMobileOpsServiceGroup/HSMobileOpsSkuSvc/exportSkuMaster")
+    suspend fun exportSkuMaster(@Body body: SkuExportServiceRequest): Response<SkuExportServiceResponse>
+
+    // -- Offline licensing (certificate-chain design) --------------------------------------
+    //
+    // Called before any worker has signed in - see LicenseRepository. getLicense is tagged
+    // IdempotentRead (a pure read, safe to retry on a 429); registerDevice is not, since it
+    // writes HSMobileOpsDevice's own fleet row and must not be silently replayed.
+
+    @POST("HSMobileOpsServiceGroup/HSMobileOpsLicenseSvc/getLicense")
+    suspend fun getLicense(
+        @Body body: GetLicenseServiceRequest,
+        @Tag tag: IdempotentRead = IdempotentRead,
+    ): Response<GetLicenseServiceResponse>
+
+    @POST("HSMobileOpsServiceGroup/HSMobileOpsLicenseSvc/registerDevice")
+    suspend fun registerDevice(@Body body: RegisterDeviceServiceRequest): Response<RegisterDeviceServiceResponse>
 }

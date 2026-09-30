@@ -20,13 +20,13 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * Device-code token source - the alternative to [ClientCredentialsTokenProvider] that needs no
- * secret on the device at all.
+ * Device-code token source - this app's only device credential. A shared client secret was
+ * removed on explicit instruction: it is a fleet-wide secret that a rooted or backed-up
+ * handheld yields, and this app has exactly one credential now instead of two code paths to
+ * keep in sync.
  *
- * The trade runs the other way from client credentials: instead of a fleet-wide secret that a
- * rooted or backed-up handheld yields (see that class's own doc comment), commissioning this
- * device asks one person to sign in once, in a browser, on any device with one - the handheld
- * itself just shows a short code. What it gets back is a refresh token, cached in
+ * Commissioning a device asks one person to sign in once, in a browser, on any device with one -
+ * the handheld itself just shows a short code. What it gets back is a refresh token, cached in
  * [SecureStore], that this class re-exchanges for a fresh access token on every subsequent
  * launch without asking anyone to do that again. Signing this device out, or the refresh token
  * expiring or being revoked in Azure AD, is what sends it back through the interactive step.
@@ -74,7 +74,10 @@ class DeviceCodeTokenProvider @Inject constructor(
                         tenantId = config.tenantId,
                         clientId = config.clientId,
                         refreshToken = refreshToken,
-                        scope = "${config.resourceUrl.trimEnd('/')}/.default",
+                        // openid + profile too - see the same note on startDeviceCodeFlow's
+                        // scope. Keeps signedInUpn() current across a silent refresh, not just
+                        // right after the interactive step.
+                        scope = "${config.resourceUrl.trimEnd('/')}/.default openid profile",
                     )
                 },
                 onInvalidGrant = {
@@ -94,8 +97,25 @@ class DeviceCodeTokenProvider @Inject constructor(
         secureStore.remove(SecureStore.KEY_DEVICE_CODE_OBJECT_ID)
     }
 
-    /** The identity last established by a successful device-code sign-in, for display only. */
-    fun signedInUpn(): String? = secureStore.getString(SecureStore.KEY_DEVICE_CODE_UPN)
+    override fun invalidateCache() {
+        cached = null
+    }
+
+    /**
+     * The identity last established by a successful device-code sign-in, for display only - but
+     * only when there is still a refresh token that could actually make a new sign-in succeed.
+     * Confirmed live as a real bug, not theoretical: KEY_DEVICE_CODE_UPN and
+     * KEY_DEVICE_CODE_REFRESH_TOKEN are two independent SecureStore keys, and losing the refresh
+     * token while the UPN string survives (the same SecureStore data-loss pattern chased down for
+     * the cached DeviceId - see SecureStore's own class doc) made Settings confidently show
+     * "Signed in as ..." while every real sign-in attempt failed with "Device sign-in required."
+     * A UPN with no refresh token behind it is not a signed-in device, whatever this string still
+     * says.
+     */
+    fun signedInUpn(): String? {
+        if (secureStore.getString(SecureStore.KEY_DEVICE_CODE_REFRESH_TOKEN) == null) return null
+        return secureStore.getString(SecureStore.KEY_DEVICE_CODE_UPN)
+    }
 
     /** Starts a device-code sign-in: the code and URL to show whoever is commissioning this device. */
     suspend fun startDeviceCodeFlow(): NetworkResult<AadDeviceCodeResponse> {
@@ -110,7 +130,14 @@ class DeviceCodeTokenProvider @Inject constructor(
             val response = api.startDeviceCode(
                 tenantId = config.tenantId,
                 clientId = config.clientId,
-                scope = "${config.resourceUrl.trimEnd('/')}/.default offline_access",
+                // openid + profile, not just the resource's own .default - without them AAD
+                // never returns an id_token at all, which is the only place store() can read a
+                // UPN from. Confirmed live: every device-code sign-in this session showed as
+                // bare "Signed in" with no email, and - more consequentially - a *correctly
+                // still-valid* refresh token looked exactly like "never signed in" on every
+                // fresh app launch (signedInUpn() null forever), making a working sign-in read
+                // as broken and prompting an unnecessary repeat of the interactive step.
+                scope = "${config.resourceUrl.trimEnd('/')}/.default offline_access openid profile",
             )
             if (!response.isSuccessful) {
                 val aadError = readAadError(response)
@@ -163,6 +190,15 @@ class DeviceCodeTokenProvider @Inject constructor(
                     return@flow
                 }
                 val upn = store(body)
+                // Cached here too, not left for the next acquireSilent() to discover via an
+                // avoidable refresh round trip - this token is just as fresh as one that call
+                // would get back anyway.
+                cached = AccessToken(
+                    value = body.accessToken,
+                    expiresAtEpochMs = System.currentTimeMillis() + body.expiresInSeconds * 1_000,
+                    userObjectId = secureStore.getString(SecureStore.KEY_DEVICE_CODE_OBJECT_ID),
+                    userPrincipalName = upn,
+                )
                 emit(DeviceCodePollState.Success(upn))
                 return@flow
             }
@@ -214,7 +250,6 @@ class DeviceCodeTokenProvider @Inject constructor(
             expiresAtEpochMs = System.currentTimeMillis() + body.expiresInSeconds * 1_000,
             userObjectId = secureStore.getString(SecureStore.KEY_DEVICE_CODE_OBJECT_ID),
             userPrincipalName = upn,
-            authType = AuthType.DEVICE_CODE,
         )
         cached = token
         return NetworkResult.Success(token)

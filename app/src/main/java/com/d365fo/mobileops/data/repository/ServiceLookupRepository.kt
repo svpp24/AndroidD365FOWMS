@@ -398,7 +398,7 @@ internal fun com.d365fo.mobileops.data.remote.dto.PurchLineServiceDto.toDomain(
     unitConversionFactor = BigDecimal.ONE,
     orderedQuantity = BigDecimal.valueOf(orderedQty),
     receivedQuantity = BigDecimal.valueOf(receivedQty),
-    uncommittedQuantity = BigDecimal.ZERO,
+    uncommittedQuantity = BigDecimal.valueOf(uncommittedQty),
     siteId = siteId,
     warehouseId = warehouseId,
     locationId = locationId?.takeIf { it.isNotBlank() },

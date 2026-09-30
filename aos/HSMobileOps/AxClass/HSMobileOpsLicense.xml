@@ -1,0 +1,680 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsLicense</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Verifies the certificate and license configured on HSMobileOpsLicenseSetup and answers
+/// whether ForeFront Mobile is currently allowed to sign anyone in.
+///
+/// **Two-step chain, not one flat check.** A CERTIFICATE (WMSCERT1...), signed by a ROOT private
+/// key the vendor alone ever holds, binds this environment's customer/tenant identity to a
+/// customer public key. A LICENSE (WMSLIC1...), signed by that same customer's private key,
+/// carries the actual expiry/device-limit grant. verify() checks the certificate against
+/// rootPublicKeyXml() below first - only once that passes is the certificate's own customer
+/// public key trusted to check the license. See licensing/README.md for the full chain,
+/// including who signs what and when.
+///
+/// **Why a hardcoded root key, not a table field like the old PublicKeyXml was.** That was the
+/// actual vulnerability this design replaces: a customer's own SysAdmin can edit any table in
+/// their own tenant, so trusting a database-stored key as a root of trust is meaningless - they
+/// could simply paste in their own keypair and self-sign an unlimited license. A compiled
+/// constant cannot be edited that way. The SAME root public key value is also compiled directly
+/// into the Android app (see LicenseRootTrustAnchor.kt) - identical across every customer's
+/// environment, which is safe precisely because a public key can only ever verify, never forge,
+/// a signature; only the certificate step below is customer-specific.
+///
+/// **Server-side verification here is defense in depth, not the primary boundary.** The Android
+/// app performs this exact same certificate-then-license chain itself, against its own
+/// compiled-in root key, before ever calling HSMobileOpsUserSvc/HSMobileOpsLicenseSvc - a
+/// modified client could in principle skip that. This class exists so HSMobileOpsUserService::
+/// signIn and HSMobileOpsLicenseService::getLicense/registerDevice never serve or act on a
+/// certificate/license this AOS has not independently verified itself, whatever a calling client
+/// claims.
+///
+/// String format (both certificate and license): PREFIX + "." + base64url(JSON payload) + "." +
+/// base64url(RSA-SHA256 signature of the payload's base64url TEXT, not the decoded bytes) -
+/// base64url's own alphabet has no "." in it, so splitting on the first "." unambiguously
+/// recovers the payload and signature. Signing the base64 text itself, not the decoded bytes,
+/// keeps signing and verifying symmetric with no re-encoding step that could drift between this
+/// class and licensing/wms_license_tool.py. JSON is parsed via Newtonsoft.Json.Linq directly,
+/// the same proven-present-on-this-server approach HSMobileOpsPostingService::parseLines already
+/// uses for LinesJson - not a new, unverified capability.
+///
+/// **No reference/out parameters anywhere in this class - X++ does not support the `&` syntax.**
+/// Every "return more than one value" case here uses a `container` instead ([a, b] = someMethod()
+/// unpacking, conLen() to check success) - the same primitive X++ already relies on everywhere
+/// else in this codebase for that. The one case that cannot go through a container
+/// (`System.DateTime`, a CLR type) is handled the same way the original pre-existing code in
+/// this class already handled `System.DateTime::Parse`: called directly inside a local
+/// try/catch, with a boolean flag tracking success - no shared out-param helper for it at all.
+///
+/// **Why this class is `final` and `[Wrappable(false)]`, and why signIn/getLicense/
+/// registerDevice additionally carry `[Hookable(false)]`.** Unforgeable cryptography is
+/// worthless if the check built on top of it can just be told to pass. `[Hookable(false)]` is a
+/// method-only attribute (confirmed live - it does not compile on a class declaration), so it
+/// sits on the three call-in methods that actually decide whether a worker/device gets in, not
+/// on this class itself; `final`/`[Wrappable(false)]` here block overriding and Chain of Command
+/// wrapping of this class's own methods independent of that. This is a real, meaningful barrier
+/// against the normal, supported way someone would try to bypass this from inside the platform;
+/// it is not a claim that compiled X++ is unmodifiable by someone with lower-level access to the
+/// AOS (direct database edits, a decompile-and-repatch, etc.) - no application-level check can
+/// promise that, here or on the Android side. See licensing/README.md's threat-model note.
+///
+/// `internal` on top of `final`/`[Wrappable(false)]` - only HSMobileOpsUserService and
+/// HSMobileOpsLicenseService (same package) need to reach this class at all.
+/// </summary>
+[Wrappable(false)]
+internal final class HSMobileOpsLicense
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>rootPublicKeyXml</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The vendor's root public key, RSAKeyValue XML - identical to the PEM copy compiled into
+    /// the Android app (LicenseRootTrustAnchor.kt) and to licensing/root/root-public-key.xml,
+    /// which is where this value comes from. Hardcoded, not a table field - see the class doc.
+    ///
+    /// Rotating this (a new root keypair) invalidates every customer's certificate at once and
+    /// requires a new AOS build AND a new Android build shipped together - see
+    /// licensing/README.md's "Key rotation" section.
+    /// </summary>
+    private static str rootPublicKeyXml()
+    {
+        return '<RSAKeyValue><Modulus>7KLa1rvWSeAuMjfBCM98/ku9uYJ8i7mZlNGU8i0ucws9t1PZy4ugzeRqTYDcO'
+             + '819nRxRsGUZPkJtF6vmYZ1x0YAPGRs4r06aVdo2ub6TLEbYVFS0eCFdmYmght3UwaMNcO3zDN0+E47MhsKdzB8ZnVgW7/TWB'
+             + 'mJYUD+A/Fl0ae5lxS2SO57FWZgsQprTmNwLi26RJkt4B+gR8xegcZbX4SXynhvkhra976dHy5dp7XTYJhzgLCxX1SdtHVrm'
+             + 'EYlAeXJh0g24aDPqzL8uo7Ht0BbijKTiYWACZUsYOzBoFDyJaA+zVaGMEa8wgcQDj/AxIUIzOUO7WMEJ+MeDgBZAbQ==</'
+             + 'Modulus><Exponent>AQAB</Exponent></RSAKeyValue>';
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>verifySignature</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Whether _signatureB64 (base64url) is a valid RSA/SHA256 signature of _payloadB64 (the
+    /// base64url payload TEXT, not decoded) under _publicKeyXml. Never throws - a malformed
+    /// signature, a malformed/missing key, or any other CLR failure is simply "not valid", the
+    /// same outcome as a well-formed but wrong one. This is the literal implementation of "any
+    /// parse or verification exception means invalid, never fail open."
+    ///
+    /// base64url, not standard base64 - System.Convert::FromBase64String expects standard
+    /// base64 padding/alphabet, so '-'/'_' are translated back to '+'/'/' and '=' padding is
+    /// restored before decoding, matching wms_license_tool.py's own b64url_encode exactly.
+    /// </summary>
+    private static boolean verifySignature(str _payloadB64Url, str _signatureB64Url, str _publicKeyXml)
+    {
+        System.Text.Encoding                                   utf8;
+        System.Byte[]                                          msgBytes;
+        System.Byte[]                                          sigBytes;
+        System.Security.Cryptography.RSACryptoServiceProvider  rsa;
+        str                                                    sigB64;
+        boolean                                                ok;
+
+        try
+        {
+            utf8     = System.Text.Encoding::get_UTF8();
+            msgBytes = utf8.GetBytes(_payloadB64Url);
+            sigB64   = HSMobileOpsLicense::base64UrlToStandard(_signatureB64Url);
+            sigBytes = System.Convert::FromBase64String(sigB64);
+
+            rsa = new System.Security.Cryptography.RSACryptoServiceProvider();
+            rsa.FromXmlString(_publicKeyXml);
+
+            ok = rsa.VerifyData(msgBytes, 'SHA256', sigBytes);
+        }
+        catch (Exception::CLRError)
+        {
+            return false;
+        }
+
+        return ok;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>base64UrlToStandard</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// base64url (RFC 4648 section 5, unpadded - what every WMSCERT1/WMSLIC1 segment actually
+    /// carries) to standard base64 (what System.Convert::FromBase64String expects): '-'->'+',
+    /// '_'->'/', and '=' padding restored to a multiple of 4 characters.
+    /// </summary>
+    private static str base64UrlToStandard(str _b64Url)
+    {
+        str standard = strReplace(strReplace(_b64Url, '-', '+'), '_', '/');
+        int remainder = strLen(standard) mod 4;
+
+        if (remainder == 2)
+        {
+            standard += '==';
+        }
+        else if (remainder == 3)
+        {
+            standard += '=';
+        }
+
+        return standard;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>splitSigned</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Splits PREFIX.payload.signature into [payloadB64Url, signatureB64Url], checking the
+    /// prefix matches _expectedPrefix. Returns conNull() (an empty container - check with
+    /// conLen() == 2) for anything malformed - wrong prefix, no dot, more than two dots - rather
+    /// than throwing; every caller already treats "could not split" the same as "signature
+    /// failed."
+    /// </summary>
+    private static container splitSigned(str _signed, str _expectedPrefix)
+    {
+        int dot1, dot2;
+        str payloadB64Url, signatureB64Url;
+
+        if (!_signed || strLen(_signed) <= strLen(_expectedPrefix)
+         || subStr(_signed, 1, strLen(_expectedPrefix)) != _expectedPrefix)
+        {
+            return conNull();
+        }
+
+        dot1 = strScan(_signed, '.', 1, strLen(_signed));
+        if (!dot1)
+        {
+            return conNull();
+        }
+
+        dot2 = strScan(_signed, '.', dot1 + 1, strLen(_signed) - dot1);
+        if (!dot2)
+        {
+            return conNull();
+        }
+
+        // A third '.' would mean the payload or signature segment itself contains one, which
+        // base64url never produces - treated as malformed rather than silently truncated.
+        if (strScan(_signed, '.', dot2 + 1, strLen(_signed) - dot2))
+        {
+            return conNull();
+        }
+
+        payloadB64Url   = subStr(_signed, strLen(_expectedPrefix) + 2, dot2 - strLen(_expectedPrefix) - 2);
+        signatureB64Url = subStr(_signed, dot2 + 1, strLen(_signed) - dot2);
+
+        return [payloadB64Url, signatureB64Url];
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>jsonStr</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// One property of a parsed JSON object, as a string - '' when absent rather than null.
+    /// Same shape as HSMobileOpsPostingService::jsonStr - duplicated locally rather than shared
+    /// across classes for two one-line helpers.
+    /// </summary>
+    private static str jsonStr(Newtonsoft.Json.Linq.JObject _obj, str _property)
+    {
+        Newtonsoft.Json.Linq.JToken token;
+
+        if (_obj == null)
+        {
+            return '';
+        }
+
+        token = _obj.get_Item(_property);
+        if (token == null)
+        {
+            return '';
+        }
+
+        return token.ToString();
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>jsonInt</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// One property of a parsed JSON object, as an integer - 0 when absent or not a number.
+    /// </summary>
+    private static int jsonInt(Newtonsoft.Json.Linq.JObject _obj, str _property)
+    {
+        str value = HSMobileOpsLicense::jsonStr(_obj, _property);
+
+        if (!value)
+        {
+            return 0;
+        }
+
+        return str2int(value);
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parseUtcDate</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Parses one of this format's "yyyy-MM-ddTHH:mm:ssZ" date strings as UTC, or throws. Parse
+    /// (which returns the value directly), not TryParse - X++ cannot bind to a .NET method whose
+    /// last parameter is "out" (confirmed live: TryParse's 4-arg overload fails to resolve from
+    /// X++ with "method ... is not found"). The 3-arg overload with RoundtripKind, not a plain
+    /// culture-only parse - without it, a "Z"-suffixed string silently converts to the AOS
+    /// server's own local time zone instead of staying UTC, which would make every comparison
+    /// against it wrong by that server's offset.
+    ///
+    /// Deliberately no try/catch here, and no boolean-success variant - every caller wraps its
+    /// own call (often two at once) in a single local try/catch, exactly the shape the original,
+    /// pre-existing code in this class already used for this same CLR call before any of this
+    /// session's changes. A shared out-param helper would need `&`, which X++ does not support.
+    /// </summary>
+    private static System.DateTime parseUtcDate(str _text)
+    {
+        return System.DateTime::Parse(
+            _text,
+            System.Globalization.CultureInfo::get_InvariantCulture(),
+            System.Globalization.DateTimeStyles::RoundtripKind);
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>verify</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Reads the configured certificate and license and reports whether the whole chain is
+    /// present, correctly signed, internally consistent, and not expired. Never throws - every
+    /// failure mode comes back as an HSMobileOpsLicenseStatus so callers branch on it like any
+    /// other sign-in condition rather than needing a try/catch of their own. See the class doc
+    /// for the two-step certificate-then-license chain this walks.
+    ///
+    /// `internal`, not `public` - HSMobileOpsUserService::signIn and
+    /// HSMobileOpsLicenseService::getLicense/registerDevice (same package) are this class's only
+    /// callers.
+    /// </summary>
+    internal static HSMobileOpsLicenseStatus verify()
+    {
+        HSMobileOpsLicenseStatus       status = new HSMobileOpsLicenseStatus();
+        HSMobileOpsLicenseSetup        setup;
+        container                       certParts, licParts;
+        str                             certPayloadB64, certSigB64;
+        str                             licPayloadB64, licSigB64;
+        System.Object                   parsedCert, parsedLic;
+        Newtonsoft.Json.Linq.JObject    certJson, licJson;
+        System.Byte[]                   certJsonBytes, licJsonBytes;
+        str                             certJsonText, licJsonText;
+        System.Text.Encoding            utf8;
+        str                             customerPublicKeyXml;
+        str                             certCustomerId, certTenantId;
+        str                             licCustomerId, licTenantId;
+        str                             notBeforeText, notAfterText, expiryText;
+        System.DateTime                 notBefore, notAfter, expiryUtc, nowUtc;
+        System.TimeSpan                 remaining;
+        real                             remainingDays;
+        int                              remainingDaysInt;
+        int                              maxDevices;
+        boolean                          dateOk;
+
+        status.parmValid(false);
+
+        setup = HSMobileOpsLicenseSetup::find();
+
+        if (!setup.CertificateString || !setup.LicenseKey)
+        {
+            status.parmErrorCode('NO_LICENSE');
+            status.parmMessage('No license has been configured for this app. Contact your administrator.');
+            return status;
+        }
+
+        // -- Step 1: certificate, verified against the compiled-in root key --------------------
+
+        certParts = HSMobileOpsLicense::splitSigned(setup.CertificateString, 'WMSCERT1');
+        if (conLen(certParts) != 2)
+        {
+            status.parmErrorCode('LICENSE_INVALID');
+            status.parmMessage('The configured certificate is malformed.');
+            return status;
+        }
+        certPayloadB64 = conPeek(certParts, 1);
+        certSigB64     = conPeek(certParts, 2);
+
+        if (!HSMobileOpsLicense::verifySignature(certPayloadB64, certSigB64, HSMobileOpsLicense::rootPublicKeyXml()))
+        {
+            status.parmErrorCode('LICENSE_INVALID');
+            status.parmMessage('The configured certificate failed signature verification against the root key.');
+            return status;
+        }
+
+        try
+        {
+            utf8          = System.Text.Encoding::get_UTF8();
+            certJsonBytes = System.Convert::FromBase64String(HSMobileOpsLicense::base64UrlToStandard(certPayloadB64));
+            certJsonText  = utf8.GetString(certJsonBytes);
+            parsedCert    = Newtonsoft.Json.Linq.JObject::Parse(certJsonText);
+        }
+        catch (Exception::CLRError)
+        {
+            status.parmErrorCode('LICENSE_INVALID');
+            status.parmMessage('The configured certificate is malformed.');
+            return status;
+        }
+
+        certJson = parsedCert;
+        if (certJson == null)
+        {
+            status.parmErrorCode('LICENSE_INVALID');
+            status.parmMessage('The configured certificate is malformed.');
+            return status;
+        }
+
+        notBeforeText         = HSMobileOpsLicense::jsonStr(certJson, 'notBefore');
+        notAfterText          = HSMobileOpsLicense::jsonStr(certJson, 'notAfter');
+        customerPublicKeyXml  = HSMobileOpsLicense::jsonStr(certJson, 'customerPublicKeyXml');
+        certCustomerId        = HSMobileOpsLicense::jsonStr(certJson, 'customerId');
+        certTenantId          = HSMobileOpsLicense::jsonStr(certJson, 'tenantId');
+
+        if (!customerPublicKeyXml)
+        {
+            status.parmErrorCode('LICENSE_INVALID');
+            status.parmMessage('The configured certificate is malformed.');
+            return status;
+        }
+
+        dateOk = true;
+        try
+        {
+            notBefore = HSMobileOpsLicense::parseUtcDate(notBeforeText);
+            notAfter  = HSMobileOpsLicense::parseUtcDate(notAfterText);
+        }
+        catch (Exception::CLRError)
+        {
+            dateOk = false;
+        }
+        if (!dateOk)
+        {
+            status.parmErrorCode('LICENSE_INVALID');
+            status.parmMessage('The configured certificate is malformed.');
+            return status;
+        }
+
+        nowUtc = System.DateTime::get_UtcNow();
+        if (System.DateTime::Compare(nowUtc, notBefore) < 0 || System.DateTime::Compare(nowUtc, notAfter) > 0)
+        {
+            status.parmErrorCode('LICENSE_INVALID');
+            status.parmMessage(strFmt(
+                'The configured certificate is outside its validity window (%1 to %2).',
+                notBeforeText, notAfterText));
+            return status;
+        }
+
+        // -- Step 2: license, verified against the CERTIFICATE's own customer key --------------
+
+        licParts = HSMobileOpsLicense::splitSigned(setup.LicenseKey, 'WMSLIC1');
+        if (conLen(licParts) != 2)
+        {
+            status.parmErrorCode('LICENSE_INVALID');
+            status.parmMessage('The configured license key is malformed.');
+            return status;
+        }
+        licPayloadB64 = conPeek(licParts, 1);
+        licSigB64     = conPeek(licParts, 2);
+
+        if (!HSMobileOpsLicense::verifySignature(licPayloadB64, licSigB64, customerPublicKeyXml))
+        {
+            status.parmErrorCode('LICENSE_INVALID');
+            status.parmMessage('The configured license key failed signature verification.');
+            return status;
+        }
+
+        try
+        {
+            licJsonBytes = System.Convert::FromBase64String(HSMobileOpsLicense::base64UrlToStandard(licPayloadB64));
+            licJsonText  = utf8.GetString(licJsonBytes);
+            parsedLic    = Newtonsoft.Json.Linq.JObject::Parse(licJsonText);
+        }
+        catch (Exception::CLRError)
+        {
+            status.parmErrorCode('LICENSE_INVALID');
+            status.parmMessage('The configured license key is malformed.');
+            return status;
+        }
+
+        licJson = parsedLic;
+        if (licJson == null)
+        {
+            status.parmErrorCode('LICENSE_INVALID');
+            status.parmMessage('The configured license key is malformed.');
+            return status;
+        }
+
+        licCustomerId = HSMobileOpsLicense::jsonStr(licJson, 'customerId');
+        licTenantId   = HSMobileOpsLicense::jsonStr(licJson, 'tenantId');
+        expiryText    = HSMobileOpsLicense::jsonStr(licJson, 'expiryUtc');
+        maxDevices    = HSMobileOpsLicense::jsonInt(licJson, 'maxDevices');
+
+        // -- Step 3: the license must actually belong to the certificate that vouched for it ---
+        //
+        // Without this, a license signed for one customer could be pasted alongside a
+        // certificate belonging to a different one, as long as an attacker somehow obtained a
+        // validly-signed license string for ANY customer - the signature alone only proves
+        // "the certificate's customer key signed this," not "for this environment."
+
+        if (licCustomerId != certCustomerId || licTenantId != certTenantId)
+        {
+            status.parmErrorCode('LICENSE_INVALID');
+            status.parmMessage('The configured license does not match the configured certificate.');
+            return status;
+        }
+
+        dateOk = true;
+        try
+        {
+            expiryUtc = HSMobileOpsLicense::parseUtcDate(expiryText);
+        }
+        catch (Exception::CLRError)
+        {
+            dateOk = false;
+        }
+        if (!expiryText || !dateOk)
+        {
+            status.parmErrorCode('LICENSE_INVALID');
+            status.parmMessage('The configured license key has an unreadable expiry date.');
+            return status;
+        }
+
+        status.parmExpiryUtc(expiryText);
+        status.parmMaxDevices(maxDevices);
+        status.parmCustomerId(licCustomerId);
+        status.parmTenantId(licTenantId);
+
+        if (System.DateTime::Compare(expiryUtc, nowUtc) < 0)
+        {
+            status.parmErrorCode('LICENSE_EXPIRED');
+            status.parmMessage(strFmt(
+                "This app's license expired on %1. Contact your administrator.", expiryText));
+            return status;
+        }
+
+        // Whole days remaining, truncated toward zero (real -> int assignment) - good enough for
+        // a "renew within N days" warning threshold; only computed on the success path, see
+        // parmDaysUntilExpiry's help.
+        remaining        = expiryUtc.Subtract(nowUtc);
+        remainingDays    = remaining.get_TotalDays();
+        remainingDaysInt = remainingDays;
+        status.parmDaysUntilExpiry(remainingDaysInt);
+
+        status.parmValid(true);
+        return status;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>verifyCertificateAndExtractCustomerKeyXml</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Verifies a raw WMSCERT1... string against the root key and, on success, returns
+    /// [customerPublicKeyXml, certCustomerId, certTenantId] as a 3-element container - used only
+    /// by HSMobileOpsLicenseSetup's own validateBeforeSave, so a save runs through the exact same
+    /// certificate check as every live verify() call and can never quietly diverge from it.
+    /// Returns conNull() on any failure (check with conLen() == 3); the caller treats that as
+    /// "reject the save," never as "no key configured."
+    /// </summary>
+    internal static container verifyCertificateAndExtractCustomerKeyXml(str _certificateString)
+    {
+        container                      parts;
+        str                            payloadB64, sigB64;
+        System.Object                  parsed;
+        Newtonsoft.Json.Linq.JObject   json;
+        System.Text.Encoding           utf8;
+        System.Byte[]                  jsonBytes;
+        str                            jsonText;
+        str                            notBeforeText, notAfterText;
+        System.DateTime                notBefore, notAfter, nowUtc;
+        str                            customerPublicKeyXml;
+        str                            certCustomerId, certTenantId;
+        boolean                        dateOk;
+
+        parts = HSMobileOpsLicense::splitSigned(_certificateString, 'WMSCERT1');
+        if (conLen(parts) != 2)
+        {
+            return conNull();
+        }
+        payloadB64 = conPeek(parts, 1);
+        sigB64     = conPeek(parts, 2);
+
+        if (!HSMobileOpsLicense::verifySignature(payloadB64, sigB64, HSMobileOpsLicense::rootPublicKeyXml()))
+        {
+            return conNull();
+        }
+
+        try
+        {
+            utf8      = System.Text.Encoding::get_UTF8();
+            jsonBytes = System.Convert::FromBase64String(HSMobileOpsLicense::base64UrlToStandard(payloadB64));
+            jsonText  = utf8.GetString(jsonBytes);
+            parsed    = Newtonsoft.Json.Linq.JObject::Parse(jsonText);
+        }
+        catch (Exception::CLRError)
+        {
+            return conNull();
+        }
+
+        json = parsed;
+        if (json == null)
+        {
+            return conNull();
+        }
+
+        notBeforeText         = HSMobileOpsLicense::jsonStr(json, 'notBefore');
+        notAfterText          = HSMobileOpsLicense::jsonStr(json, 'notAfter');
+        customerPublicKeyXml  = HSMobileOpsLicense::jsonStr(json, 'customerPublicKeyXml');
+
+        if (!customerPublicKeyXml)
+        {
+            return conNull();
+        }
+
+        dateOk = true;
+        try
+        {
+            notBefore = HSMobileOpsLicense::parseUtcDate(notBeforeText);
+            notAfter  = HSMobileOpsLicense::parseUtcDate(notAfterText);
+        }
+        catch (Exception::CLRError)
+        {
+            dateOk = false;
+        }
+        if (!dateOk)
+        {
+            return conNull();
+        }
+
+        nowUtc = System.DateTime::get_UtcNow();
+        if (System.DateTime::Compare(nowUtc, notBefore) < 0 || System.DateTime::Compare(nowUtc, notAfter) > 0)
+        {
+            return conNull();
+        }
+
+        certCustomerId = HSMobileOpsLicense::jsonStr(json, 'customerId');
+        certTenantId   = HSMobileOpsLicense::jsonStr(json, 'tenantId');
+
+        return [customerPublicKeyXml, certCustomerId, certTenantId];
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>verifyLicenseAgainstCustomerKey</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Verifies a raw WMSLIC1... string's signature against an already-trusted customer public
+    /// key XML (from verifyCertificateAndExtractCustomerKeyXml) and, on success, returns
+    /// [licCustomerId, licTenantId] as a 2-element container - used only by
+    /// HSMobileOpsLicenseSetup's own validateBeforeSave, so a save can be refused if the pasted
+    /// license and certificate do not actually belong together, the same cross-check verify()
+    /// makes at every live call. Returns conNull() on any failure (check with conLen() == 2).
+    /// </summary>
+    internal static container verifyLicenseAgainstCustomerKey(str _licenseString, str _customerPublicKeyXml)
+    {
+        container                      parts;
+        str                            payloadB64, sigB64;
+        System.Object                  parsed;
+        Newtonsoft.Json.Linq.JObject   json;
+        System.Text.Encoding           utf8;
+        System.Byte[]                  jsonBytes;
+        str                            jsonText;
+        str                            licCustomerId, licTenantId;
+
+        parts = HSMobileOpsLicense::splitSigned(_licenseString, 'WMSLIC1');
+        if (conLen(parts) != 2)
+        {
+            return conNull();
+        }
+        payloadB64 = conPeek(parts, 1);
+        sigB64     = conPeek(parts, 2);
+
+        if (!HSMobileOpsLicense::verifySignature(payloadB64, sigB64, _customerPublicKeyXml))
+        {
+            return conNull();
+        }
+
+        try
+        {
+            utf8      = System.Text.Encoding::get_UTF8();
+            jsonBytes = System.Convert::FromBase64String(HSMobileOpsLicense::base64UrlToStandard(payloadB64));
+            jsonText  = utf8.GetString(jsonBytes);
+            parsed    = Newtonsoft.Json.Linq.JObject::Parse(jsonText);
+        }
+        catch (Exception::CLRError)
+        {
+            return conNull();
+        }
+
+        json = parsed;
+        if (json == null)
+        {
+            return conNull();
+        }
+
+        licCustomerId = HSMobileOpsLicense::jsonStr(json, 'customerId');
+        licTenantId   = HSMobileOpsLicense::jsonStr(json, 'tenantId');
+
+        return [licCustomerId, licTenantId];
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

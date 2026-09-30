@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsSkuService</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Sets up the bulk item + barcode master data export for the offline SKU cache
+/// (`ItemEntity`/`BarcodeEntity` on the device, see `SkuSyncWorker`).
+///
+/// Same division of labour as `HSMobileOpsCountingService::exportOpenJournals`: this service only
+/// creates the DMF projects and returns their names - the app itself drives the actual export via
+/// the public `ExportToPackage`/`GetExecutionSummaryStatus`/`GetExportedPackageUrl` OData actions,
+/// exactly the flow `CountingJournalRepository.startExport`/`pollExport` already use for counting
+/// journals. `SkuSyncRepository` reuses that same sequence for two projects instead of one.
+///
+/// Unlike counting export, there is nothing to scope per-request - a SKU sync always exports
+/// everything - so `HSMobileOpsSkuExportSetup` hands back two shared, idempotent projects rather
+/// than a fresh one per call. See that class's own doc comment, and its note on the two AOT
+/// entity names being configurable (`HSMobileOpsSkuSyncSetup`) rather than confirmed.
+/// </summary>
+class HSMobileOpsSkuService
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>exportSkuMaster</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Ensures both export projects exist and returns their names. Not scoped by warehouse or
+    /// company data - item and barcode master data is shared across the environment the same way
+    /// HSMobileOpsLicenseSetup is, so `_request.parmDataAreaId()` is only validated here, the same
+    /// as every other operation on this service group, not used to filter anything.
+    /// </summary>
+    public HSMobileOpsSkuExportResponse exportSkuMaster(HSMobileOpsSkuExportRequest _request)
+    {
+        HSMobileOpsSkuExportResponse response = new HSMobileOpsSkuExportResponse();
+        DataAreaId                   company;
+
+        response.parmSuccess(false);
+
+        if (_request)
+        {
+            company = _request.parmDataAreaId();
+        }
+
+        if (!company || !CompanyInfo::findDataArea(company).RecId)
+        {
+            response.parmErrorCode('INVALID_REQUEST');
+            response.parmMessage('Company is required');
+            return response;
+        }
+
+        response.parmItemDefinitionGroupName(HSMobileOpsSkuExportSetup::ensureItemExport());
+        response.parmBarcodeDefinitionGroupName(HSMobileOpsSkuExportSetup::ensureBarcodeExport());
+        response.parmSuccess(true);
+
+        return response;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

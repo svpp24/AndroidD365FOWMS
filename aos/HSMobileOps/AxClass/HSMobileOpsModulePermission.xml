@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsModulePermission</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// One row of HSMobileOpsSignInResponse::parmModulePermissions - a module this worker has been
+/// explicitly touched for, in either direction. See HSMobileOpsUserModulePermission's own class
+/// doc for the absence-means-allowed rule this contract does NOT apply: an empty list of these
+/// means every module stays allowed, not that none do.
+/// </summary>
+[DataContractAttribute]
+class HSMobileOpsModulePermission
+{
+    str     module;
+    boolean isAllowed;
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmModule</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// An HSMobileOpsModule element name (`PO_RECEIVING`, `TRANSFER_SHIP`, `TRANSFER_RECEIVE`,
+    /// `INVENTORY_COUNT`) - deliberately the enum's own Name, not its label or an integer, so it
+    /// matches the app's WarehouseWorkflow enum names exactly with no translation table on
+    /// either side. See HSMobileOpsModule::serialize/parse.
+    /// </summary>
+    [DataMemberAttribute('Module')]
+    public str parmModule(str _value = module)
+    {
+        module = _value;
+        return module;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmIsAllowed</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('IsAllowed')]
+    public boolean parmIsAllowed(boolean _value = isAllowed)
+    {
+        isAllowed = _value;
+        return isAllowed;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

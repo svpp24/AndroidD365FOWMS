@@ -53,12 +53,19 @@ class TransactionPushWorker @AssistedInject constructor(
                 }
 
                 when (val result = dispatcher.dispatch(entry)) {
-                    is NetworkResult.Success -> queue.onSuccess(entry)
+                    is NetworkResult.Success -> {
+                        Timber.i("posted %s for %s", entry.operation, entry.aggregateId)
+                        queue.onSuccess(entry)
+                    }
 
                     is NetworkResult.Error -> {
                         val dropped = queue.onFailure(entry, result.failure)
                         if (dropped) {
                             deadLettered++
+                            Timber.e(
+                                "dead-lettered %s for %s: %s",
+                                entry.operation, entry.aggregateId, result.failure.message,
+                            )
                             // The one failure worth a system notification - see SyncNotifier.
                             // Every retryable attempt before this point stays silent on
                             // purpose; only the give-up moment does.

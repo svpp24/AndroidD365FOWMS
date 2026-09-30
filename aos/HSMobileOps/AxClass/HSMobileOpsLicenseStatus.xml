@@ -1,0 +1,148 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsLicenseStatus</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// What HSMobileOpsLicense::verify() found - never thrown, always returned, so
+/// HSMobileOpsUserService::signIn() can branch on it exactly the way it already branches on every
+/// other sign-in condition (invalid credentials, locked out, no warehouse, ...).
+///
+/// Not a [DataContract] - this never crosses the wire on its own. signIn() reads it and re-expresses
+/// whatever it found as an ErrorCode/Message on HSMobileOpsSignInResponse, the same contract every
+/// other failure already uses.
+///
+/// `final`, `[Wrappable(false)]` and `internal` for the same reason as HSMobileOpsLicense itself -
+/// a Chain of Command extension on parmValid() that always returned true would bypass the license
+/// check just as completely as one on verify() would, regardless of how strong the signature check
+/// upstream is; `internal` also means no package outside this model can even see this class to try.
+/// </summary>
+[Wrappable(false)]
+internal final class HSMobileOpsLicenseStatus
+{
+    boolean valid;
+    str     errorCode;
+    str     message;
+    int     maxDevices;
+    str     expiryUtc;
+    str     customerId;
+    str     tenantId;
+    int     daysUntilExpiry;
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmValid</Name>
+				<Source><![CDATA[
+
+    internal boolean parmValid(boolean _value = valid)
+    {
+        valid = _value;
+        return valid;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmErrorCode</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// NO_LICENSE, LICENSE_INVALID or LICENSE_EXPIRED. Blank when valid is true.
+    /// </summary>
+    internal str parmErrorCode(str _value = errorCode)
+    {
+        errorCode = _value;
+        return errorCode;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmMessage</Name>
+				<Source><![CDATA[
+
+    internal str parmMessage(str _value = message)
+    {
+        message = _value;
+        return message;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmMaxDevices</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The device cap encoded in the key. Meaningful even when the key is expired - a supervisor
+    /// looking at the license form still wants to know what the old key granted.
+    /// </summary>
+    internal int parmMaxDevices(int _value = maxDevices)
+    {
+        maxDevices = _value;
+        return maxDevices;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmExpiryUtc</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The expiry date exactly as encoded in the key (ISO 8601 UTC text). Kept as text rather than
+    /// an X++ utcdatetime - the only comparison that matters (is it in the past) already happened
+    /// in .NET inside verify(), and text round-trips into a display or a log line without any
+    /// further conversion.
+    /// </summary>
+    internal str parmExpiryUtc(str _value = expiryUtc)
+    {
+        expiryUtc = _value;
+        return expiryUtc;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmCustomerId</Name>
+				<Source><![CDATA[
+
+    internal str parmCustomerId(str _value = customerId)
+    {
+        customerId = _value;
+        return customerId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmTenantId</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The vendor-assigned opaque tenant/environment id the license was issued for - lets a
+    /// license/certificate pair minted for one D365FO environment be rejected if pasted into a
+    /// different one. See HSMobileOpsLicense::verify()'s "Step 3" check.
+    /// </summary>
+    internal str parmTenantId(str _value = tenantId)
+    {
+        tenantId = _value;
+        return tenantId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmDaysUntilExpiry</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// How many whole days remain until expiryUtc - only meaningful (and only set) when valid is
+    /// true. Drives the "renew soon" warning signIn() attaches to an otherwise-successful sign-in;
+    /// see HSMobileOpsUserService::signIn.
+    /// </summary>
+    internal int parmDaysUntilExpiry(int _value = daysUntilExpiry)
+    {
+        daysUntilExpiry = _value;
+        return daysUntilExpiry;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

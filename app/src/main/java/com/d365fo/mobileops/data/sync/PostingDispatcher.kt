@@ -13,8 +13,11 @@ import com.d365fo.mobileops.data.remote.dto.PostServiceResponse
 import com.d365fo.mobileops.data.remote.error.D365ErrorMapper
 import com.d365fo.mobileops.data.local.entity.SyncOperation
 import com.d365fo.mobileops.data.local.entity.SyncQueueEntity
+import com.d365fo.mobileops.data.remote.dto.SetModulePermissionRequestBody
+import com.d365fo.mobileops.data.remote.dto.SetModulePermissionServiceRequest
 import com.d365fo.mobileops.data.repository.FlowSessionRepository
 import com.d365fo.mobileops.data.sync.payload.ProductReceiptPayload
+import com.d365fo.mobileops.data.sync.payload.SetWorkerPermissionPayload
 import com.d365fo.mobileops.data.sync.payload.SyncPayload
 import com.d365fo.mobileops.data.sync.payload.TransferLinePayload
 import com.d365fo.mobileops.data.sync.payload.TransferReceivePayload
@@ -65,6 +68,9 @@ class PostingDispatcher @Inject constructor(
 
             SyncOperation.TRANSFER_ORDER_RECEIVE ->
                 postTransfer(payload as TransferReceivePayload)
+
+            SyncOperation.SET_WORKER_PERMISSION ->
+                setWorkerPermission(payload as SetWorkerPermissionPayload)
 
             // Journals and packing slips have no HSMobileOps endpoint yet — that is a
             // different X++ service, not written. Failing loudly here beats silently
@@ -172,6 +178,42 @@ class PostingDispatcher @Inject constructor(
         )
     }
 
+    /**
+     * Pushes one queued permission toggle. Unlike the postings above, [SetWorkerPermissionPayload]
+     * has no per-entity "already applied" flag to reconcile against - `setModulePermission` is
+     * naturally idempotent (it always sets the row to the requested value, never increments or
+     * appends), so a duplicate delivery from a retried queue entry is harmless by construction and
+     * needs no `alreadyPosted`-style check.
+     */
+    private suspend fun setWorkerPermission(payload: SetWorkerPermissionPayload): NetworkResult<Unit> {
+        val request = SetModulePermissionServiceRequest(
+            SetModulePermissionRequestBody(
+                dataAreaId = payload.dataAreaId,
+                actingUserName = payload.actingUserName,
+                targetUserName = payload.targetUserName,
+                module = payload.workflow,
+                isAllowed = payload.allowed,
+            ),
+        )
+
+        return when (val result = errorMapper.safeCall { serviceApi.setModulePermission(request) }) {
+            is NetworkResult.Success ->
+                if (result.data.success) {
+                    NetworkResult.Success(Unit)
+                } else {
+                    NetworkResult.Error(
+                        AppFailure.BusinessRule(
+                            result.data.message ?: "D365FO rejected the permission change",
+                            d365ErrorCode = result.data.errorCode,
+                        ),
+                    )
+                }
+
+            is NetworkResult.Error -> result
+            NetworkResult.Loading -> NetworkResult.Error(AppFailure.Fatal("unexpected Loading"))
+        }
+    }
+
     /** Posts one request and interprets the response. */
     private suspend fun post(
         call: suspend (PostServiceRequest) -> retrofit2.Response<PostServiceResponse>,
@@ -257,5 +299,7 @@ class PostingDispatcher @Inject constructor(
         errorMessage = errorMessage,
         receivedUtc = receivedUtc,
         processedUtc = processedUtc,
+        userName = userName,
+        linesJson = linesJson,
     )
 }

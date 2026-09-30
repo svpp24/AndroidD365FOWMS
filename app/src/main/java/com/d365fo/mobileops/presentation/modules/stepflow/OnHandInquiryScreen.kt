@@ -15,8 +15,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.PhotoCamera
 import com.d365fo.mobileops.presentation.common.components.SquareButton as Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
+import com.d365fo.mobileops.presentation.common.components.AppCard as Card
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
 import com.d365fo.mobileops.presentation.common.components.SquareTextButton as TextButton
@@ -30,7 +29,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
+import com.d365fo.mobileops.presentation.common.components.AppTopBar as TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -47,6 +46,11 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.d365fo.mobileops.domain.repository.OnHandLine
 import com.d365fo.mobileops.domain.repository.WarehouseOption
+import com.d365fo.mobileops.presentation.common.components.ErrorBanner
+import com.d365fo.mobileops.presentation.common.components.HeroEnterBadge
+import com.d365fo.mobileops.presentation.common.components.HeroFieldShape
+import com.d365fo.mobileops.presentation.common.components.PromptHeroCard
+import com.d365fo.mobileops.presentation.common.components.heroFieldColors
 import com.d365fo.mobileops.presentation.common.components.TextEntryScreen
 import com.d365fo.mobileops.presentation.common.scan.CameraScannerSheet
 import com.d365fo.mobileops.presentation.common.theme.WarehouseDimens
@@ -109,14 +113,17 @@ fun OnHandInquiryScreen(
             // Overlaid Box, not clickable() on the field itself - a read-only field's own
             // pointer input (for cursor placement) swallows a tap before an outer clickable on
             // the same modifier chain ever sees it - confirmed live.
+            PromptHeroCard(prompt = "Scan item or barcode") {
             Box {
                 OutlinedTextField(
                     value = "",
                     onValueChange = {},
                     readOnly = true,
-                    label = { Text("Scan item or barcode") },
                     singleLine = true,
                     textStyle = MaterialTheme.typography.titleLarge,
+                    shape = HeroFieldShape,
+                    colors = heroFieldColors(),
+                    trailingIcon = { HeroEnterBadge() },
                     modifier = Modifier
                         .fillMaxWidth()
                         .heightIn(min = 64.dp)
@@ -127,6 +134,7 @@ fun OnHandInquiryScreen(
                         .matchParentSize()
                         .clickable(onClick = onManualEntryRequested),
                 )
+            }
             }
 
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -183,18 +191,7 @@ fun OnHandInquiryScreen(
             }
 
             state.error?.let { message ->
-                Card(
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.errorContainer,
-                    ),
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Text(
-                        text = message,
-                        modifier = Modifier.padding(12.dp),
-                        color = MaterialTheme.colorScheme.onErrorContainer,
-                    )
-                }
+                ErrorBanner(message = message)
             }
 
             state.itemNumber?.let { item ->

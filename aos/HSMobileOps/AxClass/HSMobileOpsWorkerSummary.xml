@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsWorkerSummary</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// One row of HSMobileOpsWorkerDirectoryResponse::parmWorkers - enough to render and search the
+/// Admin Center's worker list. Deliberately thin: nothing here needs the password/lockout
+/// columns that HSMobileOpsUserService::signIn itself deals with.
+/// </summary>
+[DataContractAttribute]
+class HSMobileOpsWorkerSummary
+{
+    str     userName;
+    str     displayName;
+    boolean isSupervisor;
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmUserName</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('UserName')]
+    public str parmUserName(str _value = userName)
+    {
+        userName = _value;
+        return userName;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmDisplayName</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('DisplayName')]
+    public str parmDisplayName(str _value = displayName)
+    {
+        displayName = _value;
+        return displayName;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmIsSupervisor</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('IsSupervisor')]
+    public boolean parmIsSupervisor(boolean _value = isSupervisor)
+    {
+        isSupervisor = _value;
+        return isSupervisor;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

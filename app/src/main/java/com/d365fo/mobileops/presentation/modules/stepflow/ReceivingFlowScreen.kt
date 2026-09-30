@@ -21,6 +21,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ListAlt
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.CloudDone
+import androidx.compose.material.icons.filled.CloudQueue
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.PhotoCamera
@@ -30,8 +32,9 @@ import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import com.d365fo.mobileops.presentation.common.components.SquareButton as Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
+import com.d365fo.mobileops.presentation.common.components.AppCard as Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -42,7 +45,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import com.d365fo.mobileops.presentation.common.components.SquareTextButton as TextButton
-import androidx.compose.material3.TopAppBar
+import com.d365fo.mobileops.presentation.common.components.AppTopBar as TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -62,10 +65,16 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.d365fo.mobileops.domain.model.PurchaseOrderLine
 import com.d365fo.mobileops.domain.model.ReceivingStep
 import com.d365fo.mobileops.domain.model.stepsFor
+import com.d365fo.mobileops.presentation.common.components.ErrorBanner
+import com.d365fo.mobileops.presentation.common.components.HeroEnterBadge
+import com.d365fo.mobileops.presentation.common.components.HeroFieldShape
+import com.d365fo.mobileops.presentation.common.components.PromptHeroCard
+import com.d365fo.mobileops.presentation.common.components.heroFieldColors
 import com.d365fo.mobileops.presentation.common.components.TextEntryScreen
 import com.d365fo.mobileops.presentation.common.scan.CameraScannerSheet
 import com.d365fo.mobileops.presentation.common.theme.WarehouseDimens
 import com.d365fo.mobileops.presentation.common.theme.WarehouseStatusColors
+import com.d365fo.mobileops.util.Formatters
 import java.math.BigDecimal
 
 /**
@@ -91,14 +100,24 @@ fun ReceivingFlowScreen(
     var showCamera by remember { mutableStateOf(false) }
     var showItemSearch by remember { mutableStateOf(false) }
 
-    // Without this, system back (the hardware button, or - since this device's system bars are
-    // hidden immersively, see MainActivity.hideSystemBars - an edge-swipe gesture that can fire
-    // by accident while gripping the handheld to reach the physical scan trigger) falls through
-    // to Navigation-Compose's default handling: an unconditional popBackStack straight to Home
-    // from *any* step, silently discarding whatever was captured so far. The top bar's own back
-    // icon below already knows to step back one prompt instead; this makes system back agree
-    // with it rather than bypassing it.
-    val stepBack = { if (state.step == ReceivingStep.PURCHASE_ORDER) onBack() else viewModel.back() }
+    // Guarded everywhere it can be triggered - not just BackHandler below, but the top bar's own
+    // IconButton onClick too (see its onClick further down). This handheld's physical scan
+    // trigger fires a phantom back invocation of some kind on its own, roughly a second or two
+    // after the scan - see HidScannerBridge.justScanned for how this was traced and confirmed
+    // live. Live tracing ruled out both a real KEYCODE_BACK KeyEvent and Compose's own
+    // BackHandler/predictive-back callback as the delivery mechanism - the phantom has shown up
+    // with neither logged, which points at a phantom touch landing on the icon's own tap target
+    // rather than a system back invocation at all. Without this guard on both paths, scanning a
+    // PO that turns out invalid leaves the flow on this same step, and the phantom pops the whole
+    // screen to Home before anyone can read the error that was just shown.
+    val stepBack = {
+        // Also gated on posting/postOutcome - see the identical note on the top bar's own back
+        // icon and actions further down, on why leaving mid-post has to go through PostStatus's
+        // own Done button instead.
+        if (!viewModel.justScanned() && !state.posting && state.postOutcome == null) {
+            if (state.step == ReceivingStep.PURCHASE_ORDER) onBack() else viewModel.back()
+        }
+    }
     BackHandler(onBack = stepBack)
 
     Scaffold(
@@ -107,24 +126,33 @@ fun ReceivingFlowScreen(
                 title = { Text(titleFor(state.step)) },
                 expandedHeight = WarehouseDimens.TopBarHeight,
                 navigationIcon = {
-                    IconButton(onClick = stepBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    // Hidden, not just disabled, while a post is in flight or its summary is
+                    // showing - popping back or resetting mid-post would race postReceipt's own
+                    // coroutine finishing and overwriting whatever a reset just put in state.
+                    // PostStatus's own Done (and Retry) buttons are the only way out of that
+                    // state, on purpose.
+                    if (!state.posting && state.postOutcome == null) {
+                        IconButton(onClick = stepBack) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        }
                     }
                 },
                 actions = {
-                    // The "view scanned so far, and remove one if it is wrong" menu - a WMS
-                    // handheld's own "review" screen, one tap away for the whole visit rather
-                    // than buried per line. See CapturedLines below for the remove action.
-                    if (state.captured.isNotEmpty()) {
-                        IconButton(onClick = { viewModel.showCaptured(true) }) {
-                            BadgedBox(badge = { Badge { Text("${state.captured.size}") } }) {
-                                Icon(Icons.AutoMirrored.Filled.ListAlt, contentDescription = "Scanned lines")
+                    if (!state.posting && state.postOutcome == null) {
+                        // The "view scanned so far, and remove one if it is wrong" menu - a WMS
+                        // handheld's own "review" screen, one tap away for the whole visit rather
+                        // than buried per line. See CapturedLines below for the remove action.
+                        if (state.captured.isNotEmpty()) {
+                            IconButton(onClick = { viewModel.showCaptured(true) }) {
+                                BadgedBox(badge = { Badge { Text("${state.captured.size}") } }) {
+                                    Icon(Icons.AutoMirrored.Filled.ListAlt, contentDescription = "Scanned lines")
+                                }
                             }
                         }
-                    }
-                    if (state.capture.purchId != null) {
-                        IconButton(onClick = viewModel::reset) {
-                            Icon(Icons.Default.Close, contentDescription = "Start over")
+                        if (state.capture.purchId != null) {
+                            IconButton(onClick = viewModel::reset) {
+                                Icon(Icons.Default.Close, contentDescription = "Start over")
+                            }
                         }
                     }
                 },
@@ -147,6 +175,12 @@ fun ReceivingFlowScreen(
             // screen, not the bottom of however tall its own content happens to be.
             Box(modifier = Modifier.weight(1f)) {
                 when {
+                    state.posting || state.postOutcome != null -> PostStatus(
+                        state = state,
+                        onDone = viewModel::dismissPostOutcome,
+                        onRetry = viewModel::retryPost,
+                    )
+
                     state.showingCaptured -> CapturedLines(
                         captured = state.captured,
                         busy = state.busy,
@@ -165,6 +199,7 @@ fun ReceivingFlowScreen(
                         onTypeManually = onManualEntryRequested,
                         onOpenCamera = { showCamera = true },
                         onSearchItem = { showItemSearch = true },
+                        onPostSoFar = viewModel::postReceipt,
                     )
                 }
             }
@@ -188,6 +223,7 @@ fun ReceivingFlowScreen(
     if (showItemSearch) {
         ItemSearchSheet(
             lines = state.openLines,
+            remainingFor = viewModel::sessionRemaining,
             onPick = { line ->
                 showItemSearch = false
                 viewModel.onManualEntry(line.itemId)
@@ -225,6 +261,7 @@ private fun StepPrompt(
     onTypeManually: () -> Unit,
     onOpenCamera: () -> Unit,
     onSearchItem: () -> Unit,
+    onPostSoFar: () -> Unit,
 ) {
     val focusRequester = remember { FocusRequester() }
 
@@ -257,19 +294,7 @@ private fun StepPrompt(
             modifier = Modifier.weight(1f).verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Text(
-                text = promptFor(state),
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.SemiBold,
-            )
-            hintFor(state)?.let {
-                Text(
-                    text = it,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-
+            PromptHeroCard(prompt = promptFor(state), hint = hintFor(state)) {
             // Read-only and empty, always - a scan never lands here (it goes straight to the
             // ViewModel, see HidScannerBridge), and typing now happens on a dedicated screen,
             // not inline. What remains is a tap target styled like the field it replaces: a
@@ -291,6 +316,9 @@ private fun StepPrompt(
                     } else {
                         MaterialTheme.typography.headlineSmall
                     },
+                    shape = HeroFieldShape,
+                    colors = heroFieldColors(),
+                    trailingIcon = { HeroEnterBadge() },
                     modifier = Modifier
                         .fillMaxWidth()
                         .heightIn(min = 64.dp)
@@ -301,6 +329,7 @@ private fun StepPrompt(
                         .matchParentSize()
                         .clickable(enabled = !state.busy, onClick = onTypeManually),
                 )
+            }
             }
         }
 
@@ -327,6 +356,24 @@ private fun StepPrompt(
                         text = "Scanned barcode is a pack of ${plain(pack)}",
                         style = MaterialTheme.typography.labelMedium,
                         color = WarehouseStatusColors.text3,
+                    )
+                }
+            }
+
+            // Lets the operator stop after any number of lines and post what is already banked,
+            // without scanning the rest of the order first - a short-delivered pallet, a break,
+            // or simply not wanting to hold everything captured so far on the device any longer.
+            // Only ever posts state.captured (already-banked lines); the step in progress right
+            // now, if any, is untouched either way, so this is safe to show at any step.
+            if (state.captured.isNotEmpty()) {
+                OutlinedButton(
+                    onClick = onPostSoFar,
+                    enabled = !state.busy,
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
+                ) {
+                    Text(
+                        "Register ${state.captured.size} " +
+                            (if (state.captured.size == 1) "line" else "lines") + " scanned so far",
                     )
                 }
             }
@@ -362,6 +409,7 @@ private fun StepPrompt(
 @Composable
 private fun ItemSearchSheet(
     lines: List<PurchaseOrderLine>,
+    remainingFor: (PurchaseOrderLine) -> BigDecimal,
     onPick: (PurchaseOrderLine) -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -423,8 +471,15 @@ private fun ItemSearchSheet(
                                     .fillMaxWidth()
                                     .clickable { onPick(line) }
                                     .padding(vertical = 10.dp),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
                             ) {
-                                Column {
+                                // weight(1f) so a long item name wraps within its own share of
+                                // the row instead of overlapping or crowding out the quantity
+                                // column entirely - confirmed live: without it, a name long
+                                // enough to reach the row's natural width pushed the quantity
+                                // text on top of it on one row and off past the row's own bounds
+                                // (rendered but invisible) on another.
+                                Column(modifier = Modifier.weight(1f)) {
                                     Text(text = line.itemId, style = MaterialTheme.typography.titleMedium)
                                     Text(
                                         text = line.itemName,
@@ -432,10 +487,101 @@ private fun ItemSearchSheet(
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     )
                                 }
+                                // Remaining nets out what this device has already banked or
+                                // staged for this line - see ReceivingFlowViewModel.sessionRemaining
+                                // - so it can read lower than ordered even though nothing has
+                                // been registered by D365FO yet.
+                                Column(horizontalAlignment = Alignment.End) {
+                                    Text(
+                                        text = "${plain(remainingFor(line))} / ${plain(line.orderedQuantity)}",
+                                        style = MaterialTheme.typography.titleMedium,
+                                    )
+                                    Text(
+                                        text = "remaining / total",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
                             }
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+/**
+ * Shown in place of the step prompt from the moment "Register scanned so far" (or the captured-
+ * lines sheet's own Post button) is tapped, through to a summary of what happened - see
+ * [ReceivingFlowViewModel.postReceipt]'s class doc for why this no longer silently resets
+ * straight back to a fresh order prompt.
+ */
+@Composable
+private fun PostStatus(
+    state: ReceivingFlowState,
+    onDone: () -> Unit,
+    onRetry: () -> Unit,
+) {
+    val outcome = state.postOutcome
+
+    Column(
+        modifier = Modifier.fillMaxSize(),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        if (outcome == null) {
+            CircularProgressIndicator()
+            Text(
+                text = "Registering ${state.captured.size} " +
+                    (if (state.captured.size == 1) "line" else "lines") + "…",
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.padding(top = 16.dp),
+            )
+        } else {
+            Icon(
+                if (outcome.postedLive) Icons.Default.CloudDone else Icons.Default.CloudQueue,
+                contentDescription = null,
+                tint = if (outcome.postedLive) {
+                    MaterialTheme.colorScheme.primary
+                } else {
+                    MaterialTheme.colorScheme.tertiary
+                },
+                modifier = Modifier.size(48.dp),
+            )
+            Text(
+                text = if (outcome.postedLive) "Posted to D365FO" else "Saved on this device",
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.padding(top = 12.dp),
+            )
+            Text(
+                text = "${outcome.lineCount} " + (if (outcome.lineCount == 1) "line" else "lines") +
+                    " · ${outcome.purchId} · ${Formatters.clockTime(outcome.postedAtEpochMs)}",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 4.dp),
+            )
+            if (!outcome.postedLive) {
+                Text(
+                    text = "D365FO did not answer in time. This is safely queued and will " +
+                        "post automatically - or try again now.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 8.dp, start = 24.dp, end = 24.dp),
+                )
+                OutlinedButton(
+                    onClick = onRetry,
+                    modifier = Modifier.padding(top = 16.dp).heightIn(min = 56.dp),
+                ) {
+                    Text("Retry now")
+                }
+            }
+            Button(
+                onClick = onDone,
+                modifier = Modifier.padding(top = 12.dp).fillMaxWidth().heightIn(min = 56.dp),
+            ) {
+                Text("Done")
             }
         }
     }
@@ -633,26 +779,7 @@ private fun CaptureSummary(state: ReceivingFlowState) {
 
 @Composable
 private fun ErrorPanel(message: String, onDismiss: () -> Unit) {
-    Card(
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.errorContainer,
-        ),
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Row(
-            modifier = Modifier.padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Text(
-                text = message,
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onErrorContainer,
-                modifier = Modifier.weight(1f),
-            )
-            TextButton(onClick = onDismiss) { Text("OK") }
-        }
-    }
+    ErrorBanner(message = message, onDismiss = onDismiss)
 }
 
 @Composable

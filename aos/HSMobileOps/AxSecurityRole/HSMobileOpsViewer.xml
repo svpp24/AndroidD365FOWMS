@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxSecurityRole xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsViewer</Name>
+	<Label>Mobile operations viewer</Label>
+	<HelpText>Read-only: see the handheld fleet and mobile users without being able to change anything. HSMobileOpsInquireDevices/HSMobileOpsInquireUsers already existed but were not referenced by any role - a supervisor who should only browse, not maintain, had nothing to be assigned before this.</HelpText>
+	<Duties>
+		<AxSecurityRoleDutyReference>
+			<Name>HSMobileOpsInquireDevices</Name>
+		</AxSecurityRoleDutyReference>
+		<AxSecurityRoleDutyReference>
+			<Name>HSMobileOpsInquireUsers</Name>
+		</AxSecurityRoleDutyReference>
+	</Duties>
+	<Privileges />
+	<SubRoles />
+</AxSecurityRole>

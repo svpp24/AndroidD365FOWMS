@@ -4,14 +4,15 @@ import androidx.room.Database
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
 import com.d365fo.mobileops.data.local.converter.Converters
-import com.d365fo.mobileops.data.local.dao.GoodsReceiptDao
 import com.d365fo.mobileops.data.local.dao.InventDimDao
 import com.d365fo.mobileops.data.local.dao.ItemDao
 import com.d365fo.mobileops.data.local.dao.JournalDao
 import com.d365fo.mobileops.data.local.dao.LocationDao
 import com.d365fo.mobileops.data.local.dao.OnHandDao
+import com.d365fo.mobileops.data.local.dao.PermissionDao
 import com.d365fo.mobileops.data.local.dao.PurchOrderDao
 import com.d365fo.mobileops.data.local.dao.SalesOrderDao
+import com.d365fo.mobileops.data.local.dao.StagedLineDao
 import com.d365fo.mobileops.data.local.dao.SyncQueueDao
 import com.d365fo.mobileops.data.local.dao.SyncWatermarkDao
 import com.d365fo.mobileops.data.local.dao.TransferOrderDao
@@ -20,8 +21,6 @@ import com.d365fo.mobileops.data.local.dao.FlowSessionDao
 import com.d365fo.mobileops.data.local.dao.WarehouseDao
 import com.d365fo.mobileops.data.local.entity.BarcodeEntity
 import com.d365fo.mobileops.data.local.entity.FailedSyncEntity
-import com.d365fo.mobileops.data.local.entity.GoodsReceiptEntity
-import com.d365fo.mobileops.data.local.entity.GoodsReceiptLineEntity
 import com.d365fo.mobileops.data.local.entity.InventDimEntity
 import com.d365fo.mobileops.data.local.entity.ItemEntity
 import com.d365fo.mobileops.data.local.entity.JournalEntity
@@ -32,6 +31,7 @@ import com.d365fo.mobileops.data.local.entity.PurchLineEntity
 import com.d365fo.mobileops.data.local.entity.PurchOrderEntity
 import com.d365fo.mobileops.data.local.entity.SalesLineEntity
 import com.d365fo.mobileops.data.local.entity.SalesOrderEntity
+import com.d365fo.mobileops.data.local.entity.StagedLineEntity
 import com.d365fo.mobileops.data.local.entity.SyncQueueEntity
 import com.d365fo.mobileops.data.local.entity.SyncWatermarkEntity
 import com.d365fo.mobileops.data.local.entity.TransferLineEntity
@@ -39,6 +39,8 @@ import com.d365fo.mobileops.data.local.entity.TransferOrderEntity
 import com.d365fo.mobileops.data.local.entity.ValidationAuditEntity
 import com.d365fo.mobileops.data.local.entity.FlowSessionEntity
 import com.d365fo.mobileops.data.local.entity.WarehouseEntity
+import com.d365fo.mobileops.data.local.entity.WorkerDirectoryEntity
+import com.d365fo.mobileops.data.local.entity.WorkerPermissionEntity
 
 @Database(
     entities = [
@@ -55,8 +57,6 @@ import com.d365fo.mobileops.data.local.entity.WarehouseEntity
         // purchase receiving
         PurchOrderEntity::class,
         PurchLineEntity::class,
-        GoodsReceiptEntity::class,
-        GoodsReceiptLineEntity::class,
         // journals (arrival, movement, adjustment, counting)
         JournalEntity::class,
         JournalLineEntity::class,
@@ -69,15 +69,18 @@ import com.d365fo.mobileops.data.local.entity.WarehouseEntity
         // sync
         SyncQueueEntity::class,
         FailedSyncEntity::class,
+        StagedLineEntity::class,
+        // roles / permissions
+        WorkerPermissionEntity::class,
+        WorkerDirectoryEntity::class,
     ],
-    version = 3,
+    version = 7,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
 abstract class D365Database : RoomDatabase() {
 
     abstract fun purchOrderDao(): PurchOrderDao
-    abstract fun goodsReceiptDao(): GoodsReceiptDao
     abstract fun itemDao(): ItemDao
     abstract fun locationDao(): LocationDao
     abstract fun inventDimDao(): InventDimDao
@@ -90,6 +93,8 @@ abstract class D365Database : RoomDatabase() {
     abstract fun warehouseDao(): WarehouseDao
     abstract fun flowSessionDao(): FlowSessionDao
     abstract fun validationAuditDao(): ValidationAuditDao
+    abstract fun stagedLineDao(): StagedLineDao
+    abstract fun permissionDao(): PermissionDao
 
     companion object {
         /**
@@ -155,7 +160,94 @@ abstract class D365Database : RoomDatabase() {
             }
         }
 
+        /**
+         * 3 -> 4: adds the staged-line ledger - see the class doc on [StagedLineEntity] for why
+         * it exists. Additive, like the migrations before it.
+         */
+        private val MIGRATION_3_4 = object : androidx.room.migration.Migration(3, 4) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `staged_line` (
+                        `flowType` TEXT NOT NULL,
+                        `orderId` TEXT NOT NULL,
+                        `lineNumber` REAL NOT NULL,
+                        `quantity` TEXT NOT NULL,
+                        `queueId` TEXT NOT NULL,
+                        `stagedAtEpochMs` INTEGER NOT NULL,
+                        PRIMARY KEY(`flowType`, `orderId`, `lineNumber`, `queueId`)
+                    )
+                    """.trimIndent(),
+                )
+            }
+        }
+
+        /**
+         * 4 -> 5: drops `goods_receipt` and `goods_receipt_line`.
+         *
+         * These tables backed an earlier, parallel receiving implementation that the current
+         * step-flow capture (`FlowSessionEntity` / `StagedLineEntity`, posted via
+         * `SyncQueueEntity`) has fully superseded - nothing in the app ever wrote a row to
+         * either table. Dropping them is therefore not the destructive case the
+         * no-fallback policy above guards against: there is no unsynced transaction in
+         * either table to lose.
+         */
+        private val MIGRATION_4_5 = object : androidx.room.migration.Migration(4, 5) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("DROP TABLE IF EXISTS `goods_receipt_line`")
+                db.execSQL("DROP TABLE IF EXISTS `goods_receipt`")
+            }
+        }
+
+        /**
+         * 5 -> 6: counting progress. `invent_journal_line.markedCounted` (a line the worker
+         * marked counted without entering a quantity) and `invent_journal.countStartedAt` (when
+         * Start counting was pressed).
+         *
+         * Additive only - two new columns with defaults, nothing existing touched, so no counted
+         * quantity already captured can be lost by running it.
+         */
+        private val MIGRATION_5_6 = object : androidx.room.migration.Migration(5, 6) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `invent_journal_line` ADD COLUMN `markedCounted` INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE `invent_journal` ADD COLUMN `countStartedAt` INTEGER")
+            }
+        }
+
+        /**
+         * 6 -> 7: adds `worker_permission` (per-worker, per-[com.d365fo.mobileops.domain.model.WarehouseWorkflow]
+         * allow/deny, gating the four Home screen module cards) and `worker_directory` (the
+         * Admin Center's own local cache of who else is a worker, for browsing offline once
+         * seen once). Additive only, like every migration before it - nothing existing is
+         * touched.
+         */
+        private val MIGRATION_6_7 = object : androidx.room.migration.Migration(6, 7) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `worker_permission` (
+                        `userName` TEXT NOT NULL,
+                        `workflow` TEXT NOT NULL,
+                        `allowed` INTEGER NOT NULL,
+                        PRIMARY KEY(`userName`, `workflow`)
+                    )
+                    """.trimIndent(),
+                )
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `worker_directory` (
+                        `userName` TEXT NOT NULL,
+                        `displayName` TEXT NOT NULL,
+                        `isSupervisor` INTEGER NOT NULL,
+                        `cachedAt` INTEGER NOT NULL,
+                        PRIMARY KEY(`userName`)
+                    )
+                    """.trimIndent(),
+                )
+            }
+        }
+
         val MIGRATIONS: Array<androidx.room.migration.Migration> =
-            arrayOf(MIGRATION_1_2, MIGRATION_2_3)
+            arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
     }
 }

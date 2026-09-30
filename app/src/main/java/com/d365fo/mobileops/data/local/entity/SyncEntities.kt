@@ -15,6 +15,8 @@ enum class SyncOperation {
     TRANSFER_ORDER_RECEIVE,
     POST_PACKING_SLIP,
     POST_INVENTORY_JOURNAL,
+    /** An admin's own device pushing a permission toggle back to AOS - see AdminCenterRepository. */
+    SET_WORKER_PERMISSION,
 }
 
 /**

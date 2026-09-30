@@ -21,6 +21,17 @@ import com.d365fo.mobileops.data.local.entity.TransferOrderWithLines
 import com.d365fo.mobileops.util.Constants
 import kotlinx.coroutines.flow.Flow
 
+/** What [JournalDao.mergeCountingLines] did. */
+data class MergeResult(val added: Int, val removed: Int)
+
+/** One counting journal's line tallies - see [JournalDao.observeCountingProgress]. */
+data class CountingProgressRow(
+    val journalId: String,
+    val total: Int,
+    val withQuantity: Int,
+    val markedOnly: Int,
+)
+
 /**
  * Serves the arrival, movement/adjustment, and cycle-count modules — all three are
  * InventJournalTable postings and differ only by [JournalType] and which columns the UI
@@ -82,6 +93,103 @@ interface JournalDao {
 
     @Query("DELETE FROM invent_journal_line WHERE journalLineId = :journalLineId")
     suspend fun deleteLine(journalLineId: String)
+
+    /** Persisted as soon as the worker types it, not held only in view state - counting a
+     *  200+ line journal is easily interrupted by a shift change or a dropped app. */
+    @Query(
+        "UPDATE invent_journal_line SET countedQuantity = :countedQuantity WHERE journalLineId = :journalLineId",
+    )
+    suspend fun setCountedQuantity(journalLineId: String, countedQuantity: String?)
+
+    @Query("SELECT COUNT(*) FROM invent_journal_line WHERE journalId = :journalId AND countedQuantity IS NOT NULL")
+    fun observeCountedLineCount(journalId: String): Flow<Int>
+
+    // -- Counting workflow -----------------------------------------------------------------
+
+    /** Every counting journal that has data on this device - the journal list's "has data" and
+     *  count-state source, so it survives the app being restarted (unlike the in-memory
+     *  download tracker). */
+    @Query("SELECT * FROM invent_journal WHERE type = 'COUNTING'")
+    fun observeCountingJournals(): Flow<List<JournalEntity>>
+
+    /** Total / with-a-quantity / marked-only line counts per counting journal. */
+    @Query(
+        """
+        SELECT journalId,
+               COUNT(*) AS total,
+               SUM(CASE WHEN countedQuantity IS NOT NULL THEN 1 ELSE 0 END) AS withQuantity,
+               SUM(CASE WHEN countedQuantity IS NULL AND markedCounted = 1 THEN 1 ELSE 0 END) AS markedOnly
+        FROM invent_journal_line
+        WHERE journalId IN (SELECT journalId FROM invent_journal WHERE type = 'COUNTING')
+        GROUP BY journalId
+        """,
+    )
+    fun observeCountingProgress(): Flow<List<CountingProgressRow>>
+
+    /** All of a journal's lines, for the lines screen's own search/filter - a counting journal
+     *  is a few hundred lines, and filtering in memory keeps search instant and offline. */
+    @Query("SELECT * FROM invent_journal_line WHERE journalId = :journalId ORDER BY lineNumber ASC")
+    fun observeAllLines(journalId: String): Flow<List<JournalLineEntity>>
+
+    @Query("SELECT * FROM invent_journal_line WHERE journalId = :journalId")
+    suspend fun getLinesOnce(journalId: String): List<JournalLineEntity>
+
+    /**
+     * "Get data again": folds a fresh export of a counting journal into what is already on the
+     * device WITHOUT losing any counting work. Lines are matched on `lineNumber`; for one that is
+     * already here the counted quantity, the marker, the reason code and an already-resolved item
+     * name are kept, while what D365FO owns (on-hand, location, batch, serial, site) is refreshed.
+     * A line that is new in the export is added. A line that has disappeared from the export is
+     * removed only if nothing was done to it - a line with a quantity or a marker is kept rather
+     * than silently discarding a count. One transaction, so a count typed while a refresh is
+     * landing is never overwritten by it.
+     */
+    @Transaction
+    suspend fun mergeCountingLines(journalId: String, incoming: List<JournalLineEntity>): MergeResult {
+        val existing = getLinesOnce(journalId).associateBy { it.lineNumber }
+        val incomingNumbers = incoming.mapTo(HashSet()) { it.lineNumber }
+
+        val merged = incoming.map { fresh ->
+            val old = existing[fresh.lineNumber] ?: return@map fresh
+            fresh.copy(
+                journalLineId = old.journalLineId,
+                itemName = if (old.itemName != old.itemId) old.itemName else fresh.itemName,
+                // What is on the device wins (it may be newer than what was submitted); if the
+                // worker has not counted this line here, take whatever D365FO holds for it.
+                countedQuantity = old.countedQuantity ?: fresh.countedQuantity,
+                markedCounted = old.markedCounted,
+                reasonCode = old.reasonCode,
+                varianceOverridden = old.varianceOverridden,
+                capturedAt = old.capturedAt,
+            )
+        }
+        upsertLinesChunked(merged)
+
+        val removable = existing.values.filter {
+            it.lineNumber !in incomingNumbers && it.countedQuantity == null && !it.markedCounted
+        }
+        removable.forEach { deleteLine(it.journalLineId) }
+
+        return MergeResult(
+            added = incoming.count { it.lineNumber !in existing },
+            removed = removable.size,
+        )
+    }
+
+    @Query("UPDATE invent_journal_line SET markedCounted = :marked WHERE journalLineId = :journalLineId")
+    suspend fun setMarkedCounted(journalLineId: String, marked: Boolean)
+
+    /** Only the first press counts - re-pressing Start counting must not reset the time. */
+    @Query("UPDATE invent_journal SET countStartedAt = :at WHERE journalId = :journalId AND countStartedAt IS NULL")
+    suspend fun markCountStarted(journalId: String, at: Long)
+
+    /** Item ids whose name was never resolved (the export has no item name, so a line's
+     *  itemName starts out equal to its itemId). */
+    @Query("SELECT DISTINCT itemId FROM invent_journal_line WHERE journalId = :journalId AND itemName = itemId")
+    suspend fun unnamedItemIds(journalId: String): List<String>
+
+    @Query("UPDATE invent_journal_line SET itemName = :itemName WHERE journalId = :journalId AND itemId = :itemId")
+    suspend fun setItemName(journalId: String, itemId: String, itemName: String)
 
     @Query(
         """

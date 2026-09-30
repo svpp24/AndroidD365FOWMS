@@ -7,7 +7,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import com.d365fo.mobileops.presentation.common.components.SquareButton as Button
-import androidx.compose.material3.Card
+import com.d365fo.mobileops.presentation.common.components.AppCard as Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -15,18 +15,22 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.d365fo.mobileops.R
 import com.d365fo.mobileops.data.security.TenantConfig
 
 /**
  * Shown when the device cannot reach D365FO at all.
  *
- * There is deliberately no sign-in button here. The device authenticates as itself with a
- * configured client secret, so a worker cannot fix this by signing in as anybody — the only
- * thing that resolves it is configuration. Offering a login control would be offering a button
- * that authenticates nobody, which is worse than offering none: it invites a worker to tap it
- * repeatedly at the start of a shift, conclude the app is broken, and go and find paper.
+ * There is deliberately no worker sign-in button here. The device authenticates as itself,
+ * through the one-time device-code sign-in done during commissioning (see
+ * DeviceCodeTokenProvider), so an ordinary worker cannot fix this by signing in as anybody — the
+ * only thing that resolves it is fixing the connection or redoing that device-code sign-in, both
+ * in Settings. Offering a worker login control would be offering a button that authenticates
+ * nobody, which is worse than offering none: it invites a worker to tap it repeatedly at the
+ * start of a shift, conclude the app is broken, and go and find paper.
  */
 @Composable
 fun NotConfiguredScreen(
@@ -55,7 +59,7 @@ fun NotConfiguredScreen(
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Text(
-            text = "ForeFront Mobile",
+            text = stringResource(R.string.app_name),
             style = MaterialTheme.typography.headlineMedium,
             fontWeight = FontWeight.Bold,
         )

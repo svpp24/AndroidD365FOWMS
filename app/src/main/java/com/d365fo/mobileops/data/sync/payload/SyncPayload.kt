@@ -156,3 +156,21 @@ data class PackingSlipLinePayload(
     val serialNumber: String? = null,
     val locationId: String? = null,
 )
+
+/**
+ * An admin's toggle for one worker's access to one module, queued so it survives the admin's
+ * own device being offline at the moment of the toggle. [actingUserName] is re-verified
+ * server-side as a current supervisor before anything is written - see
+ * `HSMobileOpsUserService::setModulePermission`.
+ */
+@Serializable
+@SerialName("set_worker_permission")
+data class SetWorkerPermissionPayload(
+    override val idempotencyKey: String,
+    override val dataAreaId: String,
+    val actingUserName: String,
+    val targetUserName: String,
+    /** A [com.d365fo.mobileops.domain.model.WarehouseWorkflow] name. */
+    val workflow: String,
+    val allowed: Boolean,
+) : SyncPayload

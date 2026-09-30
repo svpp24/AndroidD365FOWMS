@@ -4,7 +4,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.d365fo.mobileops.data.local.entity.FlowType
 import com.d365fo.mobileops.data.repository.FlowSessionRepository
+import com.d365fo.mobileops.data.repository.PendingFlowResume
 import com.d365fo.mobileops.data.repository.UnfinishedWork
+import com.d365fo.mobileops.presentation.common.scan.HidScannerBridge
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -23,6 +25,8 @@ import javax.inject.Inject
 @HiltViewModel
 class UnfinishedWorkViewModel @Inject constructor(
     private val flowSessions: FlowSessionRepository,
+    private val pendingFlowResume: PendingFlowResume,
+    private val scannerBridge: HidScannerBridge,
 ) : ViewModel() {
 
     val unfinished: StateFlow<List<UnfinishedWork>> = flowSessions.unfinished
@@ -31,6 +35,21 @@ class UnfinishedWorkViewModel @Inject constructor(
     fun discard(work: UnfinishedWork) {
         viewModelScope.launch { flowSessions.clear(work.flowType, work.orderId) }
     }
+
+    /** The route to navigate to for [work], having first handed off which order to auto-fill. */
+    fun resume(work: UnfinishedWork): String {
+        pendingFlowResume.set(work.flowType, work.orderId)
+        return routeFor(work.flowType)
+    }
+
+    /**
+     * True just after a hardware scan - see [HidScannerBridge.justScanned]. The physical scan
+     * trigger fires a phantom touch on some devices alongside the real scan; on the Home screen
+     * that phantom touch was landing on whatever tile sits under it and opening that module,
+     * even though nothing was actually tapped. Guarding navigation here is the same fix already
+     * applied to the back icon in ReceivingFlowScreen/TransferFlowScreen.
+     */
+    fun justScanned(): Boolean = scannerBridge.justScanned()
 
     companion object {
         /** The route a given saved job resumes into. */

@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsWorkerDirectoryResponse</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+[DataContractAttribute]
+class HSMobileOpsWorkerDirectoryResponse
+{
+    boolean success;
+    str     errorCode;
+    str     message;
+    List    workers;
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmSuccess</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Success')]
+    public boolean parmSuccess(boolean _value = success)
+    {
+        success = _value;
+        return success;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmErrorCode</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// NOT_SUPERVISOR, ACTING_USER_NOT_FOUND, INVALID_REQUEST.
+    /// </summary>
+    [DataMemberAttribute('ErrorCode')]
+    public str parmErrorCode(str _value = errorCode)
+    {
+        errorCode = _value;
+        return errorCode;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmMessage</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Message')]
+    public str parmMessage(str _value = message)
+    {
+        message = _value;
+        return message;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmWorkers</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Workers'),
+     DataCollectionAttribute(Types::Class, classStr(HSMobileOpsWorkerSummary))]
+    public List parmWorkers(List _value = workers)
+    {
+        workers = _value;
+        return workers;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

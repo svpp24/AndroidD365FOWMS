@@ -10,6 +10,9 @@
 		<AxSecurityRoleDutyReference>
 			<Name>HSMobileOpsMaintainDevices</Name>
 		</AxSecurityRoleDutyReference>
+		<AxSecurityRoleDutyReference>
+			<Name>HSMobileOpsMaintainLicense</Name>
+		</AxSecurityRoleDutyReference>
 	</Duties>
 	<Privileges />
 	<SubRoles />

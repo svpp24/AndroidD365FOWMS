@@ -1,7 +1,9 @@
 package com.d365fo.mobileops.data.repository
 
 import com.d365fo.mobileops.data.local.dao.ItemDao
+import com.d365fo.mobileops.data.local.dao.ScannedItem
 import com.d365fo.mobileops.data.local.dao.WarehouseDao
+import com.d365fo.mobileops.data.local.entity.BarcodeEntity
 import com.d365fo.mobileops.data.local.entity.ItemEntity
 import com.d365fo.mobileops.data.local.entity.TrackingRequirement
 import com.d365fo.mobileops.data.local.entity.WarehouseEntity
@@ -110,6 +112,46 @@ class CachedLookupRepository @Inject constructor(
             }
         }
 
+    /**
+     * Barcode-to-item resolution, read through the cache - the same shape and reasoning as
+     * [lookupItem] just above.
+     *
+     * This was previously grouped with the live measurements below despite being exactly the
+     * kind of thing the class doc says to cache: a barcode-to-item mapping is a description of
+     * how the world is set up, not a measurement - it changes about as often as the item master
+     * itself, and a few-hours-stale mapping is still the right mapping. Leaving it uncached meant
+     * every single scan - including the common case of several units off one pallet - paid a
+     * live OData round trip for no correctness reason. `ItemDao.resolveBarcode()` already
+     * existed, already indexed, already unit-tested; it just had no caller.
+     *
+     * A cache hit only counts when both the barcode and the item it joins to are marked active,
+     * so a stale/deactivated local row falls through to a real network re-check rather than
+     * serving a wrong answer.
+     */
+    override suspend fun lookupBarcode(barcode: String): NetworkResult<BarcodeMatch?> =
+        withContext(ioDispatcher) {
+            val key = barcode.trim()
+            if (key.isEmpty()) return@withContext NetworkResult.Success(null)
+
+            itemDao.resolveBarcode(key)
+                ?.takeIf { it.barcodeActive && it.itemActive }
+                ?.let { return@withContext NetworkResult.Success(it.toMatch()) }
+
+            when (val fresh = network.lookupBarcode(key)) {
+                is NetworkResult.Success -> {
+                    // Caches the barcode->item mapping itself. The join in resolveBarcode also
+                    // needs a matching `item` row, which this alone does not guarantee - it
+                    // arrives the normal way, via lookupItem(), which every caller of this method
+                    // already calls next to fetch tracking/unit facts for the item just matched.
+                    // A brand-new barcode's very first scan still costs a round trip; the second
+                    // scan of it - the case worth optimizing - is already fully cached by then.
+                    fresh.data?.let { runCatching { itemDao.upsertBarcodes(listOf(it.toEntity())) } }
+                    fresh
+                }
+                else -> fresh
+            }
+        }
+
     // -- Not cached, on purpose ---------------------------------------------------------
     //
     // Everything below is a live measurement or a live check. See the class comment: serving
@@ -121,9 +163,6 @@ class CachedLookupRepository @Inject constructor(
 
     override suspend fun lookupLinesForItem(purchId: String, itemNumber: String) =
         network.lookupLinesForItem(purchId, itemNumber)
-
-    override suspend fun lookupBarcode(barcode: String): NetworkResult<BarcodeMatch?> =
-        network.lookupBarcode(barcode)
 
     override suspend fun lookupLocation(
         warehouseId: String,
@@ -174,6 +213,22 @@ class CachedLookupRepository @Inject constructor(
             else -> TrackingRequirement.NONE
         },
         locationMandatory = locationRequired,
+        active = true,
+        modifiedAt = System.currentTimeMillis(),
+    )
+
+    private fun ScannedItem.toMatch() = BarcodeMatch(
+        barcode = barcode,
+        itemNumber = itemId,
+        quantityPerScan = quantityPerScan.toBigDecimal(),
+        unitSymbol = scanUnit,
+    )
+
+    private fun BarcodeMatch.toEntity() = BarcodeEntity(
+        barcode = barcode,
+        itemId = itemNumber,
+        quantityPerScan = quantityPerScan.toPlainString(),
+        unitId = unitSymbol,
         active = true,
         modifiedAt = System.currentTimeMillis(),
     )

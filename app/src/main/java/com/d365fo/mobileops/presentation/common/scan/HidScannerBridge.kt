@@ -109,15 +109,29 @@ class HidScannerBridge @Inject constructor() {
     /**
      * True when a scan of any source was published within [withinMs].
      *
-     * Some rugged handhelds' physical scan trigger fires a raw BACK key event on the same
-     * press that produces the barcode broadcast - confirmed live on this device: a failed
-     * lookup left the flow on its first step, and the very next thing to arrive was a BACK
-     * key that popped the whole screen to Home, even though nothing was tapped or swiped. A
-     * genuine user back-press never lands in the same instant as a scan, so [MainActivity]
-     * uses this to tell the two apart and swallow only the phantom one.
+     * Some rugged handhelds' physical scan trigger fires a phantom system Back invocation on
+     * the same press that produces the barcode broadcast - confirmed live on this device with
+     * diagnostic tracing: a failed lookup left the flow on its first step, and roughly a
+     * second later - well after the lookup's own response - Compose's BackHandler fired and
+     * popped the whole screen to Home, even though nothing was tapped or swiped. Traced with
+     * logging in MainActivity.dispatchKeyEvent first, which proved this does *not* arrive as a
+     * KEYCODE_BACK KeyEvent at all - on this app's target SDK, Android routes back through the
+     * predictive-back OnBackInvokedCallback channel instead, which bypasses dispatchKeyEvent
+     * entirely. So the suppression has to live at the one place both a genuine back-press and
+     * this phantom one are guaranteed to surface identically: each screen's own BackHandler
+     * callback (see ReceivingFlowScreen/TransferFlowScreen), not the Activity's key dispatch.
+     * A genuine user back-press essentially never lands within a second of an actual scan, so
+     * this only ever swallows the phantom one.
      */
-    fun justScanned(withinMs: Long = JUST_SCANNED_WINDOW_MS): Boolean =
-        System.currentTimeMillis() - lastScanAtMs < withinMs
+    fun justScanned(withinMs: Long = JUST_SCANNED_WINDOW_MS): Boolean {
+        val elapsed = System.currentTimeMillis() - lastScanAtMs
+        // Temporary diagnostic - the fixed window has missed this live at least twice despite
+        // being in the right place, so the actual gap needs to be measured directly rather
+        // than guessed at again. Remove once the real gap (and a window that reliably covers
+        // it) is confirmed.
+        timber.log.Timber.tag("BackKeyDiag").d("justScanned check: elapsed=%dms window=%dms", elapsed, withinMs)
+        return elapsed < withinMs
+    }
 
     /**
      * A wedge reports itself as a keyboard on a non-virtual device. The virtual check is
@@ -137,7 +151,12 @@ class HidScannerBridge @Inject constructor() {
         const val INTER_KEY_TIMEOUT_MS = 100L
         const val VIRTUAL_DEVICE_ID = -1
         val ALLOWED_SYMBOLS = setOf('-', '_', '.', '/', '+', ' ', '(', ')')
-        /** See [justScanned] - comfortably longer than the gap between a scan and its phantom key. */
-        const val JUST_SCANNED_WINDOW_MS = 500L
+        /**
+         * See [justScanned]. Widened from an initial 500ms after a live repro showed the
+         * phantom back invocation landing ~1s after the scan - the earlier window was too
+         * short to have ever caught it. 2s comfortably covers that with margin without making
+         * a genuine quick back-press right after a scan a likely false-positive.
+         */
+        const val JUST_SCANNED_WINDOW_MS = 2_000L
     }
 }

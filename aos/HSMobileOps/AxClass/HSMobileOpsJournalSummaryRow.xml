@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsJournalSummaryRow</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+[DataContractAttribute]
+class HSMobileOpsJournalSummaryRow
+{
+    InventJournalId     journalId;
+    InventJournalNameId journalNameId;
+    Description          description;
+    TransDate            journalDate;
+    int                  lineCount;
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmJournalId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('JournalId')]
+    public InventJournalId parmJournalId(InventJournalId _value = journalId)
+    {
+        journalId = _value;
+        return journalId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmJournalNameId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('JournalNameId')]
+    public InventJournalNameId parmJournalNameId(InventJournalNameId _value = journalNameId)
+    {
+        journalNameId = _value;
+        return journalNameId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmDescription</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Description')]
+    public Description parmDescription(Description _value = description)
+    {
+        description = _value;
+        return description;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmJournalDate</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('JournalDate')]
+    public TransDate parmJournalDate(TransDate _value = journalDate)
+    {
+        journalDate = _value;
+        return journalDate;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmLineCount</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Line count only - never the lines themselves. This row powers the list screen; a journal's
+    /// lines are fetched separately, in bulk, once the worker actually opens it (see
+    /// HSMobileOpsCountingService's own class doc for why that split exists).
+    /// </summary>
+    [DataMemberAttribute('LineCount')]
+    public int parmLineCount(int _value = lineCount)
+    {
+        lineCount = _value;
+        return lineCount;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

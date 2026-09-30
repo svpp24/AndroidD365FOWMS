@@ -1,0 +1,466 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsCountingService</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Counting journals: created in D365FO (by a planner running a cycle count, not by the worker),
+/// scoped to the worker's assigned warehouse, fetched onto the handheld.
+///
+/// Deliberately split from how every other module here reads: `listOpenJournals` is a normal
+/// keyed/indexed read, same shape and same load reasoning as HSMobileOpsInquiryService - cheap,
+/// because a warehouse has a handful of open counts, not thousands. Everything downstream of
+/// picking one is not on this service at all. A single counting journal's *lines* can run into
+/// the thousands, and at that volume the cost stops being "the read is heavy" and becomes
+/// "serialising N rows into one JSON response is heavy, however it's produced" - the same ceiling
+/// that caps HSMobileOpsInquiryService::getOnHand, just reached by a different route. The fix
+/// there is a bulk file transfer, not a bigger JSON payload: this environment's DMF, and the
+/// payload never touches this service or this AOS session at all.
+///
+/// listOpenJournals is confirmed live (see README.md) - two mistakes found and fixed against a
+/// real tenant, both documented there.
+///
+/// **Export: this service only builds the project; the app triggers it.** `exportOpenJournals`
+/// creates a brand-new definition group for the request (`HSMobileOpsCountingExportSetup::
+/// ensureExportForJournal` - a unique name every call, never reused), scopes it to just that
+/// journal (`filterExportToJournal`) and returns the group's name. The app then calls the public
+/// `ExportToPackage` OData action against it with an execution id it generates itself, polls
+/// `GetExecutionSummaryStatus` and fetches `GetExportedPackageUrl` - the same flow Microsoft's
+/// Recurring Integrations Scheduler uses for exports, confirmed live on this tenant. X++ only
+/// does what the public API can't (create the project, write its per-journal filter).
+///
+/// **The root cause of every earlier export failure was the entity NAME.**
+/// `DmfDefinitionGroupEntity.Entity` holds DMF's own name for the entity (`Inventory counting
+/// journal lines`), not the AOT name (`InventInventoryCountingJournalLineEntity`). Every row this
+/// code wrote with the AOT name was invisible to the Data Management UI and to DMF - the
+/// synchronous `DMFEntityExporter::exportToFile` call threw `Entity ... not found` for exactly
+/// that reason, and `ExportToPackage` on such a project sat at `NotRun` forever. Found by dumping
+/// a UI-built project's rows next to code-built ones. See
+/// HSMobileOpsCountingExportSetup::entityName. A `DMFBatchExporter` batch trigger was tried in
+/// between and dropped for needing a `resolveExportExecution` round trip.
+///
+/// **Import: one shared project, enqueued as a batch job.** `importCounts` uses
+/// `DMFPackageImporter::PrepareDefinitionGroupForImport`/`importFromPackageV2` - also confirmed
+/// from a real shipped integration class (`DataManagementIntegrationUtils`, Personnel/HCM
+/// integration module) - instead of the public `ImportFromPackage` OData action. Stays on one
+/// shared definition group (unlike export) because nothing about switching it to a batch job
+/// changed the concurrency picture Microsoft's own docs describe for `ImportFromPackage`
+/// ("parallel processing rules must be used... don't call this in parallel") - the batch
+/// framework gives it its own concurrency safety regardless, so there was never a reason to also
+/// split it per journal the way export's own history justified.
+///
+/// **Both directions end in the same polling flow.** `importCounts` returns an execution id
+/// immediately without waiting for its batch job, and the app polls it exactly as it polls an
+/// export it started itself: the public `GetExecutionSummaryStatus`/`GetExecutionErrors` OData
+/// actions and, for export once `Succeeded`, `GetExportedPackageUrl` for the download link.
+/// </summary>
+class HSMobileOpsCountingService
+{
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>listOpenJournals</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Open counting journals with at least one line in the given warehouse.
+    ///
+    /// The warehouse filter is an exists join through InventJournalTrans/InventDim, not a plain
+    /// field on the header - the header's own dimension defaults are not assumed here, since a
+    /// counting journal is commonly generated with the warehouse set only at the line. Line count
+    /// per journal is a second, per-journal aggregate query rather than one grouped three-table
+    /// join - a handful of open journals means a handful of extra round trips inside the same
+    /// AOS call, which costs nothing a caller outside this method can observe, and reads far more
+    /// plainly than the grouped alternative.
+    /// </summary>
+    public HSMobileOpsJournalListResponse listOpenJournals(HSMobileOpsJournalListRequest _request)
+    {
+        HSMobileOpsJournalListResponse response = new HSMobileOpsJournalListResponse();
+        HSMobileOpsJournalSummaryRow   row;
+        InventJournalTable             inventJournalTable;
+        InventJournalName              inventJournalName;
+        InventJournalTrans             inventJournalTrans;
+        InventDim                      inventDim;
+        List                           rows = new List(Types::Class);
+        DataAreaId                     company;
+        InventLocationId               warehouseId;
+        int                            rowCount;
+        int                            lineCount;
+
+        response.parmSuccess(false);
+        response.parmRows(rows);
+
+        if (_request)
+        {
+            company     = _request.parmDataAreaId();
+            warehouseId = _request.parmWarehouseId();
+        }
+
+        if (!company || !warehouseId || !CompanyInfo::findDataArea(company).RecId)
+        {
+            response.parmErrorCode('INVALID_REQUEST');
+            return response;
+        }
+
+        changecompany (company)
+        {
+            inventJournalTable = null;
+            inventJournalName  = null;
+            inventJournalTrans = null;
+            inventDim          = null;
+
+            while select RecId, JournalId, JournalNameId, CreatedDateTime
+                from inventJournalTable
+                where inventJournalTable.JournalType == InventJournalType::Count
+                   && inventJournalTable.Posted      == NoYes::No
+                outer join inventJournalName
+                    where inventJournalName.JournalNameId == inventJournalTable.JournalNameId
+                       && inventJournalName.JournalType    == InventJournalType::Count
+                exists join inventJournalTrans
+                    where inventJournalTrans.JournalId == inventJournalTable.JournalId
+                exists join inventDim
+                    where inventDim.InventDimId      == inventJournalTrans.InventDimId
+                       && inventDim.InventLocationId  == warehouseId
+            {
+                lineCount = 0;
+                inventJournalTrans = null;
+                inventDim          = null;
+
+                while select count(RecId) from inventJournalTrans
+                    where inventJournalTrans.JournalId == inventJournalTable.JournalId
+                    exists join inventDim
+                        where inventDim.InventDimId     == inventJournalTrans.InventDimId
+                           && inventDim.InventLocationId == warehouseId
+                {
+                    lineCount = inventJournalTrans.RecId;
+                }
+
+                row = new HSMobileOpsJournalSummaryRow();
+                row.parmJournalId(inventJournalTable.JournalId);
+                row.parmJournalNameId(inventJournalTable.JournalNameId);
+                row.parmDescription(inventJournalName.Description);
+                row.parmJournalDate(DateTimeUtil::date(inventJournalTable.CreatedDateTime));
+                row.parmLineCount(lineCount);
+
+                rows.addEnd(row);
+
+                rowCount++;
+                if (rowCount >= HSMobileOpsCountingService::maxJournals())
+                {
+                    response.parmErrorCode('TRUNCATED');
+                    break;
+                }
+            }
+
+            response.parmSuccess(true);
+        }
+
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>filterExportToJournal</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Points [_groupName]'s `InventInventoryCountingJournalLineEntity` row at [_journalId], by
+    /// rewriting its packed query rather than anything on the definition group itself - the same
+    /// mechanism a real, confirmed standard class uses to scope `BudgetPlanWorksheetEntity` to
+    /// one document (findOrCreateRange on the packed QueryData, repacked and written back under
+    /// ttsbegin/selectForUpdate). One journal, not a set - [_groupName] is this journal's own
+    /// dedicated project now (see HSMobileOpsCountingExportSetup::ensureExportForJournal), so
+    /// there is no shared-state race left to widen the filter against.
+    /// </summary>
+    private static void filterExportToJournal(DMFDefinitionGroupName _groupName, InventJournalId _journalId)
+    {
+        DmfDefinitionGroupEntity definitionGroupEntity;
+        container                queryData;
+        QueryRun                 queryRun;
+        Query                    query;
+        QueryBuildDataSource     qbds;
+        FieldId                  journalIdFieldId;
+        str                      journalFieldName = 'JournalNumber';
+        int                      i;
+
+        select firstOnly definitionGroupEntity
+            where definitionGroupEntity.DefinitionGroup == _groupName
+               && definitionGroupEntity.Entity          == HSMobileOpsCountingExportSetup::entityName();
+
+        if (!definitionGroupEntity.RecId)
+        {
+            throw error(strFmt(
+                'No DmfDefinitionGroupEntity for %1/%2 right after ensureExportForJournal - '
+              + 'should not be reachable.',
+                _groupName, HSMobileOpsCountingExportSetup::entityName()));
+        }
+
+        queryData = definitionGroupEntity.QueryData;
+
+        if (queryData != connull())
+        {
+            queryRun = new QueryRun(queryData);
+            query    = queryRun.query();
+        }
+        else
+        {
+            // Confirmed live: a bare query with InventJournalTrans added as its only data
+            // source works for this method's one job (carrying the JournalId range) - see
+            // HSMobileOpsCountingExportSetup's own doc comment on the rounds that got here.
+            query = new Query();
+            query.addDataSource(tableNum(InventJournalTrans));
+        }
+
+        // Found by looking, not guessed. Once the project is registered under the right entity
+        // name, `QueryData` holds the entity's real default query, and that query's only data
+        // source is the entity itself (`InventInventoryCountingJournalLineEntity_1`, confirmed
+        // live from this method's own error listing) - so the range goes on the entity's own
+        // `JournalNumber` field (the `JOURNALNUMBER` column of the export), not on
+        // `InventJournalTrans.JournalId`, which this method hardcoded before and which only
+        // ever existed in the bare fallback query above. If nothing matches, the error lists
+        // what the query does contain.
+        for (i = 1; i <= query.dataSourceCount() && !qbds; i++)
+        {
+            qbds = HSMobileOpsCountingService::findDataSourceWithField(query.dataSourceNo(i), journalFieldName);
+        }
+
+        if (!qbds)
+        {
+            str sources;
+            for (i = 1; i <= query.dataSourceCount(); i++)
+            {
+                sources += HSMobileOpsCountingService::describeDataSources(query.dataSourceNo(i));
+            }
+
+            throw error(strFmt(
+                'No data source with a %3 field in %1\'s query. Data sources: %2',
+                HSMobileOpsCountingExportSetup::entityName(), sources, journalFieldName));
+        }
+
+        journalIdFieldId = new DictTable(qbds.table()).fieldName2Id(journalFieldName);
+
+        SysQuery::findOrCreateRange(qbds, journalIdFieldId).value(queryValue(_journalId));
+
+        queryRun  = new QueryRun(query);
+        queryData = queryRun.pack();
+
+        ttsbegin;
+        definitionGroupEntity.reread();
+        definitionGroupEntity.selectForUpdate(true);
+        definitionGroupEntity.QueryData = queryData;
+        definitionGroupEntity.update();
+        ttscommit;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>findDataSourceWithField</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Depth-first search of [_qbds] and its joined children for the first data source whose
+    /// table has a field called [_fieldName]. Null when there isn't one.
+    /// </summary>
+    private static QueryBuildDataSource findDataSourceWithField(QueryBuildDataSource _qbds, str _fieldName)
+    {
+        QueryBuildDataSource found;
+        DictTable            dictTable = new DictTable(_qbds.table());
+        int                  i;
+
+        if (dictTable && dictTable.fieldName2Id(_fieldName))
+        {
+            return _qbds;
+        }
+
+        for (i = 1; i <= _qbds.childDataSourceCount(); i++)
+        {
+            found = HSMobileOpsCountingService::findDataSourceWithField(_qbds.childDataSourceNo(i), _fieldName);
+
+            if (found)
+            {
+                return found;
+            }
+        }
+
+        return null;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>describeDataSources</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// `[dataSourceName:tableName]` for [_qbds] and every joined child, for error messages.
+    /// </summary>
+    private static str describeDataSources(QueryBuildDataSource _qbds)
+    {
+        str result = strFmt('[%1:%2]', _qbds.name(), tableId2Name(_qbds.table()));
+        int i;
+
+        for (i = 1; i <= _qbds.childDataSourceCount(); i++)
+        {
+            result += HSMobileOpsCountingService::describeDataSources(_qbds.childDataSourceNo(i));
+        }
+
+        return result;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>exportOpenJournals</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Creates a brand-new, request-private export project for `_request`'s journal and scopes
+    /// it to just that journal - and stops there. Returns the project's name; the app itself
+    /// triggers the export by calling the public `ExportToPackage` OData action against that
+    /// name with an execution id it generates, then polls `GetExecutionSummaryStatus` and
+    /// fetches `GetExportedPackageUrl`. That is exactly how Microsoft's own Recurring
+    /// Integrations Scheduler drives an export (its export job takes a pre-built project name,
+    /// generates `{project}-{timestamp}-{guid}` as the execution id and package name, and never
+    /// touches a batch job), and it was confirmed live against this tenant: `ExportToPackage`
+    /// returns the id immediately and the run goes NotRun, Executing, Succeeded in seconds.
+    ///
+    /// This replaces two earlier designs that both failed to earn their keep: a synchronous
+    /// `DMFEntityExporter::exportToFile` call (threw `Entity ... not found` even for an entity
+    /// the Data Management UI could export), and a `DMFBatchExporter` batch job that then needed
+    /// a `resolveExportExecution` round trip to turn the batch job into an execution id. Nothing
+    /// X++ has to trigger or resolve anything any more - this method only does what the public
+    /// API can't: create the project and write its per-journal filter.
+    /// </summary>
+    public HSMobileOpsScopeExportResponse exportOpenJournals(HSMobileOpsScopeExportRequest _request)
+    {
+        HSMobileOpsScopeExportResponse response = new HSMobileOpsScopeExportResponse();
+        DataAreaId                     company;
+        InventJournalId                journalId;
+        DMFDefinitionGroupName         groupName;
+        DmfDefinitionGroupEntity       definitionGroupEntity;
+
+        response.parmSuccess(false);
+
+        if (_request)
+        {
+            company   = _request.parmDataAreaId();
+            journalId = _request.parmJournalId();
+        }
+
+        if (!company || !journalId || !CompanyInfo::findDataArea(company).RecId)
+        {
+            response.parmErrorCode('INVALID_REQUEST');
+            return response;
+        }
+
+        // Not inside `changecompany (company)`: DMF's definition group tables are set up in the
+        // caller's default company here (every row dumped live carried the same dataAreaId
+        // regardless), so there is nothing per-legal-entity to switch into. The journal's own
+        // data is scoped by the JournalId filter and the app's `legalEntityId` on
+        // `ExportToPackage`. (An earlier build of this method blamed a company mismatch for the
+        // project showing no entity; the real cause was the entity NAME - see
+        // HSMobileOpsCountingExportSetup::entityName.)
+        groupName = HSMobileOpsCountingExportSetup::ensureExportForJournal(journalId);
+        HSMobileOpsCountingService::filterExportToJournal(groupName, journalId);
+
+        select firstOnly definitionGroupEntity
+            where definitionGroupEntity.DefinitionGroup == groupName
+               && definitionGroupEntity.Entity          == HSMobileOpsCountingExportSetup::entityName();
+
+        if (!definitionGroupEntity.RecId)
+        {
+            throw error(strFmt(
+                'No DmfDefinitionGroupEntity for %1/%2 right after ensureExportForJournal - '
+              + 'should not be reachable.',
+                groupName, HSMobileOpsCountingExportSetup::entityName()));
+        }
+
+        response.parmSuccess(true);
+        response.parmDefinitionGroupName(groupName);
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>importCounts</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Enqueues an import of `_request.packageUrl` (a blob the app already uploaded via the
+    /// public `GetAzureWriteUrl` OData action) as a D365 batch job, against the shared
+    /// `HSMobileOpsCountingImport` project. See this class's own doc comment for why import
+    /// stays on one shared project while export does not, and why this does not wait for the
+    /// job to finish before returning.
+    /// </summary>
+    public HSMobileOpsImportCountsResponse importCounts(HSMobileOpsImportCountsRequest _request)
+    {
+        HSMobileOpsImportCountsResponse response = new HSMobileOpsImportCountsResponse();
+        DataAreaId                      company;
+        InventJournalId                 journalId;
+        str                             packageUrl;
+        DMFExecutionId                  executionId;
+
+        response.parmSuccess(false);
+
+        if (_request)
+        {
+            company     = _request.parmDataAreaId();
+            journalId   = _request.parmJournalId();
+            packageUrl  = _request.parmPackageUrl();
+        }
+
+        if (!company || !journalId || !packageUrl || !CompanyInfo::findDataArea(company).RecId)
+        {
+            response.parmErrorCode('INVALID_REQUEST');
+            return response;
+        }
+
+        changecompany (company)
+        {
+            HSMobileOpsCountingExportSetup::ensureImport();
+
+            // DataManagementIntegrationUtils::importDefinitionGroup's own pattern, confirmed
+            // from real shipped code. `_packageLocation` is passed the blob URL directly, the
+            // same value ImportFromPackage's own `packageUrl` parameter accepts - not
+            // independently confirmed that PrepareDefinitionGroupForImport/importFromPackageV2
+            // accept a remote URL rather than a local SharedServiceUnit file id the way the
+            // reference's own call site received it, so this is the next thing to check if the
+            // import throws a file-not-found-shaped error.
+            executionId = DMFPackageImporter::PrepareDefinitionGroupForImport(
+                HSMobileOpsCountingExportSetup::importDefinitionGroupName());
+
+            DMFPackageImporter packageImporter = new DMFPackageImporter();
+            packageImporter.importFromPackageV2(
+                packageUrl,
+                HSMobileOpsCountingExportSetup::importDefinitionGroupName(),
+                executionId,
+                true,
+                true,
+                curExt());
+
+            response.parmSuccess(true);
+            response.parmExecutionId(executionId);
+        }
+
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>maxJournals</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Ceiling on open journals returned for one warehouse. A legitimate answer is a handful;
+    /// anything near this is a sign journals are not being posted/closed, not a sign the ceiling
+    /// should grow.
+    /// </summary>
+    private static int maxJournals()
+    {
+        return 100;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

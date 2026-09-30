@@ -36,6 +36,8 @@ import javax.inject.Singleton
 
 @Qualifier @Retention(AnnotationRetention.BINARY) annotation class AadClient
 
+@Qualifier @Retention(AnnotationRetention.BINARY) annotation class BlobClient
+
 @Module
 @InstallIn(SingletonComponent::class)
 object NetworkModule {
@@ -193,16 +195,39 @@ object NetworkModule {
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
         .apply {
-            // HEADERS, never BODY: the request body carries the client secret, and a secret
-            // in logcat is a secret on every crash report and bug bundle. The response headers
-            // are safe, but the response *body* is the access token, so this must never be
-            // raised to BODY either. See the identical note on the main client for why this
-            // goes through debugHttpLoggingInterceptor rather than constructing
+            // HEADERS, never BODY: the request body carries a device code or refresh token,
+            // and a token in logcat is a token on every crash report and bug bundle. The
+            // response headers are safe, but the response *body* is the access token, so this
+            // must never be raised to BODY either. See the identical note on the main client
+            // for why this goes through debugHttpLoggingInterceptor rather than constructing
             // HttpLoggingInterceptor directly.
             if (BuildConfig.ALLOW_SENSITIVE_LOGGING) {
                 debugHttpLoggingInterceptor("Authorization")?.let(::addInterceptor)
             }
         }
+        .build()
+
+    /**
+     * A bare client for Azure Blob Storage SAS URLs - the counting-journal DMF package
+     * download/upload, see `CountingJournalRepository`.
+     *
+     * Deliberately not the shared OkHttpClient, for the same reason as [provideAadOkHttpClient]:
+     * that one carries [AuthInterceptor], which would attach a D365FO bearer token to a request
+     * against `*.blob.core.windows.net` - a different host that neither wants nor accepts it.
+     * The SAS token embedded in the URL's own query string is the only auth a blob request
+     * needs or gets. No certificate pinning either, for the same reason `AadClient` has none:
+     * the pins are for the AOS host, and Azure Storage's own chain is unrelated to it. Package
+     * downloads/uploads are small (a counting journal's lines, not media), but timeouts are
+     * still generous - warehouse wifi is the same wifi every other client here has to tolerate.
+     */
+    @Provides
+    @Singleton
+    @BlobClient
+    fun provideBlobOkHttpClient(): OkHttpClient = OkHttpClient.Builder()
+        .connectTimeout(15, TimeUnit.SECONDS)
+        .readTimeout(60, TimeUnit.SECONDS)
+        .writeTimeout(60, TimeUnit.SECONDS)
+        .retryOnConnectionFailure(true)
         .build()
 
     @Provides

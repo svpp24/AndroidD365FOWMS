@@ -9,14 +9,21 @@ import retrofit2.http.POST
 import retrofit2.http.Path
 
 /**
- * The Azure AD v2.0 token endpoint, called directly for the client-credentials grant.
+ * The Azure AD v2.0 token endpoint, called directly for the device-code, refresh-token and
+ * client-credentials grants - see [com.d365fo.mobileops.data.security.AuthTokenProviderRouter]
+ * for which one is active.
  *
- * MSAL is not used for this flow. MSAL's Android library is built around interactive public
- * clients and does not expose a confidential-client credential grant, so the request is made
- * against the endpoint directly. It is a single form POST with no redirect and no browser.
+ * MSAL is not used for this. MSAL's Android library is built around interactive public
+ * clients, and the request is a single form POST with no redirect and no browser anyway once
+ * the device-code exchange itself is done.
  */
 interface AadTokenApi {
 
+    /**
+     * The app-only grant: a client secret proves the app registration itself, with no person
+     * and no browser involved. No refresh token comes back from this grant - there is nothing
+     * to refresh, the same secret just gets exchanged again next time.
+     */
     @FormUrlEncoded
     @POST("{tenantId}/oauth2/v2.0/token")
     suspend fun clientCredentials(
@@ -24,7 +31,6 @@ interface AadTokenApi {
         @Field("grant_type") grantType: String = "client_credentials",
         @Field("client_id") clientId: String,
         @Field("client_secret") clientSecret: String,
-        /** Always "<resource>/.default" for D365FO — per-resource, not per-permission. */
         @Field("scope") scope: String,
     ): Response<AadTokenResponse>
 

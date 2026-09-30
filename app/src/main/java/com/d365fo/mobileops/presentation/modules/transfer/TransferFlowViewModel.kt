@@ -9,6 +9,7 @@ import com.d365fo.mobileops.domain.model.TransferCapture
 import com.d365fo.mobileops.data.local.entity.FlowType
 import com.d365fo.mobileops.data.local.entity.SyncOperation
 import com.d365fo.mobileops.data.repository.FlowSessionRepository
+import com.d365fo.mobileops.data.repository.PendingFlowResume
 import com.d365fo.mobileops.data.repository.StoredLine
 import com.d365fo.mobileops.data.security.CompanyProvider
 import com.d365fo.mobileops.data.security.SecureStore
@@ -68,6 +69,7 @@ class TransferFlowViewModel @Inject constructor(
     private val database: com.d365fo.mobileops.data.local.D365Database,
     private val notifier: com.d365fo.mobileops.data.sync.SyncNotifier,
     private val postingDispatcher: com.d365fo.mobileops.data.sync.PostingDispatcher,
+    private val pendingFlowResume: PendingFlowResume,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(TransferFlowState())
@@ -91,11 +93,24 @@ class TransferFlowViewModel @Inject constructor(
     fun setMode(mode: TransferMode) {
         if (_state.value.capture.mode == mode && _state.value.capture.transferId != null) return
         _state.value = TransferFlowState(capture = TransferCapture(mode = mode))
+
+        // See the identical hand-off in ReceivingFlowViewModel.init and PendingFlowResume - the
+        // direction is not known until setMode runs (it arrives as a LaunchedEffect(mode) from
+        // the screen, after this ViewModel's own init), so the resume check has to live here
+        // instead, gated by the same "nothing looked up yet" guard above rather than its own.
+        val flowType = when (mode) {
+            TransferMode.SHIP -> FlowType.TRANSFER_SHIP
+            TransferMode.RECEIVE -> FlowType.TRANSFER_RECEIVE
+        }
+        pendingFlowResume.consume(flowType)?.let(::submit)
     }
 
     fun onManualEntry(value: String) = submit(value)
 
     fun onCameraDecoded(value: String) = scannerBridge.submitCameraScan(value)
+
+    /** See [HidScannerBridge.justScanned] - used by the screen's BackHandler. */
+    fun justScanned(): Boolean = scannerBridge.justScanned()
 
     fun setScannerInterception(enabled: Boolean) {
         scannerBridge.enabled = enabled
@@ -247,6 +262,11 @@ class TransferFlowViewModel @Inject constructor(
         val capture = state.capture
         val transferId = capture.transferId
         if (transferId.isNullOrBlank() || state.captured.isEmpty()) return
+        // Re-entrancy guard - see the identical one and its full reasoning on
+        // ReceivingFlowViewModel.postReceipt. A second call while state.busy is still true from
+        // the first would mint its own idempotencyKey from the same still-captured lines, and
+        // D365FO durably registers both as distinct transfers - real double-moved inventory.
+        if (state.busy) return
 
         pending?.cancel()
         _state.update { it.copy(busy = true, error = null) }
@@ -315,18 +335,24 @@ class TransferFlowViewModel @Inject constructor(
 
             // See the identical note in ReceivingFlowViewModel.postReceipt - tried live before
             // ever falling back to the background queue, so the operator finds out now, not
-            // whenever WorkManager next runs.
-            val postedLive = when (val result = postingDispatcher.dispatch(entry)) {
-                is NetworkResult.Success -> {
-                    syncQueue.onSuccess(entry)
-                    true
+            // whenever WorkManager next runs. Leased first via the same claiming mechanism the
+            // background worker uses (SyncQueueDao.leaseOne) - dispatching the freshly-built,
+            // unleased entry directly raced a worker run that SyncStatusProvider's own reactive
+            // push request can trigger the instant enqueue() above changes the pending count;
+            // see the full account of that live-confirmed race on postReceipt.
+            val postedLive = syncQueue.leaseOne(entry.queueId)?.let { leased ->
+                when (val result = postingDispatcher.dispatch(leased)) {
+                    is NetworkResult.Success -> {
+                        syncQueue.onSuccess(leased)
+                        true
+                    }
+                    is NetworkResult.Error -> {
+                        syncQueue.onFailure(leased, result.failure)
+                        false
+                    }
+                    NetworkResult.Loading -> false
                 }
-                is NetworkResult.Error -> {
-                    syncQueue.onFailure(entry, result.failure)
-                    false
-                }
-                NetworkResult.Loading -> false
-            }
+            } ?: false
             if (!postedLive) syncScheduler.requestImmediatePush()
 
             scanFeedback.success()
@@ -434,6 +460,16 @@ class TransferFlowViewModel @Inject constructor(
     private suspend fun onItem(value: String) {
         linesFor(value)?.let { return chooseAmong(it) }
 
+        // See the identical fast-fail on ReceivingFlowViewModel.onItem and the same reasoning:
+        // an already-fully-captured item's own number falling through to the barcode-lookup
+        // fallback can only ever end in "not a known barcode", after paying for a full network
+        // round trip first.
+        if (_state.value.order?.linesInline == true &&
+            _state.value.openLines.any { it.itemId.equals(value, ignoreCase = true) }
+        ) {
+            return fail("$value has already been fully captured on this order")
+        }
+
         when (val result = lookups.lookupBarcode(value)) {
             is NetworkResult.Error -> fail(result.failure.message)
             NetworkResult.Loading -> Unit
@@ -457,7 +493,7 @@ class TransferFlowViewModel @Inject constructor(
 
         if (state.order?.linesInline == true) {
             return state.openLines
-                .filter { it.itemId.equals(itemNumber, ignoreCase = true) }
+                .filter { it.itemId.equals(itemNumber, ignoreCase = true) && sessionRemaining(it).signum() > 0 }
                 .takeIf { it.isNotEmpty() }
         }
 
@@ -470,9 +506,27 @@ class TransferFlowViewModel @Inject constructor(
             }
             NetworkResult.Loading -> null
             is NetworkResult.Success ->
-                result.data.filter { it.hasOutstanding }.takeIf { it.isNotEmpty() }
+                result.data.filter { it.hasOutstanding && sessionRemaining(it).signum() > 0 }
+                    .takeIf { it.isNotEmpty() }
         }
     }
+
+    /**
+     * What [line] still has left *right now*, in the middle of this in-progress flow - see the
+     * identical [ReceivingFlowViewModel.sessionRemaining] and the same reasoning:
+     * [TransferOrderLine.remainingQuantity] is a server-computed snapshot from when this order
+     * was looked up, so it knows nothing about a line this same flow already banked into
+     * [TransferFlowState.captured] a moment ago and has not posted or queued yet. Without this,
+     * banking a line's only unit and returning to the item step still offers that same item with
+     * its original quantity, letting one worker in one sitting bank the same line twice.
+     */
+    private fun sessionRemaining(line: TransferOrderLine): BigDecimal =
+        (line.remainingQuantity - capturedThisSessionFor(line)).coerceAtLeast(BigDecimal.ZERO)
+
+    private fun capturedThisSessionFor(line: TransferOrderLine): BigDecimal =
+        _state.value.captured
+            .filter { it.lineNumber == line.lineNumber }
+            .fold(BigDecimal.ZERO) { total, entry -> total + entry.quantity }
 
     private fun chooseAmong(lines: List<TransferOrderLine>) {
         if (lines.size > 1) {
@@ -497,7 +551,7 @@ class TransferFlowViewModel @Inject constructor(
                     // operator scans, and the line's location is the *source* bin anyway.
                     locationId = null,
                 ),
-                suggestedQuantity = line.remainingQuantity,
+                suggestedQuantity = sessionRemaining(line),
                 error = null,
             )
         }
@@ -513,14 +567,17 @@ class TransferFlowViewModel @Inject constructor(
             return fail("${line.itemId} is serial tracked, so it moves in whole units")
         }
 
-        // The ceiling is what is outstanding in this direction, which the server decided.
-        if (entered > line.remainingQuantity) {
+        // The ceiling is what is outstanding in this direction, which the server decided - minus
+        // whatever this same in-progress flow already banked against this line a moment ago and
+        // has not posted or queued yet. See sessionRemaining.
+        val maximum = sessionRemaining(line)
+        if (entered > maximum) {
             val mode = _state.value.capture.mode
             return fail(
                 if (mode == TransferMode.SHIP) {
-                    "Only ${plain(line.remainingQuantity)} left to ship on this line"
+                    "Only ${plain(maximum)} left to ship on this line"
                 } else {
-                    "Only ${plain(line.remainingQuantity)} was shipped and is still to receive"
+                    "Only ${plain(maximum)} was shipped and is still to receive"
                 },
             )
         }

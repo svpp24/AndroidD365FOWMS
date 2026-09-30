@@ -5,7 +5,13 @@
 		<Declaration><![CDATA[
 /// <summary>
 /// One row of HSMobileOpsPostQueue, as the Activity screen needs it - what was submitted, what
-/// it is now, and why, without exposing the raw LinesJson a status list has no use for.
+/// it is now, and why.
+///
+/// linesJson and userName were deliberately left off at first - "a status list has no use for
+/// them." Confirmed wrong: a status list with only a PO number and a status word gives a
+/// supervisor no way to tell what actually happened without opening D365FO separately. Both are
+/// columns already on the row, so exposing them costs nothing extra to read - the client parses
+/// linesJson itself (the same shape it sent), so nothing here needs to resolve item names.
 /// </summary>
 [DataContractAttribute]
 class HSMobileOpsPostQueueEntry
@@ -16,6 +22,8 @@ class HSMobileOpsPostQueueEntry
     str         errorMessage;
     utcdatetime receivedUtc;
     utcdatetime processedUtc;
+    str         userName;
+    str         linesJson;
 
 }
 ]]></Declaration>
@@ -89,6 +97,36 @@ class HSMobileOpsPostQueueEntry
     {
         processedUtc = _value;
         return processedUtc;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmUserName</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('UserName')]
+    public str parmUserName(str _value = userName)
+    {
+        userName = _value;
+        return userName;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmLinesJson</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Exactly what the device sent - LineNumber, ItemId, Quantity and the capture dimensions per
+    /// line. The client already owns a parser for this shape (it built the request), so nothing
+    /// here re-parses it just to flatten it into a display string the client would have to
+    /// re-derive its own formatting from anyway.
+    /// </summary>
+    [DataMemberAttribute('LinesJson')]
+    public str parmLinesJson(str _value = linesJson)
+    {
+        linesJson = _value;
+        return linesJson;
     }
 ]]></Source>
 			</Method>

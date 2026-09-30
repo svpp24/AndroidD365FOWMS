@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxService xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsLicenseSvc</Name>
+	<Class>HSMobileOpsLicenseService</Class>
+	<ExternalName>LicenseService</ExternalName>
+	<Namespace>http://schemas.hs.com/mobileops</Namespace>
+	<ServiceOperations>
+		<AxServiceOperation>
+			<Name>getLicense</Name>
+			<Method>getLicense</Method>
+		</AxServiceOperation>
+		<AxServiceOperation>
+			<Name>registerDevice</Name>
+			<Method>registerDevice</Method>
+		</AxServiceOperation>
+	</ServiceOperations>
+</AxService>
