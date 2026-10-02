@@ -226,6 +226,7 @@ class HSMobileOpsTransferService
         // these would otherwise run once per line.
         Map namesByItem = new Map(Types::String, Types::String);
         Map dimsByItem  = new Map(Types::String, Types::Class);
+        Map unitsByKey  = new Map(Types::String, Types::Class);
 
         while select LineNum, ItemId, UnitId, QtyTransfer, QtyShipped, QtyReceived,
                      QtyRemainShip, InventDimId
@@ -286,6 +287,8 @@ class HSMobileOpsTransferService
             line.parmSerialMandatory(HSMobileOpsDimensionRules::mustSpecify(dimSetup, fieldNum(InventDim, InventSerialId), !_shipping));
             line.parmLocationMandatory(HSMobileOpsDimensionRules::mustSpecify(dimSetup, fieldNum(InventDim, wMSLocationId), !_shipping));
             line.parmSerialPerUnit(HSMobileOpsDimensionRules::serialPerUnit(dimSetup));
+            // Units from the item's conversion setup, to the line's transfer unit.
+            line.parmUnits(HSMobileOpsUnitService::unitsCached(unitsByKey, transferLine.ItemId, transferLine.InventDimId, transferLine.UnitId));
 
             lines.addEnd(line);
 

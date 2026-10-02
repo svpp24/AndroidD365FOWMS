@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxService xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsUnitSvc</Name>
+	<Class>HSMobileOpsUnitService</Class>
+	<ExternalName>UnitService</ExternalName>
+	<Namespace>http://schemas.hs.com/mobileops</Namespace>
+	<ServiceOperations>
+		<AxServiceOperation>
+			<Name>getItemUnits</Name>
+			<Method>getItemUnits</Method>
+		</AxServiceOperation>
+	</ServiceOperations>
+</AxService>

@@ -391,6 +391,7 @@ class HSMobileOpsReceivingService
         // and without these the per-item lookups below run once per line instead of once per item.
         Map unitByItem = new Map(Types::String, Types::String);
         Map dimsByItem = new Map(Types::String, Types::Class);
+        Map unitsByKey = new Map(Types::String, Types::Class);
 
         // RemainPurchPhysical is not the truth here: registerLine (HSMobileOpsPostingService)
         // converts an Ordered InventTrans to Registered directly and never posts a packing slip,
@@ -464,6 +465,8 @@ class HSMobileOpsReceivingService
             line.parmSerialMandatory(HSMobileOpsDimensionRules::mustSpecify(dimSetup, fieldNum(InventDim, InventSerialId), true));
             line.parmLocationMandatory(HSMobileOpsDimensionRules::mustSpecify(dimSetup, fieldNum(InventDim, wMSLocationId), true));
             line.parmSerialPerUnit(HSMobileOpsDimensionRules::serialPerUnit(dimSetup));
+            // Units from the item's conversion setup, to the line's purchase unit.
+            line.parmUnits(HSMobileOpsUnitService::unitsCached(unitsByKey, purchLine.ItemId, purchLine.InventDimId, purchLine.PurchUnit));
 
             line.parmOverDeliveryPct(purchLine.OverDeliveryPct);
             line.parmUnderDeliveryPct(purchLine.UnderDeliveryPct);

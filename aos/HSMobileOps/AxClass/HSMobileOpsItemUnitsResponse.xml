@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsItemUnitsResponse</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// getItemUnits response, one result per known item variant asked for.
+/// </summary>
+[DataContractAttribute]
+class HSMobileOpsItemUnitsResponse
+{
+    boolean success;
+    str errorCode;
+    List items;
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmSuccess</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Success')]
+    public boolean parmSuccess(boolean _value = success)
+    {
+        success = _value;
+        return success;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmErrorCode</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ErrorCode')]
+    public str parmErrorCode(str _value = errorCode)
+    {
+        errorCode = _value;
+        return errorCode;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmItems</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Items'),
+     DataCollectionAttribute(Types::Class, classStr(HSMobileOpsItemUnitsResult))]
+    public List parmItems(List _value = items)
+    {
+        items = _value;
+        return items;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

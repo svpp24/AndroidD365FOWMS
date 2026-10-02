@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsItemUnitsKey</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// One item variant whose units getItemUnits should return.
+/// </summary>
+[DataContractAttribute]
+class HSMobileOpsItemUnitsKey
+{
+    str itemId;
+    str configId;
+    str sizeId;
+    str colorId;
+    str styleId;
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmItemId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ItemId')]
+    public str parmItemId(str _value = itemId)
+    {
+        itemId = _value;
+        return itemId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmConfigId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ConfigId')]
+    public str parmConfigId(str _value = configId)
+    {
+        configId = _value;
+        return configId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmSizeId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('SizeId')]
+    public str parmSizeId(str _value = sizeId)
+    {
+        sizeId = _value;
+        return sizeId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmColorId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ColorId')]
+    public str parmColorId(str _value = colorId)
+    {
+        colorId = _value;
+        return colorId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmStyleId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('StyleId')]
+    public str parmStyleId(str _value = styleId)
+    {
+        styleId = _value;
+        return styleId;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

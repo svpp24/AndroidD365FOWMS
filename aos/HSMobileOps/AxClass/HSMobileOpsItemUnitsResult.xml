@@ -1,0 +1,110 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsItemUnitsResult</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Units of one item variant, to its inventory unit: 1 UnitId = Factor InventoryUnit.
+/// </summary>
+[DataContractAttribute]
+class HSMobileOpsItemUnitsResult
+{
+    str itemId;
+    str configId;
+    str sizeId;
+    str colorId;
+    str styleId;
+    str inventoryUnit;
+    List units;
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmItemId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ItemId')]
+    public str parmItemId(str _value = itemId)
+    {
+        itemId = _value;
+        return itemId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmConfigId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ConfigId')]
+    public str parmConfigId(str _value = configId)
+    {
+        configId = _value;
+        return configId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmSizeId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('SizeId')]
+    public str parmSizeId(str _value = sizeId)
+    {
+        sizeId = _value;
+        return sizeId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmColorId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ColorId')]
+    public str parmColorId(str _value = colorId)
+    {
+        colorId = _value;
+        return colorId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmStyleId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('StyleId')]
+    public str parmStyleId(str _value = styleId)
+    {
+        styleId = _value;
+        return styleId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmInventoryUnit</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('InventoryUnit')]
+    public str parmInventoryUnit(str _value = inventoryUnit)
+    {
+        inventoryUnit = _value;
+        return inventoryUnit;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmUnits</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Units'),
+     DataCollectionAttribute(Types::Class, classStr(HSMobileOpsItemUnitRow))]
+    public List parmUnits(List _value = units)
+    {
+        units = _value;
+        return units;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

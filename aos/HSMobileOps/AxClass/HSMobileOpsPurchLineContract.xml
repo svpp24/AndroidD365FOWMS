@@ -55,6 +55,7 @@ class HSMobileOpsPurchLineContract
     boolean serialMandatory;
     boolean locationMandatory;
     boolean serialPerUnit;
+    List    units;
 }
 ]]></Declaration>
 		<Methods>
@@ -434,6 +435,20 @@ class HSMobileOpsPurchLineContract
     {
         serialPerUnit = _value;
         return serialPerUnit;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmUnits</Name>
+				<Source><![CDATA[
+
+    /// <summary>Units the quantity can be entered in, from the item's conversion setup (see HSMobileOpsUnitService).</summary>
+    [DataMemberAttribute('Units'),
+     DataCollectionAttribute(Types::Class, classStr(HSMobileOpsItemUnitRow))]
+    public List parmUnits(List _value = units)
+    {
+        units = _value;
+        return units;
     }
 ]]></Source>
 			</Method>

@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsItemUnitsRequest</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// getItemUnits request: every item variant of a journal in one call (at most 500).
+/// </summary>
+[DataContractAttribute]
+class HSMobileOpsItemUnitsRequest
+{
+    DataAreaId dataAreaId;
+    List items;
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmDataAreaId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('DataAreaId')]
+    public DataAreaId parmDataAreaId(DataAreaId _value = dataAreaId)
+    {
+        dataAreaId = _value;
+        return dataAreaId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmItems</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Items'),
+     DataCollectionAttribute(Types::Class, classStr(HSMobileOpsItemUnitsKey))]
+    public List parmItems(List _value = items)
+    {
+        items = _value;
+        return items;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

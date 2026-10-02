@@ -1,0 +1,217 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsUnitService</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Units an item's quantity can be entered in, per the item's unit conversion setup. Uses the
+/// standard EcoResProductUnitConverter (the converter purchase and inventory lines use), so
+/// product-specific, variant-specific and standard same-class conversions all apply. Registered
+/// as HSMobileOpsUnitSvc.
+/// </summary>
+class HSMobileOpsUnitService
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>getItemUnits</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Units of each item variant asked for, to its inventory unit - one call for a whole
+    /// counting journal. Unknown items are left out.
+    /// </summary>
+    public HSMobileOpsItemUnitsResponse getItemUnits(HSMobileOpsItemUnitsRequest _request)
+    {
+        HSMobileOpsItemUnitsResponse response = new HSMobileOpsItemUnitsResponse();
+        HSMobileOpsItemUnitsKey      itemKey;
+        HSMobileOpsItemUnitsResult   result;
+        List                         results = new List(Types::Class);
+        ListEnumerator               le;
+        InventTable                  inventTable;
+        InventDim                    inventDim;
+
+        response.parmSuccess(false);
+        response.parmItems(results);
+
+        if (!_request || !_request.parmDataAreaId() || !_request.parmItems()
+            || !CompanyInfo::findDataArea(_request.parmDataAreaId()).RecId)
+        {
+            response.parmErrorCode('INVALID_REQUEST');
+            return response;
+        }
+        if (_request.parmItems().elements() > HSMobileOpsUnitService::maxItems())
+        {
+            response.parmErrorCode('TOO_MANY_ITEMS');
+            return response;
+        }
+
+        changecompany (_request.parmDataAreaId())
+        {
+            le = _request.parmItems().getEnumerator();
+            while (le.moveNext())
+            {
+                itemKey = le.current();
+                inventTable = InventTable::find(itemKey.parmItemId());
+                if (!inventTable.RecId)
+                {
+                    continue;
+                }
+                inventDim.clear();
+                inventDim.ConfigId      = itemKey.parmConfigId();
+                inventDim.InventSizeId  = itemKey.parmSizeId();
+                inventDim.InventColorId = itemKey.parmColorId();
+                inventDim.InventStyleId = itemKey.parmStyleId();
+                inventDim = InventDim::findOrCreate(inventDim);
+
+                result = new HSMobileOpsItemUnitsResult();
+                result.parmItemId(inventTable.ItemId);
+                result.parmConfigId(itemKey.parmConfigId());
+                result.parmSizeId(itemKey.parmSizeId());
+                result.parmColorId(itemKey.parmColorId());
+                result.parmStyleId(itemKey.parmStyleId());
+                result.parmInventoryUnit(inventTable.inventUnitId());
+                result.parmUnits(HSMobileOpsUnitService::unitsFor(inventTable, inventDim.inventDimId, inventTable.inventUnitId()));
+                results.addEnd(result);
+            }
+        }
+
+        response.parmItems(results);
+        response.parmSuccess(true);
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>maxItems</Name>
+				<Source><![CDATA[
+
+    /// <summary>Bound on one request, so a call stays well inside the AOS timeout.</summary>
+    private static int maxItems()
+    {
+        return 500;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>unitsFor</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The candidate units - the item's inventory, purchase and sales units, both sides of its
+    /// product-specific conversions and the units of its barcodes - that the standard converter
+    /// can convert to _toUnit for this variant, each as 1 unit = Factor _toUnit. Includes _toUnit.
+    /// Called in the line's company; the purchase and transfer line lists use it too, so a line
+    /// arrives with its units and the app needs no extra call.
+    /// </summary>
+    public static List unitsFor(InventTable _inventTable, InventDimId _inventDimId, str _toUnit)
+    {
+        HSMobileOpsItemUnitRow       row;
+        List                         units = new List(Types::Class);
+        Set                          candidates = new Set(Types::String);
+        SetEnumerator                se;
+        InventTable                  inventTable = _inventTable;
+        UnitOfMeasureConversion      conversion;
+        InventItemBarcode            barcode;
+        EcoResProductUnitConverter   converter;
+        str                          toUnit = _toUnit ? _toUnit : _inventTable.inventUnitId();
+        str                          unit;
+        real                         factor, inverse;
+        InventDim                    inventDim;
+
+        if (!inventTable.RecId)
+        {
+            return units;
+        }
+        inventDim.inventDimId = _inventDimId;
+        candidates.add(toUnit);
+        candidates.add(inventTable.inventUnitId());
+        candidates.add(inventTable.purchUnitId());
+        candidates.add(inventTable.salesUnitId());
+        while select FromUnitOfMeasure, ToUnitOfMeasure from conversion
+            where conversion.Product == inventTable.Product
+        {
+            candidates.add(UnitOfMeasure::find(conversion.FromUnitOfMeasure).Symbol);
+            candidates.add(UnitOfMeasure::find(conversion.ToUnitOfMeasure).Symbol);
+        }
+        while select UnitID from barcode
+            where barcode.itemId == inventTable.ItemId
+               && barcode.UnitID
+        {
+            candidates.add(barcode.UnitID);
+        }
+
+        se = candidates.getEnumerator();
+        while (se.moveNext())
+        {
+            unit = se.current();
+            if (!unit || !UnitOfMeasure::findBySymbol(unit).RecId)
+            {
+                continue;
+            }
+            if (unit == toUnit)
+            {
+                factor = 1;
+            }
+            else
+            {
+                converter = EcoResProductUnitConverter::newGivenUnitSymbolsForReleasedProduct(
+                    inventTable.ItemId, inventDim.inventDimId, unit, toUnit, NoYes::No, NoYes::No);
+                if (!converter.canValueBeConverted())
+                {
+                    continue;
+                }
+                factor = converter.convertValue(1);
+                // A factor below 1 (1 pcs = 0.0833 dz) loses digits; the reverse direction is exact.
+                if (factor < 1)
+                {
+                    converter = EcoResProductUnitConverter::newGivenUnitSymbolsForReleasedProduct(
+                        inventTable.ItemId, inventDim.inventDimId, toUnit, unit, NoYes::No, NoYes::No);
+                    inverse = converter.canValueBeConverted() ? converter.convertValue(1) : 0;
+                    if (inverse > 0)
+                    {
+                        factor = 1 / inverse;
+                    }
+                }
+                if (factor <= 0)
+                {
+                    continue;
+                }
+            }
+            row = new HSMobileOpsItemUnitRow();
+            row.parmUnitId(unit);
+            row.parmFactor(factor);
+            row.parmDecimals(UnitOfMeasure::findBySymbol(unit).DecimalPrecision);
+            units.addEnd(row);
+        }
+        return units;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>unitsCached</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// unitsFor, worked out once per item, dimension and unit for one line list - lines of the
+    /// same item and variant share the result, so a long order costs no more than its items.
+    /// </summary>
+    public static List unitsCached(Map _cache, ItemId _itemId, InventDimId _inventDimId, str _toUnit)
+    {
+        str  key = _itemId + '#' + _inventDimId + '#' + _toUnit;
+        List units;
+
+        if (_cache.exists(key))
+        {
+            return _cache.lookup(key);
+        }
+        units = HSMobileOpsUnitService::unitsFor(InventTable::find(_itemId), _inventDimId, _toUnit);
+        _cache.insert(key, units);
+        return units;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

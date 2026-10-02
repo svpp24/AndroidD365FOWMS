@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsItemUnitRow</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// One unit a quantity can be entered in: 1 UnitId = Factor ToUnit. Decimals is the unit's own precision.
+/// </summary>
+[DataContractAttribute]
+class HSMobileOpsItemUnitRow
+{
+    str unitId;
+    real factor;
+    int decimals;
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmUnitId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('UnitId')]
+    public str parmUnitId(str _value = unitId)
+    {
+        unitId = _value;
+        return unitId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmFactor</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Factor')]
+    public real parmFactor(real _value = factor)
+    {
+        factor = _value;
+        return factor;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmDecimals</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Decimals')]
+    public int parmDecimals(int _value = decimals)
+    {
+        decimals = _value;
+        return decimals;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

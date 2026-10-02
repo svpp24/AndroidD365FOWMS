@@ -55,5 +55,9 @@
 			<Name>HSMobileOpsUserWarehouseSvc</Name>
 			<Service>HSMobileOpsUserWarehouseSvc</Service>
 		</AxServiceGroupService>
+		<AxServiceGroupService>
+			<Name>HSMobileOpsUnitSvc</Name>
+			<Service>HSMobileOpsUnitSvc</Service>
+		</AxServiceGroupService>
 	</Services>
 </AxServiceGroup>
