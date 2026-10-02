@@ -63,6 +63,7 @@ internal fun CountingLineRow(line: CountLine, onClick: (() -> Unit)? = null) {
                 }
                 val where = listOfNotNull(
                     line.locationId?.takeIf { it.isNotBlank() }?.let { "Loc $it" },
+                    line.variant.label.takeIf { it.isNotBlank() },
                     line.batchId?.takeIf { it.isNotBlank() }?.let { "Batch $it" },
                     line.serialId?.takeIf { it.isNotBlank() }?.let { "Serial $it" },
                     com.d365fo.mobileops.domain.model.locationTypeLabel(line.locationType),

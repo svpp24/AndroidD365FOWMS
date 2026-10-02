@@ -474,7 +474,7 @@ private fun ChoiceDialog(lines: List<CountLine>, onPick: (String) -> Unit, onCan
         title = { Text("${lines.first().itemId} is on ${lines.size} lines") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Pick the location or batch to count.", style = MaterialTheme.typography.bodyMedium)
+                Text("Pick the location, variant or batch to count.", style = MaterialTheme.typography.bodyMedium)
                 lines.forEach { line ->
                     Card(modifier = Modifier.fillMaxWidth().clickable { onPick(line.journalLineId) }) {
                         Row(
