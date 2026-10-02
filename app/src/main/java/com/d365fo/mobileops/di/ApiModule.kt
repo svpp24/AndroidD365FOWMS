@@ -1,6 +1,8 @@
 package com.d365fo.mobileops.di
 
+import com.d365fo.mobileops.data.remote.api.CountSupervisorServiceApi
 import com.d365fo.mobileops.data.remote.api.CountTaskServiceApi
+import com.d365fo.mobileops.data.remote.api.LiveCountSupervisorServiceApi
 import com.d365fo.mobileops.data.remote.api.D365ODataApi
 import com.d365fo.mobileops.data.remote.api.LiveCountTaskServiceApi
 import com.d365fo.mobileops.data.remote.api.LiveD365ODataApi
@@ -32,4 +34,8 @@ abstract class ApiModule {
     @Binds
     @Singleton
     abstract fun bindCountTaskServiceApi(live: LiveCountTaskServiceApi): CountTaskServiceApi
+
+    @Binds
+    @Singleton
+    abstract fun bindCountSupervisorServiceApi(live: LiveCountSupervisorServiceApi): CountSupervisorServiceApi
 }

@@ -71,6 +71,10 @@ data class JournalEntity(
     val locationFirst: Boolean = false,
     /** Counting only: the system expects these locations to be empty. */
     val zeroStockCheck: Boolean = false,
+    /** Counting only: SINGLE or DOUBLE_BLIND (two independent passes by two users). */
+    val countMode: String = "SINGLE",
+    /** Counting only: for a RECOUNT journal, the journal it recounts. */
+    val recountOf: String? = null,
     @Embedded val sync: SyncMeta = SyncMeta(),
 )
 
@@ -126,6 +130,8 @@ data class JournalLineEntity(
     val countedAt: Long? = null,
     /** Counting only: when this line was first opened for counting. */
     val lineCountStartedAt: Long? = null,
+    /** Counting only: the server asked for this line to be counted again. */
+    val recount: Boolean = false,
 )
 
 data class JournalWithLines(

@@ -306,3 +306,25 @@ class LiveCountTaskServiceApi @Inject constructor(
     override suspend fun submitExceptions(body: com.d365fo.mobileops.data.remote.dto.CountExceptionsServiceRequest) =
         delegate.get().submitExceptions(body)
 }
+
+@Singleton
+class LiveCountSupervisorServiceApi @Inject constructor(
+    factory: D365RetrofitFactory,
+    settings: ConnectionSettings,
+) : CountSupervisorServiceApi {
+
+    private val delegate = RebuildingApi(factory, CountSupervisorServiceApi::class.java) {
+        settings.tenant.value.servicesRoot
+    }
+
+    override suspend fun getVariance(
+        body: com.d365fo.mobileops.data.remote.dto.VarianceServiceRequest,
+        tag: com.d365fo.mobileops.data.remote.interceptor.IdempotentRead,
+    ) = delegate.get().getVariance(body, tag)
+
+    override suspend fun reviewLines(body: com.d365fo.mobileops.data.remote.dto.ReviewServiceRequest) =
+        delegate.get().reviewLines(body)
+
+    override suspend fun postJournal(body: com.d365fo.mobileops.data.remote.dto.PostJournalServiceRequest) =
+        delegate.get().postJournal(body)
+}

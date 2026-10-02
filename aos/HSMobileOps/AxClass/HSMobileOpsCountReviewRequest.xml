@@ -1,0 +1,111 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsCountReviewRequest</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// reviewLines' request. Action: APPROVE, REJECT or RECOUNT. AssignTo (RECOUNT only, optional):
+/// the user who should recount - the server enforces that it is not the previous counter.
+/// </summary>
+[DataContractAttribute]
+class HSMobileOpsCountReviewRequest
+{
+    DataAreaId      dataAreaId;
+    InventJournalId journalId;
+    str             userId;
+    str             action;
+    str             assignTo;
+    str             note;
+    List            lineNumbers;
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmDataAreaId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('DataAreaId')]
+    public DataAreaId parmDataAreaId(DataAreaId _value = dataAreaId)
+    {
+        dataAreaId = _value;
+        return dataAreaId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmJournalId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('JournalId')]
+    public InventJournalId parmJournalId(InventJournalId _value = journalId)
+    {
+        journalId = _value;
+        return journalId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmUserId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('UserId')]
+    public str parmUserId(str _value = userId)
+    {
+        userId = _value;
+        return userId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmAction</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Action')]
+    public str parmAction(str _value = action)
+    {
+        action = _value;
+        return action;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmAssignTo</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('AssignTo')]
+    public str parmAssignTo(str _value = assignTo)
+    {
+        assignTo = _value;
+        return assignTo;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmNote</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Note')]
+    public str parmNote(str _value = note)
+    {
+        note = _value;
+        return note;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmLineNumbers</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('LineNumbers'),
+     DataCollectionAttribute(Types::Real)]
+    public List parmLineNumbers(List _value = lineNumbers)
+    {
+        lineNumbers = _value;
+        return lineNumbers;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

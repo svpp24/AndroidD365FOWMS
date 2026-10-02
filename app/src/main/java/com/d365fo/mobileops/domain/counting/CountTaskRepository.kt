@@ -11,6 +11,9 @@ enum class ClaimRefusal {
     JOURNAL_POSTED,
     JOURNAL_NOT_FOUND,
 
+    /** A recount claimed by the person who counted before - the server requires someone else. */
+    SAME_COUNTER,
+
     /** The server does not offer claims yet (NOT_IMPLEMENTED, or the service is not deployed). */
     NOT_AVAILABLE,
     OTHER,

@@ -1,0 +1,214 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsCountVarianceLine</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// One counting line as a supervisor sees it: counted, system and variance quantity and value,
+/// and the server's tolerance verdict. Never sent to a counter-facing call.
+/// </summary>
+[DataContractAttribute]
+class HSMobileOpsCountVarianceLine
+{
+    real    lineNumber;
+    str     itemNumber;
+    str     itemName;
+    str     locationId;
+    str     batchId;
+    str     serialId;
+    real    countedQty;
+    real    systemQty;
+    real    varianceQty;
+    real    varianceValue;
+    str     toleranceStatus;
+    str     abcClass;
+    str     countedBy;
+    str     reviewStatus;
+    boolean counted;
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmLineNumber</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('LineNumber')]
+    public real parmLineNumber(real _value = lineNumber)
+    {
+        lineNumber = _value;
+        return lineNumber;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmItemNumber</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ItemNumber')]
+    public str parmItemNumber(str _value = itemNumber)
+    {
+        itemNumber = _value;
+        return itemNumber;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmItemName</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ItemName')]
+    public str parmItemName(str _value = itemName)
+    {
+        itemName = _value;
+        return itemName;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmLocationId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('LocationId')]
+    public str parmLocationId(str _value = locationId)
+    {
+        locationId = _value;
+        return locationId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmBatchId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('BatchId')]
+    public str parmBatchId(str _value = batchId)
+    {
+        batchId = _value;
+        return batchId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmSerialId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('SerialId')]
+    public str parmSerialId(str _value = serialId)
+    {
+        serialId = _value;
+        return serialId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmCountedQty</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('CountedQty')]
+    public real parmCountedQty(real _value = countedQty)
+    {
+        countedQty = _value;
+        return countedQty;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmSystemQty</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('SystemQty')]
+    public real parmSystemQty(real _value = systemQty)
+    {
+        systemQty = _value;
+        return systemQty;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmVarianceQty</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('VarianceQty')]
+    public real parmVarianceQty(real _value = varianceQty)
+    {
+        varianceQty = _value;
+        return varianceQty;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmVarianceValue</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('VarianceValue')]
+    public real parmVarianceValue(real _value = varianceValue)
+    {
+        varianceValue = _value;
+        return varianceValue;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmToleranceStatus</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ToleranceStatus')]
+    public str parmToleranceStatus(str _value = toleranceStatus)
+    {
+        toleranceStatus = _value;
+        return toleranceStatus;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmAbcClass</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('AbcClass')]
+    public str parmAbcClass(str _value = abcClass)
+    {
+        abcClass = _value;
+        return abcClass;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmCountedBy</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('CountedBy')]
+    public str parmCountedBy(str _value = countedBy)
+    {
+        countedBy = _value;
+        return countedBy;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmReviewStatus</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ReviewStatus')]
+    public str parmReviewStatus(str _value = reviewStatus)
+    {
+        reviewStatus = _value;
+        return reviewStatus;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmCounted</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Counted')]
+    public boolean parmCounted(boolean _value = counted)
+    {
+        counted = _value;
+        return counted;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

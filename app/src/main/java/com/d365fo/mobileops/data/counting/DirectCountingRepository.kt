@@ -116,6 +116,7 @@ class DirectCountingRepository @Inject constructor(
                     serialId = row.serialId?.takeIf { it.isNotBlank() },
                     inventDimId = null,
                     capturedAt = now,
+                    recount = row.recount,
                 )
             }
 
@@ -125,11 +126,14 @@ class DirectCountingRepository @Inject constructor(
             journalDao.upsertLinesChunked(lines)
             MergeResult(added = lines.size, removed = 0)
         }
-        journalDao.updateCountingAttributes(journal.journalId, TransferMode.DIRECT, journal.locationFirst, journal.zeroStockCheck)
+        journalDao.updateCountingAttributes(
+            journal.journalId, TransferMode.DIRECT, journal.locationFirst, journal.zeroStockCheck,
+            journal.countMode, journal.passNumber, journal.recountOf,
+        )
         NetworkResult.Success(ImportSummary(lines.size, merge.added, merge.removed, refreshed = alreadyOnDevice))
     }
 
-    suspend fun submit(journalId: String, audit: SubmissionAudit, claimToken: String?): NetworkResult<Int> =
+    suspend fun submit(journalId: String, audit: SubmissionAudit, claimToken: String?): NetworkResult<DirectSubmitResult> =
         withContext(ioDispatcher) {
             val counted = countingDao.getCountLines(journalId).filter { it.isCounted }
             if (counted.isEmpty()) {
@@ -171,7 +175,13 @@ class DirectCountingRepository @Inject constructor(
                 is NetworkResult.Error -> result
                 NetworkResult.Loading -> NetworkResult.Error(AppFailure.Fatal("unexpected Loading"))
                 is NetworkResult.Success -> if (result.data.success) {
-                    NetworkResult.Success(result.data.acceptedLines)
+                    NetworkResult.Success(
+                        DirectSubmitResult(
+                            acceptedLines = result.data.acceptedLines,
+                            thirdCountNeeded = result.data.thirdCountNeeded,
+                            passResult = result.data.passResult?.takeIf { it.isNotBlank() },
+                        ),
+                    )
                 } else {
                     NetworkResult.Error(
                         AppFailure.BusinessRule(
@@ -247,7 +257,15 @@ class DirectCountingRepository @Inject constructor(
         "TOO_MANY_LINES" -> "This journal is too large for direct transfer."
         "NOT_IMPLEMENTED" -> "This server does not support direct counting yet."
         "CLAIM_LOST", "CLAIM_EXPIRED" -> "Your claim on this journal is no longer valid."
+        "RECOUNT_SAME_USER" -> "This recount must be done by someone other than the previous counter."
         null -> "The server refused the request."
         else -> code
     }
 }
+
+/** What the server said about a DIRECT (or double-blind) submission. */
+data class DirectSubmitResult(
+    val acceptedLines: Int,
+    val thirdCountNeeded: Boolean = false,
+    val passResult: String? = null,
+)

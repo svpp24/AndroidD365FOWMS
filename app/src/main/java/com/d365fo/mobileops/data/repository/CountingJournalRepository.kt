@@ -7,7 +7,9 @@ import com.d365fo.mobileops.data.local.dao.JournalDao
 import com.d365fo.mobileops.data.local.entity.CountingLineReferenceEntity
 import com.d365fo.mobileops.data.local.entity.TransferMode
 import com.d365fo.mobileops.domain.model.CountClaimInfo
+import com.d365fo.mobileops.domain.model.COUNT_MODE_SINGLE
 import com.d365fo.mobileops.domain.model.CountRange
+import com.d365fo.mobileops.domain.model.keepsServerCounts
 import com.d365fo.mobileops.data.local.dao.MergeResult
 import com.d365fo.mobileops.data.local.entity.JournalEntity
 import com.d365fo.mobileops.data.local.entity.JournalLineEntity
@@ -153,6 +155,9 @@ class CountingJournalRepository @Inject constructor(
                             },
                             locationFirst = row.locationFirst,
                             zeroStockCheck = row.zeroStockCheck,
+                            countMode = row.countMode?.takeIf { it.isNotBlank() } ?: COUNT_MODE_SINGLE,
+                            passNumber = row.passNumber.coerceAtLeast(1),
+                            recountOf = row.recountOf?.takeIf { it.isNotBlank() },
                         )
                     },
                 )
@@ -346,9 +351,14 @@ class CountingJournalRepository @Inject constructor(
             // submitted earlier (or on another device) comes back with its counts instead of
             // looking untouched. A non-zero COUNTEDQUANTITY is a count. Zero is ambiguous (counted
             // zero vs not counted) and only trusted when the export's zero flag says Yes.
-            val serverCount = row.getCI("CountedQuantity").toPlainQuantity()
-                ?.takeIf { it != "0" }
-                ?: "0".takeIf { row.getCI("IsCountedQuantityZero").equals("Yes", ignoreCase = true) }
+            // Never on a recount pass or a double-blind journal: that count is someone else's.
+            val serverCount = if (!keepsServerCounts(journal.passNumber, journal.countMode)) {
+                null
+            } else {
+                row.getCI("CountedQuantity").toPlainQuantity()
+                    ?.takeIf { it != "0" }
+                    ?: "0".takeIf { row.getCI("IsCountedQuantityZero").equals("Yes", ignoreCase = true) }
+            }
             JournalLineEntity(
                 journalLineId = "${journal.journalId}-$lineNumber",
                 journalId = journal.journalId,
@@ -377,7 +387,10 @@ class CountingJournalRepository @Inject constructor(
             journalDao.upsertLinesChunked(lines)
             MergeResult(added = lines.size, removed = 0)
         }
-        journalDao.updateCountingAttributes(journal.journalId, TransferMode.DMF, journal.locationFirst, journal.zeroStockCheck)
+        journalDao.updateCountingAttributes(
+            journal.journalId, TransferMode.DMF, journal.locationFirst, journal.zeroStockCheck,
+            journal.countMode, journal.passNumber, journal.recountOf,
+        )
         // After the lines, so each reference row's journal exists (foreign key), and keyed by
         // the line id the merge actually kept.
         countingDao.upsertReferences(

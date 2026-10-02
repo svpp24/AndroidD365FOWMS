@@ -6,6 +6,7 @@ import com.d365fo.mobileops.data.local.dao.CountLine
 import com.d365fo.mobileops.data.local.entity.CountExceptionEntity
 import com.d365fo.mobileops.data.local.entity.CountLocationCheckEntity
 import com.d365fo.mobileops.data.counting.CountTransport
+import com.d365fo.mobileops.data.counting.DirectSubmitResult
 import com.d365fo.mobileops.data.counting.SubmissionAudit
 import com.d365fo.mobileops.data.counting.SubmissionStore
 import com.d365fo.mobileops.data.counting.TransportResult
@@ -118,6 +119,9 @@ class FakeSubmissionStore : SubmissionStore {
     override suspend fun markCountsDone(journalId: String, warning: String?) {
         rows[journalId] = rows.getValue(journalId).copy(countsDone = true, countsWarning = warning)
     }
+    override suspend fun recordPassResult(journalId: String, note: String?, thirdCountNeeded: Boolean) {
+        rows[journalId] = rows.getValue(journalId).copy(resultNote = note, thirdCountNeeded = thirdCountNeeded)
+    }
     override suspend fun unsentExceptions(journalId: String) = exceptions.filter { it.journalId == journalId && it.sentAt == null }
     override suspend fun unsentLocationChecks(journalId: String) = locationChecks.filter { it.journalId == journalId && it.sentAt == null }
     override suspend fun markExceptionsSent(journalId: String) {
@@ -178,7 +182,7 @@ fun countLine(id: Int, item: String, location: String?, counted: String? = null)
 class FakeCountTransport : CountTransport {
     var start: TransportResult<String> = TransportResult.Ok("exec-1")
     val polls = ArrayDeque<TransportResult<ImportJobStatus>>()
-    var direct: TransportResult<Int> = TransportResult.Ok(1)
+    var direct: TransportResult<DirectSubmitResult> = TransportResult.Ok(DirectSubmitResult(acceptedLines = 1))
     var exceptions: TransportResult<Int> = TransportResult.Ok(1)
     val sentExceptions = mutableListOf<List<CountExceptionEntity>>()
     val sentEmptyLocations = mutableListOf<List<CountLocationCheckEntity>>()
@@ -197,7 +201,7 @@ class FakeCountTransport : CountTransport {
     override suspend fun pollDmfImport(executionId: String): TransportResult<ImportJobStatus> =
         polls.removeFirstOrNull() ?: TransportResult.Ok(ImportJobStatus.Running(null))
 
-    override suspend fun submitDirect(journalId: String, audit: SubmissionAudit, claimToken: String?): TransportResult<Int> {
+    override suspend fun submitDirect(journalId: String, audit: SubmissionAudit, claimToken: String?): TransportResult<DirectSubmitResult> {
         audits += audit
         claimTokens += claimToken
         return direct

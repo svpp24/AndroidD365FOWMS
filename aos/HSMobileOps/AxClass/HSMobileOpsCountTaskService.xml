@@ -221,6 +221,7 @@ class HSMobileOpsCountTaskService
                 row.parmSerialId(inventDim.inventSerialId);
                 // TODO (X++ owner): real pass number once recounts exist (attempt table).
                 row.parmPassNumber(1);
+                row.parmRecount(false);
                 lines.addEnd(row);
             }
         }

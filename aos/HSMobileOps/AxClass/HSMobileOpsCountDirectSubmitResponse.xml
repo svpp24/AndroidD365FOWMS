@@ -15,6 +15,8 @@ class HSMobileOpsCountDirectSubmitResponse
     str     message;
     int     acceptedLines;
 
+    boolean thirdCountNeeded;
+    str passResult;
 }
 ]]></Declaration>
 		<Methods>
@@ -63,6 +65,36 @@ class HSMobileOpsCountDirectSubmitResponse
     {
         acceptedLines = _value;
         return acceptedLines;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmThirdCountNeeded</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Double-blind: the two passes disagree and a third count is needed.
+    /// </summary>
+    [DataMemberAttribute('ThirdCountNeeded')]
+    public boolean parmThirdCountNeeded(boolean _value = thirdCountNeeded)
+    {
+        thirdCountNeeded = _value;
+        return thirdCountNeeded;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmPassResult</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// A short, display-only outcome of this pass, written by the server.
+    /// </summary>
+    [DataMemberAttribute('PassResult')]
+    public str parmPassResult(str _value = passResult)
+    {
+        passResult = _value;
+        return passResult;
     }
 ]]></Source>
 			</Method>

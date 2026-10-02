@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsCountSupervisorResponse</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// reviewLines' and postJournal's answer. ErrorCode: NOT_SUPERVISOR, JOURNAL_POSTED,
+/// JOURNAL_NOT_FOUND, LINES_NEED_APPROVAL, RECOUNT_SAME_USER, POST_FAILED, NOT_IMPLEMENTED.
+/// </summary>
+[DataContractAttribute]
+class HSMobileOpsCountSupervisorResponse
+{
+    boolean success;
+    str     errorCode;
+    str     message;
+    int     affected;
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmSuccess</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Success')]
+    public boolean parmSuccess(boolean _value = success)
+    {
+        success = _value;
+        return success;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmErrorCode</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ErrorCode')]
+    public str parmErrorCode(str _value = errorCode)
+    {
+        errorCode = _value;
+        return errorCode;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmMessage</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Message')]
+    public str parmMessage(str _value = message)
+    {
+        message = _value;
+        return message;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmAffected</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Affected')]
+    public int parmAffected(int _value = affected)
+    {
+        affected = _value;
+        return affected;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

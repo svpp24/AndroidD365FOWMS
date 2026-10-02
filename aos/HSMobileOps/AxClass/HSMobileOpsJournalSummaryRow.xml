@@ -17,6 +17,9 @@ class HSMobileOpsJournalSummaryRow
     boolean              locationFirst;
     boolean              zeroStockCheck;
 
+    str countMode;
+    int passNumber;
+    str recountOf;
 }
 ]]></Declaration>
 		<Methods>
@@ -155,6 +158,52 @@ class HSMobileOpsJournalSummaryRow
     {
         zeroStockCheck = _value;
         return zeroStockCheck;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmCountMode</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// SINGLE, or DOUBLE_BLIND: two independent passes by two users, kept by the
+    /// server in its attempt table. Decided here, never on the device.
+    /// </summary>
+    [DataMemberAttribute('CountMode')]
+    public str parmCountMode(str _value = countMode)
+    {
+        countMode = _value;
+        return countMode;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmPassNumber</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// 1 for a first count, 2+ for a recount or second pass.
+    /// </summary>
+    [DataMemberAttribute('PassNumber')]
+    public int parmPassNumber(int _value = passNumber)
+    {
+        passNumber = _value;
+        return passNumber;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmRecountOf</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// For a RECOUNT journal: the journal it recounts.
+    /// </summary>
+    [DataMemberAttribute('RecountOf')]
+    public str parmRecountOf(str _value = recountOf)
+    {
+        recountOf = _value;
+        return recountOf;
     }
 ]]></Source>
 			</Method>

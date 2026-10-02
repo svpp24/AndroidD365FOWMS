@@ -111,6 +111,7 @@ data class DirectLineRowDto(
     @SerialName("BatchId") val batchId: String? = null,
     @SerialName("SerialId") val serialId: String? = null,
     @SerialName("PassNumber") val passNumber: Int = 1,
+    @SerialName("Recount") val recount: Boolean = false,
 )
 
 @Serializable
@@ -154,6 +155,8 @@ data class DirectSubmitServiceResponse(
     @SerialName("ErrorCode") val errorCode: String? = null,
     @SerialName("Message") val message: String? = null,
     @SerialName("AcceptedLines") val acceptedLines: Int = 0,
+    @SerialName("ThirdCountNeeded") val thirdCountNeeded: Boolean = false,
+    @SerialName("PassResult") val passResult: String? = null,
 )
 
 @Serializable

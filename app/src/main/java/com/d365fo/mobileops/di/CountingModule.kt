@@ -9,6 +9,8 @@ import com.d365fo.mobileops.data.counting.LiveCountTransport
 import com.d365fo.mobileops.data.counting.RoomClaimStore
 import com.d365fo.mobileops.data.counting.RoomSubmissionStore
 import com.d365fo.mobileops.data.counting.SubmissionStore
+import com.d365fo.mobileops.data.counting.supervisor.LiveSupervisorCountRepository
+import com.d365fo.mobileops.domain.counting.supervisor.SupervisorCountRepository
 import com.d365fo.mobileops.domain.BuildConfigFeatureFlags
 import com.d365fo.mobileops.domain.FeatureFlags
 import com.d365fo.mobileops.domain.counting.CountTaskRepository
@@ -40,4 +42,7 @@ abstract class CountingModule {
 
     @Binds @Singleton
     abstract fun bindCountCaptureStore(impl: RoomCountCaptureStore): CountCaptureStore
+
+    @Binds @Singleton
+    abstract fun bindSupervisorCountRepository(impl: LiveSupervisorCountRepository): SupervisorCountRepository
 }

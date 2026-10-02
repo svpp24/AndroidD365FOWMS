@@ -11,7 +11,10 @@ import androidx.work.WorkManager
 import androidx.work.workDataOf
 import com.d365fo.mobileops.data.local.dao.CountingDao
 import com.d365fo.mobileops.data.local.dao.JournalDao
+import com.d365fo.mobileops.data.local.entity.CountLineAttemptEntity
 import com.d365fo.mobileops.data.local.entity.CountSubmissionEntity
+import com.d365fo.mobileops.data.local.entity.TransferMode
+import com.d365fo.mobileops.domain.model.COUNT_MODE_DOUBLE_BLIND
 import com.d365fo.mobileops.data.local.entity.CountSubmissionState
 import com.d365fo.mobileops.data.local.entity.JournalStatus
 import com.d365fo.mobileops.data.local.entity.SyncState
@@ -88,11 +91,27 @@ class CountSubmissions @Inject constructor(
         }
 
         val now = System.currentTimeMillis()
+        // The pass as it stands now, kept as this line's attempt history (audit only).
+        countingDao.upsertAttempts(
+            countingDao.getCountLines(journalId).filter { it.isCounted }.map {
+                CountLineAttemptEntity(
+                    journalLineId = it.journalLineId,
+                    attemptNo = journal.passNumber,
+                    journalId = journalId,
+                    countedBy = it.countedBy,
+                    countedAt = it.countedAt,
+                    quantity = it.countedQuantity,
+                    markedOnly = it.countedQuantity == null && it.markedCounted,
+                )
+            },
+        )
         countingDao.upsertSubmission(
             CountSubmissionEntity(
                 journalId = journalId,
                 submissionId = UUID.randomUUID().toString(),
-                transferMode = journal.transferMode,
+                // A double-blind pass is the counter's own pass, kept by the server in its attempt
+                // table - it never goes through the DMF import, which would overwrite the line.
+                transferMode = if (journal.countMode == COUNT_MODE_DOUBLE_BLIND) TransferMode.DIRECT else journal.transferMode,
                 state = CountSubmissionState.QUEUED,
                 userId = workerSession.session.value?.userName
                     ?: secureStore.getString(SecureStore.KEY_WORKER_ID).orEmpty(),

@@ -74,6 +74,9 @@ data class JournalCountState(
     val failedExceptions: Int = 0,
     /** Locations confirmed empty. */
     val emptyLocations: Int = 0,
+    /** What the server said about the last pass (double-blind), display only. */
+    val passNote: String? = null,
+    val thirdCountNeeded: Boolean = false,
 ) {
     val counted: Int get() = withQuantity + markedOnly
     val notCounted: Int get() = (total - counted).coerceAtLeast(0)
@@ -103,7 +106,13 @@ class CountingJournalListViewModel @Inject constructor(
     countingDao: CountingDao,
 ) : ViewModel() {
 
-    private val _loaded = MutableStateFlow(CountingJournalListState(claimsEnabled = flags.countClaims))
+    private val _loaded = MutableStateFlow(
+        CountingJournalListState(
+            claimsEnabled = flags.countClaims,
+            // Cosmetic gate: the supervisor service checks IsCycleCountSupervisor on every call.
+            canReviewVariance = flags.countSupervisor && workerSession.session.value?.isCycleCountSupervisor == true,
+        ),
+    )
 
     private data class RoomSide(
         val journals: List<JournalEntity>,
@@ -309,6 +318,7 @@ class CountingJournalListViewModel @Inject constructor(
             ClaimRefusal.EXPIRED, ClaimRefusal.LOST -> "That claim is no longer valid. Try again."
             ClaimRefusal.JOURNAL_POSTED -> "This journal has already been posted in D365FO."
             ClaimRefusal.JOURNAL_NOT_FOUND -> "This journal is closed or no longer exists in D365FO."
+            ClaimRefusal.SAME_COUNTER -> "This recount must be done by someone other than the previous counter."
             ClaimRefusal.NOT_AVAILABLE -> "This server does not support claiming journals yet."
             ClaimRefusal.OTHER -> message ?: "The claim was refused."
         }
@@ -351,6 +361,8 @@ class CountingJournalListViewModel @Inject constructor(
             exceptions = extras?.exceptions ?: 0,
             failedExceptions = extras?.failedExceptions ?: 0,
             emptyLocations = extras?.emptyLocations ?: 0,
+            passNote = submission?.resultNote,
+            thirdCountNeeded = submission?.thirdCountNeeded == true,
         )
     }
 
@@ -390,6 +402,8 @@ data class CountingJournalListState(
     /** Journals whose lines are on this device, keyed by journal id. Derived from Room. */
     val countStates: Map<String, JournalCountState> = emptyMap(),
     val claimsEnabled: Boolean = false,
+    /** Cycle-count supervisor with the supervisor feature on. */
+    val canReviewVariance: Boolean = false,
     /** This device's own claims, keyed by journal id. */
     val myClaims: Map<String, CountClaimEntity> = emptyMap(),
     /** Non-null while the worker is choosing which range of this journal to claim. */

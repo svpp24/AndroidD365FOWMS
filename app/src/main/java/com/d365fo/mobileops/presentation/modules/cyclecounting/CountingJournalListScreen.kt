@@ -70,6 +70,7 @@ fun CountingJournalListScreen(
     onBack: () -> Unit,
     onViewLines: (String) -> Unit,
     onStartCounting: (String) -> Unit,
+    onReviewVariance: (String) -> Unit = {},
     viewModel: CountingJournalListViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -204,6 +205,7 @@ fun CountingJournalListScreen(
                                 },
                                 onEndCount = { confirmEndFor = journal.journalId },
                                 onResendExceptions = { viewModel.resendExceptions(journal.journalId) },
+                                onReviewVariance = { onReviewVariance(journal.journalId) }.takeIf { state.canReviewVariance },
                                 onReopen = { confirmReopenFor = journal.journalId },
                             )
                         }
@@ -229,6 +231,7 @@ private fun CountingJournalRow(
     onStartCounting: () -> Unit,
     onEndCount: () -> Unit,
     onResendExceptions: () -> Unit,
+    onReviewVariance: (() -> Unit)?,
     onReopen: () -> Unit,
 ) {
     val refreshing = exportStatus != null && exportStatus !is ExportJobStatus.Failed
@@ -267,7 +270,7 @@ private fun CountingJournalRow(
                         maxLines = 2,
                     )
                 }
-                if (canRefresh || canReopen) {
+                if (canRefresh || canReopen || onReviewVariance != null) {
                     Box {
                         IconButton(onClick = { menuOpen = true }) {
                             Icon(Icons.Default.MoreVert, contentDescription = "More actions")
@@ -285,11 +288,18 @@ private fun CountingJournalRow(
                                     onClick = { menuOpen = false; onReopen() },
                                 )
                             }
+                            if (onReviewVariance != null) {
+                                DropdownMenuItem(
+                                    text = { Text("Review variance") },
+                                    onClick = { menuOpen = false; onReviewVariance() },
+                                )
+                            }
                         }
                     }
                 }
             }
 
+            PassBadges(journal)
             if (claimsEnabled) {
                 ClaimLine(journal = journal, myClaim = myClaim)
             }
@@ -387,6 +397,13 @@ private fun CountControls(
                         text = if (countState.failedExceptions > 0) it else "Some lines were not accepted: $it",
                         style = MaterialTheme.typography.bodySmall,
                         color = WarehouseStatusColors.amber,
+                    )
+                }
+                countState.passNote?.let {
+                    Text(
+                        text = it,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (countState.thirdCountNeeded) WarehouseStatusColors.amber else WarehouseStatusColors.text3,
                     )
                 }
                 if (countState.failedExceptions > 0) {
@@ -617,5 +634,21 @@ private fun RangePickerDialog(
         },
         confirmButton = {},
         dismissButton = { CancelOutlinedButton(onClick = onDismiss) { Text("Cancel") } },
+    )
+}
+
+/** Recount / second pass / double-blind - what kind of count this is, from the server. */
+@Composable
+private fun PassBadges(journal: CountingJournalSummary) {
+    val badges = listOfNotNull(
+        journal.recountOf?.let { "Recount of $it" },
+        "Pass ${journal.passNumber}".takeIf { journal.passNumber > 1 && journal.recountOf == null },
+        "Double-blind".takeIf { journal.doubleBlind },
+    )
+    if (badges.isEmpty()) return
+    Text(
+        text = badges.joinToString(" · ") + " - counted blind",
+        style = MaterialTheme.typography.labelMedium,
+        color = WarehouseStatusColors.amber,
     )
 }

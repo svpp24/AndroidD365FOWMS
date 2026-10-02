@@ -132,6 +132,7 @@ class LiveCountTaskRepository @Inject constructor(
         "CLAIM_LOST" -> ClaimRefusal.LOST
         "JOURNAL_POSTED" -> ClaimRefusal.JOURNAL_POSTED
         "JOURNAL_NOT_FOUND" -> ClaimRefusal.JOURNAL_NOT_FOUND
+        "RECOUNT_SAME_USER" -> ClaimRefusal.SAME_COUNTER
         "NOT_IMPLEMENTED" -> ClaimRefusal.NOT_AVAILABLE
         else -> ClaimRefusal.OTHER
     }

@@ -1,0 +1,246 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsCountSupervisorService</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Supervisor-only counting operations: variance review, line approval/rejection, recount
+/// requests and posting. Kept apart from HSMobileOpsCountTaskService so no counter-facing call
+/// can ever return system quantities or values.
+///
+/// Every operation checks that UserId is an active cycle-count supervisor
+/// (HSMobileOpsUser.IsCycleCountSupervisor) - the app hides these screens from everyone else,
+/// but that is cosmetic; this check is the boundary.
+///
+/// Real today: the supervisor check, getVariance's read of counted / on-hand / difference /
+/// cost amount, and postJournal (standard InventJournalCheckPost). TODO for the X++ owner:
+/// tolerance status and ABC class per line, who counted each line (attempt table), review
+/// status, reviewLines (approve / reject / recount with assignment), and refusing to post while
+/// lines outside tolerance are unapproved (LINES_NEED_APPROVAL).
+///
+/// Registered as HSMobileOpsCountSupervisorSvc - full service group build required.
+/// </summary>
+class HSMobileOpsCountSupervisorService
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>getVariance</Name>
+				<Source><![CDATA[
+
+    public HSMobileOpsCountVarianceResponse getVariance(HSMobileOpsCountVarianceRequest _request)
+    {
+        HSMobileOpsCountVarianceResponse response = new HSMobileOpsCountVarianceResponse();
+        HSMobileOpsCountVarianceLine     line;
+        List                             lines = new List(Types::Class);
+        InventJournalTrans               inventJournalTrans;
+        InventDim                        inventDim;
+        str                              refusal;
+
+        response.parmSuccess(false);
+        response.parmLines(lines);
+
+        refusal = HSMobileOpsCountSupervisorService::refusal(_request ? _request.parmDataAreaId() : '',
+            _request ? _request.parmJournalId() : '', _request ? _request.parmUserId() : '', true);
+        if (refusal)
+        {
+            response.parmErrorCode(refusal);
+            return response;
+        }
+
+        changecompany (_request.parmDataAreaId())
+        {
+            response.parmCurrencyCode(Ledger::accountingCurrency());
+
+            while select LineNum, ItemId, Counted, InventOnHand, Qty, CostAmount from inventJournalTrans
+                order by LineNum
+                where inventJournalTrans.JournalId == _request.parmJournalId()
+                join wMSLocationId, inventBatchId, inventSerialId from inventDim
+                    where inventDim.InventDimId == inventJournalTrans.InventDimId
+            {
+                line = new HSMobileOpsCountVarianceLine();
+                line.parmLineNumber(inventJournalTrans.LineNum);
+                line.parmItemNumber(inventJournalTrans.ItemId);
+                line.parmItemName(InventTable::find(inventJournalTrans.ItemId).itemName());
+                line.parmLocationId(inventDim.wMSLocationId);
+                line.parmBatchId(inventDim.inventBatchId);
+                line.parmSerialId(inventDim.inventSerialId);
+                line.parmCountedQty(inventJournalTrans.Counted);
+                line.parmSystemQty(inventJournalTrans.InventOnHand);
+                line.parmVarianceQty(inventJournalTrans.Qty);
+                line.parmVarianceValue(inventJournalTrans.CostAmount);
+                // TODO (X++ owner): whether this line has been counted at all (a counted zero vs
+                // not counted), its tolerance verdict (WITHIN / OVER) against the per-class
+                // tolerance, its ABC class, who counted it (attempt table) and its review status.
+                line.parmCounted(inventJournalTrans.Counted != 0 || inventJournalTrans.Qty != 0);
+                line.parmToleranceStatus('UNKNOWN');
+                line.parmAbcClass('');
+                line.parmCountedBy('');
+                line.parmReviewStatus('PENDING');
+                lines.addEnd(line);
+            }
+        }
+
+        response.parmLines(lines);
+        response.parmSuccess(true);
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>reviewLines</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// APPROVE / REJECT / RECOUNT for a set of lines. RECOUNT with AssignTo must be refused
+    /// (RECOUNT_SAME_USER) when AssignTo is the line's previous counter.
+    /// </summary>
+    [Wrappable(false), Hookable(false)]
+    public HSMobileOpsCountSupervisorResponse reviewLines(HSMobileOpsCountReviewRequest _request)
+    {
+        HSMobileOpsCountSupervisorResponse response = new HSMobileOpsCountSupervisorResponse();
+        str                                refusal;
+
+        response.parmSuccess(false);
+
+        refusal = HSMobileOpsCountSupervisorService::refusal(_request ? _request.parmDataAreaId() : '',
+            _request ? _request.parmJournalId() : '', _request ? _request.parmUserId() : '', true);
+        if (refusal)
+        {
+            response.parmErrorCode(refusal);
+            return response;
+        }
+        if (!(_request.parmAction() == 'APPROVE' || _request.parmAction() == 'REJECT' || _request.parmAction() == 'RECOUNT')
+            || !_request.parmLineNumbers())
+        {
+            response.parmErrorCode('INVALID_REQUEST');
+            return response;
+        }
+
+        // TODO (X++ owner): record the review per line; for RECOUNT, create the recount (a flag on
+        // the line or a linked RECOUNT journal) and assign it, refusing the previous counter.
+        response.parmErrorCode('NOT_IMPLEMENTED');
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>postJournal</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Posts the counting journal with the standard journal check/post. Refused when it is
+    /// already posted, gone, or (TODO) has lines outside tolerance that are not approved.
+    /// </summary>
+    [Wrappable(false), Hookable(false)]
+    public HSMobileOpsCountSupervisorResponse postJournal(HSMobileOpsCountPostRequest _request)
+    {
+        HSMobileOpsCountSupervisorResponse response = new HSMobileOpsCountSupervisorResponse();
+        InventJournalTable                 inventJournalTable;
+        JournalCheckPost                   journalCheckPost;
+        str                                refusal;
+        int                                infologStart;
+
+        response.parmSuccess(false);
+
+        refusal = HSMobileOpsCountSupervisorService::refusal(_request ? _request.parmDataAreaId() : '',
+            _request ? _request.parmJournalId() : '', _request ? _request.parmUserId() : '', true);
+        if (refusal)
+        {
+            response.parmErrorCode(refusal);
+            return response;
+        }
+
+        // TODO (X++ owner): refuse with LINES_NEED_APPROVAL while any line outside tolerance has
+        // not been approved.
+
+        changecompany (_request.parmDataAreaId())
+        {
+            inventJournalTable = InventJournalTable::find(_request.parmJournalId());
+            infologStart = infologLine();
+            try
+            {
+                journalCheckPost = InventJournalCheckPost::newPostJournal(inventJournalTable);
+                journalCheckPost.parmThrowCheckFailed(true);
+                journalCheckPost.runOperation();
+            }
+            catch (Exception::Error)
+            {
+                response.parmErrorCode('POST_FAILED');
+                response.parmMessage(HSMobileOpsCountSupervisorService::infologSince(infologStart));
+                return response;
+            }
+
+            if (InventJournalTable::find(_request.parmJournalId()).Posted != NoYes::Yes)
+            {
+                response.parmErrorCode('POST_FAILED');
+                response.parmMessage(HSMobileOpsCountSupervisorService::infologSince(infologStart));
+                return response;
+            }
+        }
+
+        response.parmSuccess(true);
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>refusal</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The error code that ends a supervisor request before it starts, or '' to go ahead.
+    /// </summary>
+    private static str refusal(DataAreaId _company, InventJournalId _journalId, str _userId, boolean _mustBeOpen)
+    {
+        HSMobileOpsUser user;
+        str             state;
+
+        if (!_company || !_journalId || !_userId || !CompanyInfo::findDataArea(_company).RecId)
+        {
+            return 'INVALID_REQUEST';
+        }
+
+        user = HSMobileOpsUser::find(_userId);
+        if (!user.RecId || !user.IsActive || !user.IsCycleCountSupervisor)
+        {
+            return 'NOT_SUPERVISOR';
+        }
+
+        state = HSMobileOpsCountTaskService::journalState(_company, _journalId);
+        if (state == HSMobileOpsCountTaskService::stateNotFound())
+        {
+            return 'JOURNAL_NOT_FOUND';
+        }
+        if (_mustBeOpen && state == HSMobileOpsCountTaskService::statePosted())
+        {
+            return 'JOURNAL_POSTED';
+        }
+        return '';
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>infologSince</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// What the infolog said after [_from] - the posting's own reason for refusing.
+    /// </summary>
+    private static str infologSince(int _from)
+    {
+        str text;
+        int i;
+
+        for (i = _from + 1; i <= infologLine(); i++)
+        {
+            text += infolog.text(i) + ' ';
+        }
+        return strLRTrim(text) ? strLRTrim(text) : 'The journal could not be posted.';
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

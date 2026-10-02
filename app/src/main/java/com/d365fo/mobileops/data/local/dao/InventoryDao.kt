@@ -233,7 +233,8 @@ interface JournalDao {
     @Query(
         """
         UPDATE invent_journal
-        SET transferMode = :transferMode, locationFirst = :locationFirst, zeroStockCheck = :zeroStockCheck
+        SET transferMode = :transferMode, locationFirst = :locationFirst, zeroStockCheck = :zeroStockCheck,
+            countMode = :countMode, passNumber = :passNumber, recountOf = :recountOf
         WHERE journalId = :journalId
         """,
     )
@@ -242,6 +243,9 @@ interface JournalDao {
         transferMode: com.d365fo.mobileops.data.local.entity.TransferMode,
         locationFirst: Boolean,
         zeroStockCheck: Boolean,
+        countMode: String,
+        passNumber: Int,
+        recountOf: String?,
     )
 
     @Query("DELETE FROM invent_journal WHERE status = 'POSTED' AND postedAt < :olderThan")

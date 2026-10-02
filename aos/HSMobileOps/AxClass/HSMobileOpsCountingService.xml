@@ -151,6 +151,11 @@ class HSMobileOpsCountingService
                 // TODO (X++ owner): per-journal counting mode and zero-stock verification flag.
                 row.parmLocationFirst(false);
                 row.parmZeroStockCheck(false);
+                // TODO (X++ owner): DOUBLE_BLIND journals, recount passes and the journal a
+                // RECOUNT journal recounts.
+                row.parmCountMode('SINGLE');
+                row.parmPassNumber(1);
+                row.parmRecountOf('');
 
                 rows.addEnd(row);
 

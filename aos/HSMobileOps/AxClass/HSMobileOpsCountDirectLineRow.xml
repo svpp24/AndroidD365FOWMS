@@ -20,6 +20,7 @@ class HSMobileOpsCountDirectLineRow
     str  serialId;
     int  passNumber;
 
+    boolean recount;
 }
 ]]></Declaration>
 		<Methods>
@@ -128,6 +129,21 @@ class HSMobileOpsCountDirectLineRow
     {
         passNumber = _value;
         return passNumber;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmRecount</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// This line is to be counted again (a recount pass).
+    /// </summary>
+    [DataMemberAttribute('Recount')]
+    public boolean parmRecount(boolean _value = recount)
+    {
+        recount = _value;
+        return recount;
     }
 ]]></Source>
 			</Method>

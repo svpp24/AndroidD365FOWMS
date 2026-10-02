@@ -22,6 +22,9 @@ interface FeatureFlags {
 
     /** "Not on this journal": capture unexpected items and send them with the counts. */
     val countExceptions: Boolean
+
+    /** Supervisor variance review, approve / reject / recount and posting. */
+    val countSupervisor: Boolean
 }
 
 @Singleton
@@ -30,4 +33,5 @@ class BuildConfigFeatureFlags @Inject constructor() : FeatureFlags {
     override val countDirect: Boolean get() = BuildConfig.FEATURE_COUNT_DIRECT
     override val countLocationFirst: Boolean get() = BuildConfig.FEATURE_COUNT_LOCATION_FIRST
     override val countExceptions: Boolean get() = BuildConfig.FEATURE_COUNT_EXCEPTIONS
+    override val countSupervisor: Boolean get() = BuildConfig.FEATURE_COUNT_SUPERVISOR
 }

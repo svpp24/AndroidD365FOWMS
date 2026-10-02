@@ -557,6 +557,24 @@ the device and go through the normal count import. If `submitExceptions` refuses
 submitted and the app shows the exceptions as not sent, with a "Send again" action. App flags:
 `FEATURE_COUNT_LOCATION_FIRST`, `FEATURE_COUNT_EXCEPTIONS`.
 
+**Recounts, double-blind, supervisor review.** List rows carry `CountMode` (`SINGLE` /
+`DOUBLE_BLIND`), `PassNumber` and `RecountOf`; DIRECT line rows carry `Recount`; DIRECT
+`submitCounts` answers `ThirdCountNeeded` and `PassResult` (all defaults today — **TODO**). The
+app counts every recount pass and every double-blind journal blind: it never imports the
+journal's existing counted quantity, and it sends a double-blind pass through DIRECT
+`submitCounts` (never the DMF import, which would overwrite the line) for the server's attempt
+table. `RECOUNT_SAME_USER` is shown as "must be counted by someone else". New service
+`HSMobileOpsCountSupervisorSvc` (class `HSMobileOpsCountSupervisorService`), supervisor-only —
+every call checks `HSMobileOpsUser.IsCycleCountSupervisor`:
+
+| Operation | State |
+|---|---|
+| `getVariance` | Real: counted, on-hand, difference and cost amount per line from `InventJournalTrans`. **TODO**: tolerance verdict, ABC class, who counted, review status. |
+| `reviewLines` (APPROVE / REJECT / RECOUNT + optional assignee) | **TODO** — returns `NOT_IMPLEMENTED`. |
+| `postJournal` | Real: standard `InventJournalCheckPost`, infolog text returned on failure (`POST_FAILED`). **TODO**: `LINES_NEED_APPROVAL` while lines outside tolerance are unapproved. Verify live before relying on it. |
+
+App flag: `FEATURE_COUNT_SUPERVISOR`.
+
 ## Licensing
 
 **Full replacement, this session — a certificate-chain design, not the earlier single-key-per-

@@ -94,6 +94,9 @@ enum class CountSubmissionError {
     /** The counts landed, but the unexpected items / empty locations could not be sent. */
     EXCEPTIONS_FAILED,
 
+    /** A recount by the same person who counted before - the server requires someone else. */
+    SAME_COUNTER,
+
     /** The server does not offer this operation yet (NOT_IMPLEMENTED / service not deployed). */
     NOT_AVAILABLE,
     OTHER,
@@ -130,6 +133,38 @@ data class CountSubmissionEntity(
     val countsWarning: String? = null,
     /** A resend of unexpected items only - the counts went through earlier. */
     val exceptionsOnly: Boolean = false,
+    /** What the server said about this pass (double-blind), display only. */
+    val resultNote: String? = null,
+    /** Double-blind: the passes disagree and a third count is needed. */
+    val thirdCountNeeded: Boolean = false,
+)
+
+/**
+ * One line's count as it stood when a pass was submitted - the per-line attempt history.
+ * [attemptNo] is the pass number. Never shows a previous count to the next counter: it is
+ * read only by the audit, not by any counting screen.
+ */
+@Entity(
+    tableName = "count_line_attempt",
+    primaryKeys = ["journalLineId", "attemptNo"],
+    foreignKeys = [
+        ForeignKey(
+            entity = JournalEntity::class,
+            parentColumns = ["journalId"],
+            childColumns = ["journalId"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+    ],
+    indices = [Index("journalId")],
+)
+data class CountLineAttemptEntity(
+    val journalLineId: String,
+    val attemptNo: Int,
+    val journalId: String,
+    val countedBy: String?,
+    val countedAt: Long?,
+    val quantity: String?,
+    val markedOnly: Boolean,
 )
 
 /**

@@ -23,6 +23,7 @@ import com.d365fo.mobileops.data.local.dao.WarehouseDao
 import com.d365fo.mobileops.data.local.entity.BarcodeEntity
 import com.d365fo.mobileops.data.local.entity.CountClaimEntity
 import com.d365fo.mobileops.data.local.entity.CountExceptionEntity
+import com.d365fo.mobileops.data.local.entity.CountLineAttemptEntity
 import com.d365fo.mobileops.data.local.entity.CountLocationCheckEntity
 import com.d365fo.mobileops.data.local.entity.CountSubmissionEntity
 import com.d365fo.mobileops.data.local.entity.CountingLineReferenceEntity
@@ -72,6 +73,7 @@ import com.d365fo.mobileops.data.local.entity.WorkerPermissionEntity
         CountSubmissionEntity::class,
         CountExceptionEntity::class,
         CountLocationCheckEntity::class,
+        CountLineAttemptEntity::class,
         // transfer orders
         TransferOrderEntity::class,
         TransferLineEntity::class,
@@ -86,7 +88,7 @@ import com.d365fo.mobileops.data.local.entity.WorkerPermissionEntity
         WorkerPermissionEntity::class,
         WorkerDirectoryEntity::class,
     ],
-    version = 9,
+    version = 10,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -343,10 +345,29 @@ abstract class D365Database : RoomDatabase() {
             }
         }
 
+        /** 9 -> 10: recounts, double-blind passes, per-line attempt history. Additive only. */
+        private val MIGRATION_9_10 = object : androidx.room.migration.Migration(9, 10) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `invent_journal` ADD COLUMN `countMode` TEXT NOT NULL DEFAULT 'SINGLE'")
+                db.execSQL("ALTER TABLE `invent_journal` ADD COLUMN `recountOf` TEXT")
+                db.execSQL("ALTER TABLE `invent_journal_line` ADD COLUMN `recount` INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE `count_submission` ADD COLUMN `resultNote` TEXT")
+                db.execSQL("ALTER TABLE `count_submission` ADD COLUMN `thirdCountNeeded` INTEGER NOT NULL DEFAULT 0")
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `count_line_attempt` (`journalLineId` TEXT NOT NULL, " +
+                        "`attemptNo` INTEGER NOT NULL, `journalId` TEXT NOT NULL, `countedBy` TEXT, " +
+                        "`countedAt` INTEGER, `quantity` TEXT, `markedOnly` INTEGER NOT NULL, " +
+                        "PRIMARY KEY(`journalLineId`, `attemptNo`), FOREIGN KEY(`journalId`) REFERENCES " +
+                        "`invent_journal`(`journalId`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_count_line_attempt_journalId` ON `count_line_attempt` (`journalId`)")
+            }
+        }
+
         val MIGRATIONS: Array<androidx.room.migration.Migration> =
             arrayOf(
                 MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7,
-                MIGRATION_7_8, MIGRATION_8_9,
+                MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10,
             )
     }
 }

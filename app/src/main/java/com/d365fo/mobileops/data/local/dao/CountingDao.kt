@@ -6,6 +6,7 @@ import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import com.d365fo.mobileops.data.local.entity.CountClaimEntity
 import com.d365fo.mobileops.data.local.entity.CountExceptionEntity
+import com.d365fo.mobileops.data.local.entity.CountLineAttemptEntity
 import com.d365fo.mobileops.data.local.entity.CountLocationCheckEntity
 import com.d365fo.mobileops.data.local.entity.CountSubmissionEntity
 import com.d365fo.mobileops.data.local.entity.CountSubmissionError
@@ -153,6 +154,17 @@ interface CountingDao {
 
     @Query("UPDATE count_submission SET countsDone = 1, countsWarning = :warning, updatedAt = :at WHERE journalId = :journalId")
     suspend fun markCountsDone(journalId: String, warning: String?, at: Long)
+
+    @Query("UPDATE count_submission SET resultNote = :note, thirdCountNeeded = :thirdCountNeeded WHERE journalId = :journalId")
+    suspend fun recordPassResult(journalId: String, note: String?, thirdCountNeeded: Boolean)
+
+    // -- Attempt history (audit only) ---------------------------------------------------------
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertAttempts(attempts: List<CountLineAttemptEntity>)
+
+    @Query("SELECT * FROM count_line_attempt WHERE journalId = :journalId ORDER BY journalLineId, attemptNo")
+    suspend fun attempts(journalId: String): List<CountLineAttemptEntity>
 
     // -- Unexpected items and location checks -------------------------------------------------
 

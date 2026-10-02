@@ -255,6 +255,37 @@ class CountSubmitRunnerTest {
     }
 
     @Test
+    fun `double-blind pass reports that a third count is needed`() = runTest {
+        store.queue("CNT-1", mode = TransferMode.DIRECT)
+        transport.direct = TransportResult.Ok(
+            com.d365fo.mobileops.data.counting.DirectSubmitResult(
+                acceptedLines = 3,
+                thirdCountNeeded = true,
+                passResult = "Pass 2 differs from pass 1 on 2 lines.",
+            ),
+        )
+
+        assertThat(runner.run("CNT-1")).isEqualTo(RunResult.DONE)
+
+        val row = store.rows["CNT-1"]!!
+        assertThat(row.state).isEqualTo(CountSubmissionState.SUCCEEDED)
+        assertThat(row.thirdCountNeeded).isTrue()
+        assertThat(row.resultNote).isEqualTo("Pass 2 differs from pass 1 on 2 lines.")
+    }
+
+    @Test
+    fun `recount by the previous counter is refused with a clear error`() = runTest {
+        store.queue("CNT-1", mode = TransferMode.DIRECT)
+        transport.direct = businessRule("RECOUNT_SAME_USER").toTransport()
+
+        assertThat(runner.run("CNT-1")).isEqualTo(RunResult.DONE)
+
+        val row = store.rows["CNT-1"]!!
+        assertThat(row.error).isEqualTo(CountSubmissionError.SAME_COUNTER)
+        assertThat(row.message).contains("someone other than the previous counter")
+    }
+
+    @Test
     fun `a finished submission is left alone`() = runTest {
         store.queue("CNT-1")
         store.update("CNT-1", CountSubmissionState.SUCCEEDED)

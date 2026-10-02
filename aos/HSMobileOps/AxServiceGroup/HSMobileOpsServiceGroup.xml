@@ -32,6 +32,10 @@
 			<Service>HSMobileOpsCountTaskSvc</Service>
 		</AxServiceGroupService>
 		<AxServiceGroupService>
+			<Name>HSMobileOpsCountSupervisorSvc</Name>
+			<Service>HSMobileOpsCountSupervisorSvc</Service>
+		</AxServiceGroupService>
+		<AxServiceGroupService>
 			<Name>HSMobileOpsSkuSvc</Name>
 			<Service>HSMobileOpsSkuSvc</Service>
 		</AxServiceGroupService>

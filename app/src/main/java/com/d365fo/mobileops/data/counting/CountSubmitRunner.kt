@@ -52,7 +52,7 @@ sealed interface TransportResult<out T> {
 interface CountTransport {
     suspend fun startDmfImport(journalId: String, audit: SubmissionAudit, claimToken: String?): TransportResult<String>
     suspend fun pollDmfImport(executionId: String): TransportResult<ImportJobStatus>
-    suspend fun submitDirect(journalId: String, audit: SubmissionAudit, claimToken: String?): TransportResult<Int>
+    suspend fun submitDirect(journalId: String, audit: SubmissionAudit, claimToken: String?): TransportResult<DirectSubmitResult>
     suspend fun submitExceptions(
         journalId: String,
         audit: SubmissionAudit,
@@ -71,6 +71,7 @@ interface SubmissionStore {
     suspend fun markJournalSubmitted(journalId: String, warning: String?)
     suspend fun markJournalFailed(journalId: String, message: String)
     suspend fun markCountsDone(journalId: String, warning: String?)
+    suspend fun recordPassResult(journalId: String, note: String?, thirdCountNeeded: Boolean)
     suspend fun unsentExceptions(journalId: String): List<CountExceptionEntity>
     suspend fun unsentLocationChecks(journalId: String): List<CountLocationCheckEntity>
     suspend fun markExceptionsSent(journalId: String)
@@ -95,6 +96,8 @@ class RoomSubmissionStore @Inject constructor(
         journalDao.updateStatus(journalId, JournalStatus.FAILED, SyncState.ERROR, message)
     override suspend fun markCountsDone(journalId: String, warning: String?) =
         countingDao.markCountsDone(journalId, warning, now())
+    override suspend fun recordPassResult(journalId: String, note: String?, thirdCountNeeded: Boolean) =
+        countingDao.recordPassResult(journalId, note, thirdCountNeeded)
     override suspend fun unsentExceptions(journalId: String) = countingDao.unsentExceptions(journalId)
     override suspend fun unsentLocationChecks(journalId: String) = countingDao.unsentLocationChecks(journalId)
     override suspend fun markExceptionsSent(journalId: String) {
@@ -244,7 +247,17 @@ class CountSubmitRunner @Inject constructor(
         val journalId = submission.journalId
         store.update(journalId, CountSubmissionState.UPLOADING)
         return when (val result = transport.submitDirect(journalId, submission.audit(), claimToken)) {
-            is TransportResult.Ok -> Stage.Continue(warning = null)
+            is TransportResult.Ok -> {
+                val pass = result.value
+                if (pass.thirdCountNeeded || pass.passResult != null) {
+                    store.recordPassResult(
+                        journalId,
+                        pass.passResult ?: "D365FO needs a third count for this journal.",
+                        pass.thirdCountNeeded,
+                    )
+                }
+                Stage.Continue(warning = null)
+            }
             is TransportResult.Retry -> {
                 store.update(journalId, CountSubmissionState.QUEUED, message = "Waiting to retry: ${result.reason}")
                 Stage.Stop(RunResult.RETRY)
@@ -294,6 +307,10 @@ fun AppFailure.toTransport(): TransportResult<Nothing> = when (this) {
             "Your claim on this journal is no longer valid. Claim it again to submit.",
         )
         "NOTHING_COUNTED" -> TransportResult.Fail(CountSubmissionError.NOTHING_COUNTED, message)
+        "RECOUNT_SAME_USER" -> TransportResult.Fail(
+            CountSubmissionError.SAME_COUNTER,
+            "This recount must be done by someone other than the previous counter.",
+        )
         "NOT_IMPLEMENTED" -> TransportResult.Fail(
             CountSubmissionError.NOT_AVAILABLE,
             "This server does not accept this kind of submission yet.",

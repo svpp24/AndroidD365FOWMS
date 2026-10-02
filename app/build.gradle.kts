@@ -81,6 +81,7 @@ android {
             "FEATURE_COUNT_DIRECT",
             "FEATURE_COUNT_LOCATION_FIRST",
             "FEATURE_COUNT_EXCEPTIONS",
+            "FEATURE_COUNT_SUPERVISOR",
         ).forEach { flag ->
             buildConfigField("boolean", flag, secret(flag, "false").toBoolean().toString())
         }

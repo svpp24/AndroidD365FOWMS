@@ -24,7 +24,25 @@ data class CountingJournalSummary(
     val locationFirst: Boolean = false,
     /** The system expects these locations to be empty. */
     val zeroStockCheck: Boolean = false,
-)
+    /** SINGLE or DOUBLE_BLIND - decided by the server. */
+    val countMode: String = COUNT_MODE_SINGLE,
+    /** 1 for a first count, 2+ for a recount or second pass. */
+    val passNumber: Int = 1,
+    /** For a RECOUNT journal: the journal it recounts. */
+    val recountOf: String? = null,
+) {
+    val doubleBlind: Boolean get() = countMode == COUNT_MODE_DOUBLE_BLIND
+}
+
+const val COUNT_MODE_SINGLE = "SINGLE"
+const val COUNT_MODE_DOUBLE_BLIND = "DOUBLE_BLIND"
+
+/**
+ * Blind recounts: on a second pass, or on any double-blind journal, a counter must never start
+ * from what D365FO already holds as the count - that is someone else's count.
+ */
+fun keepsServerCounts(passNumber: Int, countMode: String): Boolean =
+    passNumber <= 1 && countMode != COUNT_MODE_DOUBLE_BLIND
 
 data class CountClaimInfo(
     val claimedBy: String,
