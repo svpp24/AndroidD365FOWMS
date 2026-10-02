@@ -1,10 +1,12 @@
 package com.d365fo.mobileops.presentation.common
 
 import androidx.compose.foundation.border
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.DropdownMenu
@@ -36,6 +38,7 @@ import com.d365fo.mobileops.presentation.common.theme.WarehouseStatusColors
 import com.d365fo.mobileops.util.NetworkResult
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import timber.log.Timber
 import javax.inject.Inject
@@ -51,6 +54,7 @@ class WarehouseSwitcherViewModel @Inject constructor(
     private val service: MobileOpsServiceApi,
     private val errorMapper: D365ErrorMapper,
     private val companyProvider: CompanyProvider,
+    private val flowSessions: com.d365fo.mobileops.data.repository.FlowSessionRepository,
 ) : ViewModel() {
 
     val session: StateFlow<WorkerSession?> = sessions.session
@@ -79,6 +83,10 @@ class WarehouseSwitcherViewModel @Inject constructor(
     }
 
     fun select(warehouseId: String) = sessions.selectWarehouse(warehouseId)
+
+    /** Every unfinished job on the device, across warehouses - for the per-warehouse counts. */
+    val allUnfinished: StateFlow<List<com.d365fo.mobileops.data.repository.UnfinishedWork>> =
+        flowSessions.unfinished.stateIn(viewModelScope, kotlinx.coroutines.flow.SharingStarted.WhileSubscribed(5_000), emptyList())
 }
 
 /**
@@ -166,50 +174,131 @@ fun AssignedWarehouseText(fallbackId: String, viewModel: WarehouseSwitcherViewMo
 }
 
 /**
- * The warehouse as a small line under a top-bar title - code and name, ellipsized, with the
- * switcher list behind a tap when more than one warehouse is assigned. Sized to fit under the
- * title without making the bar taller.
+ * The warehouse as a small line under a top-bar title - code and name, ellipsized. Tapping it
+ * opens the Change warehouse screen when more than one warehouse is assigned. Sized to fit under
+ * the title without making the bar taller.
  */
 @Composable
-fun WarehouseSubtitle(viewModel: WarehouseSwitcherViewModel = hiltViewModel()) {
+fun WarehouseSubtitle(onClick: () -> Unit, viewModel: WarehouseSwitcherViewModel = hiltViewModel()) {
     val session by viewModel.session.collectAsStateWithLifecycle()
     val selected = session?.selected
-    val choices = session?.warehouses.orEmpty()
-    val canSwitch = choices.size > 1
-    var open by remember { mutableStateOf(false) }
+    val canSwitch = session?.warehouses.orEmpty().size > 1
+    Text(
+        text = (selected?.chipLabel() ?: if (canSwitch) "Choose warehouse" else "No warehouse assigned") +
+            if (canSwitch) " \u25BE" else "",
+        style = MaterialTheme.typography.labelSmall,
+        color = WarehouseStatusColors.accent,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        modifier = if (canSwitch) Modifier.clickable(onClick = onClick) else Modifier,
+    )
+}
 
-    Box {
-        Text(
-            text = (selected?.chipLabel() ?: if (canSwitch) "Choose warehouse" else "No warehouse assigned") +
-                if (canSwitch) " \u25BE" else "",
-            style = MaterialTheme.typography.labelSmall,
-            color = WarehouseStatusColors.accent,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = if (canSwitch) Modifier.clickable { open = true } else Modifier,
-        )
-        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
-            choices.forEach { warehouse ->
-                DropdownMenuItem(
-                    text = {
-                        Column {
-                            Text(
-                                warehouse.warehouseName.ifBlank { warehouse.warehouseId },
-                                fontWeight = if (warehouse.warehouseId == selected?.warehouseId) FontWeight.SemiBold else FontWeight.Normal,
-                            )
-                            Text(
-                                warehouse.warehouseId + if (warehouse.isDefault) " \u00B7 default" else "",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = WarehouseStatusColors.text3,
-                            )
-                        }
-                    },
-                    onClick = {
-                        open = false
-                        viewModel.select(warehouse.warehouseId)
-                    },
+/**
+ * Change warehouse: the worker's assigned warehouses, each with how much unfinished work is
+ * saved there. Switching never deletes work - the current warehouse's unfinished jobs go on
+ * hold and come back when the worker switches back; every screen opened afterwards loads the
+ * new warehouse's data.
+ */
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@Composable
+fun ChangeWarehouseScreen(
+    onDone: () -> Unit,
+    viewModel: WarehouseSwitcherViewModel = hiltViewModel(),
+    unfinishedViewModel: UnfinishedWorkViewModel = hiltViewModel(),
+) {
+    val session by viewModel.session.collectAsStateWithLifecycle()
+    val all by viewModel.allUnfinished.collectAsStateWithLifecycle()
+    val here by unfinishedViewModel.unfinished.collectAsStateWithLifecycle()
+    var confirmFor by remember { mutableStateOf<AssignedWarehouse?>(null) }
+    val selected = session?.selected
+
+    confirmFor?.let { target ->
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { confirmFor = null },
+            title = { Text("Switch to ${target.warehouseId}?") },
+            text = {
+                Text(
+                    "${here.size} unfinished job${if (here.size == 1) "" else "s"} at ${selected?.warehouseId} " +
+                        "will be put on hold. They stay on this device and continue when you switch back.",
                 )
+            },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = {
+                    viewModel.select(target.warehouseId)
+                    confirmFor = null
+                    onDone()
+                }) { Text("Switch") }
+            },
+            dismissButton = {
+                androidx.compose.material3.TextButton(onClick = { confirmFor = null }) { Text("Cancel") }
+            },
+        )
+    }
+
+    androidx.compose.material3.Scaffold(
+        topBar = {
+            com.d365fo.mobileops.presentation.common.components.AppTopBar(
+                title = { Text("Change warehouse") },
+                expandedHeight = com.d365fo.mobileops.presentation.common.theme.WarehouseDimens.TopBarHeight,
+                navigationIcon = {
+                    androidx.compose.material3.IconButton(onClick = onDone) {
+                        androidx.compose.material3.Icon(
+                            androidx.compose.material.icons.Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Back",
+                        )
+                    }
+                },
+            )
+        },
+    ) { padding ->
+        androidx.compose.foundation.lazy.LazyColumn(
+            modifier = Modifier.padding(padding),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
+            verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp),
+        ) {
+            val warehouses = session?.warehouses.orEmpty()
+            if (warehouses.isEmpty()) {
+                item { Text("No warehouse is assigned to you. Ask a supervisor.") }
+            }
+            items(warehouses.size) { index ->
+                val warehouse = warehouses[index]
+                val isCurrent = warehouse.warehouseId == selected?.warehouseId
+                val saved = all.count { it.warehouseId.equals(warehouse.warehouseId, ignoreCase = true) }
+                com.d365fo.mobileops.presentation.common.components.AppCard(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable(enabled = !isCurrent) {
+                            if (here.isEmpty()) {
+                                viewModel.select(warehouse.warehouseId)
+                                onDone()
+                            } else {
+                                confirmFor = warehouse
+                            }
+                        },
+                ) {
+                    Column(modifier = Modifier.padding(14.dp)) {
+                        Text(
+                            warehouse.warehouseName.ifBlank { warehouse.warehouseId },
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = if (isCurrent) FontWeight.SemiBold else FontWeight.Normal,
+                        )
+                        Text(
+                            listOfNotNull(
+                                warehouse.warehouseId,
+                                warehouse.siteId.takeIf { it.isNotBlank() }?.let { "site $it" },
+                                "default".takeIf { warehouse.isDefault },
+                                "current".takeIf { isCurrent },
+                                if (saved > 0) "$saved unfinished${if (isCurrent) "" else " on hold"}" else null,
+                            ).joinToString(" \u00B7 "),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (isCurrent) WarehouseStatusColors.accent else WarehouseStatusColors.text3,
+                        )
+                    }
+                }
             }
         }
     }
 }
+
+

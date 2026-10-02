@@ -110,6 +110,7 @@ import com.d365fo.mobileops.presentation.common.theme.WarehouseStatusColors
 fun SettingsScreen(
     onBack: () -> Unit,
     onSignOut: (() -> Unit)? = null,
+    onChangeWarehouse: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val tenant by viewModel.tenant.collectAsStateWithLifecycle()
@@ -352,6 +353,7 @@ fun SettingsScreen(
                 // only so they can see what that is without having to guess from a scan failing.
                 SettingsSection("Assigned warehouse") {
                     AssignedWarehouseText(fallbackId = worker.warehouseId)
+                    TextButton(onClick = onChangeWarehouse) { Text("Change warehouse") }
                 }
 
                 // Sign-out itself lives one tap away on Home's own top bar now, not buried here -

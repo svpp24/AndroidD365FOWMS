@@ -3,6 +3,7 @@ package com.d365fo.mobileops.presentation.common
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -236,12 +237,15 @@ fun HomeScreen(
      * the same reason SettingsScreen's own onSignOut is) should omit it, not wire a no-op.
      */
     onSignOut: (() -> Unit)? = null,
+    /** Opens the Change warehouse screen - from the warehouse line under the title. */
+    onChangeWarehouse: () -> Unit = {},
     unfinishedViewModel: UnfinishedWorkViewModel = hiltViewModel(),
     accessViewModel: HomeAccessViewModel = hiltViewModel(),
 ) {
     var infoFor by remember { mutableStateOf<ModuleTile?>(null) }
     var confirmSignOut by remember { mutableStateOf(false) }
     val unfinished by unfinishedViewModel.unfinished.collectAsStateWithLifecycle()
+    val onHoldElsewhere by unfinishedViewModel.onHoldElsewhere.collectAsStateWithLifecycle()
     val blockedWorkflows by accessViewModel.blockedWorkflows.collectAsStateWithLifecycle()
 
     infoFor?.let { module ->
@@ -281,7 +285,7 @@ fun HomeScreen(
                     // under it - tap it to switch when several are assigned.
                     Column {
                         Text(stringResource(R.string.app_name_launcher), style = MaterialTheme.typography.titleMedium, maxLines = 1)
-                        WarehouseSubtitle()
+                        WarehouseSubtitle(onClick = onChangeWarehouse)
                     }
                 },
                 // On the far right of the bar, not beside the title - still visible at a glance
@@ -338,6 +342,17 @@ fun HomeScreen(
                             }
                         },
                         onDiscard = { unfinishedViewModel.discard(work) },
+                    )
+                }
+            }
+            if (onHoldElsewhere > 0) {
+                item(key = "on-hold") {
+                    Text(
+                        text = "$onHoldElsewhere unfinished job${if (onHoldElsewhere == 1) " is" else "s are"} on hold at " +
+                            "another warehouse. Change warehouse to continue ${if (onHoldElsewhere == 1) "it" else "them"}.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = WarehouseStatusColors.text3,
+                        modifier = Modifier.clickable(onClick = onChangeWarehouse).padding(vertical = 4.dp),
                     )
                 }
             }

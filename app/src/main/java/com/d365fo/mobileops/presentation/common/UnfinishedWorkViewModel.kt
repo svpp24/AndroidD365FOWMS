@@ -6,9 +6,11 @@ import com.d365fo.mobileops.data.local.entity.FlowType
 import com.d365fo.mobileops.data.repository.FlowSessionRepository
 import com.d365fo.mobileops.data.repository.PendingFlowResume
 import com.d365fo.mobileops.data.repository.UnfinishedWork
+import com.d365fo.mobileops.data.repository.WorkerSessionRepository
 import com.d365fo.mobileops.presentation.common.scan.HidScannerBridge
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -27,10 +29,24 @@ class UnfinishedWorkViewModel @Inject constructor(
     private val flowSessions: FlowSessionRepository,
     private val pendingFlowResume: PendingFlowResume,
     private val scannerBridge: HidScannerBridge,
+    workerSessions: WorkerSessionRepository,
 ) : ViewModel() {
 
-    val unfinished: StateFlow<List<UnfinishedWork>> = flowSessions.unfinished
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    /**
+     * Unfinished work at the selected warehouse. Work saved at another warehouse is on hold -
+     * kept, not shown - until the worker switches back to it (see ChangeWarehouseScreen).
+     * Work saved with no warehouse shows everywhere.
+     */
+    val unfinished: StateFlow<List<UnfinishedWork>> = combine(flowSessions.unfinished, workerSessions.session) { all, session ->
+        val here = session?.selected?.warehouseId
+        all.filter { it.warehouseId.isNullOrBlank() || here == null || it.warehouseId.equals(here, ignoreCase = true) }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /** How many unfinished jobs are on hold at other warehouses. */
+    val onHoldElsewhere: StateFlow<Int> = combine(flowSessions.unfinished, workerSessions.session) { all, session ->
+        val here = session?.selected?.warehouseId ?: return@combine 0
+        all.count { !it.warehouseId.isNullOrBlank() && !it.warehouseId.equals(here, ignoreCase = true) }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
 
     fun discard(work: UnfinishedWork) {
         viewModelScope.launch { flowSessions.clear(work.flowType, work.orderId) }

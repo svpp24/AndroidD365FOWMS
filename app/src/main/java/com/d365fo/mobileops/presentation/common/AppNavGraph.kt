@@ -86,6 +86,9 @@ import kotlinx.coroutines.delay
 object Routes {
     const val HOME = "home"
 
+    /** Switch between the worker's assigned warehouses; other warehouses' work goes on hold. */
+    const val CHANGE_WAREHOUSE = "warehouse/change"
+
     /**
      * The step-driven receiving flow: scan a PO, then an item, then a quantity, then whatever
      * dimensions that item tracks. Nothing is preloaded; each step fetches only what it needs.
@@ -276,7 +279,12 @@ fun AppNavGraph(
                     warehouseId = warehouseId,
                     onModuleSelected = { navController.navigate(it) },
                     onSignOut = onSignOut,
+                    onChangeWarehouse = { navController.navigate(Routes.CHANGE_WAREHOUSE) },
                 )
+            }
+
+            composable(Routes.CHANGE_WAREHOUSE) {
+                ChangeWarehouseScreen(onDone = { navController.popBackStack() })
             }
 
             composable(Routes.INQUIRY_LOCATION) {
@@ -364,6 +372,7 @@ fun AppNavGraph(
                 SettingsScreen(
                     onBack = { navController.popBackStack() },
                     onSignOut = onSignOut,
+                    onChangeWarehouse = { navController.navigate(Routes.CHANGE_WAREHOUSE) },
                 )
             }
 
