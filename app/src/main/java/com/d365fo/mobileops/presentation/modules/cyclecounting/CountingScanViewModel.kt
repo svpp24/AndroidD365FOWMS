@@ -205,7 +205,7 @@ class CountingScanViewModel @Inject constructor(
                 return
             }
             if (current.selectedLocation == null) {
-                return miss("$value is not a location on this journal. Scan a location first.", typed)
+                return miss("$value is not a location on this journal. Scan a location first.", typed, always = true)
             }
         }
 
@@ -423,8 +423,9 @@ class CountingScanViewModel @Inject constructor(
     }
 
     /** A scan that did not land. Silent for typed text, which may just be a search term. */
-    private fun miss(message: String, typed: Boolean, unexpectedItemId: String? = null) {
-        if (typed && unexpectedItemId == null) return
+    /** Typed misses stay silent (typing filters the list) unless [always] - e.g. the location prompt. */
+    private fun miss(message: String, typed: Boolean, unexpectedItemId: String? = null, always: Boolean = false) {
+        if (typed && unexpectedItemId == null && !always) return
         _message.value = ScanMessage(
             message,
             isError = true,
