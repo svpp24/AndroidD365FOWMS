@@ -81,8 +81,12 @@ class WarehouseSwitcherViewModel @Inject constructor(
     fun select(warehouseId: String) = sessions.selectWarehouse(warehouseId)
 }
 
-/** "Name (code)" for a warehouse, or the code alone when D365FO has no name for it. */
-fun AssignedWarehouse.chipLabel(): String = label
+/**
+ * "Code · name" - the code first, so it survives when a long name is cut off in the top bar -
+ * or the code alone when D365FO has no name (or the name is just the code).
+ */
+fun AssignedWarehouse.chipLabel(): String =
+    if (warehouseName.isBlank() || warehouseName == warehouseId) warehouseId else "$warehouseId · $warehouseName"
 
 /**
  * The top-bar warehouse pill: name and code, and - when more than one warehouse is assigned -
@@ -105,7 +109,7 @@ fun WarehouseChip(viewModel: WarehouseSwitcherViewModel = hiltViewModel()) {
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier
-                .widthIn(max = 220.dp)
+                .widthIn(max = 190.dp)
                 .padding(end = 4.dp)
                 .border(1.dp, WarehouseStatusColors.accent, RoundedCornerShape(50))
                 .then(if (canSwitch) Modifier.clickable { open = true } else Modifier)
@@ -157,6 +161,55 @@ fun AssignedWarehouseText(fallbackId: String, viewModel: WarehouseSwitcherViewMo
                 style = MaterialTheme.typography.bodySmall,
                 color = WarehouseStatusColors.text3,
             )
+        }
+    }
+}
+
+/**
+ * The warehouse as a small line under a top-bar title - code and name, ellipsized, with the
+ * switcher list behind a tap when more than one warehouse is assigned. Sized to fit under the
+ * title without making the bar taller.
+ */
+@Composable
+fun WarehouseSubtitle(viewModel: WarehouseSwitcherViewModel = hiltViewModel()) {
+    val session by viewModel.session.collectAsStateWithLifecycle()
+    val selected = session?.selected
+    val choices = session?.warehouses.orEmpty()
+    val canSwitch = choices.size > 1
+    var open by remember { mutableStateOf(false) }
+
+    Box {
+        Text(
+            text = (selected?.chipLabel() ?: if (canSwitch) "Choose warehouse" else "No warehouse assigned") +
+                if (canSwitch) " \u25BE" else "",
+            style = MaterialTheme.typography.labelSmall,
+            color = WarehouseStatusColors.accent,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = if (canSwitch) Modifier.clickable { open = true } else Modifier,
+        )
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            choices.forEach { warehouse ->
+                DropdownMenuItem(
+                    text = {
+                        Column {
+                            Text(
+                                warehouse.warehouseName.ifBlank { warehouse.warehouseId },
+                                fontWeight = if (warehouse.warehouseId == selected?.warehouseId) FontWeight.SemiBold else FontWeight.Normal,
+                            )
+                            Text(
+                                warehouse.warehouseId + if (warehouse.isDefault) " \u00B7 default" else "",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = WarehouseStatusColors.text3,
+                            )
+                        }
+                    },
+                    onClick = {
+                        open = false
+                        viewModel.select(warehouse.warehouseId)
+                    },
+                )
+            }
         }
     }
 }

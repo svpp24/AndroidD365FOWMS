@@ -277,7 +277,12 @@ fun HomeScreen(
         topBar = {
             TopAppBar(
                 title = {
-                    Text(stringResource(R.string.app_name_launcher), style = MaterialTheme.typography.titleMedium)
+                    // Two lines in the same bar height: the title, and the warehouse (code · name)
+                    // under it - tap it to switch when several are assigned.
+                    Column {
+                        Text(stringResource(R.string.app_name_launcher), style = MaterialTheme.typography.titleMedium, maxLines = 1)
+                        WarehouseSubtitle()
+                    }
                 },
                 // On the far right of the bar, not beside the title - still visible at a glance
                 // on the screen an operator actually looks at, not buried in Settings, but out
@@ -286,8 +291,6 @@ fun HomeScreen(
                 actions = {
                     // Outlined pill, like the reference layout's site selector - reads as "where
                     // I am" chrome rather than loose text in the header.
-                    // Name and code; tap to switch when several warehouses are assigned.
-                    WarehouseChip()
                     if (onSignOut != null) {
                         IconButton(onClick = { confirmSignOut = true }) {
                             Icon(
