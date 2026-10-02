@@ -103,6 +103,10 @@ class WorkerSessionRepository @Inject constructor(
      * rather than surviving indefinitely off one rebuild.
      */
     private fun restoreDebugSession(): WorkerSession? {
+        // Development only (DEV_SKIP_SIGN_IN, debug builds): no sign-in screen at all - the last
+        // real session if one is cached, else one built from DEV_* in local.properties.
+        if (BuildConfig.DEV_SKIP_SIGN_IN) return cachedDebugSession() ?: devSession()
+
         val cachedInstallTime = secureStore.getString(SecureStore.KEY_DEBUG_SESSION_INSTALL_TIME)
             ?.toLongOrNull()
         if (cachedInstallTime == null || cachedInstallTime == currentInstallTime()) return null
@@ -119,6 +123,30 @@ class WorkerSessionRepository @Inject constructor(
             )
         }
         return restored
+    }
+
+    private fun cachedDebugSession(): WorkerSession? =
+        secureStore.getString(SecureStore.KEY_DEBUG_WORKER_SESSION)?.let { raw ->
+            runCatching { json.decodeFromString(WorkerSession.serializer(), raw) }.getOrNull()
+        }
+
+    /** A session from local.properties DEV_* values - null unless DEV_USER_NAME is set. */
+    private fun devSession(): WorkerSession? {
+        val user = BuildConfig.DEV_USER_NAME.takeIf { it.isNotBlank() } ?: return null
+        val warehouse = BuildConfig.DEV_WAREHOUSE_ID.takeIf { it.isNotBlank() }?.let {
+            AssignedWarehouse(siteId = BuildConfig.DEV_SITE_ID, warehouseId = it, warehouseName = it, isDefault = true)
+        }
+        Timber.w("DEV_SKIP_SIGN_IN: using a development session for '%s'", user)
+        return WorkerSession(
+            userName = user,
+            displayName = BuildConfig.DEV_DISPLAY_NAME.ifBlank { user },
+            personnelNumber = "",
+            isSupervisor = BuildConfig.DEV_SUPERVISOR,
+            isCycleCountSupervisor = BuildConfig.DEV_SUPERVISOR,
+            mustChangePassword = false,
+            warehouses = listOfNotNull(warehouse),
+            selected = warehouse,
+        )
     }
 
     private fun company(): String =

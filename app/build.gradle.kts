@@ -113,8 +113,20 @@ android {
             buildConfigField("boolean", "ALLOW_SENSITIVE_LOGGING", "true")
             // Pinning off in debug so Charles/Fiddler can be used against sandboxes.
             buildConfigField("boolean", "CERT_PINNING_ENABLED", "false")
+            // Development only: skip the sign-in screen (WorkerSessionRepository.restoreDebugSession).
+            buildConfigField("boolean", "DEV_SKIP_SIGN_IN", secret("DEV_SKIP_SIGN_IN", "false").toBoolean().toString())
+            listOf("DEV_USER_NAME", "DEV_DISPLAY_NAME", "DEV_WAREHOUSE_ID", "DEV_SITE_ID").forEach { key ->
+                buildConfigField("String", key, "\"${secret(key)}\"")
+            }
+            buildConfigField("boolean", "DEV_SUPERVISOR", secret("DEV_SUPERVISOR", "false").toBoolean().toString())
         }
         release {
+            // Never skips sign-in, whatever local.properties says.
+            buildConfigField("boolean", "DEV_SKIP_SIGN_IN", "false")
+            listOf("DEV_USER_NAME", "DEV_DISPLAY_NAME", "DEV_WAREHOUSE_ID", "DEV_SITE_ID").forEach { key ->
+                buildConfigField("String", key, "\"\"")
+            }
+            buildConfigField("boolean", "DEV_SUPERVISOR", "false")
             isMinifyEnabled = true
             isShrinkResources = true
             signingConfig = signingConfigs.getByName("release")
