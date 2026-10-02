@@ -24,10 +24,11 @@ class ThemePreferences @Inject constructor(
         _palette.value = value
     }
 
-    private fun loadPalette(): ColorPalette =
-        secureStore.getString(KEY_PALETTE)
-            ?.let { runCatching { ColorPalette.valueOf(it) }.getOrNull() }
-            ?: ColorPalette.MICROSOFT
+    /**
+     * Always Maroon (with its light-to-full gradient) - the palette picker was removed on
+     * request, so a colour saved by an older build is ignored rather than kept.
+     */
+    private fun loadPalette(): ColorPalette = ColorPalette.MAROON
 
     private companion object {
         // Bumped from "color_palette" so devices that had a different colour saved reset once to the

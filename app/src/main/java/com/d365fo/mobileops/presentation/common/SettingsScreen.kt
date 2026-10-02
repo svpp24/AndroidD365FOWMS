@@ -331,13 +331,12 @@ fun SettingsScreen(
                 }
             }
 
-            // Accent colour and lockout timeout are both fleet-commissioning settings, on
+            // Display scale and lockout timeout are both fleet-commissioning settings, on
             // request - reachable only from the pre-sign-in ("outside") screen, set once by
             // whoever configures the device rather than found and changed mid-shift. Same
             // reasoning as Connection & profile and Data posting just above them there.
             if (openSection == SettingsMenuItem.Appearance && onSignOut == null) {
                 SettingsSection("Appearance") {
-                    PaletteRow(selected = palette, onSelect = viewModel::setPalette)
                     DisplayScaleRow(selected = displayScale, onSelect = viewModel::setDisplayScale)
                 }
             }
