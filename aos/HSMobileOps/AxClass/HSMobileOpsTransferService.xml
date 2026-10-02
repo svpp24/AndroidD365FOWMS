@@ -233,7 +233,8 @@ class HSMobileOpsTransferService
             order by transferLine.LineNum
             where transferLine.TransferId == _transferTable.TransferId
                && (!_itemId || transferLine.ItemId == _itemId)
-            join InventSiteId, InventLocationId, wMSLocationId from inventDim
+            join InventSiteId, InventLocationId, wMSLocationId,
+                 configId, InventSizeId, InventColorId, InventStyleId from inventDim
                 where inventDim.InventDimId == transferLine.InventDimId
         {
             // The whole reason direction is a parameter. Receiving is bounded by what was
@@ -271,6 +272,11 @@ class HSMobileOpsTransferService
                 HSMobileOpsTransferService::siteOf(_transferTable.InventLocationIdTo));
             line.parmToWarehouseId(_transferTable.InventLocationIdTo);
             line.parmLocationId(inventDim.wMSLocationId);
+            // Product dimensions - which variant of a product master this line is.
+            line.parmConfigId(inventDim.configId);
+            line.parmSizeId(inventDim.InventSizeId);
+            line.parmColorId(inventDim.InventColorId);
+            line.parmStyleId(inventDim.InventStyleId);
 
             line.parmBatchRequired(dimSetup.isDimensionActive(fieldNum(InventDim, InventBatchId)));
             line.parmSerialRequired(dimSetup.isDimensionActive(fieldNum(InventDim, InventSerialId)));
