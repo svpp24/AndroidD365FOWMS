@@ -11,6 +11,7 @@ import com.d365fo.mobileops.data.remote.dto.VarianceServiceRequest
 import com.d365fo.mobileops.data.remote.error.D365ErrorMapper
 import com.d365fo.mobileops.data.repository.WorkerSessionRepository
 import com.d365fo.mobileops.data.security.CompanyProvider
+import com.d365fo.mobileops.domain.counting.supervisor.CountReasonCode
 import com.d365fo.mobileops.domain.counting.supervisor.JournalVariance
 import com.d365fo.mobileops.domain.counting.supervisor.ReviewAction
 import com.d365fo.mobileops.domain.counting.supervisor.SupervisorCountRepository
@@ -65,7 +66,17 @@ class LiveSupervisorCountRepository @Inject constructor(
                                     abcClass = it.abcClass?.takeIf { a -> a.isNotBlank() },
                                     countedBy = it.countedBy?.takeIf { c -> c.isNotBlank() },
                                     reviewStatus = it.reviewStatus?.takeIf { r -> r.isNotBlank() } ?: "PENDING",
+                                    initialQty = it.initialQty ?: it.countedQty,
+                                    recounted = it.recounted,
+                                    recountQty = it.recountQty,
+                                    reasonCode = it.reasonCode?.takeIf { v -> v.isNotBlank() },
+                                    comment = it.comment?.takeIf { v -> v.isNotBlank() },
+                                    reviewedBy = it.reviewedBy?.takeIf { v -> v.isNotBlank() },
                                 )
+                            },
+                            toleranceText = body.toleranceText?.takeIf { v -> v.isNotBlank() },
+                            reasonCodes = body.reasonCodes.filter { r -> r.code.isNotBlank() }.map { r ->
+                                CountReasonCode(r.code, r.description?.takeIf { v -> v.isNotBlank() } ?: r.code)
                             },
                         ),
                     )
@@ -80,6 +91,7 @@ class LiveSupervisorCountRepository @Inject constructor(
         action: ReviewAction,
         assignTo: String?,
         note: String?,
+        reasonCode: String?,
     ): SupervisorResult = errorMapper.safeCall {
         api.reviewLines(
             ReviewServiceRequest(
@@ -90,6 +102,7 @@ class LiveSupervisorCountRepository @Inject constructor(
                     action = action.name,
                     assignTo = assignTo?.trim()?.takeIf { it.isNotEmpty() },
                     note = note?.trim()?.takeIf { it.isNotEmpty() },
+                    reasonCode = reasonCode?.takeIf { it.isNotBlank() },
                     lineNumbers = lineNumbers,
                 ),
             ),
@@ -178,6 +191,7 @@ class LiveSupervisorCountRepository @Inject constructor(
             "JOURNAL_POSTED" -> SupervisorRefusal.ALREADY_POSTED
             "JOURNAL_NOT_FOUND" -> SupervisorRefusal.JOURNAL_NOT_FOUND
             "LINES_NEED_APPROVAL" -> SupervisorRefusal.LINES_NEED_APPROVAL
+            "INVALID_REASON_CODE" -> SupervisorRefusal.INVALID_REASON_CODE
             "RECOUNT_SAME_USER" -> SupervisorRefusal.RECOUNT_SAME_USER
             "POST_FAILED" -> SupervisorRefusal.POST_FAILED
             "NOT_IMPLEMENTED" -> SupervisorRefusal.NOT_AVAILABLE
@@ -190,7 +204,8 @@ class LiveSupervisorCountRepository @Inject constructor(
             SupervisorRefusal.ALREADY_POSTED -> "This journal has already been posted."
             SupervisorRefusal.JOURNAL_NOT_FOUND -> "This journal is closed or no longer exists in D365FO."
             SupervisorRefusal.LINES_NEED_APPROVAL ->
-                "Some lines are outside tolerance and need approval before the journal can be posted."
+                serverMessage ?: "Some lines still need a decision before the journal can be posted."
+            SupervisorRefusal.INVALID_REASON_CODE -> "That reason code isn't set up in D365FO."
             SupervisorRefusal.RECOUNT_SAME_USER -> "A recount can't be assigned to the person who counted the line."
             SupervisorRefusal.POST_FAILED -> serverMessage ?: "D365FO could not post the journal."
             SupervisorRefusal.NOT_AVAILABLE -> "This server does not support this action yet."

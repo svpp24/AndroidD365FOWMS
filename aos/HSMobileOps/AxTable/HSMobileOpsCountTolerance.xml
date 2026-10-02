@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxTable xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsCountTolerance</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Counting variance tolerance, one row per company (none = defaults, see find). A line within
+/// tolerance is MINOR_VARIANCE and needs no approval; outside it is RECOUNT_REQUIRED.
+/// </summary>
+public class HSMobileOpsCountTolerance extends common
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>find</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// This company's tolerance. With no row yet, the defaults (2 % or 0 units) are returned
+    /// without being written.
+    /// </summary>
+    public static HSMobileOpsCountTolerance find()
+    {
+        HSMobileOpsCountTolerance tolerance;
+
+        select firstOnly tolerance;
+        if (!tolerance.RecId)
+        {
+            tolerance.TolerancePct = 2;
+            tolerance.ToleranceQty = 0;
+        }
+        return tolerance;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>withinTolerance</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// True when the variance is within either limit: at most ToleranceQty units, or at most
+    /// TolerancePct percent of the system quantity.
+    /// </summary>
+    public boolean withinTolerance(real _varianceQty, real _systemQty)
+    {
+        real variance = abs(_varianceQty);
+
+        if (variance <= this.ToleranceQty)
+        {
+            return true;
+        }
+        return _systemQty != 0 && (variance / abs(_systemQty)) * 100 <= this.TolerancePct;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>describe</Name>
+				<Source><![CDATA[
+
+    public str describe()
+    {
+        return strFmt('Within %1 % or %2 units', this.TolerancePct, this.ToleranceQty);
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+	<Label>Mobile count tolerance</Label>
+	<CacheLookup>Found</CacheLookup>
+	<Fields>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldReal">
+			<Name>TolerancePct</Name>
+			<Label>Tolerance %</Label>
+			<HelpText>Largest variance, as a percentage of the system quantity, accepted without approval.</HelpText>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldReal">
+			<Name>ToleranceQty</Name>
+			<Label>Tolerance quantity</Label>
+			<HelpText>Largest variance in units accepted without approval.</HelpText>
+		</AxTableField>
+	</Fields>
+	<FullTextIndexes />
+	<Indexes />
+	<Mappings />
+	<Relations />
+	<StateMachines />
+</AxTable>

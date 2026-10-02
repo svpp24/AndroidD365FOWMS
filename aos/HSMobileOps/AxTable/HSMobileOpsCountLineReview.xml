@@ -1,0 +1,130 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxTable xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsCountLineReview</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Supervisor review state per counting journal line: the initial count, the recount (once one
+/// has been requested and done), the decision and its reason/comment. Written only by
+/// HSMobileOpsCountSupervisorService. The line status (MATCH ... CLOSED) is derived from this
+/// row plus InventJournalTrans by HSMobileOpsCountSupervisorService::lineStatus, never stored.
+///
+/// A recount is detected by quantity: each decision remembers the counted quantity
+/// (DecisionCountedQty); a different count since then is the recount. A recount that lands on
+/// the same number stays RECOUNT_REQUIRED until the supervisor approves it. RecVersion is not
+/// used because the DMF import rewrites every line of the journal.
+/// </summary>
+public class HSMobileOpsCountLineReview extends common
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>find</Name>
+				<Source><![CDATA[
+
+    public static HSMobileOpsCountLineReview find(InventJournalId _journalId, LineNum _lineNum, boolean _forUpdate = false)
+    {
+        HSMobileOpsCountLineReview review;
+
+        review.selectForUpdate(_forUpdate);
+        select firstOnly review
+            where review.JournalId == _journalId
+               && review.LineNum   == _lineNum;
+        return review;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+	<Label>Mobile count line reviews</Label>
+	<TitleField1>JournalId</TitleField1>
+	<TitleField2>Decision</TitleField2>
+	<CacheLookup>None</CacheLookup>
+	<ClusteredIndex>LineIdx</ClusteredIndex>
+	<PrimaryIndex>LineIdx</PrimaryIndex>
+	<Fields>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>JournalId</Name>
+			<ExtendedDataType>InventJournalId</ExtendedDataType>
+			<Mandatory>Yes</Mandatory>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldReal">
+			<Name>LineNum</Name>
+			<ExtendedDataType>LineNum</ExtendedDataType>
+			<Mandatory>Yes</Mandatory>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>Decision</Name>
+			<Label>Decision</Label>
+			<HelpText>Blank (none yet), APPROVED, RECOUNT, INVESTIGATE or REJECTED.</HelpText>
+			<StringSize>20</StringSize>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldReal">
+			<Name>InitialQty</Name>
+			<Label>Initial count</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldReal">
+			<Name>RecountQty</Name>
+			<Label>Recount</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldEnum">
+			<Name>Recounted</Name>
+			<Label>Recounted</Label>
+			<EnumType>NoYes</EnumType>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldReal">
+			<Name>DecisionCountedQty</Name>
+			<Label>Counted at decision</Label>
+			<HelpText>The line's counted quantity when the decision was made; a different count since then is a recount.</HelpText>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>ReasonCode</Name>
+			<Label>Reason code</Label>
+			<StringSize>10</StringSize>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>Comment</Name>
+			<Label>Comment</Label>
+			<StringSize>250</StringSize>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>ReviewedBy</Name>
+			<Label>Reviewed by</Label>
+			<ExtendedDataType>HSMobileOpsUserName</ExtendedDataType>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldUtcDateTime">
+			<Name>ReviewedAtUtc</Name>
+			<Label>Reviewed at</Label>
+		</AxTableField>
+	</Fields>
+	<FullTextIndexes />
+	<Indexes>
+		<AxTableIndex>
+			<Name>LineIdx</Name>
+			<AllowDuplicates>No</AllowDuplicates>
+			<Fields>
+				<AxTableIndexField>
+					<DataField>JournalId</DataField>
+				</AxTableIndexField>
+				<AxTableIndexField>
+					<DataField>LineNum</DataField>
+				</AxTableIndexField>
+			</Fields>
+		</AxTableIndex>
+	</Indexes>
+	<Mappings />
+	<Relations />
+	<StateMachines />
+</AxTable>

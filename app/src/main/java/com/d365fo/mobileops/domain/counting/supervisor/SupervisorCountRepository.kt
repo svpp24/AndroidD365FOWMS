@@ -19,19 +19,65 @@ data class VarianceLine(
     val systemQty: Double,
     val varianceQty: Double,
     val varianceValue: Double,
-    /** WITHIN, OVER or UNKNOWN - the server's verdict against the item's tolerance. */
+    /**
+     * The line's count status, decided in X++ (HSMobileOpsCountSupervisorService::lineState) -
+     * see [CountStatus]. Older servers send WITHIN / OVER / UNKNOWN.
+     */
     val toleranceStatus: String,
     val abcClass: String?,
     val countedBy: String?,
-    /** PENDING, APPROVED, REJECTED or RECOUNT. */
+    /** The last decision: PENDING, APPROVED, REJECTED, RECOUNT or INVESTIGATE. */
     val reviewStatus: String,
+    /** The first count, kept once a decision has been made (else the current count). */
+    val initialQty: Double = countedQty,
+    /** Whether the recount asked for has been done, and its quantity. */
+    val recounted: Boolean = false,
+    val recountQty: Double = 0.0,
+    /** Standard D365 counting reason code on the line, and the supervisor's comment. */
+    val reasonCode: String? = null,
+    val comment: String? = null,
+    val reviewedBy: String? = null,
 ) {
-    val overTolerance: Boolean get() = toleranceStatus == "OVER"
+    val status: CountStatus get() = CountStatus.from(toleranceStatus)
+
+    /** Still needs a supervisor decision before the journal can post. */
+    val overTolerance: Boolean get() = status.needsDecision
 }
 
-data class JournalVariance(val currencyCode: String?, val lines: List<VarianceLine>)
+/** The count status lifecycle. Every value comes from the server; nothing is derived here. */
+enum class CountStatus(val label: String, val needsDecision: Boolean) {
+    NOT_COUNTED("Not counted", false),
+    MATCH("Match", false),
+    MINOR_VARIANCE("Minor variance", false),
+    RECOUNT_REQUIRED("Recount required", true),
+    CONFIRMATION_REQUIRED("Confirmation required", true),
+    INVESTIGATE("Investigate", true),
+    APPROVED("Approved", false),
+    CLOSED("Closed", false),
+    UNKNOWN("Unknown", false),
+    ;
 
-enum class ReviewAction { APPROVE, REJECT, RECOUNT }
+    companion object {
+        fun from(code: String?): CountStatus = when (code) {
+            "OVER" -> RECOUNT_REQUIRED
+            "WITHIN" -> MINOR_VARIANCE
+            else -> entries.firstOrNull { it.name == code } ?: UNKNOWN
+        }
+    }
+}
+
+/** A standard D365 counting reason code (Inventory management > Setup > Counting reason codes). */
+data class CountReasonCode(val code: String, val description: String)
+
+data class JournalVariance(
+    val currencyCode: String?,
+    val lines: List<VarianceLine>,
+    /** The company's tolerance, as the server words it. */
+    val toleranceText: String? = null,
+    val reasonCodes: List<CountReasonCode> = emptyList(),
+)
+
+enum class ReviewAction { APPROVE, REJECT, RECOUNT, INVESTIGATE }
 
 enum class AccuracyGroupBy(val label: String) {
     LOCATION("Location"),
@@ -66,6 +112,7 @@ enum class SupervisorRefusal {
     ALREADY_POSTED,
     JOURNAL_NOT_FOUND,
     LINES_NEED_APPROVAL,
+    INVALID_REASON_CODE,
     RECOUNT_SAME_USER,
     POST_FAILED,
     NOT_AVAILABLE,
@@ -81,7 +128,14 @@ sealed interface SupervisorResult {
 /** `HSMobileOpsCountSupervisorSvc`. The server checks the caller is a supervisor; the app's gate is cosmetic. */
 interface SupervisorCountRepository {
     suspend fun variance(journalId: String): NetworkResult<JournalVariance>
-    suspend fun review(journalId: String, lineNumbers: List<Double>, action: ReviewAction, assignTo: String?, note: String?): SupervisorResult
+    suspend fun review(
+        journalId: String,
+        lineNumbers: List<Double>,
+        action: ReviewAction,
+        assignTo: String?,
+        note: String?,
+        reasonCode: String?,
+    ): SupervisorResult
     suspend fun post(journalId: String): SupervisorResult
 
     /** [from] / [to] are ISO dates (yyyy-MM-dd), inclusive. */

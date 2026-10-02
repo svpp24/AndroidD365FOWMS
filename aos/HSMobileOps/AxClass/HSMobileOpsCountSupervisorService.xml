@@ -12,11 +12,11 @@
 /// (HSMobileOpsUser.IsCycleCountSupervisor) - the app hides these screens from everyone else,
 /// but that is cosmetic; this check is the boundary.
 ///
-/// Real today: the supervisor check, getVariance's read of counted / on-hand / difference /
-/// cost amount, and postJournal (standard InventJournalCheckPost). TODO for the X++ owner:
-/// tolerance status and ABC class per line, who counted each line (attempt table), review
-/// status, reviewLines (approve / reject / recount with assignment), and refusing to post while
-/// lines outside tolerance are unapproved (LINES_NEED_APPROVAL).
+/// Line status (MATCH, MINOR_VARIANCE, RECOUNT_REQUIRED, CONFIRMATION_REQUIRED, INVESTIGATE,
+/// APPROVED) comes from lineState over InventJournalTrans, HSMobileOpsCountTolerance and
+/// HSMobileOpsCountLineReview. reviewLines records decisions with standard counting reason
+/// codes; postJournal refuses while counted lines still need a decision. TODO for the X++
+/// owner: ABC class, who counted each line (attempt table), recount assignment.
 ///
 /// Registered as HSMobileOpsCountSupervisorSvc - full service group build required.
 /// </summary>
@@ -36,6 +36,9 @@ class HSMobileOpsCountSupervisorService
         List                             lines = new List(Types::Class);
         InventJournalTrans               inventJournalTrans;
         InventDim                        inventDim;
+        HSMobileOpsCountLineReview       review;
+        HSMobileOpsCountTolerance        tolerance;
+        container                        state;
         str                              refusal;
 
         response.parmSuccess(false);
@@ -51,14 +54,21 @@ class HSMobileOpsCountSupervisorService
 
         changecompany (_request.parmDataAreaId())
         {
+            tolerance = HSMobileOpsCountTolerance::find();
             response.parmCurrencyCode(Ledger::accountingCurrency());
+            response.parmToleranceText(tolerance.describe());
+            response.parmReasonCodes(HSMobileOpsCountSupervisorService::reasonCodes());
 
-            while select LineNum, ItemId, Counted, InventOnHand, Qty, CostAmount from inventJournalTrans
+            while select LineNum, ItemId, Counted, InventOnHand, Qty, CostAmount, InventCountingReasonCode
+                from inventJournalTrans
                 order by LineNum
                 where inventJournalTrans.JournalId == _request.parmJournalId()
                 join wMSLocationId, inventBatchId, inventSerialId from inventDim
                     where inventDim.InventDimId == inventJournalTrans.InventDimId
             {
+                review = HSMobileOpsCountLineReview::find(inventJournalTrans.JournalId, inventJournalTrans.LineNum);
+                state  = HSMobileOpsCountSupervisorService::lineState(inventJournalTrans, review, tolerance);
+
                 line = new HSMobileOpsCountVarianceLine();
                 line.parmLineNumber(inventJournalTrans.LineNum);
                 line.parmItemNumber(inventJournalTrans.ItemId);
@@ -70,14 +80,18 @@ class HSMobileOpsCountSupervisorService
                 line.parmSystemQty(inventJournalTrans.InventOnHand);
                 line.parmVarianceQty(inventJournalTrans.Qty);
                 line.parmVarianceValue(inventJournalTrans.CostAmount);
-                // TODO (X++ owner): whether this line has been counted at all (a counted zero vs
-                // not counted), its tolerance verdict (WITHIN / OVER) against the per-class
-                // tolerance, its ABC class, who counted it (attempt table) and its review status.
-                line.parmCounted(inventJournalTrans.Counted != 0 || inventJournalTrans.Qty != 0);
-                line.parmToleranceStatus('UNKNOWN');
+                line.parmCounted(HSMobileOpsCountSupervisorService::isCounted(inventJournalTrans));
+                line.parmToleranceStatus(conPeek(state, 1));
+                line.parmRecounted(conPeek(state, 2));
+                line.parmRecountQty(conPeek(state, 3));
+                line.parmInitialQty(review.RecId ? review.InitialQty : inventJournalTrans.Counted);
+                line.parmReviewStatus(review.Decision ? review.Decision : 'PENDING');
+                line.parmReasonCode(inventJournalTrans.InventCountingReasonCode ? inventJournalTrans.InventCountingReasonCode : review.ReasonCode);
+                line.parmComment(review.Comment);
+                line.parmReviewedBy(review.ReviewedBy);
+                // TODO (X++ owner): ABC class and who counted the line (attempt table).
                 line.parmAbcClass('');
                 line.parmCountedBy('');
-                line.parmReviewStatus('PENDING');
                 lines.addEnd(line);
             }
         }
@@ -93,13 +107,23 @@ class HSMobileOpsCountSupervisorService
 				<Source><![CDATA[
 
     /// <summary>
-    /// APPROVE / REJECT / RECOUNT for a set of lines. RECOUNT with AssignTo must be refused
-    /// (RECOUNT_SAME_USER) when AssignTo is the line's previous counter.
+    /// APPROVE / RECOUNT / INVESTIGATE / REJECT a set of lines, with an optional standard
+    /// counting reason code (written to InventJournalTrans so it posts with the line) and a
+    /// comment (Note). Each decision remembers the counted quantity, so a different count after
+    /// it is seen: after RECOUNT it is the recount (CONFIRMATION_REQUIRED); after APPROVE it
+    /// withdraws the approval.
+    /// TODO (X++ owner): RECOUNT with AssignTo, refusing the previous counter (RECOUNT_SAME_USER).
     /// </summary>
     [Wrappable(false), Hookable(false)]
     public HSMobileOpsCountSupervisorResponse reviewLines(HSMobileOpsCountReviewRequest _request)
     {
         HSMobileOpsCountSupervisorResponse response = new HSMobileOpsCountSupervisorResponse();
+        HSMobileOpsCountLineReview         review;
+        HSMobileOpsCountTolerance          tolerance;
+        InventJournalTrans                 inventJournalTrans;
+        ListEnumerator                     lineNumbers;
+        container                          state;
+        str                                action;
         str                                refusal;
 
         response.parmSuccess(false);
@@ -111,16 +135,75 @@ class HSMobileOpsCountSupervisorService
             response.parmErrorCode(refusal);
             return response;
         }
-        if (!(_request.parmAction() == 'APPROVE' || _request.parmAction() == 'REJECT' || _request.parmAction() == 'RECOUNT')
-            || !_request.parmLineNumbers())
+        action = strUpr(_request.parmAction());
+        if (!(action == 'APPROVE' || action == 'REJECT' || action == 'RECOUNT' || action == 'INVESTIGATE')
+            || !_request.parmLineNumbers() || !_request.parmLineNumbers().elements())
         {
             response.parmErrorCode('INVALID_REQUEST');
             return response;
         }
 
-        // TODO (X++ owner): record the review per line; for RECOUNT, create the recount (a flag on
-        // the line or a linked RECOUNT journal) and assign it, refusing the previous counter.
-        response.parmErrorCode('NOT_IMPLEMENTED');
+        changecompany (_request.parmDataAreaId())
+        {
+            if (_request.parmReasonCode() && !InventCountingReasonCode::exist(_request.parmReasonCode()))
+            {
+                response.parmErrorCode('INVALID_REASON_CODE');
+                return response;
+            }
+            tolerance = HSMobileOpsCountTolerance::find();
+
+            ttsbegin;
+            lineNumbers = _request.parmLineNumbers().getEnumerator();
+            while (lineNumbers.moveNext())
+            {
+                select firstOnly forUpdate inventJournalTrans
+                    where inventJournalTrans.JournalId == _request.parmJournalId()
+                       && inventJournalTrans.LineNum   == lineNumbers.current();
+                if (!inventJournalTrans.RecId)
+                {
+                    ttsabort;
+                    response.parmErrorCode('LINE_NOT_FOUND');
+                    response.parmMessage(strFmt('Line %1 is not on this journal.', lineNumbers.current()));
+                    return response;
+                }
+
+                review = HSMobileOpsCountLineReview::find(inventJournalTrans.JournalId, inventJournalTrans.LineNum, true);
+                state  = HSMobileOpsCountSupervisorService::lineState(inventJournalTrans, review, tolerance);
+                if (!review.RecId)
+                {
+                    review.JournalId  = inventJournalTrans.JournalId;
+                    review.LineNum    = inventJournalTrans.LineNum;
+                    review.InitialQty = inventJournalTrans.Counted;
+                }
+                if (conPeek(state, 2))
+                {
+                    // The recount asked for earlier has been done - keep it.
+                    review.Recounted  = NoYes::Yes;
+                    review.RecountQty = conPeek(state, 3);
+                }
+                if (action == 'RECOUNT')
+                {
+                    review.Recounted = NoYes::No;
+                }
+
+                if (_request.parmReasonCode() && inventJournalTrans.InventCountingReasonCode != _request.parmReasonCode())
+                {
+                    inventJournalTrans.InventCountingReasonCode = _request.parmReasonCode();
+                    inventJournalTrans.update();
+                }
+
+                review.Decision          = action == 'APPROVE' ? 'APPROVED' : (action == 'REJECT' ? 'REJECTED' : action);
+                review.ReasonCode        = _request.parmReasonCode() ? _request.parmReasonCode() : review.ReasonCode;
+                review.Comment           = _request.parmNote() ? _request.parmNote() : review.Comment;
+                review.ReviewedBy        = _request.parmUserId();
+                review.ReviewedAtUtc     = DateTimeUtil::utcNow();
+                review.DecisionCountedQty = inventJournalTrans.Counted;
+                review.write();
+            }
+            ttscommit;
+        }
+
+        response.parmSuccess(true);
         return response;
     }
 ]]></Source>
@@ -131,7 +214,7 @@ class HSMobileOpsCountSupervisorService
 
     /// <summary>
     /// Posts the counting journal with the standard journal check/post. Refused when it is
-    /// already posted, gone, or (TODO) has lines outside tolerance that are not approved.
+    /// already posted, gone, or has counted lines still needing a decision (LINES_NEED_APPROVAL).
     /// </summary>
     [Wrappable(false), Hookable(false)]
     public HSMobileOpsCountSupervisorResponse postJournal(HSMobileOpsCountPostRequest _request)
@@ -141,6 +224,7 @@ class HSMobileOpsCountSupervisorService
         JournalCheckPost                   journalCheckPost;
         str                                refusal;
         int                                infologStart;
+        int                                unapproved;
 
         response.parmSuccess(false);
 
@@ -152,11 +236,16 @@ class HSMobileOpsCountSupervisorService
             return response;
         }
 
-        // TODO (X++ owner): refuse with LINES_NEED_APPROVAL while any line outside tolerance has
-        // not been approved.
-
         changecompany (_request.parmDataAreaId())
         {
+            unapproved = HSMobileOpsCountSupervisorService::unapprovedLines(_request.parmJournalId());
+            if (unapproved)
+            {
+                response.parmErrorCode('LINES_NEED_APPROVAL');
+                response.parmMessage(strFmt('%1 line(s) still need a decision before posting.', unapproved));
+                return response;
+            }
+
             inventJournalTable = InventJournalTable::find(_request.parmJournalId());
             infologStart = infologLine();
             try
@@ -307,6 +396,127 @@ class HSMobileOpsCountSupervisorService
         response.parmOverallPct(allCounted ? allAccurate * 100.0 / allCounted : 0);
         response.parmSuccess(true);
         return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>lineState</Name>
+				<Source><![CDATA[
+
+
+    /// <summary>
+    /// [status, recountDone, recountQty] for one line. Status is one of NOT_COUNTED, MATCH,
+    /// MINOR_VARIANCE, RECOUNT_REQUIRED, CONFIRMATION_REQUIRED, INVESTIGATE, APPROVED. The only
+    /// place these rules live - getVariance shows them and postJournal enforces them.
+    /// </summary>
+    public static container lineState(InventJournalTrans _trans, HSMobileOpsCountLineReview _review, HSMobileOpsCountTolerance _tolerance)
+    {
+        // A different count since the decision (see HSMobileOpsCountLineReview).
+        boolean changedSince = _review.RecId && _trans.Counted != _review.DecisionCountedQty;
+        boolean recountDone  = _review.Decision == 'RECOUNT' && changedSince;
+        real    recountQty   = recountDone ? _trans.Counted : (_review.Recounted ? _review.RecountQty : 0);
+        boolean recounted    = recountDone || _review.Recounted == NoYes::Yes;
+
+        if (!HSMobileOpsCountSupervisorService::isCounted(_trans))
+        {
+            return ['NOT_COUNTED', recounted, recountQty];
+        }
+        if (_review.Decision == 'APPROVED')
+        {
+            return [changedSince ? 'CONFIRMATION_REQUIRED' : 'APPROVED', recounted, recountQty];
+        }
+        if (_review.Decision == 'RECOUNT')
+        {
+            return [recountDone ? 'CONFIRMATION_REQUIRED' : 'RECOUNT_REQUIRED', recounted, recountQty];
+        }
+        if (_review.Decision == 'INVESTIGATE')
+        {
+            return ['INVESTIGATE', recounted, recountQty];
+        }
+        if (_review.Decision == 'REJECTED')
+        {
+            return ['RECOUNT_REQUIRED', recounted, recountQty];
+        }
+        if (_trans.Qty == 0)
+        {
+            return ['MATCH', recounted, recountQty];
+        }
+        if (_tolerance.withinTolerance(_trans.Qty, _trans.InventOnHand))
+        {
+            return ['MINOR_VARIANCE', recounted, recountQty];
+        }
+        return ['RECOUNT_REQUIRED', recounted, recountQty];
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>isCounted</Name>
+				<Source><![CDATA[
+
+
+    /// <summary>
+    /// Whether a count has been entered: a counted quantity, or a variance (a counted zero).
+    /// TODO (X++ owner): an explicit counted flag from the attempt table.
+    /// </summary>
+    public static boolean isCounted(InventJournalTrans _trans)
+    {
+        return _trans.Counted != 0 || _trans.Qty != 0;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>reasonCodes</Name>
+				<Source><![CDATA[
+
+
+    /// <summary>
+    /// The company's standard counting reason codes (Inventory management > Setup > Counting
+    /// reason codes), for the review picker.
+    /// </summary>
+    private static List reasonCodes()
+    {
+        List                       codes = new List(Types::Class);
+        InventCountingReasonCode   reason;
+        HSMobileOpsCountReasonCode code;
+
+        while select ReasonCode, Description from reason order by ReasonCode
+        {
+            code = new HSMobileOpsCountReasonCode();
+            code.parmCode(reason.ReasonCode);
+            code.parmDescription(reason.Description);
+            codes.addEnd(code);
+        }
+        return codes;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>unapprovedLines</Name>
+				<Source><![CDATA[
+
+
+    /// <summary>
+    /// How many counted lines still need a decision before the journal may post: anything that
+    /// is not MATCH, MINOR_VARIANCE or APPROVED.
+    /// </summary>
+    private static int unapprovedLines(InventJournalId _journalId)
+    {
+        InventJournalTrans        inventJournalTrans;
+        HSMobileOpsCountTolerance tolerance = HSMobileOpsCountTolerance::find();
+        str                       status;
+        int                       pending;
+
+        while select inventJournalTrans
+            where inventJournalTrans.JournalId == _journalId
+        {
+            status = conPeek(HSMobileOpsCountSupervisorService::lineState(inventJournalTrans,
+                HSMobileOpsCountLineReview::find(_journalId, inventJournalTrans.LineNum), tolerance), 1);
+            if (!(status == 'NOT_COUNTED' || status == 'MATCH' || status == 'MINOR_VARIANCE' || status == 'APPROVED'))
+            {
+                pending++;
+            }
+        }
+        return pending;
     }
 ]]></Source>
 			</Method>

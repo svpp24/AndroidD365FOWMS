@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsCountReasonCode</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// One standard D365 counting reason code (InventCountingReasonCode) for the supervisor picker.
+/// </summary>
+[DataContractAttribute]
+class HSMobileOpsCountReasonCode
+{
+    str code;
+    str description;
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmCode</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Code')]
+    public str parmCode(str _value = code)
+    {
+        code = _value;
+        return code;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmDescription</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Description')]
+    public str parmDescription(str _value = description)
+    {
+        description = _value;
+        return description;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

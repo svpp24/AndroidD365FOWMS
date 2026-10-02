@@ -40,6 +40,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.d365fo.mobileops.domain.counting.supervisor.CountReasonCode
+import com.d365fo.mobileops.domain.counting.supervisor.CountStatus
+import com.d365fo.mobileops.domain.counting.supervisor.ReviewAction
 import com.d365fo.mobileops.domain.counting.supervisor.VarianceLine
 import com.d365fo.mobileops.presentation.common.components.AppCard as Card
 import com.d365fo.mobileops.presentation.common.components.AppTopBar as TopAppBar
@@ -53,8 +56,9 @@ import com.d365fo.mobileops.presentation.common.theme.WarehouseStatusColors
 import java.math.BigDecimal
 
 /**
- * Supervisor variance review: counted vs system quantity and value per line, from D365FO, with
- * filters (over tolerance, ABC class, counter) and approve / reject / request recount / post.
+ * Supervisor variance review: expected, initial, recount and counted quantity, value and status per
+ * line, from D365FO, with filters (status, ABC class, counter) and approve / recount / investigate /
+ * reject with a reason code and comment, then post.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -85,11 +89,13 @@ fun SupervisorVarianceScreen(
             dismissButton = { CancelOutlinedButton(onClick = viewModel::cancelPost) { Text("Cancel") } },
         )
     }
-    if (state.recountDialog) {
-        RecountDialog(
-            lines = state.selected.size,
-            onConfirm = viewModel::requestRecount,
-            onDismiss = viewModel::cancelRecount,
+    state.decision?.let { action ->
+        DecisionDialog(
+            action = action,
+            lines = state.selectedLines,
+            reasonCodes = state.variance?.reasonCodes.orEmpty(),
+            onConfirm = viewModel::confirmDecision,
+            onDismiss = viewModel::cancelDecision,
         )
     }
 
@@ -132,10 +138,13 @@ private fun VarianceContent(state: SupervisorVarianceState, viewModel: Superviso
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             Text(
-                text = "${all.count { it.counted }} of ${all.size} lines counted · ${state.overToleranceCount} over tolerance",
+                text = "${all.count { it.counted }} of ${all.size} lines counted · ${state.overToleranceCount} need a decision",
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.SemiBold,
             )
+            state.variance?.toleranceText?.let {
+                Text("Tolerance: $it", style = MaterialTheme.typography.bodySmall, color = WarehouseStatusColors.text3)
+            }
             if (state.posted) {
                 Text("Posted in D365FO.", color = WarehouseStatusColors.green, style = MaterialTheme.typography.bodyMedium)
             }
@@ -146,8 +155,15 @@ private fun VarianceContent(state: SupervisorVarianceState, viewModel: Superviso
                 FilterChip(
                     selected = state.filter.overToleranceOnly,
                     onClick = { viewModel.setFilter(state.filter.copy(overToleranceOnly = !state.filter.overToleranceOnly)) },
-                    label = { Text("Over tolerance") },
+                    label = { Text("Needs decision") },
                 )
+                state.statusCounts.forEach { (status, count) ->
+                    FilterChip(
+                        selected = state.filter.status == status,
+                        onClick = { viewModel.setFilter(state.filter.copy(status = status.takeIf { state.filter.status != it })) },
+                        label = { Text("${status.label} $count") },
+                    )
+                }
                 state.abcClasses.forEach { abc ->
                     FilterChip(
                         selected = state.filter.abcClass == abc,
@@ -194,10 +210,14 @@ private fun VarianceContent(state: SupervisorVarianceState, viewModel: Superviso
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             val canAct = state.selected.isNotEmpty() && !state.busy && !state.posted
+            val buttonModifier = Modifier.heightIn(min = WarehouseDimens.MinTouchTarget)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = viewModel::approve, enabled = canAct, modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget)) { Text("Approve") }
-                OutlinedButton(onClick = viewModel::reject, enabled = canAct, modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget)) { Text("Reject") }
-                OutlinedButton(onClick = viewModel::openRecount, enabled = canAct, modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget)) { Text("Recount") }
+                OutlinedButton(onClick = { viewModel.openDecision(ReviewAction.APPROVE) }, enabled = canAct, modifier = buttonModifier.weight(1f)) { Text("Approve") }
+                OutlinedButton(onClick = { viewModel.openDecision(ReviewAction.RECOUNT) }, enabled = canAct, modifier = buttonModifier.weight(1f)) { Text("Recount") }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = { viewModel.openDecision(ReviewAction.INVESTIGATE) }, enabled = canAct, modifier = buttonModifier.weight(1f)) { Text("Investigate") }
+                OutlinedButton(onClick = { viewModel.openDecision(ReviewAction.REJECT) }, enabled = canAct, modifier = buttonModifier.weight(1f)) { Text("Reject") }
             }
             Button(
                 onClick = viewModel::askPost,
@@ -223,19 +243,28 @@ private fun VarianceRow(line: VarianceLine, currency: String, selected: Boolean,
                         line.serialId?.let { "Serial $it" },
                         line.abcClass?.let { "Class $it" },
                         line.countedBy?.let { "by $it" },
-                        line.reviewStatus.takeIf { it != "PENDING" }?.lowercase(),
                     ).joinToString(" · "),
                     style = MaterialTheme.typography.bodySmall,
                     color = WarehouseStatusColors.text3,
                 )
                 Text(
-                    text = if (line.counted) {
-                        "Counted ${plain(line.countedQty)} · System ${plain(line.systemQty)}"
-                    } else {
-                        "Not counted · System ${plain(line.systemQty)}"
+                    text = when {
+                        !line.counted -> "Not counted · Expected ${plain(line.systemQty)}"
+                        line.recounted -> "Expected ${plain(line.systemQty)} · Initial ${plain(line.initialQty)} · " +
+                            "Recount ${plain(line.recountQty)}"
+                        else -> "Expected ${plain(line.systemQty)} · Counted ${plain(line.countedQty)}"
                     },
                     style = MaterialTheme.typography.bodyMedium,
                 )
+                val notes = listOfNotNull(
+                    line.reasonCode?.let { "Reason $it" },
+                    line.comment?.let { "\u201C$it\u201D" },
+                    line.reviewedBy?.let { "by $it" },
+                ).joinToString(" · ")
+                if (notes.isNotEmpty()) {
+                    Text(notes, style = MaterialTheme.typography.bodySmall, color = WarehouseStatusColors.text3)
+                }
+                StatusLabel(line.status)
             }
             Column(horizontalAlignment = Alignment.End) {
                 Text(
@@ -253,29 +282,82 @@ private fun VarianceRow(line: VarianceLine, currency: String, selected: Boolean,
                     style = MaterialTheme.typography.bodySmall,
                     color = WarehouseStatusColors.text3,
                 )
-                if (line.overTolerance) {
-                    Text("Over tolerance", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
-                }
             }
         }
     }
 }
 
 @Composable
-private fun RecountDialog(lines: Int, onConfirm: (String, String) -> Unit, onDismiss: () -> Unit) {
+private fun StatusLabel(status: CountStatus) {
+    val color = when (status) {
+        CountStatus.MATCH, CountStatus.APPROVED, CountStatus.CLOSED -> WarehouseStatusColors.green
+        CountStatus.MINOR_VARIANCE -> WarehouseStatusColors.amber
+        CountStatus.RECOUNT_REQUIRED, CountStatus.CONFIRMATION_REQUIRED, CountStatus.INVESTIGATE ->
+            MaterialTheme.colorScheme.error
+        CountStatus.NOT_COUNTED, CountStatus.UNKNOWN -> WarehouseStatusColors.text3
+    }
+    Text(status.label, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold, color = color)
+}
+
+/**
+ * One dialog for every decision: a standard D365 counting reason code (optional), a comment,
+ * and for a recount who should do it. The reason code is written to the journal line in D365FO,
+ * so it posts with the count.
+ */
+@Composable
+private fun DecisionDialog(
+    action: ReviewAction,
+    lines: List<VarianceLine>,
+    reasonCodes: List<CountReasonCode>,
+    onConfirm: (String?, String, String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val common = lines.mapNotNull { it.reasonCode }.distinct().singleOrNull()
+    var reason by remember { mutableStateOf(common) }
+    var comment by remember { mutableStateOf(lines.mapNotNull { it.comment }.distinct().singleOrNull().orEmpty()) }
     var assignTo by remember { mutableStateOf("") }
-    var note by remember { mutableStateOf("") }
+    val count = lines.size
+    val (title, verb) = when (action) {
+        ReviewAction.APPROVE -> "Approve count" to "Approve"
+        ReviewAction.RECOUNT -> "Request recount" to "Request recount"
+        ReviewAction.INVESTIGATE -> "Investigate variance" to "Mark for investigation"
+        ReviewAction.REJECT -> "Reject count" to "Reject"
+    }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Request recount") },
+        title = { Text(title) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("$lines line${if (lines == 1) "" else "s"} will be counted again, blind. D365FO makes sure it isn't the previous counter.")
-                OutlinedTextField(assignTo, { assignTo = it.trim() }, label = { Text("Assign to (optional user name)") }, singleLine = true)
-                OutlinedTextField(note, { note = it }, label = { Text("Note (optional)") })
+                Text(
+                    when (action) {
+                        ReviewAction.APPROVE -> "$count line${if (count == 1) "" else "s"} will post with the counted quantity."
+                        ReviewAction.RECOUNT -> "$count line${if (count == 1) "" else "s"} will be counted again, blind."
+                        ReviewAction.INVESTIGATE -> "$count line${if (count == 1) "" else "s"} will be held - the journal can't post until they're decided."
+                        ReviewAction.REJECT -> "$count line${if (count == 1) "" else "s"} will need a recount before posting."
+                    },
+                )
+                if (reasonCodes.isNotEmpty()) {
+                    Text("Reason", style = MaterialTheme.typography.labelLarge)
+                    Row(
+                        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        reasonCodes.forEach { code ->
+                            FilterChip(
+                                selected = reason == code.code,
+                                onClick = { reason = code.code.takeIf { reason != it } },
+                                label = { Text(if (code.description != code.code) "${code.code} \u00B7 ${code.description}" else code.code) },
+                            )
+                        }
+                    }
+                }
+                OutlinedTextField(comment, { comment = it }, label = { Text("Comment (optional)") })
+                if (action == ReviewAction.RECOUNT) {
+                    OutlinedTextField(assignTo, { assignTo = it.trim() }, label = { Text("Assign to (optional user name)") }, singleLine = true)
+                }
             }
         },
-        confirmButton = { ConfirmButton(onClick = { onConfirm(assignTo, note) }) { Text("Request recount") } },
+        confirmButton = { ConfirmButton(onClick = { onConfirm(reason, comment, assignTo) }) { Text(verb) } },
         dismissButton = { CancelOutlinedButton(onClick = onDismiss) { Text("Cancel") } },
     )
 }

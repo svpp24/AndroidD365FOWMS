@@ -44,7 +44,7 @@ class AccuracyReportViewModelTest {
         )
 
         override suspend fun variance(journalId: String): NetworkResult<JournalVariance> = error("unused")
-        override suspend fun review(journalId: String, lineNumbers: List<Double>, action: ReviewAction, assignTo: String?, note: String?): SupervisorResult = error("unused")
+        override suspend fun review(journalId: String, lineNumbers: List<Double>, action: ReviewAction, assignTo: String?, note: String?, reasonCode: String?): SupervisorResult = error("unused")
         override suspend fun post(journalId: String): SupervisorResult = error("unused")
         override suspend fun accuracy(warehouseId: String, from: String, to: String, groupBy: AccuracyGroupBy): NetworkResult<AccuracyReport> {
             calls += listOf(warehouseId, from, to, groupBy)

@@ -33,6 +33,18 @@ data class VarianceLineDto(
     @SerialName("AbcClass") val abcClass: String? = null,
     @SerialName("CountedBy") val countedBy: String? = null,
     @SerialName("ReviewStatus") val reviewStatus: String? = null,
+    @SerialName("InitialQty") val initialQty: Double? = null,
+    @SerialName("RecountQty") val recountQty: Double = 0.0,
+    @SerialName("Recounted") val recounted: Boolean = false,
+    @SerialName("ReasonCode") val reasonCode: String? = null,
+    @SerialName("Comment") val comment: String? = null,
+    @SerialName("ReviewedBy") val reviewedBy: String? = null,
+)
+
+@Serializable
+data class CountReasonCodeDto(
+    @SerialName("Code") val code: String = "",
+    @SerialName("Description") val description: String? = null,
 )
 
 @Serializable
@@ -41,6 +53,8 @@ data class VarianceServiceResponse(
     @SerialName("ErrorCode") val errorCode: String? = null,
     @SerialName("CurrencyCode") val currencyCode: String? = null,
     @SerialName("Lines") val lines: List<VarianceLineDto> = emptyList(),
+    @SerialName("ToleranceText") val toleranceText: String? = null,
+    @SerialName("ReasonCodes") val reasonCodes: List<CountReasonCodeDto> = emptyList(),
 )
 
 @Serializable
@@ -54,6 +68,7 @@ data class ReviewRequestBody(
     @SerialName("Action") val action: String,
     @SerialName("AssignTo") val assignTo: String? = null,
     @SerialName("Note") val note: String? = null,
+    @SerialName("ReasonCode") val reasonCode: String? = null,
     @SerialName("LineNumbers") val lineNumbers: List<Double>,
 )
 

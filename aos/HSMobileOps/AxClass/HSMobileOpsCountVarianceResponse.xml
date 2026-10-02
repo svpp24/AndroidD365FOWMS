@@ -14,6 +14,8 @@ class HSMobileOpsCountVarianceResponse
     str     currencyCode;
     List    lines;
 
+    str     toleranceText;
+    List    reasonCodes;
 }
 ]]></Declaration>
 		<Methods>
@@ -63,6 +65,31 @@ class HSMobileOpsCountVarianceResponse
     {
         lines = _value;
         return lines;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmToleranceText</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ToleranceText')]
+    public str parmToleranceText(str _value = toleranceText)
+    {
+        toleranceText = _value;
+        return toleranceText;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmReasonCodes</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ReasonCodes'),
+     DataCollectionAttribute(Types::Class, classStr(HSMobileOpsCountReasonCode))]
+    public List parmReasonCodes(List _value = reasonCodes)
+    {
+        reasonCodes = _value;
+        return reasonCodes;
     }
 ]]></Source>
 			</Method>

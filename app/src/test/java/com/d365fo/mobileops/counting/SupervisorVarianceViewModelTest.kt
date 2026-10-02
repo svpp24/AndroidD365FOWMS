@@ -39,7 +39,7 @@ class SupervisorVarianceViewModelTest {
         val reviews = mutableListOf<Triple<List<Double>, ReviewAction, String?>>()
 
         override suspend fun variance(journalId: String) = variance
-        override suspend fun review(journalId: String, lineNumbers: List<Double>, action: ReviewAction, assignTo: String?, note: String?): SupervisorResult {
+        override suspend fun review(journalId: String, lineNumbers: List<Double>, action: ReviewAction, assignTo: String?, note: String?, reasonCode: String?): SupervisorResult {
             reviews += Triple(lineNumbers, action, assignTo)
             return reviewAnswer
         }
@@ -119,7 +119,7 @@ class SupervisorVarianceViewModelTest {
         repository.postAnswer = SupervisorResult.Refused(SupervisorRefusal.LINES_NEED_APPROVAL, null)
         viewModel.post()
 
-        assertThat(viewModel.state.value.message).contains("need approval")
+        assertThat(viewModel.state.value.message).contains("need a decision")
     }
 
     @Test

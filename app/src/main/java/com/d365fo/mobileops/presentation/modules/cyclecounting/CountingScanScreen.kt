@@ -21,6 +21,8 @@ import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -33,7 +35,9 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.graphics.Color
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -191,6 +195,7 @@ fun CountingScanScreen(
                         state = state,
                         onEmpty = viewModel::requestLocationEmpty,
                         onChange = viewModel::clearLocation,
+                        onPick = viewModel::pickLocation,
                     )
                 }
 
@@ -509,14 +514,27 @@ private fun whereLine(line: CountLine): String? =
 
 /** Location-first: the location being counted, or a prompt to scan one. */
 @Composable
-private fun LocationBar(state: CountingScanState, onEmpty: () -> Unit, onChange: () -> Unit) {
+private fun LocationBar(
+    state: CountingScanState,
+    onEmpty: () -> Unit,
+    onChange: () -> Unit,
+    onPick: (String) -> Unit,
+) {
     val location = state.selectedLocation
     if (location == null) {
-        Text(
-            text = "Scan a location to start counting it.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = WarehouseStatusColors.text3,
-        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = if (state.locations.isEmpty()) "Scan a location to start counting it." else "Scan or choose a location.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = WarehouseStatusColors.text3,
+                modifier = Modifier.weight(1f),
+            )
+            if (state.locations.isNotEmpty()) LocationPicker(state.locations, onPick)
+        }
         return
     }
     Card(modifier = Modifier.fillMaxWidth()) {
@@ -547,6 +565,32 @@ private fun LocationBar(state: CountingScanState, onEmpty: () -> Unit, onChange:
                     onClick = onChange,
                     modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget),
                 ) { Text("Other location") }
+            }
+        }
+    }
+}
+
+/** The journal's locations as a dropdown - each with how many of its lines are counted. */
+@Composable
+private fun LocationPicker(locations: List<LocationChoice>, onPick: (String) -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    Box {
+        TextButton(onClick = { open = true }) { Text("Choose location") }
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            locations.forEach { choice ->
+                DropdownMenuItem(
+                    text = {
+                        Text(
+                            "${choice.locationId}   ${choice.counted}/${choice.total}",
+                            fontFamily = FontFamily.Monospace,
+                            color = if (choice.counted == choice.total) WarehouseStatusColors.green else Color.Unspecified,
+                        )
+                    },
+                    onClick = {
+                        open = false
+                        onPick(choice.locationId)
+                    },
+                )
             }
         }
     }

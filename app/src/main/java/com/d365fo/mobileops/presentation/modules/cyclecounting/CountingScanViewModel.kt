@@ -37,6 +37,9 @@ data class ScanMessage(val text: String, val isError: Boolean, val unexpectedIte
 /** The quantity popup: which line, and what to start the box at. */
 data class CountPrompt(val line: CountLine, val initial: String)
 
+/** One location on the journal, with how many of its lines have a count. */
+data class LocationChoice(val locationId: String, val counted: Int, val total: Int)
+
 /** "Location is empty?" - which location, how many lines, and how many already have a count. */
 data class EmptyLocationPrompt(val locationId: String, val lines: Int, val alreadyCounted: Int)
 
@@ -157,6 +160,10 @@ class CountingScanViewModel @Inject constructor(
                 }
             },
             locationTypes = b.lines.map { it.locationType }.distinct().sorted().takeIf { it.size > 1 }.orEmpty(),
+            locations = b.lines.filter { !it.locationId.isNullOrBlank() }
+                .groupBy { it.locationId!!.uppercase() }
+                .map { (_, at) -> LocationChoice(at.first().locationId!!, at.count { it.isCounted }, at.size) }
+                .sortedBy { it.locationId },
             typeFilter = o.ui.typeFilter,
             verifyLine = o.ui.verifyLineId?.let { byId[it] },
         )
@@ -285,6 +292,11 @@ class CountingScanViewModel @Inject constructor(
     fun clearLocation() {
         _ui.update { it.copy(selectedLocation = null) }
         _refocus.update { it + 1 }
+    }
+
+    /** Location-first: the location picked from the list instead of scanned. */
+    fun pickLocation(location: String) {
+        if (state.value.byLocation) selectLocation(location)
     }
 
     private fun selectLocation(location: String) {
@@ -478,6 +490,8 @@ data class CountingScanState(
     val freezeBanner: String? = null,
     /** Location types on this journal, when there is more than one - for the filter chips. */
     val locationTypes: List<String> = emptyList(),
+    /** The journal's locations, for the location-first picker. */
+    val locations: List<LocationChoice> = emptyList(),
     val typeFilter: String? = null,
     /** Non-null while "Confirm present" is open for a verify-only line. */
     val verifyLine: CountLine? = null,

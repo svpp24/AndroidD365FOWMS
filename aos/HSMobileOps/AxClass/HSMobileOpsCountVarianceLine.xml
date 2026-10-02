@@ -26,6 +26,12 @@ class HSMobileOpsCountVarianceLine
     str     reviewStatus;
     boolean counted;
 
+    real    initialQty;
+    real    recountQty;
+    boolean recounted;
+    str     reasonCode;
+    str     comment;
+    str     reviewedBy;
 }
 ]]></Declaration>
 		<Methods>
@@ -206,6 +212,78 @@ class HSMobileOpsCountVarianceLine
     {
         counted = _value;
         return counted;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmInitialQty</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('InitialQty')]
+    public real parmInitialQty(real _value = initialQty)
+    {
+        initialQty = _value;
+        return initialQty;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmRecountQty</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('RecountQty')]
+    public real parmRecountQty(real _value = recountQty)
+    {
+        recountQty = _value;
+        return recountQty;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmRecounted</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Recounted')]
+    public boolean parmRecounted(boolean _value = recounted)
+    {
+        recounted = _value;
+        return recounted;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmReasonCode</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ReasonCode')]
+    public str parmReasonCode(str _value = reasonCode)
+    {
+        reasonCode = _value;
+        return reasonCode;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmComment</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Comment')]
+    public str parmComment(str _value = comment)
+    {
+        comment = _value;
+        return comment;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmReviewedBy</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ReviewedBy')]
+    public str parmReviewedBy(str _value = reviewedBy)
+    {
+        reviewedBy = _value;
+        return reviewedBy;
     }
 ]]></Source>
 			</Method>
