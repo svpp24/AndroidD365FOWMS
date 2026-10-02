@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxService xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsDmfSvc</Name>
+	<Class>HSMobileOpsDmfService</Class>
+	<ExternalName>DmfService</ExternalName>
+	<Namespace>http://schemas.hs.com/mobileops</Namespace>
+	<ServiceOperations>
+		<AxServiceOperation>
+			<Name>exportToPackage</Name>
+			<Method>exportToPackage</Method>
+		</AxServiceOperation>
+		<AxServiceOperation>
+			<Name>getExecutionSummaryStatus</Name>
+			<Method>getExecutionSummaryStatus</Method>
+		</AxServiceOperation>
+		<AxServiceOperation>
+			<Name>getExportedPackageUrl</Name>
+			<Method>getExportedPackageUrl</Method>
+		</AxServiceOperation>
+		<AxServiceOperation>
+			<Name>getExecutionErrors</Name>
+			<Method>getExecutionErrors</Method>
+		</AxServiceOperation>
+		<AxServiceOperation>
+			<Name>getAzureWriteUrl</Name>
+			<Method>getAzureWriteUrl</Method>
+		</AxServiceOperation>
+	</ServiceOperations>
+</AxService>

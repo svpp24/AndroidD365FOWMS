@@ -96,3 +96,26 @@ object DmfExecutionStatus {
     const val EXECUTING = "Executing"
     const val UNKNOWN = "Unknown"
 }
+
+// -- HSMobileOpsDmfSvc (X++ wrappers over the same DMF actions) ---------------------------------
+
+@Serializable
+data class DmfServiceRequest(
+    @SerialName("_request") val request: DmfRequestBody,
+)
+
+/** Each operation reads only the members it needs; the rest stay blank. */
+@Serializable
+data class DmfRequestBody(
+    @SerialName("DefinitionGroupId") val definitionGroupId: String = "",
+    @SerialName("PackageName") val packageName: String = "",
+    @SerialName("ExecutionId") val executionId: String = "",
+    @SerialName("ReExecute") val reExecute: Boolean = false,
+    @SerialName("LegalEntityId") val legalEntityId: String = "",
+    @SerialName("UniqueFileName") val uniqueFileName: String = "",
+)
+
+@Serializable
+data class DmfServiceResponse(
+    @SerialName("Value") val value: String? = null,
+)

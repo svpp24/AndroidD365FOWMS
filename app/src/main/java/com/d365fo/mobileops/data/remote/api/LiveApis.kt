@@ -179,6 +179,19 @@ class LiveMobileOpsServiceApi @Inject constructor(
     override suspend fun registerDevice(
         body: com.d365fo.mobileops.data.remote.dto.RegisterDeviceServiceRequest,
     ) = delegate.get().registerDevice(body)
+
+    override suspend fun dmfExportToPackage(body: com.d365fo.mobileops.data.remote.dto.DmfServiceRequest) = delegate.get().dmfExportToPackage(body)
+
+    override suspend fun dmfGetExecutionSummaryStatus(body: com.d365fo.mobileops.data.remote.dto.DmfServiceRequest, tag: com.d365fo.mobileops.data.remote.interceptor.IdempotentRead) =
+        delegate.get().dmfGetExecutionSummaryStatus(body, tag)
+
+    override suspend fun dmfGetExportedPackageUrl(body: com.d365fo.mobileops.data.remote.dto.DmfServiceRequest, tag: com.d365fo.mobileops.data.remote.interceptor.IdempotentRead) =
+        delegate.get().dmfGetExportedPackageUrl(body, tag)
+
+    override suspend fun dmfGetExecutionErrors(body: com.d365fo.mobileops.data.remote.dto.DmfServiceRequest, tag: com.d365fo.mobileops.data.remote.interceptor.IdempotentRead) =
+        delegate.get().dmfGetExecutionErrors(body, tag)
+
+    override suspend fun dmfGetAzureWriteUrl(body: com.d365fo.mobileops.data.remote.dto.DmfServiceRequest) = delegate.get().dmfGetAzureWriteUrl(body)
 }
 
 @Singleton

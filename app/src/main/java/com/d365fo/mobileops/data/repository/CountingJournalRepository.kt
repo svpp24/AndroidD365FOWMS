@@ -20,7 +20,7 @@ import com.d365fo.mobileops.data.local.entity.JournalStatus
 import com.d365fo.mobileops.data.local.entity.JournalType
 import com.d365fo.mobileops.data.local.entity.SyncState
 import com.d365fo.mobileops.data.remote.api.BlobTransferService
-import com.d365fo.mobileops.data.remote.api.D365ODataApi
+import com.d365fo.mobileops.data.remote.api.DmfGateway
 import com.d365fo.mobileops.data.remote.api.MobileOpsServiceApi
 import com.d365fo.mobileops.data.remote.dto.AzureWritableBlob
 import com.d365fo.mobileops.data.remote.dto.DmfExecutionStatus
@@ -90,7 +90,7 @@ import javax.inject.Singleton
 @Singleton
 class CountingJournalRepository @Inject constructor(
     private val service: MobileOpsServiceApi,
-    private val odata: D365ODataApi,
+    private val dmf: DmfGateway,
     private val blob: BlobTransferService,
     private val errorMapper: D365ErrorMapper,
     private val companyProvider: CompanyProvider,
@@ -226,7 +226,7 @@ class CountingJournalRepository @Inject constructor(
 
         val executionId = "$projectName-${EXECUTION_STAMP.format(Date())}-${UUID.randomUUID()}"
         val started = errorMapper.safeCall {
-            odata.exportToPackage(
+            dmf.exportToPackage(
                 ExportToPackageRequest(
                     definitionGroupId = projectName,
                     packageName = executionId,
@@ -262,7 +262,7 @@ class CountingJournalRepository @Inject constructor(
         }
 
     private suspend fun fetchExportedPackageUrl(executionId: String): NetworkResult<ExportJobStatus> {
-        val result = errorMapper.safeCall { odata.getExportedPackageUrl(ExecutionIdRequest(executionId)) }
+        val result = errorMapper.safeCall { dmf.getExportedPackageUrl(ExecutionIdRequest(executionId)) }
         return when (result) {
             is NetworkResult.Error -> result
             NetworkResult.Loading -> NetworkResult.Error(AppFailure.Fatal("unexpected Loading"))
@@ -513,7 +513,7 @@ class CountingJournalRepository @Inject constructor(
 
         val uniqueName = "$journalId-${UUID.randomUUID()}.zip"
         val writeUrlResult = errorMapper.safeCall {
-            odata.getAzureWriteUrl(GetAzureWriteUrlRequest(uniqueName))
+            dmf.getAzureWriteUrl(GetAzureWriteUrlRequest(uniqueName))
         }
         val blobUrl = when (writeUrlResult) {
             is NetworkResult.Error -> return@withContext writeUrlResult
@@ -612,7 +612,7 @@ class CountingJournalRepository @Inject constructor(
 
     private suspend fun checkExecutionStatus(executionId: String): NetworkResult<DmfStatus> {
         val result = errorMapper.safeCall {
-            odata.getExecutionSummaryStatus(ExecutionIdRequest(executionId))
+            dmf.getExecutionSummaryStatus(ExecutionIdRequest(executionId))
         }
         return when (result) {
             is NetworkResult.Error -> result
@@ -649,7 +649,7 @@ class CountingJournalRepository @Inject constructor(
      * `<journal> <line number>`; the line number is its last token.
      */
     private suspend fun fetchExecutionErrorSummary(executionId: String): String? {
-        val errors = errorMapper.safeCall { odata.getExecutionErrors(ExecutionIdRequest(executionId)) }
+        val errors = errorMapper.safeCall { dmf.getExecutionErrors(ExecutionIdRequest(executionId)) }
         val raw = (errors as? NetworkResult.Success)?.data?.stringValue()?.takeIf { it.isNotBlank() }
             ?: return null
 

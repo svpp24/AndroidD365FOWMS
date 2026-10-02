@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsDmfResponse</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// HSMobileOpsDmfSvc response. Value carries the same text the matching DataManagementDefinitionGroupEntity action returns.
+/// </summary>
+[DataContractAttribute]
+class HSMobileOpsDmfResponse
+{
+    str        value;
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmValue</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Value')]
+    public str parmValue(str _value = value)
+    {
+        value = _value;
+        return value;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

@@ -5,7 +5,7 @@ import com.d365fo.mobileops.data.local.entity.BarcodeEntity
 import com.d365fo.mobileops.data.local.entity.ItemEntity
 import com.d365fo.mobileops.data.local.entity.TrackingRequirement
 import com.d365fo.mobileops.data.remote.api.BlobTransferService
-import com.d365fo.mobileops.data.remote.api.D365ODataApi
+import com.d365fo.mobileops.data.remote.api.DmfGateway
 import com.d365fo.mobileops.data.remote.api.MobileOpsServiceApi
 import com.d365fo.mobileops.data.remote.dto.DmfExecutionStatus
 import com.d365fo.mobileops.data.remote.dto.ExecutionIdRequest
@@ -53,7 +53,7 @@ import javax.inject.Singleton
 @Singleton
 class SkuSyncRepository @Inject constructor(
     private val service: MobileOpsServiceApi,
-    private val odata: D365ODataApi,
+    private val dmf: DmfGateway,
     private val blob: BlobTransferService,
     private val errorMapper: D365ErrorMapper,
     private val companyProvider: CompanyProvider,
@@ -127,7 +127,7 @@ class SkuSyncRepository @Inject constructor(
     private suspend fun exportAndDownload(definitionGroupId: String): NetworkResult<ByteArray> {
         val executionId = "$definitionGroupId-${EXECUTION_STAMP.format(Date())}-${UUID.randomUUID()}"
         val started = errorMapper.safeCall {
-            odata.exportToPackage(
+            dmf.exportToPackage(
                 ExportToPackageRequest(
                     definitionGroupId = definitionGroupId,
                     packageName = executionId,
@@ -146,14 +146,14 @@ class SkuSyncRepository @Inject constructor(
         repeat(MAX_POLL_ATTEMPTS) {
             delay(POLL_INTERVAL_MS)
 
-            val status = errorMapper.safeCall { odata.getExecutionSummaryStatus(ExecutionIdRequest(executionId)) }
+            val status = errorMapper.safeCall { dmf.getExecutionSummaryStatus(ExecutionIdRequest(executionId)) }
             when (status) {
                 is NetworkResult.Error -> return status
                 NetworkResult.Loading -> return NetworkResult.Error(AppFailure.Fatal("unexpected Loading"))
                 is NetworkResult.Success -> when (status.data.stringValue()) {
                     DmfExecutionStatus.SUCCEEDED, DmfExecutionStatus.PARTIALLY_SUCCEEDED -> {
                         val urlResult =
-                            errorMapper.safeCall { odata.getExportedPackageUrl(ExecutionIdRequest(executionId)) }
+                            errorMapper.safeCall { dmf.getExportedPackageUrl(ExecutionIdRequest(executionId)) }
                         val url = when (urlResult) {
                             is NetworkResult.Error -> return urlResult
                             NetworkResult.Loading ->

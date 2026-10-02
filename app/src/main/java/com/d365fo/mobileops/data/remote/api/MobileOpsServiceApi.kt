@@ -262,4 +262,34 @@ interface MobileOpsServiceApi {
 
     @POST("HSMobileOpsServiceGroup/HSMobileOpsLicenseSvc/registerDevice")
     suspend fun registerDevice(@Body body: RegisterDeviceServiceRequest): Response<RegisterDeviceServiceResponse>
+
+    // -- DMF (HSMobileOpsDmfSvc) ---------------------------------------------------------------
+    //
+    // X++ pass-throughs over DataManagementDefinitionGroupEntity's static actions, used instead
+    // of the /data/ OData actions. See DmfGateway. Status/URL/error reads are IdempotentRead;
+    // exportToPackage and getAzureWriteUrl start work or mint a blob, so they are not.
+
+    @POST("HSMobileOpsServiceGroup/HSMobileOpsDmfSvc/exportToPackage")
+    suspend fun dmfExportToPackage(@Body body: com.d365fo.mobileops.data.remote.dto.DmfServiceRequest): Response<com.d365fo.mobileops.data.remote.dto.DmfServiceResponse>
+
+    @POST("HSMobileOpsServiceGroup/HSMobileOpsDmfSvc/getExecutionSummaryStatus")
+    suspend fun dmfGetExecutionSummaryStatus(
+        @Body body: com.d365fo.mobileops.data.remote.dto.DmfServiceRequest,
+        @Tag tag: IdempotentRead = IdempotentRead,
+    ): Response<com.d365fo.mobileops.data.remote.dto.DmfServiceResponse>
+
+    @POST("HSMobileOpsServiceGroup/HSMobileOpsDmfSvc/getExportedPackageUrl")
+    suspend fun dmfGetExportedPackageUrl(
+        @Body body: com.d365fo.mobileops.data.remote.dto.DmfServiceRequest,
+        @Tag tag: IdempotentRead = IdempotentRead,
+    ): Response<com.d365fo.mobileops.data.remote.dto.DmfServiceResponse>
+
+    @POST("HSMobileOpsServiceGroup/HSMobileOpsDmfSvc/getExecutionErrors")
+    suspend fun dmfGetExecutionErrors(
+        @Body body: com.d365fo.mobileops.data.remote.dto.DmfServiceRequest,
+        @Tag tag: IdempotentRead = IdempotentRead,
+    ): Response<com.d365fo.mobileops.data.remote.dto.DmfServiceResponse>
+
+    @POST("HSMobileOpsServiceGroup/HSMobileOpsDmfSvc/getAzureWriteUrl")
+    suspend fun dmfGetAzureWriteUrl(@Body body: com.d365fo.mobileops.data.remote.dto.DmfServiceRequest): Response<com.d365fo.mobileops.data.remote.dto.DmfServiceResponse>
 }

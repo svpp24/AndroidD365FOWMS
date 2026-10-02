@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsDmfService</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Custom-service wrappers over DataManagementDefinitionGroupEntity's static DMF actions, so the
+/// app drives exports, status polls and upload URLs through HSMobileOpsServiceGroup instead of
+/// the /data/ OData endpoint. Each method is a straight pass-through: same inputs, same result.
+/// </summary>
+class HSMobileOpsDmfService
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>exportToPackage</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Wraps DataManagementDefinitionGroupEntity::ExportToPackage. Returns the execution id.
+    /// </summary>
+    public HSMobileOpsDmfResponse exportToPackage(HSMobileOpsDmfRequest _request)
+    {
+        HSMobileOpsDmfResponse response = new HSMobileOpsDmfResponse();
+        response.parmValue(DataManagementDefinitionGroupEntity::ExportToPackage(
+            _request.parmDefinitionGroupId(),
+            _request.parmPackageName(),
+            _request.parmExecutionId(),
+            _request.parmReExecute(),
+            _request.parmLegalEntityId()));
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>getExecutionSummaryStatus</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Returns the status symbol (Succeeded, Failed, Executing, ...).
+    /// </summary>
+    public HSMobileOpsDmfResponse getExecutionSummaryStatus(HSMobileOpsDmfRequest _request)
+    {
+        HSMobileOpsDmfResponse response = new HSMobileOpsDmfResponse();
+        DMFExecutionSummaryStatus status = DataManagementDefinitionGroupEntity::GetExecutionSummaryStatus(_request.parmExecutionId());
+        response.parmValue(enum2Symbol(enumNum(DMFExecutionSummaryStatus), status));
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>getExportedPackageUrl</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Returns the download URL of a finished export.
+    /// </summary>
+    public HSMobileOpsDmfResponse getExportedPackageUrl(HSMobileOpsDmfRequest _request)
+    {
+        HSMobileOpsDmfResponse response = new HSMobileOpsDmfResponse();
+        response.parmValue(DataManagementDefinitionGroupEntity::GetExportedPackageUrl(_request.parmExecutionId()));
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>getExecutionErrors</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Returns the execution errors as the entity reports them (JSON text).
+    /// </summary>
+    public HSMobileOpsDmfResponse getExecutionErrors(HSMobileOpsDmfRequest _request)
+    {
+        HSMobileOpsDmfResponse response = new HSMobileOpsDmfResponse();
+        response.parmValue(DataManagementDefinitionGroupEntity::GetExecutionErrors(_request.parmExecutionId()));
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>getAzureWriteUrl</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Returns the writable blob JSON ({BlobId, BlobUrl}) for an upload.
+    /// </summary>
+    public HSMobileOpsDmfResponse getAzureWriteUrl(HSMobileOpsDmfRequest _request)
+    {
+        HSMobileOpsDmfResponse response = new HSMobileOpsDmfResponse();
+        response.parmValue(DataManagementDefinitionGroupEntity::GetAzureWriteUrl(_request.parmUniqueFileName()));
+        return response;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

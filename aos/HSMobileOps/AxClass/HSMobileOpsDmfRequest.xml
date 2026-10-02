@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsDmfRequest</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// HSMobileOpsDmfSvc request. Each operation reads only the members it needs.
+/// </summary>
+[DataContractAttribute]
+class HSMobileOpsDmfRequest
+{
+    str        definitionGroupId;
+    str        packageName;
+    str        executionId;
+    boolean    reExecute;
+    str        legalEntityId;
+    str        uniqueFileName;
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmDefinitionGroupId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('DefinitionGroupId')]
+    public str parmDefinitionGroupId(str _value = definitionGroupId)
+    {
+        definitionGroupId = _value;
+        return definitionGroupId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmPackageName</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('PackageName')]
+    public str parmPackageName(str _value = packageName)
+    {
+        packageName = _value;
+        return packageName;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmExecutionId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ExecutionId')]
+    public str parmExecutionId(str _value = executionId)
+    {
+        executionId = _value;
+        return executionId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmReExecute</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ReExecute')]
+    public boolean parmReExecute(boolean _value = reExecute)
+    {
+        reExecute = _value;
+        return reExecute;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmLegalEntityId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('LegalEntityId')]
+    public str parmLegalEntityId(str _value = legalEntityId)
+    {
+        legalEntityId = _value;
+        return legalEntityId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmUniqueFileName</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('UniqueFileName')]
+    public str parmUniqueFileName(str _value = uniqueFileName)
+    {
+        uniqueFileName = _value;
+        return uniqueFileName;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

@@ -43,5 +43,9 @@
 			<Name>HSMobileOpsLicenseSvc</Name>
 			<Service>HSMobileOpsLicenseSvc</Service>
 		</AxServiceGroupService>
+		<AxServiceGroupService>
+			<Name>HSMobileOpsDmfSvc</Name>
+			<Service>HSMobileOpsDmfSvc</Service>
+		</AxServiceGroupService>
 	</Services>
 </AxServiceGroup>
