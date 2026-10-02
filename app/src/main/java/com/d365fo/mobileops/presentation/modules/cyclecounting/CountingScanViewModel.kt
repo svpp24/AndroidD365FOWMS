@@ -222,6 +222,12 @@ class CountingScanViewModel @Inject constructor(
             }
         }
 
+        // GS1 (GS1-128 / DataMatrix / QR): the GTIN finds the item, a batch or serial in the
+        // code narrows it to that line, and a count (30/37) is what this scan adds.
+        com.d365fo.mobileops.domain.model.Gs1Parser.parse(value)?.let { gs1 ->
+            return handleGs1(gs1, lines, current, typed)
+        }
+
         // Item number first: by far the common scan, and needs no network.
         var itemId = lines.firstOrNull { it.itemId.equals(value, ignoreCase = true) }?.itemId
         var perScan = BigDecimal.ONE
@@ -302,6 +308,37 @@ class CountingScanViewModel @Inject constructor(
             _message.value = ScanMessage("$what: $text counted. Tap the line to type a number.", isError = false, undoable = true)
             _refocus.update { it + 1 }
         }
+    }
+
+    private suspend fun handleGs1(
+        gs1: com.d365fo.mobileops.domain.model.Gs1Data,
+        lines: List<CountLine>,
+        current: CountingScanState,
+        typed: Boolean,
+    ) {
+        val resolved = gs1.gtinCandidates.firstNotNullOfOrNull { itemDao.resolveBarcode(it) }
+            ?: return miss("GTIN ${gs1.gtin} is not a barcode of any item", typed, unexpectedItemId = gs1.gtin)
+        if (current.locked) {
+            _message.value = ScanMessage("Counts have been submitted, so ${resolved.itemId} can't be changed.", isError = true)
+            scanFeedback.warning()
+            return
+        }
+        val location = current.selectedLocation
+        val matching = lines
+            .filter { it.itemId.equals(resolved.itemId, ignoreCase = true) }
+            .filter { location == null || it.locationId.equals(location, ignoreCase = true) }
+            .filter { it.variant.acceptsScanOf(resolved.variant) }
+            .filter { gs1.batch == null || it.batchId.isNullOrBlank() || it.batchId.equals(gs1.batch, ignoreCase = true) }
+            .filter { gs1.serial == null || it.serialId.isNullOrBlank() || it.serialId.equals(gs1.serial, ignoreCase = true) }
+            .sortedBy { it.lineNumber }
+        if (matching.isEmpty()) {
+            val what = listOfNotNull(resolved.itemId, gs1.batch?.let { "batch $it" }, gs1.serial?.let { "serial $it" }).joinToString(" ")
+            return miss("$what is not on this journal${location?.let { " at $it" }.orEmpty()}", typed, unexpectedItemId = resolved.itemId)
+        }
+        val perScan = gs1.quantity?.takeIf { it.signum() > 0 }
+            ?: resolved.quantityPerScan.toBigDecimalOrNull()?.takeIf { it.signum() > 0 }
+            ?: BigDecimal.ONE
+        routeToLine(matching, perScan, scanned = !typed)
     }
 
     /** Takes back the last scan-to-count addition - the line returns to its count before it. */

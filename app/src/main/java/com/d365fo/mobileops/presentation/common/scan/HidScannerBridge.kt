@@ -64,7 +64,8 @@ class HidScannerBridge @Inject constructor() {
 
             else -> {
                 val char = event.unicodeChar.toChar()
-                if (char.isLetterOrDigit() || char in ALLOWED_SYMBOLS) {
+                // GS (0x1D) is how a scanner sends GS1's FNC1 separator - keep it for Gs1Parser.
+                if (char.isLetterOrDigit() || char in ALLOWED_SYMBOLS || char == '\u001D') {
                     if (buffer.length < MAX_BARCODE_LENGTH) buffer.append(char)
                     true
                 } else {
@@ -146,7 +147,8 @@ class HidScannerBridge @Inject constructor() {
 
     private companion object {
         const val BUFFER_INITIAL_CAPACITY = 32
-        const val MAX_BARCODE_LENGTH = 64
+        /** GS1 DataMatrix element strings run well past 64 characters. */
+        const val MAX_BARCODE_LENGTH = 256
         /** Wedges type far faster than a human; 100 ms comfortably separates the two. */
         const val INTER_KEY_TIMEOUT_MS = 100L
         const val VIRTUAL_DEVICE_ID = -1
