@@ -101,3 +101,39 @@ fun HeroEnterBadge() {
         )
     }
 }
+
+/**
+ * A barcode symbol for fields that accept a scan - drawn here (vertical bars of varied width)
+ * because material-icons has no plain barcode glyph.
+ */
+val BarcodeGlyph: androidx.compose.ui.graphics.vector.ImageVector by lazy {
+    androidx.compose.ui.graphics.vector.ImageVector.Builder(
+        name = "Barcode",
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f,
+    ).apply {
+        // x, width of each bar; the bars run from y=5 to y=19.
+        listOf(3f to 1.5f, 5.5f to 1f, 7.5f to 2f, 10.5f to 1f, 12.5f to 1.5f, 15f to 2.5f, 18.5f to 1f, 20f to 1.5f)
+            .forEach { (x, w) ->
+                addPath(
+                    pathData = androidx.compose.ui.graphics.vector.PathParser().parsePathString(
+                        "M$x,5h${w}v14h-${w}z",
+                    ).toNodes(),
+                    fill = androidx.compose.ui.graphics.SolidColor(Color.Black),
+                )
+            }
+    }.build()
+}
+
+/** The leading barcode symbol on a scan field - tells the worker a scan goes here. */
+@Composable
+fun BarcodeFieldIcon() {
+    Icon(
+        BarcodeGlyph,
+        contentDescription = "Scan a barcode",
+        tint = WarehouseStatusColors.accent,
+        modifier = Modifier.size(26.dp),
+    )
+}

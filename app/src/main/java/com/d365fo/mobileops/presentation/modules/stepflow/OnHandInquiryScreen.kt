@@ -1,5 +1,6 @@
 package com.d365fo.mobileops.presentation.modules.stepflow
 
+import com.d365fo.mobileops.presentation.common.components.BarcodeFieldIcon
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -123,6 +124,7 @@ fun OnHandInquiryScreen(
                     textStyle = MaterialTheme.typography.titleLarge,
                     shape = HeroFieldShape,
                     colors = heroFieldColors(),
+                    leadingIcon = { BarcodeFieldIcon() },
                     trailingIcon = { HeroEnterBadge() },
                     modifier = Modifier
                         .fillMaxWidth()

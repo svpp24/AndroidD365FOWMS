@@ -1,5 +1,6 @@
 package com.d365fo.mobileops.presentation.modules.cyclecounting
 
+import com.d365fo.mobileops.presentation.common.components.BarcodeFieldIcon
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
@@ -212,7 +213,7 @@ fun CountingScanScreen(
                             else "Scan or type item / barcode",
                         )
                     },
-                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                    leadingIcon = { BarcodeFieldIcon() },
                     trailingIcon = {
                         if (state.query.isNotEmpty()) {
                             IconButton(onClick = { viewModel.setQuery("") }) {

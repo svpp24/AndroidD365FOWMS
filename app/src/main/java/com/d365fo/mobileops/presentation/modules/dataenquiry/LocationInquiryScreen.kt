@@ -1,5 +1,6 @@
 package com.d365fo.mobileops.presentation.modules.dataenquiry
 
+import com.d365fo.mobileops.presentation.common.components.BarcodeFieldIcon
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -115,6 +116,7 @@ fun LocationInquiryScreen(
                     textStyle = MaterialTheme.typography.titleLarge,
                     shape = HeroFieldShape,
                     colors = heroFieldColors(),
+                    leadingIcon = { BarcodeFieldIcon() },
                     trailingIcon = { HeroEnterBadge() },
                     modifier = Modifier
                         .fillMaxWidth()

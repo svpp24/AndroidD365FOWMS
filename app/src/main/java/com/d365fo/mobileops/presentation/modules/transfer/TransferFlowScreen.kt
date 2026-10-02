@@ -1,5 +1,6 @@
 package com.d365fo.mobileops.presentation.modules.transfer
 
+import com.d365fo.mobileops.presentation.common.components.BarcodeFieldIcon
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -287,6 +288,8 @@ private fun StepPrompt(
                     },
                     shape = HeroFieldShape,
                     colors = heroFieldColors(),
+                    // Every step but quantity takes a scan.
+                    leadingIcon = if (state.step != TransferStep.QUANTITY) ({ BarcodeFieldIcon() }) else null,
                     trailingIcon = { HeroEnterBadge() },
                     modifier = Modifier
                         .fillMaxWidth()

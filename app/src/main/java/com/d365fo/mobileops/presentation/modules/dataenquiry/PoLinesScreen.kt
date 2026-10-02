@@ -1,5 +1,6 @@
 package com.d365fo.mobileops.presentation.modules.dataenquiry
 
+import com.d365fo.mobileops.presentation.common.components.BarcodeFieldIcon
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -106,6 +107,7 @@ fun PoLinesScreen(
                     textStyle = MaterialTheme.typography.titleLarge,
                     shape = HeroFieldShape,
                     colors = heroFieldColors(),
+                    leadingIcon = { BarcodeFieldIcon() },
                     trailingIcon = { HeroEnterBadge() },
                     modifier = Modifier
                         .fillMaxWidth()
