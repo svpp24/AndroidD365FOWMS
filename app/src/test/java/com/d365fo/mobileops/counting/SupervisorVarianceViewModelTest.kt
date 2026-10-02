@@ -2,6 +2,7 @@ package com.d365fo.mobileops.counting
 
 import androidx.lifecycle.SavedStateHandle
 import com.d365fo.mobileops.domain.counting.supervisor.JournalVariance
+import com.d365fo.mobileops.domain.counting.supervisor.CountStatus
 import com.d365fo.mobileops.domain.counting.supervisor.ReviewAction
 import com.d365fo.mobileops.domain.counting.supervisor.SupervisorCountRepository
 import com.d365fo.mobileops.domain.counting.supervisor.SupervisorRefusal
@@ -37,10 +38,12 @@ class SupervisorVarianceViewModelTest {
         var reviewAnswer: SupervisorResult = SupervisorResult.Done(1)
         var postAnswer: SupervisorResult = SupervisorResult.Done(0)
         val reviews = mutableListOf<Triple<List<Double>, ReviewAction, String?>>()
+        val reasons = mutableListOf<Pair<String?, String?>>()
 
         override suspend fun variance(journalId: String) = variance
         override suspend fun review(journalId: String, lineNumbers: List<Double>, action: ReviewAction, assignTo: String?, note: String?, reasonCode: String?): SupervisorResult {
             reviews += Triple(lineNumbers, action, assignTo)
+            reasons += reasonCode to note
             return reviewAnswer
         }
         override suspend fun post(journalId: String) = postAnswer
@@ -88,6 +91,44 @@ class SupervisorVarianceViewModelTest {
         assertThat(lines).containsExactly(1.0, 3.0).inOrder()
         assertThat(action).isEqualTo(ReviewAction.RECOUNT)
         assertThat(assignTo).isEqualTo("counter9")
+    }
+
+    @Test
+    fun `a decision carries its reason code and comment, and only a recount carries an assignee`() {
+        viewModel.toggle(2.0)
+        viewModel.openDecision(ReviewAction.INVESTIGATE)
+        assertThat(viewModel.state.value.decision).isEqualTo(ReviewAction.INVESTIGATE)
+
+        viewModel.confirmDecision("DAMAGE", "boxes crushed", "counter9")
+
+        val (lines, action, assignTo) = repository.reviews.single()
+        assertThat(lines).containsExactly(2.0)
+        assertThat(action).isEqualTo(ReviewAction.INVESTIGATE)
+        assertThat(assignTo).isNull()
+        assertThat(repository.reasons.single()).isEqualTo("DAMAGE" to "boxes crushed")
+        assertThat(viewModel.state.value.decision).isNull()
+    }
+
+    @Test
+    fun `opening a decision with nothing selected does nothing`() {
+        viewModel.openDecision(ReviewAction.APPROVE)
+        assertThat(viewModel.state.value.decision).isNull()
+    }
+
+    @Test
+    fun `server statuses map to the lifecycle, including the older WITHIN and OVER codes`() {
+        assertThat(CountStatus.from("CONFIRMATION_REQUIRED")).isEqualTo(CountStatus.CONFIRMATION_REQUIRED)
+        assertThat(CountStatus.from("MATCH").needsDecision).isFalse()
+        assertThat(CountStatus.from("INVESTIGATE").needsDecision).isTrue()
+        assertThat(CountStatus.from("OVER")).isEqualTo(CountStatus.RECOUNT_REQUIRED)
+        assertThat(CountStatus.from("WITHIN")).isEqualTo(CountStatus.MINOR_VARIANCE)
+        assertThat(CountStatus.from("SOMETHING_NEW")).isEqualTo(CountStatus.UNKNOWN)
+    }
+
+    @Test
+    fun `status filter narrows to one status`() {
+        viewModel.setFilter(VarianceFilter(status = CountStatus.MINOR_VARIANCE))
+        assertThat(viewModel.state.value.lines.map { it.lineNumber }).containsExactly(2.0)
     }
 
     @Test

@@ -211,11 +211,11 @@ private fun VarianceContent(state: SupervisorVarianceState, viewModel: Superviso
         ) {
             val canAct = state.selected.isNotEmpty() && !state.busy && !state.posted
             val buttonModifier = Modifier.heightIn(min = WarehouseDimens.MinTouchTarget)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (canAct) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(onClick = { viewModel.openDecision(ReviewAction.APPROVE) }, enabled = canAct, modifier = buttonModifier.weight(1f)) { Text("Approve") }
                 OutlinedButton(onClick = { viewModel.openDecision(ReviewAction.RECOUNT) }, enabled = canAct, modifier = buttonModifier.weight(1f)) { Text("Recount") }
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (canAct) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(onClick = { viewModel.openDecision(ReviewAction.INVESTIGATE) }, enabled = canAct, modifier = buttonModifier.weight(1f)) { Text("Investigate") }
                 OutlinedButton(onClick = { viewModel.openDecision(ReviewAction.REJECT) }, enabled = canAct, modifier = buttonModifier.weight(1f)) { Text("Reject") }
             }
@@ -332,7 +332,7 @@ private fun DecisionDialog(
                     when (action) {
                         ReviewAction.APPROVE -> "$count line${if (count == 1) "" else "s"} will post with the counted quantity."
                         ReviewAction.RECOUNT -> "$count line${if (count == 1) "" else "s"} will be counted again, blind."
-                        ReviewAction.INVESTIGATE -> "$count line${if (count == 1) "" else "s"} will be held - the journal can't post until they're decided."
+                        ReviewAction.INVESTIGATE -> "$count line${if (count == 1) "" else "s"} will be held - the journal can't post until ${if (count == 1) "it's" else "they're"} decided."
                         ReviewAction.REJECT -> "$count line${if (count == 1) "" else "s"} will need a recount before posting."
                     },
                 )
