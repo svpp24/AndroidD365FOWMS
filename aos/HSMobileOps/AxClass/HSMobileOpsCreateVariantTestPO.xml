@@ -37,7 +37,7 @@ class HSMobileOpsCreateVariantTestPO
             purchTable.initFromVendTable(VendTable::find(purchTable.OrderAccount));
             purchTable.InventSiteId     = 'AAC';
             purchTable.InventLocationId = 'AAC';
-            purchTable.DeliveryDate     = DateTimeUtil::getSystemDate(DateTimeUtil::getUserPreferredTimeZone());
+            purchTable.DeliveryDate     = today();
             purchTable.insert();
 
             for (i = 1; i <= conLen(configs); i++)
