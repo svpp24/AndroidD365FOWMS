@@ -228,7 +228,11 @@ class HSMobileOpsCountSupervisorService
             return response;
         }
 
-        user = HSMobileOpsUser::find(_request.parmUserId());
+        // HSMobileOpsUser is per company - looked up in the request's company, as signIn does.
+        changecompany (_request.parmDataAreaId())
+        {
+            user = HSMobileOpsUser::find(_request.parmUserId());
+        }
         if (!user.RecId || !user.IsActive || !user.IsCycleCountSupervisor || user.IsExternalCounter)
         {
             response.parmErrorCode('NOT_SUPERVISOR');
@@ -323,7 +327,11 @@ class HSMobileOpsCountSupervisorService
             return 'INVALID_REQUEST';
         }
 
-        user = HSMobileOpsUser::find(_userId);
+        // HSMobileOpsUser is per company - looked up in the request's company, as signIn does.
+        changecompany (_company)
+        {
+            user = HSMobileOpsUser::find(_userId);
+        }
         // An external counter is never a supervisor, whatever else is ticked.
         if (!user.RecId || !user.IsActive || !user.IsCycleCountSupervisor || user.IsExternalCounter)
         {

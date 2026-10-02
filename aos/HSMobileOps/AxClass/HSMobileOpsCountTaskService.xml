@@ -424,13 +424,18 @@ class HSMobileOpsCountTaskService
 
         response.parmSuccess(false);
 
-        if (!_request || !_request.parmUserId())
+        if (!_request || !_request.parmUserId() || !_request.parmDataAreaId()
+            || !CompanyInfo::findDataArea(_request.parmDataAreaId()).RecId)
         {
             response.parmErrorCode('INVALID_REQUEST');
             return response;
         }
 
-        user = HSMobileOpsUser::find(_request.parmUserId());
+        // HSMobileOpsUser is per company - looked up in the request's company, as signIn does.
+        changecompany (_request.parmDataAreaId())
+        {
+            user = HSMobileOpsUser::find(_request.parmUserId());
+        }
         if (!user.RecId || !user.IsActive)
         {
             response.parmErrorCode('USER_NOT_FOUND');
