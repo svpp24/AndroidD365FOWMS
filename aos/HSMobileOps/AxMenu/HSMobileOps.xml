@@ -35,6 +35,12 @@
 					<MenuItemName>HSMobileOpsSkuSyncSetup</MenuItemName>
 					<ObjectType>Display</ObjectType>
 				</AxMenuElement>
+				<AxMenuElement xmlns=""
+					i:type="AxMenuElementReference">
+					<Name>HSMobileOpsCountTolerance</Name>
+					<MenuItemName>HSMobileOpsCountTolerance</MenuItemName>
+					<ObjectType>Display</ObjectType>
+				</AxMenuElement>
 			</MenuItems>
 		</AxMenuElement>
 	</MenuItems>

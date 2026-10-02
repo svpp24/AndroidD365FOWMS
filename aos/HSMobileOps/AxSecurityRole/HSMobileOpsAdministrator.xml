@@ -14,6 +14,10 @@
 			<Name>HSMobileOpsMaintainLicense</Name>
 		</AxSecurityRoleDutyReference>
 	</Duties>
-	<Privileges />
+	<Privileges>
+		<AxSecurityRolePrivilegeReference>
+			<Name>HSMobileOpsCountToleranceMaintain</Name>
+		</AxSecurityRolePrivilegeReference>
+	</Privileges>
 	<SubRoles />
 </AxSecurityRole>

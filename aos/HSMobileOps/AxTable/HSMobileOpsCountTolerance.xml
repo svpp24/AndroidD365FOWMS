@@ -4,7 +4,8 @@
 	<SourceCode>
 		<Declaration><![CDATA[
 /// <summary>
-/// Counting variance tolerance, one row per company (none = defaults, see find). A line within
+/// Counting variance tolerance, one row per company (none = defaults, see find). Edited on
+/// the Mobile count tolerance form (Setup). A line within
 /// tolerance is MINOR_VARIANCE and needs no approval; outside it is RECOUNT_REQUIRED.
 /// </summary>
 public class HSMobileOpsCountTolerance extends common
@@ -61,6 +62,42 @@ public class HSMobileOpsCountTolerance extends common
     public str describe()
     {
         return strFmt('Within %1 % or %2 units', this.TolerancePct, this.ToleranceQty);
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>initValue</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The same defaults find() reports, so the row the setup form creates starts at 2 %
+    /// rather than zero (which would send every variance for approval).
+    /// </summary>
+    public void initValue()
+    {
+        super();
+        this.TolerancePct = 2;
+        this.ToleranceQty = 0;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>validateWrite</Name>
+				<Source><![CDATA[
+
+    public boolean validateWrite()
+    {
+        boolean ret = super();
+
+        if (this.TolerancePct < 0 || this.ToleranceQty < 0)
+        {
+            ret = checkFailed("Tolerance can't be negative.");
+        }
+        if (this.TolerancePct > 100)
+        {
+            ret = checkFailed("Tolerance % can't be more than 100.");
+        }
+        return ret;
     }
 ]]></Source>
 			</Method>

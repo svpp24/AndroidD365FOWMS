@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxMenuItemDisplay xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsCountTolerance</Name>
+	<Label>Mobile count tolerance</Label>
+	<HelpText>How large a counting variance may be before a supervisor has to decide it - as a percentage of the system quantity, or in units.</HelpText>
+	<Object>HSMobileOpsCountTolerance</Object>
+	<ObjectType>Form</ObjectType>
+</AxMenuItemDisplay>
