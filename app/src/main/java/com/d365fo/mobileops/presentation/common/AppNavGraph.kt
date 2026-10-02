@@ -65,6 +65,7 @@ import com.d365fo.mobileops.presentation.modules.dataenquiry.PoOfTodayScreen
 import com.d365fo.mobileops.presentation.modules.cyclecounting.CountingCaptureScreen
 import com.d365fo.mobileops.presentation.modules.cyclecounting.CountingJournalListScreen
 import com.d365fo.mobileops.presentation.modules.cyclecounting.CountingScanScreen
+import com.d365fo.mobileops.presentation.modules.cyclecounting.spot.SpotCountScreen
 import com.d365fo.mobileops.presentation.modules.cyclecounting.supervisor.SupervisorVarianceScreen
 import com.d365fo.mobileops.presentation.modules.stepflow.OnHandEntryScreen
 import com.d365fo.mobileops.presentation.modules.stepflow.OnHandInquiryScreen
@@ -118,6 +119,9 @@ object Routes {
     /** Supervisor only: variance review, approve / reject / recount, post. */
     const val COUNTING_VARIANCE = "counting/supervisor/variance/{journalId}"
     fun countingVariance(journalId: String) = "counting/supervisor/variance/$journalId"
+
+    /** Create a spot count (server creates the journal). */
+    const val COUNTING_SPOT = "counting/spot"
 
     /**
      * The read-only lookups - promoted to first-class Home tiles directly (see HomeScreen's own
@@ -312,6 +316,7 @@ fun AppNavGraph(
                     onReviewVariance = { journalId ->
                         navController.navigate(Routes.countingVariance(journalId))
                     },
+                    onNewSpotCount = { navController.navigate(Routes.COUNTING_SPOT) },
                     onStartCounting = { journalId ->
                         navController.navigate(Routes.countingCapture(journalId))
                     },
@@ -337,6 +342,13 @@ fun AppNavGraph(
                 arguments = listOf(navArgument("journalId") { type = NavType.StringType }),
             ) {
                 SupervisorVarianceScreen(onBack = { navController.popBackStack() })
+            }
+
+            composable(Routes.COUNTING_SPOT) {
+                SpotCountScreen(
+                    onBack = { navController.popBackStack() },
+                    onCreated = { navController.popBackStack() },
+                )
             }
 
             composable(Routes.SETTINGS) {

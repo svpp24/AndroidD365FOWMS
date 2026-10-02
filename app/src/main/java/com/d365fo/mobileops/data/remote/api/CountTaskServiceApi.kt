@@ -46,6 +46,22 @@ interface CountTaskServiceApi {
     @POST("HSMobileOpsServiceGroup/HSMobileOpsCountTaskSvc/submitCounts")
     suspend fun submitCounts(@Body body: DirectSubmitServiceRequest): Response<DirectSubmitServiceResponse>
 
+    @POST("HSMobileOpsServiceGroup/HSMobileOpsCountTaskSvc/createSpotCount")
+    suspend fun createSpotCount(
+        @Body body: com.d365fo.mobileops.data.remote.dto.SpotCountServiceRequest,
+    ): Response<com.d365fo.mobileops.data.remote.dto.SpotCountServiceResponse>
+
+    @POST("HSMobileOpsServiceGroup/HSMobileOpsCountTaskSvc/getOpportunityCount")
+    suspend fun getOpportunityCount(
+        @Body body: com.d365fo.mobileops.data.remote.dto.OpportunityServiceRequest,
+        @Tag tag: IdempotentRead = IdempotentRead,
+    ): Response<com.d365fo.mobileops.data.remote.dto.OpportunityServiceResponse>
+
+    @POST("HSMobileOpsServiceGroup/HSMobileOpsCountTaskSvc/reportDiscrepancy")
+    suspend fun reportDiscrepancy(
+        @Body body: com.d365fo.mobileops.data.remote.dto.DiscrepancyServiceRequest,
+    ): Response<com.d365fo.mobileops.data.remote.dto.DiscrepancyServiceResponse>
+
     @POST("HSMobileOpsServiceGroup/HSMobileOpsCountTaskSvc/submitExceptions")
     suspend fun submitExceptions(
         @Body body: com.d365fo.mobileops.data.remote.dto.CountExceptionsServiceRequest,

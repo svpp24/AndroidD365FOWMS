@@ -1,0 +1,110 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsCountOpportunityResponse</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// getOpportunityCount's answer. Eligible false means show nothing. When true, the server has
+/// created (or found) a one-line journal for this spot and returns it - counted blind, DIRECT mode.
+/// </summary>
+[DataContractAttribute]
+class HSMobileOpsCountOpportunityResponse
+{
+    boolean                       success;
+    str                           errorCode;
+    boolean                       eligible;
+    str                           journalId;
+    str                           journalNameId;
+    str                           description;
+    HSMobileOpsCountDirectLineRow line;
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmSuccess</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Success')]
+    public boolean parmSuccess(boolean _value = success)
+    {
+        success = _value;
+        return success;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmErrorCode</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ErrorCode')]
+    public str parmErrorCode(str _value = errorCode)
+    {
+        errorCode = _value;
+        return errorCode;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmEligible</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Eligible')]
+    public boolean parmEligible(boolean _value = eligible)
+    {
+        eligible = _value;
+        return eligible;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmJournalId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('JournalId')]
+    public str parmJournalId(str _value = journalId)
+    {
+        journalId = _value;
+        return journalId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmJournalNameId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('JournalNameId')]
+    public str parmJournalNameId(str _value = journalNameId)
+    {
+        journalNameId = _value;
+        return journalNameId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmDescription</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Description')]
+    public str parmDescription(str _value = description)
+    {
+        description = _value;
+        return description;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmLine</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Line')]
+    public HSMobileOpsCountDirectLineRow parmLine(HSMobileOpsCountDirectLineRow _value = line)
+    {
+        line = _value;
+        return line;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

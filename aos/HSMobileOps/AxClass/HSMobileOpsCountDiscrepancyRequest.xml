@@ -1,0 +1,123 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsCountDiscrepancyRequest</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// reportDiscrepancy's request, from picking. Reason: SHORT_PICK, DAMAGED, WRONG_ITEM, OTHER.
+/// The server decides whether to create a TRIGGERED count.
+/// </summary>
+[DataContractAttribute]
+class HSMobileOpsCountDiscrepancyRequest
+{
+    DataAreaId dataAreaId;
+    str        userId;
+    str        deviceId;
+    str        warehouseId;
+    str        locationId;
+    str        itemNumber;
+    str        reason;
+    str        note;
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmDataAreaId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('DataAreaId')]
+    public DataAreaId parmDataAreaId(DataAreaId _value = dataAreaId)
+    {
+        dataAreaId = _value;
+        return dataAreaId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmUserId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('UserId')]
+    public str parmUserId(str _value = userId)
+    {
+        userId = _value;
+        return userId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmDeviceId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('DeviceId')]
+    public str parmDeviceId(str _value = deviceId)
+    {
+        deviceId = _value;
+        return deviceId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmWarehouseId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('WarehouseId')]
+    public str parmWarehouseId(str _value = warehouseId)
+    {
+        warehouseId = _value;
+        return warehouseId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmLocationId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('LocationId')]
+    public str parmLocationId(str _value = locationId)
+    {
+        locationId = _value;
+        return locationId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmItemNumber</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ItemNumber')]
+    public str parmItemNumber(str _value = itemNumber)
+    {
+        itemNumber = _value;
+        return itemNumber;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmReason</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Reason')]
+    public str parmReason(str _value = reason)
+    {
+        reason = _value;
+        return reason;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmNote</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Note')]
+    public str parmNote(str _value = note)
+    {
+        note = _value;
+        return note;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

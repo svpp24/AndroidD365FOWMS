@@ -30,9 +30,33 @@ data class CountingJournalSummary(
     val passNumber: Int = 1,
     /** For a RECOUNT journal: the journal it recounts. */
     val recountOf: String? = null,
+    /** SCHEDULED, PERIODIC, SPOT, TRIGGERED, OPPORTUNITY, CONTROL_GROUP or RECOUNT. */
+    val originType: String = ORIGIN_SCHEDULED,
+    /** Higher first - decided by the server. */
+    val priority: Int = 0,
+    /** Display only, from the server. */
+    val toleranceInfo: String? = null,
+    val abcClass: String? = null,
 ) {
     val doubleBlind: Boolean get() = countMode == COUNT_MODE_DOUBLE_BLIND
 }
+
+const val ORIGIN_SCHEDULED = "SCHEDULED"
+
+/** The badge for a count origin; null for an ordinary scheduled count. */
+fun originLabel(originType: String): String? = when (originType) {
+    "PERIODIC" -> "Periodic"
+    "SPOT" -> "Spot count"
+    "TRIGGERED" -> "Triggered"
+    "OPPORTUNITY" -> "Opportunity"
+    "CONTROL_GROUP" -> "Control group"
+    "RECOUNT" -> "Recount"
+    else -> null
+}
+
+/** Server priority first, then the oldest journal - the list never ranks origins itself. */
+fun List<CountingJournalSummary>.byPriority(): List<CountingJournalSummary> =
+    sortedWith(compareByDescending<CountingJournalSummary> { it.priority }.thenBy { it.journalDate ?: Long.MAX_VALUE })
 
 const val COUNT_MODE_SINGLE = "SINGLE"
 const val COUNT_MODE_DOUBLE_BLIND = "DOUBLE_BLIND"

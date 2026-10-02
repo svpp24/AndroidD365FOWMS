@@ -82,6 +82,28 @@ class SyncNotifier @Inject constructor(
         )
     }
 
+    /** A new TRIGGERED count for this warehouse - high priority, it jumps the queue. */
+    fun notifyTriggeredCount(journalId: String, description: String?) {
+        if (!hasNotificationPermission()) return
+        val openApp = PendingIntent.getActivity(
+            context,
+            journalId.hashCode(),
+            Intent(context, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+            },
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        )
+        val notification = NotificationCompat.Builder(context, CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setContentTitle("New count: $journalId")
+            .setContentText(description?.takeIf { it.isNotBlank() } ?: "A triggered count is waiting in Inventory count.")
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setAutoCancel(true)
+            .setContentIntent(openApp)
+            .build()
+        runCatching { NotificationManagerCompat.from(context).notify(journalId.hashCode(), notification) }
+    }
+
     /** The ongoing notification an End count job shows while it runs in the foreground. */
     fun countSubmitForegroundInfo(journalId: String): ForegroundInfo {
         val notification = NotificationCompat.Builder(context, COUNT_CHANNEL_ID)

@@ -129,6 +129,7 @@ class DirectCountingRepository @Inject constructor(
         journalDao.updateCountingAttributes(
             journal.journalId, TransferMode.DIRECT, journal.locationFirst, journal.zeroStockCheck,
             journal.countMode, journal.passNumber, journal.recountOf,
+            journal.originType, journal.priority, journal.toleranceInfo, journal.abcClass,
         )
         NetworkResult.Success(ImportSummary(lines.size, merge.added, merge.removed, refreshed = alreadyOnDevice))
     }

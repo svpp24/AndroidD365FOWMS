@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsCountDiscrepancyResponse</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// reportDiscrepancy's answer. TriggeredJournalId is set when the server created a triggered count.
+/// </summary>
+[DataContractAttribute]
+class HSMobileOpsCountDiscrepancyResponse
+{
+    boolean success;
+    str     errorCode;
+    str     message;
+    str     triggeredJournalId;
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmSuccess</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Success')]
+    public boolean parmSuccess(boolean _value = success)
+    {
+        success = _value;
+        return success;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmErrorCode</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ErrorCode')]
+    public str parmErrorCode(str _value = errorCode)
+    {
+        errorCode = _value;
+        return errorCode;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmMessage</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Message')]
+    public str parmMessage(str _value = message)
+    {
+        message = _value;
+        return message;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmTriggeredJournalId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('TriggeredJournalId')]
+    public str parmTriggeredJournalId(str _value = triggeredJournalId)
+    {
+        triggeredJournalId = _value;
+        return triggeredJournalId;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

@@ -25,6 +25,19 @@ interface FeatureFlags {
 
     /** Supervisor variance review, approve / reject / recount and posting. */
     val countSupervisor: Boolean
+
+    /** Spot counts on demand - supervisors, plus every worker when [countSpotForWorkers]. */
+    val countSpot: Boolean
+    val countSpotForWorkers: Boolean
+
+    /** Opportunity counts offered after a pick or putaway. */
+    val countOpportunity: Boolean
+
+    /** "Report discrepancy" in picking. */
+    val countDiscrepancy: Boolean
+
+    /** Background notification of new TRIGGERED counts (stand-in for push). */
+    val countTriggeredAlerts: Boolean
 }
 
 @Singleton
@@ -34,4 +47,9 @@ class BuildConfigFeatureFlags @Inject constructor() : FeatureFlags {
     override val countLocationFirst: Boolean get() = BuildConfig.FEATURE_COUNT_LOCATION_FIRST
     override val countExceptions: Boolean get() = BuildConfig.FEATURE_COUNT_EXCEPTIONS
     override val countSupervisor: Boolean get() = BuildConfig.FEATURE_COUNT_SUPERVISOR
+    override val countSpot: Boolean get() = BuildConfig.FEATURE_COUNT_SPOT
+    override val countSpotForWorkers: Boolean get() = BuildConfig.FEATURE_COUNT_SPOT_WORKERS
+    override val countOpportunity: Boolean get() = BuildConfig.FEATURE_COUNT_OPPORTUNITY
+    override val countDiscrepancy: Boolean get() = BuildConfig.FEATURE_COUNT_DISCREPANCY
+    override val countTriggeredAlerts: Boolean get() = BuildConfig.FEATURE_COUNT_TRIGGERED_ALERTS
 }

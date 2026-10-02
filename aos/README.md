@@ -575,6 +575,25 @@ every call checks `HSMobileOpsUser.IsCycleCountSupervisor`:
 
 App flag: `FEATURE_COUNT_SUPERVISOR`.
 
+**Origins, spot, opportunity, triggered.** List rows carry `OriginType` (SCHEDULED, PERIODIC,
+SPOT, TRIGGERED, OPPORTUNITY, CONTROL_GROUP, RECOUNT), `Priority` (higher first — the app sorts
+by it and never ranks origins itself), `ToleranceInfo` and `AbcClass` (display only); all
+defaults today (**TODO**). New `HSMobileOpsCountTaskSvc` operations, each validating its request
+and otherwise a **TODO** stub:
+
+- `createSpotCount` (warehouse + item and/or location) → `JournalId`. The server creates the
+  journal and lines; the app then fetches it in DIRECT mode. Returns `NOT_IMPLEMENTED`.
+- `getOpportunityCount` (after a pick/putaway at a location) → `Eligible` + a one-line journal.
+  Returns `Eligible = false` today, so the app shows nothing. The app asks at most once per
+  warehouse/location/item per session.
+- `reportDiscrepancy` (from transfer picking; reason SHORT_PICK / DAMAGED / WRONG_ITEM / OTHER)
+  → optional `TriggeredJournalId`. Returns `NOT_IMPLEMENTED`.
+
+Push for triggered counts: FCM needs a Firebase project and `google-services.json`, which this
+build doesn't have. Until then the app polls every 15 minutes in the background and notifies new
+TRIGGERED journals once. App flags: `FEATURE_COUNT_SPOT`, `FEATURE_COUNT_SPOT_WORKERS`,
+`FEATURE_COUNT_OPPORTUNITY`, `FEATURE_COUNT_DISCREPANCY`, `FEATURE_COUNT_TRIGGERED_ALERTS`.
+
 ## Licensing
 
 **Full replacement, this session — a certificate-chain design, not the earlier single-key-per-

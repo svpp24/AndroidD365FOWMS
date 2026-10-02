@@ -52,6 +52,27 @@ class FakeCountTaskRepository : CountTaskRepository {
 
     override suspend fun journalState(journalId: String) = state
 
+    var spotAnswer: com.d365fo.mobileops.domain.counting.TaskResult<String> =
+        com.d365fo.mobileops.domain.counting.TaskResult.Ok("SPOT-1")
+    val spotCalls = mutableListOf<Triple<String, String?, String?>>()
+    override suspend fun createSpotCount(warehouseId: String, itemId: String?, locationId: String?) =
+        spotAnswer.also { spotCalls += Triple(warehouseId, itemId, locationId) }
+
+    var opportunity: com.d365fo.mobileops.domain.counting.OpportunityTask? = null
+    var opportunityCalls = 0
+    override suspend fun opportunityCount(warehouseId: String, locationId: String, itemId: String?) =
+        opportunity.also { opportunityCalls++ }
+
+    var discrepancyAnswer: com.d365fo.mobileops.domain.counting.TaskResult<String?> =
+        com.d365fo.mobileops.domain.counting.TaskResult.Ok(null)
+    override suspend fun reportDiscrepancy(
+        warehouseId: String,
+        locationId: String,
+        itemId: String?,
+        reason: com.d365fo.mobileops.domain.counting.DiscrepancyReason,
+        note: String?,
+    ) = discrepancyAnswer
+
     companion object {
         fun granted(range: CountRange?, expiresAt: Long? = 10_000_000L, token: String = "token-1") =
             ClaimOutcome.Granted(

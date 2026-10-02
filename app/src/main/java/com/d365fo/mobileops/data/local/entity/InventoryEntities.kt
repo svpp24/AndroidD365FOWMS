@@ -75,6 +75,11 @@ data class JournalEntity(
     val countMode: String = "SINGLE",
     /** Counting only: for a RECOUNT journal, the journal it recounts. */
     val recountOf: String? = null,
+    /** Counting only: higher first - decided by the server. */
+    val priority: Int = 0,
+    /** Counting only: display-only tolerance text and ABC class from the server. */
+    val toleranceInfo: String? = null,
+    val abcClass: String? = null,
     @Embedded val sync: SyncMeta = SyncMeta(),
 )
 

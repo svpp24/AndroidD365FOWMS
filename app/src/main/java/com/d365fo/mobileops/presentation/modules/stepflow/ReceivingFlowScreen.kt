@@ -120,6 +120,8 @@ fun ReceivingFlowScreen(
     }
     BackHandler(onBack = stepBack)
 
+    com.d365fo.mobileops.presentation.modules.cyclecounting.opportunity.OpportunityCountPrompt()
+
     Scaffold(
         topBar = {
             TopAppBar(

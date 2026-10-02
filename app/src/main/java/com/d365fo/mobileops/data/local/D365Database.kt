@@ -88,7 +88,7 @@ import com.d365fo.mobileops.data.local.entity.WorkerPermissionEntity
         WorkerPermissionEntity::class,
         WorkerDirectoryEntity::class,
     ],
-    version = 10,
+    version = 11,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -364,10 +364,19 @@ abstract class D365Database : RoomDatabase() {
             }
         }
 
+        /** 10 -> 11: count origin priority, tolerance text and ABC class for offline display. Additive. */
+        private val MIGRATION_10_11 = object : androidx.room.migration.Migration(10, 11) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `invent_journal` ADD COLUMN `priority` INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE `invent_journal` ADD COLUMN `toleranceInfo` TEXT")
+                db.execSQL("ALTER TABLE `invent_journal` ADD COLUMN `abcClass` TEXT")
+            }
+        }
+
         val MIGRATIONS: Array<androidx.room.migration.Migration> =
             arrayOf(
                 MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7,
-                MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10,
+                MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11,
             )
     }
 }

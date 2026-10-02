@@ -15,7 +15,10 @@ import com.d365fo.mobileops.data.security.SecureStore
 import com.d365fo.mobileops.domain.counting.ClaimOutcome
 import com.d365fo.mobileops.domain.counting.ClaimRefusal
 import com.d365fo.mobileops.domain.counting.CountTaskRepository
+import com.d365fo.mobileops.domain.counting.DiscrepancyReason
 import com.d365fo.mobileops.domain.counting.JournalRemoteState
+import com.d365fo.mobileops.domain.counting.OpportunityTask
+import com.d365fo.mobileops.domain.counting.TaskResult
 import com.d365fo.mobileops.domain.model.CountRange
 import com.d365fo.mobileops.util.AppFailure
 import com.d365fo.mobileops.util.Formatters
@@ -80,6 +83,110 @@ class LiveCountTaskRepository @Inject constructor(
                 }
             }
         }
+    }
+
+    override suspend fun createSpotCount(warehouseId: String, itemId: String?, locationId: String?): TaskResult<String> {
+        val result = errorMapper.safeCall {
+            api.createSpotCount(
+                com.d365fo.mobileops.data.remote.dto.SpotCountServiceRequest(
+                    com.d365fo.mobileops.data.remote.dto.SpotCountRequestBody(
+                        dataAreaId = company(),
+                        userId = userId(),
+                        warehouseId = warehouseId,
+                        itemNumber = itemId?.trim()?.takeIf { it.isNotEmpty() },
+                        locationId = locationId?.trim()?.takeIf { it.isNotEmpty() },
+                    ),
+                ),
+            )
+        }
+        return result.toTaskResult { body ->
+            if (body.success && !body.journalId.isNullOrBlank()) TaskResult.Ok(body.journalId)
+            else TaskResult.Refused(body.errorCode, body.message ?: taskMessage(body.errorCode))
+        }
+    }
+
+    override suspend fun opportunityCount(warehouseId: String, locationId: String, itemId: String?): OpportunityTask? {
+        val result = errorMapper.safeCall {
+            api.getOpportunityCount(
+                com.d365fo.mobileops.data.remote.dto.OpportunityServiceRequest(
+                    com.d365fo.mobileops.data.remote.dto.OpportunityRequestBody(
+                        dataAreaId = company(),
+                        userId = userId(),
+                        warehouseId = warehouseId,
+                        locationId = locationId,
+                        itemNumber = itemId,
+                    ),
+                ),
+            )
+        }
+        val body = (result as? NetworkResult.Success)?.data ?: return null
+        val line = body.line ?: return null
+        val journalId = body.journalId?.takeIf { it.isNotBlank() } ?: return null
+        if (!body.success || !body.eligible) return null
+        return OpportunityTask(
+            journalId = journalId,
+            journalNameId = body.journalNameId.orEmpty(),
+            description = body.description,
+            lineNumber = line.lineNumber.toInt(),
+            itemId = line.itemNumber,
+            itemName = line.itemName?.takeIf { it.isNotBlank() } ?: line.itemNumber,
+            locationId = line.locationId?.takeIf { it.isNotBlank() },
+            batchId = line.batchId?.takeIf { it.isNotBlank() },
+            serialId = line.serialId?.takeIf { it.isNotBlank() },
+            siteId = line.siteId,
+            warehouseId = line.warehouseId,
+        )
+    }
+
+    override suspend fun reportDiscrepancy(
+        warehouseId: String,
+        locationId: String,
+        itemId: String?,
+        reason: DiscrepancyReason,
+        note: String?,
+    ): TaskResult<String?> {
+        val result = errorMapper.safeCall {
+            api.reportDiscrepancy(
+                com.d365fo.mobileops.data.remote.dto.DiscrepancyServiceRequest(
+                    com.d365fo.mobileops.data.remote.dto.DiscrepancyRequestBody(
+                        dataAreaId = company(),
+                        userId = userId(),
+                        deviceId = secureStore.deviceId(),
+                        warehouseId = warehouseId,
+                        locationId = locationId,
+                        itemNumber = itemId,
+                        reason = reason.name,
+                        note = note?.trim()?.takeIf { it.isNotEmpty() },
+                    ),
+                ),
+            )
+        }
+        return result.toTaskResult { body ->
+            if (body.success) TaskResult.Ok(body.triggeredJournalId?.takeIf { it.isNotBlank() })
+            else TaskResult.Refused(body.errorCode, body.message ?: taskMessage(body.errorCode))
+        }
+    }
+
+    private fun <B, T> NetworkResult<B>.toTaskResult(onBody: (B) -> TaskResult<T>): TaskResult<T> = when (this) {
+        is NetworkResult.Success -> onBody(data)
+        NetworkResult.Loading -> TaskResult.Unreachable("did not complete")
+        is NetworkResult.Error -> when (val f = failure) {
+            is AppFailure.Offline, is AppFailure.Transient -> TaskResult.Unreachable(f.message)
+            is AppFailure.BusinessRule -> if (f.httpCode == 404) {
+                TaskResult.Refused("NOT_IMPLEMENTED", taskMessage("NOT_IMPLEMENTED"))
+            } else {
+                TaskResult.Refused(f.d365ErrorCode, f.message)
+            }
+            else -> TaskResult.Refused(null, f.message)
+        }
+    }
+
+    private fun taskMessage(code: String?): String = when (code) {
+        "NOT_ALLOWED" -> "You don't have permission to do this."
+        "NOTHING_TO_COUNT" -> "Enter an item, a location, or both."
+        "NOT_IMPLEMENTED" -> "This server does not support this yet."
+        "INVALID_REQUEST" -> "D365FO refused the request as incomplete."
+        else -> code ?: "D365FO refused the request."
     }
 
     private fun tokenRequest(journalId: String, claimToken: String) = CountClaimTokenServiceRequest(

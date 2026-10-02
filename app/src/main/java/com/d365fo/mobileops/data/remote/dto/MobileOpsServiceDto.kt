@@ -263,6 +263,10 @@ data class JournalSummaryServiceRow(
     @SerialName("CountMode") val countMode: String? = null,
     @SerialName("PassNumber") val passNumber: Int = 1,
     @SerialName("RecountOf") val recountOf: String? = null,
+    @SerialName("OriginType") val originType: String? = null,
+    @SerialName("Priority") val priority: Int = 0,
+    @SerialName("ToleranceInfo") val toleranceInfo: String? = null,
+    @SerialName("AbcClass") val abcClass: String? = null,
 )
 
 // -- Counting journal export -- one AOS call creates a request-private DMF project scoped to one

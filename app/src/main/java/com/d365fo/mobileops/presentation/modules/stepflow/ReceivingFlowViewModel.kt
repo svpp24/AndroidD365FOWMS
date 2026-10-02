@@ -76,6 +76,7 @@ class ReceivingFlowViewModel @Inject constructor(
     private val postingDispatcher: com.d365fo.mobileops.data.sync.PostingDispatcher,
     private val pendingFlowResume: PendingFlowResume,
     private val stagedLines: com.d365fo.mobileops.data.repository.StagedLineRepository,
+    private val opportunityCounts: com.d365fo.mobileops.data.counting.OpportunityCounts,
 ) : ViewModel() {
 
     init {
@@ -222,6 +223,8 @@ class ReceivingFlowViewModel @Inject constructor(
         scanFeedback.success()
         scanFeedback.success()
         notifier.notifyLineAdded(item.productName.ifBlank { item.itemNumber })
+        // Putaway confirmed at this location: the server may want it counted while we're here.
+        opportunityCounts.afterMovement(capture.locationId, item.itemNumber)
 
         _state.update {
             it.copy(

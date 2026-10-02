@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsCountSpotResponse</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// createSpotCount's answer. ErrorCode: NOT_ALLOWED, INVALID_REQUEST, NOTHING_TO_COUNT, NOT_IMPLEMENTED.
+/// </summary>
+[DataContractAttribute]
+class HSMobileOpsCountSpotResponse
+{
+    boolean success;
+    str     errorCode;
+    str     message;
+    str     journalId;
+    str     journalNameId;
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmSuccess</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Success')]
+    public boolean parmSuccess(boolean _value = success)
+    {
+        success = _value;
+        return success;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmErrorCode</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ErrorCode')]
+    public str parmErrorCode(str _value = errorCode)
+    {
+        errorCode = _value;
+        return errorCode;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmMessage</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Message')]
+    public str parmMessage(str _value = message)
+    {
+        message = _value;
+        return message;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmJournalId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('JournalId')]
+    public str parmJournalId(str _value = journalId)
+    {
+        journalId = _value;
+        return journalId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmJournalNameId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('JournalNameId')]
+    public str parmJournalNameId(str _value = journalNameId)
+    {
+        journalNameId = _value;
+        return journalNameId;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

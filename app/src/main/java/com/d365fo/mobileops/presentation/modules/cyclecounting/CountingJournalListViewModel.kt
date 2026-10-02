@@ -24,6 +24,7 @@ import com.d365fo.mobileops.domain.counting.CountTaskRepository
 import com.d365fo.mobileops.domain.counting.JournalRemoteState
 import com.d365fo.mobileops.domain.model.CountRange
 import com.d365fo.mobileops.domain.model.CountingJournalSummary
+import com.d365fo.mobileops.domain.model.byPriority
 import com.d365fo.mobileops.domain.model.ExportJobStatus
 import com.d365fo.mobileops.util.NetworkResult
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -104,6 +105,7 @@ class CountingJournalListViewModel @Inject constructor(
     private val countTasks: CountTaskRepository,
     private val flags: FeatureFlags,
     countingDao: CountingDao,
+    private val triggeredAlerts: com.d365fo.mobileops.data.counting.TriggeredCountAlerts,
 ) : ViewModel() {
 
     private val _loaded = MutableStateFlow(
@@ -111,6 +113,9 @@ class CountingJournalListViewModel @Inject constructor(
             claimsEnabled = flags.countClaims,
             // Cosmetic gate: the supervisor service checks IsCycleCountSupervisor on every call.
             canReviewVariance = flags.countSupervisor && workerSession.session.value?.isCycleCountSupervisor == true,
+            // Cosmetic gate too: createSpotCount checks the permission server-side.
+            canCreateSpot = flags.countSpot &&
+                (workerSession.session.value?.isCycleCountSupervisor == true || flags.countSpotForWorkers),
         ),
     )
 
@@ -154,10 +159,17 @@ class CountingJournalListViewModel @Inject constructor(
                     transferMode = journal.transferMode,
                     locationFirst = journal.locationFirst,
                     zeroStockCheck = journal.zeroStockCheck,
+                    countMode = journal.countMode,
+                    passNumber = journal.passNumber,
+                    recountOf = journal.recountOf,
+                    originType = journal.originType,
+                    priority = journal.priority,
+                    toleranceInfo = journal.toleranceInfo,
+                    abcClass = journal.abcClass,
                 )
             }
         loaded.copy(
-            journals = loaded.journals + localOnly,
+            journals = (loaded.journals + localOnly).byPriority(),
             localOnlyIds = localOnly.mapTo(HashSet()) { it.journalId },
             exportStatuses = tracked
                 .filterValues { !it.imported }
@@ -375,6 +387,7 @@ class CountingJournalListViewModel @Inject constructor(
         }
 
         _loaded.update { it.copy(busy = true, error = null) }
+        triggeredAlerts.rememberWarehouse(warehouseId)
         when (val result = journals.listAssignedJournals(warehouseId)) {
             is NetworkResult.Error -> _loaded.update {
                 it.copy(busy = false, error = result.failure.message)
@@ -404,6 +417,7 @@ data class CountingJournalListState(
     val claimsEnabled: Boolean = false,
     /** Cycle-count supervisor with the supervisor feature on. */
     val canReviewVariance: Boolean = false,
+    val canCreateSpot: Boolean = false,
     /** This device's own claims, keyed by journal id. */
     val myClaims: Map<String, CountClaimEntity> = emptyMap(),
     /** Non-null while the worker is choosing which range of this journal to claim. */

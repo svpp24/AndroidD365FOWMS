@@ -156,6 +156,12 @@ class HSMobileOpsCountingService
                 row.parmCountMode('SINGLE');
                 row.parmPassNumber(1);
                 row.parmRecountOf('');
+                // TODO (X++ owner): origin from the count plan / trigger that created the journal,
+                // priority by your rules, tolerance text and ABC class for display.
+                row.parmOriginType('SCHEDULED');
+                row.parmPriority(0);
+                row.parmToleranceInfo('');
+                row.parmAbcClass('');
 
                 rows.addEnd(row);
 

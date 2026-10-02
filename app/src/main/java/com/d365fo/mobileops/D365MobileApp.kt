@@ -25,6 +25,8 @@ class D365MobileApp : Application(), Configuration.Provider {
     @Inject lateinit var logStore: LogStore
     @Inject lateinit var claimHeartbeat: ClaimHeartbeat
     @Inject lateinit var countSubmissions: CountSubmissions
+    @Inject lateinit var triggeredCountAlerts: com.d365fo.mobileops.data.counting.TriggeredCountAlerts
+    @Inject lateinit var featureFlags: com.d365fo.mobileops.domain.FeatureFlags
 
     override val workManagerConfiguration: Configuration
         get() = Configuration.Builder()
@@ -83,6 +85,7 @@ class D365MobileApp : Application(), Configuration.Provider {
             syncScheduler.schedulePeriodicWork()
             // Counting: keep claims alive, and give every unfinished End count a job again.
             claimHeartbeat.start()
+            triggeredCountAlerts.schedule(featureFlags.countTriggeredAlerts)
             runCatching { countSubmissions.resumePending() }
                 .onFailure { Timber.w(it, "could not resume pending count submissions") }
         }

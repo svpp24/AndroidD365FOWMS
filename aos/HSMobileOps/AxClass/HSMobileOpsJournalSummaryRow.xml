@@ -20,6 +20,10 @@ class HSMobileOpsJournalSummaryRow
     str countMode;
     int passNumber;
     str recountOf;
+    str originType;
+    int priority;
+    str toleranceInfo;
+    str abcClass;
 }
 ]]></Declaration>
 		<Methods>
@@ -204,6 +208,66 @@ class HSMobileOpsJournalSummaryRow
     {
         recountOf = _value;
         return recountOf;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmOriginType</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Why this count exists: SCHEDULED, PERIODIC, SPOT, TRIGGERED, OPPORTUNITY, CONTROL_GROUP or RECOUNT.
+    /// </summary>
+    [DataMemberAttribute('OriginType')]
+    public str parmOriginType(str _value = originType)
+    {
+        originType = _value;
+        return originType;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmPriority</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Higher first. Decided here (TRIGGERED, SPOT and RECOUNT above SCHEDULED), never on the device.
+    /// </summary>
+    [DataMemberAttribute('Priority')]
+    public int parmPriority(int _value = priority)
+    {
+        priority = _value;
+        return priority;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmToleranceInfo</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Display-only text describing the tolerance that applies, e.g. 'Class A: 2% / 50 AED'.
+    /// </summary>
+    [DataMemberAttribute('ToleranceInfo')]
+    public str parmToleranceInfo(str _value = toleranceInfo)
+    {
+        toleranceInfo = _value;
+        return toleranceInfo;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmAbcClass</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Display-only ABC class of the journal's items, when uniform.
+    /// </summary>
+    [DataMemberAttribute('AbcClass')]
+    public str parmAbcClass(str _value = abcClass)
+    {
+        abcClass = _value;
+        return abcClass;
     }
 ]]></Source>
 			</Method>

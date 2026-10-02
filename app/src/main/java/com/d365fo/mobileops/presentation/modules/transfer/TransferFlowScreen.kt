@@ -108,6 +108,8 @@ fun TransferFlowScreen(
     }
     BackHandler(onBack = stepBack)
 
+    com.d365fo.mobileops.presentation.modules.cyclecounting.opportunity.OpportunityCountPrompt()
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -119,6 +121,12 @@ fun TransferFlowScreen(
                     }
                 },
                 actions = {
+                    if (mode == TransferMode.SHIP) {
+                        com.d365fo.mobileops.presentation.modules.cyclecounting.opportunity.ReportDiscrepancyAction(
+                            locationId = state.capture.locationId ?: state.capture.line?.locationId,
+                            itemId = state.capture.line?.itemId,
+                        )
+                    }
                     // The "view scanned so far, and remove one if it is wrong" menu - see the
                     // identical one on PO receiving.
                     if (state.captured.isNotEmpty()) {

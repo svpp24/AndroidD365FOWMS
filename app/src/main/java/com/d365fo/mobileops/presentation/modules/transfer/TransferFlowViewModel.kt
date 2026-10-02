@@ -70,6 +70,7 @@ class TransferFlowViewModel @Inject constructor(
     private val notifier: com.d365fo.mobileops.data.sync.SyncNotifier,
     private val postingDispatcher: com.d365fo.mobileops.data.sync.PostingDispatcher,
     private val pendingFlowResume: PendingFlowResume,
+    private val opportunityCounts: com.d365fo.mobileops.data.counting.OpportunityCounts,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(TransferFlowState())
@@ -165,6 +166,8 @@ class TransferFlowViewModel @Inject constructor(
         scanFeedback.success()
         scanFeedback.success()
         notifier.notifyLineAdded(line.itemName.ifBlank { line.itemId })
+        // Pick (ship) or putaway (receive) confirmed here: maybe an opportunity count.
+        opportunityCounts.afterMovement(capture.locationId, line.itemId)
 
         _state.update {
             it.copy(

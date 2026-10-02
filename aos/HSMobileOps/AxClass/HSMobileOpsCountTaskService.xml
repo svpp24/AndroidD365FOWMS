@@ -311,6 +311,101 @@ class HSMobileOpsCountTaskService
 ]]></Source>
 			</Method>
 			<Method>
+				<Name>createSpotCount</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// An on-demand count of an item and/or a location. The server creates the counting journal
+    /// and its lines (a DIRECT-mode, SPOT-origin journal); the app then runs the normal flow.
+    /// </summary>
+    [Wrappable(false), Hookable(false)]
+    public HSMobileOpsCountSpotResponse createSpotCount(HSMobileOpsCountSpotRequest _request)
+    {
+        HSMobileOpsCountSpotResponse response = new HSMobileOpsCountSpotResponse();
+
+        response.parmSuccess(false);
+
+        if (!_request || !_request.parmDataAreaId() || !_request.parmUserId() || !_request.parmWarehouseId()
+            || !CompanyInfo::findDataArea(_request.parmDataAreaId()).RecId)
+        {
+            response.parmErrorCode('INVALID_REQUEST');
+            return response;
+        }
+        if (!_request.parmItemNumber() && !_request.parmLocationId())
+        {
+            response.parmErrorCode('NOTHING_TO_COUNT');
+            return response;
+        }
+
+        // TODO (X++ owner): check the user may create spot counts (supervisor, or a worker with
+        // the permission - else NOT_ALLOWED); create the counting journal (journal name, origin
+        // SPOT, transfer mode DIRECT) with lines for the item / location's on-hand dimensions;
+        // return its JournalId and JournalNameId.
+        response.parmErrorCode('NOT_IMPLEMENTED');
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>getOpportunityCount</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// After a pick or putaway: should this spot be counted now? Eligible false means show
+    /// nothing. Never an error for "no" - the app calls this often and quietly.
+    /// </summary>
+    public HSMobileOpsCountOpportunityResponse getOpportunityCount(HSMobileOpsCountOpportunityRequest _request)
+    {
+        HSMobileOpsCountOpportunityResponse response = new HSMobileOpsCountOpportunityResponse();
+
+        response.parmSuccess(false);
+        response.parmEligible(false);
+
+        if (!_request || !_request.parmDataAreaId() || !_request.parmLocationId()
+            || !CompanyInfo::findDataArea(_request.parmDataAreaId()).RecId)
+        {
+            response.parmErrorCode('INVALID_REQUEST');
+            return response;
+        }
+
+        // TODO (X++ owner): decide eligibility (e.g. location near empty after the pick, not
+        // counted recently, under a daily cap); when eligible, create or find a one-line
+        // OPPORTUNITY journal and return it with its line (blind - no quantities).
+        response.parmSuccess(true);
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>reportDiscrepancy</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// A picker reports a discrepancy at a location. The server decides whether it becomes a
+    /// TRIGGERED count.
+    /// </summary>
+    [Wrappable(false), Hookable(false)]
+    public HSMobileOpsCountDiscrepancyResponse reportDiscrepancy(HSMobileOpsCountDiscrepancyRequest _request)
+    {
+        HSMobileOpsCountDiscrepancyResponse response = new HSMobileOpsCountDiscrepancyResponse();
+
+        response.parmSuccess(false);
+
+        if (!_request || !_request.parmDataAreaId() || !_request.parmLocationId() || !_request.parmReason()
+            || !CompanyInfo::findDataArea(_request.parmDataAreaId()).RecId)
+        {
+            response.parmErrorCode('INVALID_REQUEST');
+            return response;
+        }
+
+        // TODO (X++ owner): record the discrepancy (user, device, warehouse, location, item,
+        // reason, note) and, by your rules, create a TRIGGERED counting journal.
+        response.parmErrorCode('NOT_IMPLEMENTED');
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
 				<Name>journalState</Name>
 				<Source><![CDATA[
 

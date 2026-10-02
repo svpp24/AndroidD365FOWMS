@@ -305,6 +305,17 @@ class LiveCountTaskServiceApi @Inject constructor(
 
     override suspend fun submitExceptions(body: com.d365fo.mobileops.data.remote.dto.CountExceptionsServiceRequest) =
         delegate.get().submitExceptions(body)
+
+    override suspend fun createSpotCount(body: com.d365fo.mobileops.data.remote.dto.SpotCountServiceRequest) =
+        delegate.get().createSpotCount(body)
+
+    override suspend fun getOpportunityCount(
+        body: com.d365fo.mobileops.data.remote.dto.OpportunityServiceRequest,
+        tag: com.d365fo.mobileops.data.remote.interceptor.IdempotentRead,
+    ) = delegate.get().getOpportunityCount(body, tag)
+
+    override suspend fun reportDiscrepancy(body: com.d365fo.mobileops.data.remote.dto.DiscrepancyServiceRequest) =
+        delegate.get().reportDiscrepancy(body)
 }
 
 @Singleton

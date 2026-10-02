@@ -234,7 +234,8 @@ interface JournalDao {
         """
         UPDATE invent_journal
         SET transferMode = :transferMode, locationFirst = :locationFirst, zeroStockCheck = :zeroStockCheck,
-            countMode = :countMode, passNumber = :passNumber, recountOf = :recountOf
+            countMode = :countMode, passNumber = :passNumber, recountOf = :recountOf,
+            originType = :originType, priority = :priority, toleranceInfo = :toleranceInfo, abcClass = :abcClass
         WHERE journalId = :journalId
         """,
     )
@@ -246,6 +247,10 @@ interface JournalDao {
         countMode: String,
         passNumber: Int,
         recountOf: String?,
+        originType: String,
+        priority: Int,
+        toleranceInfo: String?,
+        abcClass: String?,
     )
 
     @Query("DELETE FROM invent_journal WHERE status = 'POSTED' AND postedAt < :olderThan")

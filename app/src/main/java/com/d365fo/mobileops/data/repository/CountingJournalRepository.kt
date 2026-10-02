@@ -9,6 +9,8 @@ import com.d365fo.mobileops.data.local.entity.TransferMode
 import com.d365fo.mobileops.domain.model.CountClaimInfo
 import com.d365fo.mobileops.domain.model.COUNT_MODE_SINGLE
 import com.d365fo.mobileops.domain.model.CountRange
+import com.d365fo.mobileops.domain.model.ORIGIN_SCHEDULED
+import com.d365fo.mobileops.domain.model.byPriority
 import com.d365fo.mobileops.domain.model.keepsServerCounts
 import com.d365fo.mobileops.data.local.dao.MergeResult
 import com.d365fo.mobileops.data.local.entity.JournalEntity
@@ -158,8 +160,12 @@ class CountingJournalRepository @Inject constructor(
                             countMode = row.countMode?.takeIf { it.isNotBlank() } ?: COUNT_MODE_SINGLE,
                             passNumber = row.passNumber.coerceAtLeast(1),
                             recountOf = row.recountOf?.takeIf { it.isNotBlank() },
+                            originType = row.originType?.takeIf { it.isNotBlank() } ?: ORIGIN_SCHEDULED,
+                            priority = row.priority,
+                            toleranceInfo = row.toleranceInfo?.takeIf { it.isNotBlank() },
+                            abcClass = row.abcClass?.takeIf { it.isNotBlank() },
                         )
-                    },
+                    }.byPriority(),
                 )
             }
         }
@@ -390,6 +396,7 @@ class CountingJournalRepository @Inject constructor(
         journalDao.updateCountingAttributes(
             journal.journalId, TransferMode.DMF, journal.locationFirst, journal.zeroStockCheck,
             journal.countMode, journal.passNumber, journal.recountOf,
+            journal.originType, journal.priority, journal.toleranceInfo, journal.abcClass,
         )
         // After the lines, so each reference row's journal exists (foreign key), and keyed by
         // the line id the merge actually kept.

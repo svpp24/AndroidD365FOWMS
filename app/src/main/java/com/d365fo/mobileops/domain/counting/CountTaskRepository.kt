@@ -38,6 +38,35 @@ sealed interface ClaimOutcome {
 
 enum class JournalRemoteState { OPEN, POSTED, NOT_FOUND }
 
+/** A one-line count the server offers after a pick or putaway - counted blind, DIRECT mode. */
+data class OpportunityTask(
+    val journalId: String,
+    val journalNameId: String,
+    val description: String?,
+    val lineNumber: Int,
+    val itemId: String,
+    val itemName: String,
+    val locationId: String?,
+    val batchId: String?,
+    val serialId: String?,
+    val siteId: String?,
+    val warehouseId: String?,
+)
+
+/** A definite answer or a connection failure, for one-off requests (spot, discrepancy). */
+sealed interface TaskResult<out T> {
+    data class Ok<T>(val value: T) : TaskResult<T>
+    data class Refused(val code: String?, val message: String) : TaskResult<Nothing>
+    data class Unreachable(val message: String) : TaskResult<Nothing>
+}
+
+enum class DiscrepancyReason(val label: String) {
+    SHORT_PICK("Less than expected"),
+    DAMAGED("Damaged stock"),
+    WRONG_ITEM("Wrong item in location"),
+    OTHER("Other"),
+}
+
 /**
  * Claims and journal state against `HSMobileOpsCountTaskSvc`. Every rule (TTL, who may hold a
  * range, when a claim is lost) is the server's; this only carries requests and answers.
@@ -49,4 +78,19 @@ interface CountTaskRepository {
     /** Best effort; true when the server confirmed it (or the claim was already gone). */
     suspend fun release(journalId: String, claimToken: String): Boolean
     suspend fun journalState(journalId: String): NetworkResult<JournalRemoteState>
+
+    /** Creates a spot count on the server; returns the new journal id. */
+    suspend fun createSpotCount(warehouseId: String, itemId: String?, locationId: String?): TaskResult<String>
+
+    /** Null when the server has nothing to offer here - including when it can't be reached. */
+    suspend fun opportunityCount(warehouseId: String, locationId: String, itemId: String?): OpportunityTask?
+
+    /** Returns the triggered journal id when the server created one, null when it didn't. */
+    suspend fun reportDiscrepancy(
+        warehouseId: String,
+        locationId: String,
+        itemId: String?,
+        reason: DiscrepancyReason,
+        note: String?,
+    ): TaskResult<String?>
 }

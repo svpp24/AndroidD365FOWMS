@@ -201,3 +201,70 @@ data class CountExceptionsServiceResponse(
     @SerialName("Message") val message: String? = null,
     @SerialName("Accepted") val accepted: Int = 0,
 )
+
+@Serializable
+data class SpotCountServiceRequest(@SerialName("_request") val request: SpotCountRequestBody)
+
+@Serializable
+data class SpotCountRequestBody(
+    @SerialName("DataAreaId") val dataAreaId: String,
+    @SerialName("UserId") val userId: String,
+    @SerialName("WarehouseId") val warehouseId: String,
+    @SerialName("ItemNumber") val itemNumber: String? = null,
+    @SerialName("LocationId") val locationId: String? = null,
+)
+
+@Serializable
+data class SpotCountServiceResponse(
+    @SerialName("Success") val success: Boolean = false,
+    @SerialName("ErrorCode") val errorCode: String? = null,
+    @SerialName("Message") val message: String? = null,
+    @SerialName("JournalId") val journalId: String? = null,
+    @SerialName("JournalNameId") val journalNameId: String? = null,
+)
+
+@Serializable
+data class OpportunityServiceRequest(@SerialName("_request") val request: OpportunityRequestBody)
+
+@Serializable
+data class OpportunityRequestBody(
+    @SerialName("DataAreaId") val dataAreaId: String,
+    @SerialName("UserId") val userId: String,
+    @SerialName("WarehouseId") val warehouseId: String,
+    @SerialName("LocationId") val locationId: String,
+    @SerialName("ItemNumber") val itemNumber: String? = null,
+)
+
+@Serializable
+data class OpportunityServiceResponse(
+    @SerialName("Success") val success: Boolean = false,
+    @SerialName("ErrorCode") val errorCode: String? = null,
+    @SerialName("Eligible") val eligible: Boolean = false,
+    @SerialName("JournalId") val journalId: String? = null,
+    @SerialName("JournalNameId") val journalNameId: String? = null,
+    @SerialName("Description") val description: String? = null,
+    @SerialName("Line") val line: DirectLineRowDto? = null,
+)
+
+@Serializable
+data class DiscrepancyServiceRequest(@SerialName("_request") val request: DiscrepancyRequestBody)
+
+@Serializable
+data class DiscrepancyRequestBody(
+    @SerialName("DataAreaId") val dataAreaId: String,
+    @SerialName("UserId") val userId: String,
+    @SerialName("DeviceId") val deviceId: String,
+    @SerialName("WarehouseId") val warehouseId: String,
+    @SerialName("LocationId") val locationId: String,
+    @SerialName("ItemNumber") val itemNumber: String? = null,
+    @SerialName("Reason") val reason: String,
+    @SerialName("Note") val note: String? = null,
+)
+
+@Serializable
+data class DiscrepancyServiceResponse(
+    @SerialName("Success") val success: Boolean = false,
+    @SerialName("ErrorCode") val errorCode: String? = null,
+    @SerialName("Message") val message: String? = null,
+    @SerialName("TriggeredJournalId") val triggeredJournalId: String? = null,
+)

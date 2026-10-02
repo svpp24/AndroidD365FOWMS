@@ -16,6 +16,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.TextButton
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -47,6 +48,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.d365fo.mobileops.data.local.entity.CountClaimEntity
 import com.d365fo.mobileops.domain.model.CountRange
 import com.d365fo.mobileops.domain.model.CountingJournalSummary
+import com.d365fo.mobileops.domain.model.originLabel
 import com.d365fo.mobileops.domain.model.ExportJobStatus
 import com.d365fo.mobileops.presentation.common.components.ErrorBanner
 import com.d365fo.mobileops.presentation.common.components.SquareButton as Button
@@ -71,6 +73,7 @@ fun CountingJournalListScreen(
     onViewLines: (String) -> Unit,
     onStartCounting: (String) -> Unit,
     onReviewVariance: (String) -> Unit = {},
+    onNewSpotCount: () -> Unit = {},
     viewModel: CountingJournalListViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -140,6 +143,13 @@ fun CountingJournalListScreen(
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                },
+                actions = {
+                    if (state.canCreateSpot) {
+                        IconButton(onClick = onNewSpotCount) {
+                            Icon(Icons.Default.Add, contentDescription = "New spot count")
+                        }
                     }
                 },
             )
@@ -641,14 +651,20 @@ private fun RangePickerDialog(
 @Composable
 private fun PassBadges(journal: CountingJournalSummary) {
     val badges = listOfNotNull(
+        originLabel(journal.originType)?.takeIf { journal.recountOf == null || journal.originType != "RECOUNT" },
         journal.recountOf?.let { "Recount of $it" },
         "Pass ${journal.passNumber}".takeIf { journal.passNumber > 1 && journal.recountOf == null },
         "Double-blind".takeIf { journal.doubleBlind },
     )
-    if (badges.isEmpty()) return
-    Text(
-        text = badges.joinToString(" · ") + " - counted blind",
-        style = MaterialTheme.typography.labelMedium,
-        color = WarehouseStatusColors.amber,
-    )
+    val blind = journal.passNumber > 1 || journal.doubleBlind || journal.recountOf != null
+    if (badges.isNotEmpty()) {
+        Text(
+            text = badges.joinToString(" · ") + if (blind) " - counted blind" else "",
+            style = MaterialTheme.typography.labelMedium,
+            color = if (journal.originType == "TRIGGERED") MaterialTheme.colorScheme.error else WarehouseStatusColors.amber,
+        )
+    }
+    listOfNotNull(journal.abcClass?.let { "Class $it" }, journal.toleranceInfo).takeIf { it.isNotEmpty() }?.let {
+        Text(text = it.joinToString(" · "), style = MaterialTheme.typography.bodySmall, color = WarehouseStatusColors.text3)
+    }
 }

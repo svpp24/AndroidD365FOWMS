@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsCountSpotRequest</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// createSpotCount's request: an on-demand count of an item and/or a location in a warehouse.
+/// The server creates the journal and its lines; the device never inserts journal lines.
+/// </summary>
+[DataContractAttribute]
+class HSMobileOpsCountSpotRequest
+{
+    DataAreaId dataAreaId;
+    str        userId;
+    str        warehouseId;
+    str        itemNumber;
+    str        locationId;
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmDataAreaId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('DataAreaId')]
+    public DataAreaId parmDataAreaId(DataAreaId _value = dataAreaId)
+    {
+        dataAreaId = _value;
+        return dataAreaId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmUserId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('UserId')]
+    public str parmUserId(str _value = userId)
+    {
+        userId = _value;
+        return userId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmWarehouseId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('WarehouseId')]
+    public str parmWarehouseId(str _value = warehouseId)
+    {
+        warehouseId = _value;
+        return warehouseId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmItemNumber</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ItemNumber')]
+    public str parmItemNumber(str _value = itemNumber)
+    {
+        itemNumber = _value;
+        return itemNumber;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmLocationId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('LocationId')]
+    public str parmLocationId(str _value = locationId)
+    {
+        locationId = _value;
+        return locationId;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>
