@@ -88,7 +88,7 @@ import com.d365fo.mobileops.data.local.entity.WorkerPermissionEntity
         WorkerPermissionEntity::class,
         WorkerDirectoryEntity::class,
     ],
-    version = 12,
+    version = 13,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -387,10 +387,21 @@ abstract class D365Database : RoomDatabase() {
             }
         }
 
+        /** Product dimensions (variants) on journal lines and barcodes. */
+        private val MIGRATION_12_13 = object : androidx.room.migration.Migration(12, 13) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                for (table in listOf("invent_journal_line", "barcode")) {
+                    for (column in listOf("configId", "sizeId", "colorId", "styleId")) {
+                        db.execSQL("ALTER TABLE `$table` ADD COLUMN `$column` TEXT")
+                    }
+                }
+            }
+        }
+
         val MIGRATIONS: Array<androidx.room.migration.Migration> =
             arrayOf(
                 MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7,
-                MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12,
+                MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13,
             )
     }
 }

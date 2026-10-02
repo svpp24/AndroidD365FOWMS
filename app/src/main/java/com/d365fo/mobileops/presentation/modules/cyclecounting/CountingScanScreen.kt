@@ -508,6 +508,7 @@ private fun ChoiceDialog(lines: List<CountLine>, onPick: (String) -> Unit, onCan
 private fun whereLine(line: CountLine): String? =
     listOfNotNull(
         line.locationId?.takeIf { it.isNotBlank() }?.let { "Loc $it" },
+        line.variant.label.takeIf { it.isNotBlank() },
         line.batchId?.takeIf { it.isNotBlank() }?.let { "Batch $it" },
         line.serialId?.takeIf { it.isNotBlank() }?.let { "Serial $it" },
     ).joinToString(" · ").ifEmpty { null }

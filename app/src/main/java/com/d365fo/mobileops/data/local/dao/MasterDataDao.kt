@@ -30,7 +30,15 @@ data class ScannedItem(
     val locationMandatory: Boolean,
     val itemActive: Boolean,
     val barcodeActive: Boolean,
-)
+    val configId: String? = null,
+    val sizeId: String? = null,
+    val colorId: String? = null,
+    val styleId: String? = null,
+) {
+    /** The variant this barcode identifies - empty for an item-level barcode. */
+    val variant: com.d365fo.mobileops.domain.model.ProductVariant
+        get() = com.d365fo.mobileops.domain.model.ProductVariant.of(configId, sizeId, colorId, styleId)
+}
 
 @Dao
 interface ItemDao {
@@ -51,7 +59,11 @@ interface ItemDao {
                i.trackingRequirement AS trackingRequirement,
                i.locationMandatory   AS locationMandatory,
                i.active         AS itemActive,
-               b.active         AS barcodeActive
+               b.active         AS barcodeActive,
+               b.configId       AS configId,
+               b.sizeId         AS sizeId,
+               b.colorId        AS colorId,
+               b.styleId        AS styleId
         FROM barcode b
         INNER JOIN item i ON i.itemId = b.itemId
         WHERE b.barcode = :barcode

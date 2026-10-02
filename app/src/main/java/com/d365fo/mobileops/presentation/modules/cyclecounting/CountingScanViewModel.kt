@@ -219,6 +219,8 @@ class CountingScanViewModel @Inject constructor(
         // Item number first: by far the common scan, and needs no network.
         var itemId = lines.firstOrNull { it.itemId.equals(value, ignoreCase = true) }?.itemId
         var perScan = BigDecimal.ONE
+        // Set when a variant barcode resolves: only lines of that variant can match.
+        var scannedVariant = com.d365fo.mobileops.domain.model.ProductVariant()
 
         if (itemId == null) {
             // Barcodes resolve against the on-device SKU cache (SkuSyncWorker) - never OData, so a
@@ -226,6 +228,7 @@ class CountingScanViewModel @Inject constructor(
             val resolved = itemDao.resolveBarcode(value)
                 ?: return miss("$value is not an item on this journal", typed, unexpectedItemId = value)
             perScan = resolved.quantityPerScan.toBigDecimalOrNull()?.takeIf { it.signum() > 0 } ?: BigDecimal.ONE
+            scannedVariant = resolved.variant
             itemId = lines.firstOrNull { it.itemId.equals(resolved.itemId, ignoreCase = true) }?.itemId
                 ?: return miss(
                     "${resolved.itemId} (barcode $value) is not on this journal",
@@ -248,6 +251,14 @@ class CountingScanViewModel @Inject constructor(
         if (matching.isEmpty()) {
             return miss("$itemId is not expected at $location", typed, unexpectedItemId = itemId)
         }
+        val ofVariant = matching.filter { it.variant.acceptsScanOf(scannedVariant) }
+        if (ofVariant.isEmpty()) {
+            return miss("$itemId ${scannedVariant.label} is not on this journal", typed, unexpectedItemId = itemId)
+        }
+        return pickLine(ofVariant, perScan)
+    }
+
+    private fun pickLine(matching: List<CountLine>, perScan: BigDecimal) {
 
         _query.value = ""
         _message.value = null

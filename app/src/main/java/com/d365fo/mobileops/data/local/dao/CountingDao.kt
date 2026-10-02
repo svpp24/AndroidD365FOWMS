@@ -36,7 +36,14 @@ data class CountLine(
     val locationOwner: String? = null,
     val verifyOnly: Boolean = false,
     val confirmedAt: Long? = null,
+    val configId: String? = null,
+    val sizeId: String? = null,
+    val colorId: String? = null,
+    val styleId: String? = null,
 ) {
+    val variant: com.d365fo.mobileops.domain.model.ProductVariant
+        get() = com.d365fo.mobileops.domain.model.ProductVariant.of(configId, sizeId, colorId, styleId)
+
     /** Counted once it has an entered quantity, was marked counted, or (verify-only) was confirmed. */
     val isCounted: Boolean get() = countedQuantity != null || markedCounted || (verifyOnly && confirmedAt != null)
 }
@@ -50,7 +57,8 @@ interface CountingDao {
         """
         SELECT journalLineId, journalId, lineNumber, itemId, itemName, locationId, batchId,
                serialId, countedQuantity, markedCounted, countedBy, countedAt,
-               locationType, locationOwner, verifyOnly, confirmedAt
+               locationType, locationOwner, verifyOnly, confirmedAt,
+               configId, sizeId, colorId, styleId
         FROM invent_journal_line WHERE journalId = :journalId ORDER BY lineNumber ASC
         """,
     )
@@ -60,7 +68,8 @@ interface CountingDao {
         """
         SELECT journalLineId, journalId, lineNumber, itemId, itemName, locationId, batchId,
                serialId, countedQuantity, markedCounted, countedBy, countedAt,
-               locationType, locationOwner, verifyOnly, confirmedAt
+               locationType, locationOwner, verifyOnly, confirmedAt,
+               configId, sizeId, colorId, styleId
         FROM invent_journal_line WHERE journalId = :journalId ORDER BY lineNumber ASC
         """,
     )

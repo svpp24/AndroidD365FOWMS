@@ -57,6 +57,11 @@ data class BarcodeEntity(
     val unitId: String?,
     val active: Boolean,
     val modifiedAt: Long,
+    /** Product dimensions (variant) - see [com.d365fo.mobileops.domain.model.ProductVariant]. */
+    val configId: String? = null,
+    val sizeId: String? = null,
+    val colorId: String? = null,
+    val styleId: String? = null,
 )
 
 /** InventLocation (warehouse) joined with the non-WMS location master. */

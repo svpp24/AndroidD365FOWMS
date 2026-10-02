@@ -122,6 +122,11 @@ data class JournalLineEntity(
     val batchId: String?,
     val serialId: String?,
     val inventDimId: String?,
+    /** Product dimensions (variant) - see [com.d365fo.mobileops.domain.model.ProductVariant]. */
+    val configId: String? = null,
+    val sizeId: String? = null,
+    val colorId: String? = null,
+    val styleId: String? = null,
     /** Mandatory for adjustment journals (InventJournalTrans.InventTransIdReturn reason). */
     val reasonCode: String? = null,
     /** Movement journals post to a ledger offset account. */

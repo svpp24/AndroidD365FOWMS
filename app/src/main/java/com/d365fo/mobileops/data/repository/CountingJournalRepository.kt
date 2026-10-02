@@ -389,6 +389,10 @@ class CountingJournalRepository @Inject constructor(
                 batchId = row.getCI("ItemBatchNumber")?.takeIf { it.isNotBlank() },
                 serialId = row.getCI("ItemSerialNumber")?.takeIf { it.isNotBlank() },
                 inventDimId = null,
+                configId = row.getCI("ProductConfigurationId")?.takeIf { it.isNotBlank() },
+                sizeId = row.getCI("ProductSizeId")?.takeIf { it.isNotBlank() },
+                colorId = row.getCI("ProductColorId")?.takeIf { it.isNotBlank() },
+                styleId = row.getCI("ProductStyleId")?.takeIf { it.isNotBlank() },
                 capturedAt = System.currentTimeMillis(),
             )
         }

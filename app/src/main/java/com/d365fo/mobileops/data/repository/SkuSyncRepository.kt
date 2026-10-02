@@ -243,6 +243,11 @@ class SkuSyncRepository @Inject constructor(
             // deactivated, so anything the export returns is by definition in use.
             active = true,
             modifiedAt = System.currentTimeMillis(),
+            // A variant barcode names its product dimensions; an item-level one leaves them blank.
+            configId = getCI("ProductConfigurationId")?.takeIf { it.isNotBlank() },
+            sizeId = getCI("ProductSizeId")?.takeIf { it.isNotBlank() },
+            colorId = getCI("ProductColorId")?.takeIf { it.isNotBlank() },
+            styleId = getCI("ProductStyleId")?.takeIf { it.isNotBlank() },
         )
     }
 
