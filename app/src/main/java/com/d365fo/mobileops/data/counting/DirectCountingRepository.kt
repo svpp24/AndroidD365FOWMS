@@ -191,7 +191,7 @@ class DirectCountingRepository @Inject constructor(
                 } else {
                     NetworkResult.Error(
                         AppFailure.BusinessRule(
-                            result.data.message ?: messageFor(result.data.errorCode),
+                            result.data.message?.takeIf { it.isNotBlank() } ?: messageFor(result.data.errorCode),
                             d365ErrorCode = result.data.errorCode,
                         ),
                     )
@@ -257,7 +257,7 @@ class DirectCountingRepository @Inject constructor(
             } else {
                 NetworkResult.Error(
                     AppFailure.BusinessRule(
-                        result.data.message ?: messageFor(result.data.errorCode),
+                        result.data.message?.takeIf { it.isNotBlank() } ?: messageFor(result.data.errorCode),
                         d365ErrorCode = result.data.errorCode,
                     ),
                 )

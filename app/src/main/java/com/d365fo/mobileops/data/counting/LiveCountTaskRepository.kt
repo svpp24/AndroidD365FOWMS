@@ -156,7 +156,7 @@ class LiveCountTaskRepository @Inject constructor(
         }
         return result.toTaskResult { body ->
             if (body.success && !body.journalId.isNullOrBlank()) TaskResult.Ok(body.journalId)
-            else TaskResult.Refused(body.errorCode, body.message ?: taskMessage(body.errorCode))
+            else TaskResult.Refused(body.errorCode, body.message?.takeIf { it.isNotBlank() } ?: taskMessage(body.errorCode))
         }
     }
 
@@ -218,7 +218,7 @@ class LiveCountTaskRepository @Inject constructor(
         }
         return result.toTaskResult { body ->
             if (body.success) TaskResult.Ok(body.triggeredJournalId?.takeIf { it.isNotBlank() })
-            else TaskResult.Refused(body.errorCode, body.message ?: taskMessage(body.errorCode))
+            else TaskResult.Refused(body.errorCode, body.message?.takeIf { it.isNotBlank() } ?: taskMessage(body.errorCode))
         }
     }
 
@@ -272,7 +272,7 @@ class LiveCountTaskRepository @Inject constructor(
                         heartbeatSeconds = body.heartbeatSeconds,
                     )
                 } else {
-                    ClaimOutcome.Refused(refusalFor(body.errorCode), body.claimedBy, body.message)
+                    ClaimOutcome.Refused(refusalFor(body.errorCode), body.claimedBy?.takeIf { it.isNotBlank() }, body.message?.takeIf { it.isNotBlank() })
                 }
             }
         }

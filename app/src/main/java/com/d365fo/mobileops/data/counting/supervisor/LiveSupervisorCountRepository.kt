@@ -168,7 +168,7 @@ class LiveSupervisorCountRepository @Inject constructor(
         is NetworkResult.Success -> if (data.success) {
             SupervisorResult.Done(data.affected)
         } else {
-            SupervisorResult.Refused(refusalFor(data.errorCode), data.message)
+            SupervisorResult.Refused(refusalFor(data.errorCode), data.message?.takeIf { it.isNotBlank() })
         }
     }
 
