@@ -214,7 +214,7 @@ class CountingJournalRepository @Inject constructor(
                 val body = scoped.data
                 if (!body.success) {
                     return@withContext NetworkResult.Error(
-                        AppFailure.BusinessRule(body.errorCode ?: "could not set up the export"),
+                        AppFailure.BusinessRule(com.d365fo.mobileops.util.plainError(body.errorCode, "Couldn't prepare this journal's data"), body.errorCode),
                     )
                 }
                 body.definitionGroupName?.takeIf { it.isNotBlank() }
@@ -575,7 +575,7 @@ class CountingJournalRepository @Inject constructor(
                 val body = importResult.data
                 if (!body.success) {
                     NetworkResult.Error(
-                        AppFailure.BusinessRule(body.errorCode ?: "import failed", d365ErrorCode = body.errorCode),
+                        AppFailure.BusinessRule(com.d365fo.mobileops.util.plainError(body.errorCode, "D365FO couldn't take the counts"), d365ErrorCode = body.errorCode),
                     )
                 } else {
                     body.executionId?.takeIf { it.isNotBlank() }

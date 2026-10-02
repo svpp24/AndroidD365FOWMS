@@ -53,7 +53,7 @@ internal fun CountingLineRow(line: CountLine, onClick: (() -> Unit)? = null) {
                 )
                 // The export has no item name; this is the name resolved from D365FO, and is
                 // skipped while it's still just the item number again.
-                line.itemName.takeIf { it.isNotBlank() && it != line.itemId }?.let {
+                line.itemName.takeIf { it.isNotBlank() && !it.equals(line.itemId, ignoreCase = true) }?.let {
                     Text(
                         text = it,
                         style = MaterialTheme.typography.bodySmall,

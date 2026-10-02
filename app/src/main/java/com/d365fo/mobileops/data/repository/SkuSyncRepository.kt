@@ -78,7 +78,7 @@ class SkuSyncRepository @Inject constructor(
                 val body = scoped.data
                 if (!body.success) {
                     return@withContext NetworkResult.Error(
-                        AppFailure.BusinessRule(body.errorCode ?: "could not set up the SKU export"),
+                        AppFailure.BusinessRule(com.d365fo.mobileops.util.plainError(body.errorCode, "Couldn't prepare the item list"), body.errorCode),
                     )
                 }
                 val items = body.itemDefinitionGroupName?.takeIf { it.isNotBlank() }

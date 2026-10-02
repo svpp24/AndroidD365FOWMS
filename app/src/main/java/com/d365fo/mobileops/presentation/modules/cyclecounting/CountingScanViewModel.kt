@@ -275,6 +275,15 @@ class CountingScanViewModel @Inject constructor(
             addScanned(matching.single(), perScan)
             return
         }
+        // Item on several lines, but the worker already chose one for it this session: count
+        // there again (the message names the line, Undo takes it back, a tap on another line
+        // switches) instead of asking every scan.
+        val remembered = matching.firstOrNull { it.journalLineId == chosenLineByItem[matching.first().itemId.uppercase()] }
+        if (scanned && remembered != null && !remembered.verifyOnly && !state.value.locked) {
+            _query.value = ""
+            addScanned(remembered, perScan)
+            return
+        }
         pickLine(matching, perScan, scanned)
     }
 
@@ -310,6 +319,9 @@ class CountingScanViewModel @Inject constructor(
     private data class LastScan(val journalLineId: String, val before: String?)
 
     private var lastScan: LastScan? = null
+
+    /** The line last picked for an item (upper-cased item id) this session - see [routeToLine]. */
+    private val chosenLineByItem = HashMap<String, String>()
 
     /** Lines the scan could be, after a variant/location narrowing: one opens the popup, several ask. */
     private var choiceIsScan = false
@@ -458,6 +470,7 @@ class CountingScanViewModel @Inject constructor(
         val line = state.value.choice.firstOrNull { it.journalLineId == journalLineId } ?: return
         _choiceIds.value = null
         // Chosen after a scan: count that scan on the chosen line, same as a single-line scan.
+        chosenLineByItem[line.itemId.uppercase()] = line.journalLineId
         if (choiceIsScan && !line.verifyOnly && !state.value.locked) {
             choiceIsScan = false
             addScanned(line, choicePerScan)
@@ -474,6 +487,8 @@ class CountingScanViewModel @Inject constructor(
     /** A tapped row: the same popup, to correct that line. */
     fun openLine(line: CountLine) {
         if (state.value.locked || _prompt.value != null) return
+        // A tapped line is also where the next scans of this item go (see routeToLine).
+        chosenLineByItem[line.itemId.uppercase()] = line.journalLineId
         openPrompt(line, BigDecimal.ONE)
     }
 

@@ -214,6 +214,12 @@ fun CountingScanScreen(
                         )
                     },
                     leadingIcon = { BarcodeFieldIcon() },
+                    supportingText = {
+                        Text(
+                            if (state.byLocation && state.selectedLocation == null) "Scan or choose a location first"
+                            else "Scan to count \u00B7 type to search",
+                        )
+                    },
                     trailingIcon = {
                         if (state.query.isNotEmpty()) {
                             IconButton(onClick = { viewModel.setQuery("") }) {
@@ -431,7 +437,7 @@ private fun QuantityDialog(prompt: CountPrompt, onOk: (String) -> Unit, onCancel
                         fontFamily = FontFamily.Monospace,
                         fontWeight = FontWeight.SemiBold,
                     )
-                    line.itemName.takeIf { it.isNotBlank() && it != line.itemId }?.let {
+                    line.itemName.takeIf { it.isNotBlank() && !it.equals(line.itemId, ignoreCase = true) }?.let {
                         Text(text = it, style = MaterialTheme.typography.bodyMedium)
                     }
                     whereLine(line)?.let {

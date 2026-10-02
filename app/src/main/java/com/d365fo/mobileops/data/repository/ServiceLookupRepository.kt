@@ -361,7 +361,7 @@ class ServiceLookupRepository @Inject constructor(
             NetworkResult.Loading -> NetworkResult.Error(AppFailure.Fatal("unexpected Loading"))
             is NetworkResult.Success -> if (!result.data.success) {
                 NetworkResult.Error(
-                    AppFailure.BusinessRule("D365FO couldn't list today's orders (${result.data.errorCode ?: "unknown"}).", result.data.errorCode),
+                    AppFailure.BusinessRule(com.d365fo.mobileops.util.plainError(result.data.errorCode, "Couldn't list today's orders"), result.data.errorCode),
                 )
             } else {
                 NetworkResult.Success(

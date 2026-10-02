@@ -392,7 +392,7 @@ fun SettingsScreen(
 private enum class SettingsMenuItem(val title: String) {
     ConnectionProfile("Connection & profile"),
     Appearance("Appearance"),
-    Session("Session"),
+    Session("My warehouse & sign-in"),
     Lockout("Lockout settings"),
     Logs("Logs"),
     AdminCenter("Admin Center"),

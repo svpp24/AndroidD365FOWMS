@@ -402,7 +402,8 @@ private fun StepPrompt(
                     enabled = !state.busy,
                     modifier = Modifier.weight(1f).heightIn(min = 56.dp),
                 ) {
-                    Icon(Icons.Default.PhotoCamera, contentDescription = "Scan with camera")
+                    Icon(Icons.Default.PhotoCamera, contentDescription = null)
+                    Text("Scan with camera", modifier = Modifier.padding(start = 8.dp))
                 }
             }
         }

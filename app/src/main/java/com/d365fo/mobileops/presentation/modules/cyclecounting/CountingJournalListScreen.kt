@@ -1,5 +1,6 @@
 package com.d365fo.mobileops.presentation.modules.cyclecounting
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -270,8 +271,15 @@ private fun CountingJournalRow(
         countState.phase != CountPhase.SUBMITTING && countState.phase != CountPhase.SUBMITTED &&
         countState.phase != CountPhase.POSTED
     val canReopen = countState?.phase == CountPhase.SUBMITTED
+    // Tapping the card itself continues counting - the most common action, one tap from the list.
+    val canContinue = countState != null && !refreshing && !busy &&
+        countState.phase != CountPhase.SUBMITTING && countState.phase != CountPhase.SUBMITTED &&
+        countState.phase != CountPhase.POSTED
 
-    Card(modifier = Modifier.fillMaxWidth()) {
+    Card(
+        modifier = Modifier.fillMaxWidth()
+            .then(if (canContinue) Modifier.clickable(onClick = onStartCounting) else Modifier),
+    ) {
         Column(
             modifier = Modifier.padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
