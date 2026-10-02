@@ -29,7 +29,7 @@ class HSMobileOpsPurchListService
         PurchTable                       purchTable;
         TransDate                        deliveryDate;
         str                              warehouseId;
-        int                              count;
+        int                              rows;
 
         response.parmSuccess(false);
         response.parmOrders(orders);
@@ -65,8 +65,8 @@ class HSMobileOpsPurchListService
                     DateSeparator::Hyphen, DateMonth::Digits2, DateSeparator::Hyphen, DateYear::Digits4));
                 orders.addEnd(row);
 
-                count++;
-                if (count >= HSMobileOpsPurchListService::maxOrders())
+                rows++;
+                if (rows >= HSMobileOpsPurchListService::maxOrders())
                 {
                     break;
                 }
