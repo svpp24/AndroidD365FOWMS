@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsCreateVariantTestPO</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Development helper: creates one open purchase order in BSP for warehouse AAC, delivery today,
+/// with two lines of the variant item Dm001 (configurations C1 and C2, 5 each) - test data for the
+/// app's variant handling in receiving. Run on purpose only, from
+/// ?cmp=BSP&amp;mi=SysClassRunner&amp;cls=HSMobileOpsCreateVariantTestPO. Each run creates a new order.
+/// </summary>
+class HSMobileOpsCreateVariantTestPO
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>main</Name>
+				<Source><![CDATA[
+
+    public static void main(Args _args)
+    {
+        PurchTable purchTable;
+        PurchLine  purchLine;
+        InventDim  inventDim;
+        container  configs = ['C1', 'C2'];
+        int        i;
+
+        changecompany ('BSP')
+        {
+            ttsbegin;
+
+            purchTable.clear();
+            purchTable.initValue();
+            purchTable.PurchId     = NumberSeq::newGetNum(PurchParameters::numRefPurchId()).num();
+            purchTable.OrderAccount = '19721';
+            purchTable.initFromVendTable(VendTable::find(purchTable.OrderAccount));
+            purchTable.InventSiteId     = 'AAC';
+            purchTable.InventLocationId = 'AAC';
+            purchTable.DeliveryDate     = DateTimeUtil::getSystemDate(DateTimeUtil::getUserPreferredTimeZone());
+            purchTable.insert();
+
+            for (i = 1; i <= conLen(configs); i++)
+            {
+                inventDim.clear();
+                inventDim.InventSiteId     = 'AAC';
+                inventDim.InventLocationId = 'AAC';
+                inventDim.configId         = conPeek(configs, i);
+                inventDim = InventDim::findOrCreate(inventDim);
+
+                purchLine.clear();
+                purchLine.initFromPurchTable(purchTable);
+                purchLine.ItemId      = 'Dm001';
+                purchLine.InventDimId = inventDim.inventDimId;
+                purchLine.PurchQty    = 5;
+                purchLine.createLine(true, false, true, true, true, true);
+            }
+
+            ttscommit;
+        }
+
+        info(strFmt('Created test purchase order %1 (Dm001 C1 and C2, 5 each, warehouse AAC).', purchTable.PurchId));
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>
