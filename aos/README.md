@@ -594,6 +594,27 @@ build doesn't have. Until then the app polls every 15 minutes in the background 
 TRIGGERED journals once. App flags: `FEATURE_COUNT_SPOT`, `FEATURE_COUNT_SPOT_WORKERS`,
 `FEATURE_COUNT_OPPORTUNITY`, `FEATURE_COUNT_DISCREPANCY`, `FEATURE_COUNT_TRIGGERED_ALERTS`.
 
+**Location types, external counters, stock freeze.**
+
+- New `getLineAttributes` → per line `LocationType` (PHYSICAL, VIRTUAL, CONSIGNMENT_OWN,
+  CONSIGNMENT_VENDOR, TRANSIT), `Owner` and `VerifyOnly`; DIRECT line rows carry the same three.
+  Returns an empty list today (**TODO**), which means "all physical, counted normally". The app
+  shows badges and filters, and a verify-only line asks "Confirm present" instead of a quantity:
+  it is never sent as a count (left out of the DMF package and the DIRECT submit) and goes to
+  `submitExceptions` in the new `Confirmations` list (store them — **TODO**).
+- New role: `HSMobileOpsUser.IsExternalCounter` + `CounterTeam` (table fields and user-form
+  controls). New `getCounterProfile` (real) returns them; an external counter is never a
+  supervisor (`getCounterProfile` and the supervisor service both refuse it). `listOpenJournals`
+  now receives `UserId`; filtering an external counter's list to their team's journals is
+  **TODO**. The app hides supervisor screens and spot creation for external counters — cosmetic
+  only.
+- List rows carry `FreezeState` (NONE, LOCATION_FROZEN, SNAPSHOT_ONLY) and `SnapshotAtUtc`
+  (`NONE` today — **TODO**); the app shows "Stock movements are blocked here" / "Count is
+  measured against stock at HH:mm" and records when each line was first opened. How movements
+  during the count are measured is the server's (**TODO**).
+
+App flags: `FEATURE_COUNT_LOCATION_TYPES`, `FEATURE_COUNT_EXTERNAL_COUNTERS`.
+
 ## Licensing
 
 **Full replacement, this session — a certificate-chain design, not the earlier single-key-per-

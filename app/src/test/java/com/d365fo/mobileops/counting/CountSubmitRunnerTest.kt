@@ -286,6 +286,49 @@ class CountSubmitRunnerTest {
     }
 
     @Test
+    fun `a non-countable line is confirmed, not counted - the confirmation goes with the exceptions`() = runTest {
+        store.queue("CNT-1")
+        store.confirmations += com.d365fo.mobileops.data.local.entity.JournalLineEntity(
+            journalLineId = "CNT-1-4",
+            journalId = "CNT-1",
+            lineNumber = 4,
+            itemId = "TRANSIT-ITEM",
+            itemName = "Transit item",
+            quantity = "",
+            unitId = "",
+            siteId = null,
+            warehouseId = "WH1",
+            locationId = "TRANSIT",
+            batchId = null,
+            serialId = null,
+            inventDimId = null,
+            capturedAt = 0L,
+            locationType = "TRANSIT",
+            verifyOnly = true,
+            confirmedBy = "counter1",
+            confirmedAt = 3_000L,
+        )
+        // Nothing countable on the journal: the DMF package would be empty.
+        transport.start = businessRule("NOTHING_COUNTED").toTransport()
+
+        assertThat(runner.run("CNT-1")).isEqualTo(RunResult.DONE)
+
+        assertThat(transport.sentConfirmations.single().lineNumber).isEqualTo(4)
+        assertThat(store.confirmations.single().confirmationSentAt).isNotNull()
+        assertThat(store.rows["CNT-1"]!!.state).isEqualTo(CountSubmissionState.SUCCEEDED)
+    }
+
+    @Test
+    fun `nothing counted and nothing to confirm is still refused`() = runTest {
+        store.queue("CNT-1")
+        transport.start = businessRule("NOTHING_COUNTED").toTransport()
+
+        runner.run("CNT-1")
+
+        assertThat(store.rows["CNT-1"]!!.error).isEqualTo(CountSubmissionError.NOTHING_COUNTED)
+    }
+
+    @Test
     fun `a finished submission is left alone`() = runTest {
         store.queue("CNT-1")
         store.update("CNT-1", CountSubmissionState.SUCCEEDED)

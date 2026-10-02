@@ -21,6 +21,9 @@ class HSMobileOpsCountDirectLineRow
     int  passNumber;
 
     boolean recount;
+    str locationType;
+    str owner;
+    boolean verifyOnly;
 }
 ]]></Declaration>
 		<Methods>
@@ -144,6 +147,51 @@ class HSMobileOpsCountDirectLineRow
     {
         recount = _value;
         return recount;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmLocationType</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// PHYSICAL, VIRTUAL, CONSIGNMENT_OWN, CONSIGNMENT_VENDOR or TRANSIT.
+    /// </summary>
+    [DataMemberAttribute('LocationType')]
+    public str parmLocationType(str _value = locationType)
+    {
+        locationType = _value;
+        return locationType;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmOwner</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The stock owner, for consignment / third-party stock.
+    /// </summary>
+    [DataMemberAttribute('Owner')]
+    public str parmOwner(str _value = owner)
+    {
+        owner = _value;
+        return owner;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmVerifyOnly</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Confirm present, don't count.
+    /// </summary>
+    [DataMemberAttribute('VerifyOnly')]
+    public boolean parmVerifyOnly(boolean _value = verifyOnly)
+    {
+        verifyOnly = _value;
+        return verifyOnly;
     }
 ]]></Source>
 			</Method>

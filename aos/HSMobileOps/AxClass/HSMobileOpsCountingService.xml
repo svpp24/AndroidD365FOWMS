@@ -162,6 +162,12 @@ class HSMobileOpsCountingService
                 row.parmPriority(0);
                 row.parmToleranceInfo('');
                 row.parmAbcClass('');
+                // TODO (X++ owner): freeze handling - LOCATION_FROZEN while movements are
+                // blocked at the counted locations, or SNAPSHOT_ONLY with the snapshot moment.
+                row.parmFreezeState('NONE');
+                // TODO (X++ owner): when _request.parmUserId() is an external counter
+                // (HSMobileOpsUser.IsExternalCounter), skip journals not assigned to their
+                // CounterTeam.
 
                 rows.addEnd(row);
 

@@ -45,5 +45,13 @@
 			<Name>reportDiscrepancy</Name>
 			<Method>reportDiscrepancy</Method>
 		</AxServiceOperation>
+		<AxServiceOperation>
+			<Name>getCounterProfile</Name>
+			<Method>getCounterProfile</Method>
+		</AxServiceOperation>
+		<AxServiceOperation>
+			<Name>getLineAttributes</Name>
+			<Method>getLineAttributes</Method>
+		</AxServiceOperation>
 	</ServiceOperations>
 </AxService>

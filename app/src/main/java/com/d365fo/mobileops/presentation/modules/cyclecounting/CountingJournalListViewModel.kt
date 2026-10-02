@@ -106,6 +106,7 @@ class CountingJournalListViewModel @Inject constructor(
     private val flags: FeatureFlags,
     countingDao: CountingDao,
     private val triggeredAlerts: com.d365fo.mobileops.data.counting.TriggeredCountAlerts,
+    private val counterProfiles: com.d365fo.mobileops.data.counting.CounterProfiles,
 ) : ViewModel() {
 
     private val _loaded = MutableStateFlow(
@@ -118,6 +119,20 @@ class CountingJournalListViewModel @Inject constructor(
                 (workerSession.session.value?.isCycleCountSupervisor == true || flags.countSpotForWorkers),
         ),
     )
+
+    private fun applyCapabilities(profile: com.d365fo.mobileops.domain.counting.CounterProfile?) {
+        val caps = com.d365fo.mobileops.data.counting.countingCapabilities(
+            flags, profile, workerSession.session.value?.isCycleCountSupervisor == true,
+        )
+        _loaded.update {
+            it.copy(
+                canReviewVariance = caps.canReviewVariance,
+                canCreateSpot = caps.canCreateSpot,
+                externalCounter = caps.externalCounter,
+                counterTeam = profile?.counterTeam,
+            )
+        }
+    }
 
     private data class RoomSide(
         val journals: List<JournalEntity>,
@@ -166,6 +181,8 @@ class CountingJournalListViewModel @Inject constructor(
                     priority = journal.priority,
                     toleranceInfo = journal.toleranceInfo,
                     abcClass = journal.abcClass,
+                    freezeState = journal.freezeState,
+                    snapshotAt = journal.snapshotAt,
                 )
             }
         loaded.copy(
@@ -189,6 +206,10 @@ class CountingJournalListViewModel @Inject constructor(
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), CountingJournalListState())
 
     init {
+        applyCapabilities(null)
+        if (flags.countExternalCounters) {
+            viewModelScope.launch { applyCapabilities(counterProfiles.refresh()) }
+        }
         viewModelScope.launch {
             val warehouseId = workerSession.session.value?.selected?.warehouseId
             _loaded.update { it.copy(warehouseId = warehouseId) }
@@ -388,7 +409,7 @@ class CountingJournalListViewModel @Inject constructor(
 
         _loaded.update { it.copy(busy = true, error = null) }
         triggeredAlerts.rememberWarehouse(warehouseId)
-        when (val result = journals.listAssignedJournals(warehouseId)) {
+        when (val result = journals.listAssignedJournals(warehouseId, workerSession.session.value?.userName)) {
             is NetworkResult.Error -> _loaded.update {
                 it.copy(busy = false, error = result.failure.message)
             }
@@ -418,6 +439,9 @@ data class CountingJournalListState(
     /** Cycle-count supervisor with the supervisor feature on. */
     val canReviewVariance: Boolean = false,
     val canCreateSpot: Boolean = false,
+    /** A third-party counter - sees only their team's journals (server-side). */
+    val externalCounter: Boolean = false,
+    val counterTeam: String? = null,
     /** This device's own claims, keyed by journal id. */
     val myClaims: Map<String, CountClaimEntity> = emptyMap(),
     /** Non-null while the worker is choosing which range of this journal to claim. */

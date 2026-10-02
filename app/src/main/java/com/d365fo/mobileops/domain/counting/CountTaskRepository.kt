@@ -60,6 +60,21 @@ sealed interface TaskResult<out T> {
     data class Unreachable(val message: String) : TaskResult<Nothing>
 }
 
+/** What kind of counter the signed-in worker is - from the server, on entering counting. */
+data class CounterProfile(
+    val isExternalCounter: Boolean,
+    val counterTeam: String?,
+    val isCycleCountSupervisor: Boolean,
+)
+
+/** Location type, owner and verify-only for one line, as the server describes it. */
+data class LineAttributes(
+    val lineNumber: Int,
+    val locationType: String,
+    val owner: String?,
+    val verifyOnly: Boolean,
+)
+
 enum class DiscrepancyReason(val label: String) {
     SHORT_PICK("Less than expected"),
     DAMAGED("Damaged stock"),
@@ -78,6 +93,11 @@ interface CountTaskRepository {
     /** Best effort; true when the server confirmed it (or the claim was already gone). */
     suspend fun release(journalId: String, claimToken: String): Boolean
     suspend fun journalState(journalId: String): NetworkResult<JournalRemoteState>
+
+    suspend fun counterProfile(): NetworkResult<CounterProfile>
+
+    /** Lines not listed are PHYSICAL, own stock, counted normally. */
+    suspend fun lineAttributes(journalId: String): NetworkResult<List<LineAttributes>>
 
     /** Creates a spot count on the server; returns the new journal id. */
     suspend fun createSpotCount(warehouseId: String, itemId: String?, locationId: String?): TaskResult<String>

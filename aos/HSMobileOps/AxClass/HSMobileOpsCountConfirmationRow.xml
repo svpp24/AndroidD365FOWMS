@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsCountConfirmationRow</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// A verify-only line the counter confirmed (instead of counting it).
+/// </summary>
+[DataContractAttribute]
+class HSMobileOpsCountConfirmationRow
+{
+    real lineNumber;
+    str  confirmedBy;
+    str  confirmedAtUtc;
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmLineNumber</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('LineNumber')]
+    public real parmLineNumber(real _value = lineNumber)
+    {
+        lineNumber = _value;
+        return lineNumber;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmConfirmedBy</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ConfirmedBy')]
+    public str parmConfirmedBy(str _value = confirmedBy)
+    {
+        confirmedBy = _value;
+        return confirmedBy;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmConfirmedAtUtc</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ConfirmedAtUtc')]
+    public str parmConfirmedAtUtc(str _value = confirmedAtUtc)
+    {
+        confirmedAtUtc = _value;
+        return confirmedAtUtc;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

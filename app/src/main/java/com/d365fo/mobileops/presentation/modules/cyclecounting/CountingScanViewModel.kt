@@ -92,6 +92,10 @@ class CountingScanViewModel @Inject constructor(
         val selectedLocation: String? = null,
         val emptyPrompt: EmptyLocationPrompt? = null,
         val unexpected: UnexpectedItemPrompt? = null,
+        /** Show only lines of this location type (null = all). */
+        val typeFilter: String? = null,
+        /** A verify-only line waiting for "Confirm present". */
+        val verifyLineId: String? = null,
     )
 
     private data class Base(
@@ -126,7 +130,7 @@ class CountingScanViewModel @Inject constructor(
         val byLocation = locationAvailable && (o.ui.byLocation ?: (b.journal?.locationFirst == true))
         val location = o.ui.selectedLocation.takeIf { byLocation }
         val atLocation = location?.let { loc -> b.lines.filter { it.locationId.equals(loc, ignoreCase = true) } }
-        val scope = atLocation ?: b.lines
+        val scope = (atLocation ?: b.lines).filter { o.ui.typeFilter == null || it.locationType == o.ui.typeFilter }
         CountingScanState(
             journalDescription = b.journal?.description ?: journalId,
             totalLines = b.lines.size,
@@ -148,6 +152,14 @@ class CountingScanViewModel @Inject constructor(
             exceptions = b.exceptions,
             emptyPrompt = o.ui.emptyPrompt,
             unexpected = o.ui.unexpected,
+            freezeBanner = b.journal?.let { j ->
+                com.d365fo.mobileops.domain.model.freezeBanner(j.freezeState, j.snapshotAt) {
+                    com.d365fo.mobileops.util.Formatters.clockTime(it)
+                }
+            },
+            locationTypes = b.lines.map { it.locationType }.distinct().sorted().takeIf { it.size > 1 }.orEmpty(),
+            typeFilter = o.ui.typeFilter,
+            verifyLine = o.ui.verifyLineId?.let { byId[it] },
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), CountingScanState())
 
@@ -245,6 +257,30 @@ class CountingScanViewModel @Inject constructor(
         } else {
             openPrompt(matching.single(), perScan)
         }
+    }
+
+    // -- Location types and verify-only lines ----------------------------------------------------
+
+    fun setTypeFilter(type: String?) = _ui.update { it.copy(typeFilter = type) }
+
+    /** Verify-only (e.g. in transit): confirmed present, never counted. */
+    fun confirmVerified(journalLineId: String, present: Boolean) {
+        _ui.update { it.copy(verifyLineId = null) }
+        viewModelScope.launch {
+            if (!state.value.locked) {
+                countingDao.confirmLine(
+                    journalLineId,
+                    workerSession.session.value?.userName.takeIf { present },
+                    System.currentTimeMillis().takeIf { present },
+                )
+            }
+            _refocus.update { it + 1 }
+        }
+    }
+
+    fun cancelVerify() {
+        _ui.update { it.copy(verifyLineId = null) }
+        _refocus.update { it + 1 }
     }
 
     // -- Location-first -------------------------------------------------------------------------
@@ -360,6 +396,10 @@ class CountingScanViewModel @Inject constructor(
 
     private fun openPrompt(line: CountLine, perScan: BigDecimal) {
         viewModelScope.launch { countingDao.markLineStarted(line.journalLineId, System.currentTimeMillis()) }
+        if (line.verifyOnly) {
+            _ui.update { it.copy(verifyLineId = line.journalLineId) }
+            return
+        }
         val initial = line.countedQuantity
             ?: perScan.takeIf { it > BigDecimal.ONE }?.stripTrailingZeros()?.toPlainString()
             ?: ""
@@ -438,6 +478,13 @@ data class CountingScanState(
     val exceptions: List<CountExceptionEntity> = emptyList(),
     val emptyPrompt: EmptyLocationPrompt? = null,
     val unexpected: UnexpectedItemPrompt? = null,
+    /** Stock-freeze banner text, from the server's freeze state. */
+    val freezeBanner: String? = null,
+    /** Location types on this journal, when there is more than one - for the filter chips. */
+    val locationTypes: List<String> = emptyList(),
+    val typeFilter: String? = null,
+    /** Non-null while "Confirm present" is open for a verify-only line. */
+    val verifyLine: CountLine? = null,
 ) {
     val percent: Int get() = if (totalLines == 0) 0 else (counted * 100) / totalLines
 }

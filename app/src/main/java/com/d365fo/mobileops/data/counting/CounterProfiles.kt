@@ -1,0 +1,64 @@
+package com.d365fo.mobileops.data.counting
+
+import com.d365fo.mobileops.data.local.dao.CountingDao
+import com.d365fo.mobileops.domain.FeatureFlags
+import com.d365fo.mobileops.domain.counting.CounterProfile
+import com.d365fo.mobileops.domain.counting.CountTaskRepository
+import com.d365fo.mobileops.util.NetworkResult
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import javax.inject.Inject
+import javax.inject.Singleton
+
+/**
+ * The signed-in worker's counter profile (external counter? team? supervisor?), fetched from the
+ * server on entering counting and held in memory only. Drives what the app *shows*; the
+ * counting services enforce the same rules themselves.
+ */
+@Singleton
+class CounterProfiles @Inject constructor(private val remote: CountTaskRepository) {
+    private val _profile = MutableStateFlow<CounterProfile?>(null)
+    val profile: StateFlow<CounterProfile?> = _profile.asStateFlow()
+
+    suspend fun refresh(): CounterProfile? {
+        val result = remote.counterProfile()
+        if (result is NetworkResult.Success) _profile.value = result.data
+        return _profile.value
+    }
+}
+
+/** What the counting list may offer this worker. Cosmetic - the server enforces each one. */
+data class CountingCapabilities(
+    val externalCounter: Boolean,
+    val canReviewVariance: Boolean,
+    val canCreateSpot: Boolean,
+)
+
+/**
+ * An external counter never gets supervisor screens or spot creation, whatever the session
+ * says. Without a profile (feature off, or the server unreachable) the sign-in flags apply.
+ */
+fun countingCapabilities(flags: FeatureFlags, profile: CounterProfile?, sessionIsCycleCountSupervisor: Boolean): CountingCapabilities {
+    val external = profile?.isExternalCounter == true
+    val supervisor = !external && (profile?.isCycleCountSupervisor ?: sessionIsCycleCountSupervisor)
+    return CountingCapabilities(
+        externalCounter = external,
+        canReviewVariance = flags.countSupervisor && supervisor,
+        canCreateSpot = flags.countSpot && !external && (supervisor || flags.countSpotForWorkers),
+    )
+}
+
+/** Applies the server's location type / owner / verify-only to a journal's lines after a download. */
+@Singleton
+class LineAttributesSync @Inject constructor(
+    private val remote: CountTaskRepository,
+    private val countingDao: CountingDao,
+) {
+    suspend fun apply(journalId: String) {
+        val attributes = (remote.lineAttributes(journalId) as? NetworkResult.Success)?.data ?: return
+        attributes.forEach {
+            countingDao.setLineAttributes(journalId, it.lineNumber, it.locationType, it.owner, it.verifyOnly)
+        }
+    }
+}

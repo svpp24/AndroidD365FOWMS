@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsCountLineAttributeRow</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// LocationType: PHYSICAL, VIRTUAL, CONSIGNMENT_OWN, CONSIGNMENT_VENDOR or TRANSIT. VerifyOnly: the
+/// line is confirmed present, not counted (e.g. in transit) - decided here.
+/// </summary>
+[DataContractAttribute]
+class HSMobileOpsCountLineAttributeRow
+{
+    real    lineNumber;
+    str     locationType;
+    str     owner;
+    boolean verifyOnly;
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmLineNumber</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('LineNumber')]
+    public real parmLineNumber(real _value = lineNumber)
+    {
+        lineNumber = _value;
+        return lineNumber;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmLocationType</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('LocationType')]
+    public str parmLocationType(str _value = locationType)
+    {
+        locationType = _value;
+        return locationType;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmOwner</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Owner')]
+    public str parmOwner(str _value = owner)
+    {
+        owner = _value;
+        return owner;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmVerifyOnly</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('VerifyOnly')]
+    public boolean parmVerifyOnly(boolean _value = verifyOnly)
+    {
+        verifyOnly = _value;
+        return verifyOnly;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

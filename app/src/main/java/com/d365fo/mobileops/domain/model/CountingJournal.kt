@@ -37,11 +37,36 @@ data class CountingJournalSummary(
     /** Display only, from the server. */
     val toleranceInfo: String? = null,
     val abcClass: String? = null,
+    /** NONE, LOCATION_FROZEN or SNAPSHOT_ONLY - decided by the server. */
+    val freezeState: String = FREEZE_NONE,
+    val snapshotAt: Long? = null,
 ) {
     val doubleBlind: Boolean get() = countMode == COUNT_MODE_DOUBLE_BLIND
 }
 
 const val ORIGIN_SCHEDULED = "SCHEDULED"
+const val FREEZE_NONE = "NONE"
+
+/**
+ * The banner for a journal's stock-freeze state, or null when there is none. [clock] formats the
+ * snapshot time for display. How movements during the count are measured is the server's
+ * business - the app only sends timestamps.
+ */
+fun freezeBanner(freezeState: String, snapshotAt: Long?, clock: (Long) -> String): String? = when (freezeState) {
+    "LOCATION_FROZEN" -> "Stock movements are blocked here while this count is open."
+    "SNAPSHOT_ONLY" -> snapshotAt?.let { "Count is measured against stock at ${clock(it)}." }
+        ?: "Count is measured against a stock snapshot."
+    else -> null
+}
+
+/** The badge for a location type; null for ordinary physical stock. */
+fun locationTypeLabel(locationType: String): String? = when (locationType) {
+    "VIRTUAL" -> "Virtual"
+    "CONSIGNMENT_OWN" -> "Consignment (own)"
+    "CONSIGNMENT_VENDOR" -> "Vendor consignment"
+    "TRANSIT" -> "In transit"
+    else -> null
+}
 
 /** The badge for a count origin; null for an ordinary scheduled count. */
 fun originLabel(originType: String): String? = when (originType) {

@@ -87,6 +87,8 @@ android {
             "FEATURE_COUNT_OPPORTUNITY",
             "FEATURE_COUNT_DISCREPANCY",
             "FEATURE_COUNT_TRIGGERED_ALERTS",
+            "FEATURE_COUNT_LOCATION_TYPES",
+            "FEATURE_COUNT_EXTERNAL_COUNTERS",
         ).forEach { flag ->
             buildConfigField("boolean", flag, secret(flag, "false").toBoolean().toString())
         }

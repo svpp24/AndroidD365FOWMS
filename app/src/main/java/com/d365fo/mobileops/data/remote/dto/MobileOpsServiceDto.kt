@@ -232,6 +232,8 @@ data class JournalListServiceRequest(
 data class JournalListRequestBody(
     @SerialName("DataAreaId") val dataAreaId: String,
     @SerialName("WarehouseId") val warehouseId: String,
+    /** Who is asking - an external counter only sees their team's journals (server-side). */
+    @SerialName("UserId") val userId: String? = null,
 )
 
 @Serializable
@@ -267,6 +269,10 @@ data class JournalSummaryServiceRow(
     @SerialName("Priority") val priority: Int = 0,
     @SerialName("ToleranceInfo") val toleranceInfo: String? = null,
     @SerialName("AbcClass") val abcClass: String? = null,
+    /** NONE, LOCATION_FROZEN or SNAPSHOT_ONLY. */
+    @SerialName("FreezeState") val freezeState: String? = null,
+    /** No zone suffix, UTC - see Formatters.serviceDateTimeToEpochMillis. */
+    @SerialName("SnapshotAtUtc") val snapshotAtUtc: String? = null,
 )
 
 // -- Counting journal export -- one AOS call creates a request-private DMF project scoped to one

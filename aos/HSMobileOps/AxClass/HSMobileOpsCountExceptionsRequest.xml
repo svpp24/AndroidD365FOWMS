@@ -18,6 +18,7 @@ class HSMobileOpsCountExceptionsRequest
     str             deviceId;
     List            exceptions;
     List            emptyLocations;
+    List            confirmations;
 
 }
 ]]></Declaration>
@@ -117,6 +118,22 @@ class HSMobileOpsCountExceptionsRequest
     {
         emptyLocations = _value;
         return emptyLocations;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmConfirmations</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Verify-only lines (e.g. in transit) the counter confirmed instead of counting.
+    /// </summary>
+    [DataMemberAttribute('Confirmations'),
+     DataCollectionAttribute(Types::Class, classStr(HSMobileOpsCountConfirmationRow))]
+    public List parmConfirmations(List _value = confirmations)
+    {
+        confirmations = _value;
+        return confirmations;
     }
 ]]></Source>
 			</Method>

@@ -117,6 +117,9 @@ class DirectCountingRepository @Inject constructor(
                     inventDimId = null,
                     capturedAt = now,
                     recount = row.recount,
+                    locationType = row.locationType?.takeIf { it.isNotBlank() } ?: "PHYSICAL",
+                    locationOwner = row.owner?.takeIf { it.isNotBlank() },
+                    verifyOnly = row.verifyOnly,
                 )
             }
 
@@ -130,13 +133,15 @@ class DirectCountingRepository @Inject constructor(
             journal.journalId, TransferMode.DIRECT, journal.locationFirst, journal.zeroStockCheck,
             journal.countMode, journal.passNumber, journal.recountOf,
             journal.originType, journal.priority, journal.toleranceInfo, journal.abcClass,
+            journal.freezeState, journal.snapshotAt,
         )
         NetworkResult.Success(ImportSummary(lines.size, merge.added, merge.removed, refreshed = alreadyOnDevice))
     }
 
     suspend fun submit(journalId: String, audit: SubmissionAudit, claimToken: String?): NetworkResult<DirectSubmitResult> =
         withContext(ioDispatcher) {
-            val counted = countingDao.getCountLines(journalId).filter { it.isCounted }
+            // Verify-only lines are confirmed, not counted - their confirmations go with the exceptions.
+            val counted = countingDao.getCountLines(journalId).filter { it.isCounted && !it.verifyOnly }
             if (counted.isEmpty()) {
                 return@withContext NetworkResult.Error(
                     AppFailure.BusinessRule("Nothing has been counted yet.", d365ErrorCode = "NOTHING_COUNTED"),
@@ -201,6 +206,7 @@ class DirectCountingRepository @Inject constructor(
         claimToken: String?,
         exceptions: List<com.d365fo.mobileops.data.local.entity.CountExceptionEntity>,
         emptyLocations: List<com.d365fo.mobileops.data.local.entity.CountLocationCheckEntity>,
+        confirmations: List<com.d365fo.mobileops.data.local.entity.JournalLineEntity> = emptyList(),
     ): NetworkResult<Int> = withContext(ioDispatcher) {
         val result = errorMapper.safeCall {
             api.submitExceptions(
@@ -230,6 +236,13 @@ class DirectCountingRepository @Inject constructor(
                                 locationId = it.locationId,
                                 verifiedBy = it.verifiedBy,
                                 verifiedAtUtc = Formatters.isoUtc(it.verifiedAt),
+                            )
+                        },
+                        confirmations = confirmations.map {
+                            com.d365fo.mobileops.data.remote.dto.CountConfirmationRowDto(
+                                lineNumber = it.lineNumber.toDouble(),
+                                confirmedBy = it.confirmedBy,
+                                confirmedAtUtc = Formatters.isoUtc(it.confirmedAt ?: 0L),
                             )
                         },
                     ),

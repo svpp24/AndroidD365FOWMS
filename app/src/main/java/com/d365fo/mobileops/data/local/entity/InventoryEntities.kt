@@ -80,6 +80,10 @@ data class JournalEntity(
     /** Counting only: display-only tolerance text and ABC class from the server. */
     val toleranceInfo: String? = null,
     val abcClass: String? = null,
+    /** Counting only: NONE, LOCATION_FROZEN or SNAPSHOT_ONLY - decided by the server. */
+    val freezeState: String = "NONE",
+    /** Counting only: SNAPSHOT_ONLY - the moment the count is measured against. */
+    val snapshotAt: Long? = null,
     @Embedded val sync: SyncMeta = SyncMeta(),
 )
 
@@ -137,6 +141,15 @@ data class JournalLineEntity(
     val lineCountStartedAt: Long? = null,
     /** Counting only: the server asked for this line to be counted again. */
     val recount: Boolean = false,
+    /** Counting only: PHYSICAL, VIRTUAL, CONSIGNMENT_OWN, CONSIGNMENT_VENDOR or TRANSIT. */
+    val locationType: String = "PHYSICAL",
+    /** Counting only: the stock owner, for consignment / third-party stock. */
+    val locationOwner: String? = null,
+    /** Counting only: confirm present, don't count (the server decides which lines). */
+    val verifyOnly: Boolean = false,
+    val confirmedBy: String? = null,
+    val confirmedAt: Long? = null,
+    val confirmationSentAt: Long? = null,
 )
 
 data class JournalWithLines(

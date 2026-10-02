@@ -24,6 +24,8 @@ class HSMobileOpsJournalSummaryRow
     int priority;
     str toleranceInfo;
     str abcClass;
+    str freezeState;
+    utcdatetime snapshotAtUtc;
 }
 ]]></Declaration>
 		<Methods>
@@ -268,6 +270,37 @@ class HSMobileOpsJournalSummaryRow
     {
         abcClass = _value;
         return abcClass;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmFreezeState</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// NONE, LOCATION_FROZEN (stock movements blocked at the counted locations) or SNAPSHOT_ONLY
+    /// (the count is measured against stock at SnapshotAtUtc).
+    /// </summary>
+    [DataMemberAttribute('FreezeState')]
+    public str parmFreezeState(str _value = freezeState)
+    {
+        freezeState = _value;
+        return freezeState;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmSnapshotAtUtc</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// SNAPSHOT_ONLY: the moment the count is measured against.
+    /// </summary>
+    [DataMemberAttribute('SnapshotAtUtc')]
+    public utcdatetime parmSnapshotAtUtc(utcdatetime _value = snapshotAtUtc)
+    {
+        snapshotAtUtc = _value;
+        return snapshotAtUtc;
     }
 ]]></Source>
 			</Method>

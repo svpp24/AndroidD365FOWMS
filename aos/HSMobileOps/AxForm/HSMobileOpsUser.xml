@@ -291,6 +291,24 @@ public class HSMobileOpsUser extends FormRun
 						<DataField>IsCycleCountSupervisor</DataField>
 						<DataSource>HSMobileOpsUser</DataSource>
 					</AxFormControl>
+					<AxFormControl xmlns=""
+						i:type="AxFormCheckBoxControl">
+						<Name>IsExternalCounter</Name>
+						<Type>CheckBox</Type>
+						<FormControlExtension
+							i:nil="true" />
+						<DataField>IsExternalCounter</DataField>
+						<DataSource>HSMobileOpsUser</DataSource>
+					</AxFormControl>
+					<AxFormControl xmlns=""
+						i:type="AxFormStringControl">
+						<Name>CounterTeam</Name>
+						<Type>String</Type>
+						<FormControlExtension
+							i:nil="true" />
+						<DataField>CounterTeam</DataField>
+						<DataSource>HSMobileOpsUser</DataSource>
+					</AxFormControl>
 				</Controls>
 				<ColumnsMode>Fill</ColumnsMode>
 				<FrameType>None</FrameType>

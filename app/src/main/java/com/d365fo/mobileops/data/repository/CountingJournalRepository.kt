@@ -9,6 +9,7 @@ import com.d365fo.mobileops.data.local.entity.TransferMode
 import com.d365fo.mobileops.domain.model.CountClaimInfo
 import com.d365fo.mobileops.domain.model.COUNT_MODE_SINGLE
 import com.d365fo.mobileops.domain.model.CountRange
+import com.d365fo.mobileops.domain.model.FREEZE_NONE
 import com.d365fo.mobileops.domain.model.ORIGIN_SCHEDULED
 import com.d365fo.mobileops.domain.model.byPriority
 import com.d365fo.mobileops.domain.model.keepsServerCounts
@@ -108,7 +109,7 @@ class CountingJournalRepository @Inject constructor(
     /** DMF's legalEntityId, not lowercased like the AOS dataAreaId - matches what a working ExportToPackage call used (BSP). */
     private fun legalEntity(): String = companyProvider()?.takeIf { it.isNotBlank() }.orEmpty()
 
-    suspend fun listAssignedJournals(warehouseId: String): NetworkResult<List<CountingJournalSummary>> =
+    suspend fun listAssignedJournals(warehouseId: String, userId: String? = null): NetworkResult<List<CountingJournalSummary>> =
         withContext(ioDispatcher) {
             val trimmedWarehouse = warehouseId.trim()
             if (trimmedWarehouse.isEmpty()) {
@@ -118,7 +119,7 @@ class CountingJournalRepository @Inject constructor(
             val result = errorMapper.safeCall {
                 service.listOpenJournals(
                     JournalListServiceRequest(
-                        JournalListRequestBody(company(), trimmedWarehouse),
+                        JournalListRequestBody(company(), trimmedWarehouse, userId),
                     ),
                 )
             }
@@ -164,6 +165,8 @@ class CountingJournalRepository @Inject constructor(
                             priority = row.priority,
                             toleranceInfo = row.toleranceInfo?.takeIf { it.isNotBlank() },
                             abcClass = row.abcClass?.takeIf { it.isNotBlank() },
+                            freezeState = row.freezeState?.takeIf { it.isNotBlank() } ?: FREEZE_NONE,
+                            snapshotAt = Formatters.serviceDateTimeToEpochMillis(row.snapshotAtUtc),
                         )
                     }.byPriority(),
                 )
@@ -397,6 +400,7 @@ class CountingJournalRepository @Inject constructor(
             journal.journalId, TransferMode.DMF, journal.locationFirst, journal.zeroStockCheck,
             journal.countMode, journal.passNumber, journal.recountOf,
             journal.originType, journal.priority, journal.toleranceInfo, journal.abcClass,
+            journal.freezeState, journal.snapshotAt,
         )
         // After the lines, so each reference row's journal exists (foreign key), and keyed by
         // the line id the merge actually kept.
@@ -469,6 +473,9 @@ class CountingJournalRepository @Inject constructor(
             val line = lineNumber?.let { countedByLine[it] }
             val counted = when {
                 line == null -> null
+                // Verify-only (e.g. in transit): confirmed, never counted - the confirmation goes
+                // with the exceptions, and the line's quantity is left untouched.
+                line.verifyOnly -> null
                 line.countedQuantity != null -> line.countedQuantity
                 // Marked counted without a quantity: send the on-hand quantity as the count, so
                 // the line is counted with no adjustment (variance 0) instead of being left

@@ -32,9 +32,13 @@ data class CountLine(
     val markedCounted: Boolean,
     val countedBy: String?,
     val countedAt: Long?,
+    val locationType: String = "PHYSICAL",
+    val locationOwner: String? = null,
+    val verifyOnly: Boolean = false,
+    val confirmedAt: Long? = null,
 ) {
-    /** Counted once it has an entered quantity, or was marked counted. */
-    val isCounted: Boolean get() = countedQuantity != null || markedCounted
+    /** Counted once it has an entered quantity, was marked counted, or (verify-only) was confirmed. */
+    val isCounted: Boolean get() = countedQuantity != null || markedCounted || (verifyOnly && confirmedAt != null)
 }
 
 @Dao
@@ -45,7 +49,8 @@ interface CountingDao {
     @Query(
         """
         SELECT journalLineId, journalId, lineNumber, itemId, itemName, locationId, batchId,
-               serialId, countedQuantity, markedCounted, countedBy, countedAt
+               serialId, countedQuantity, markedCounted, countedBy, countedAt,
+               locationType, locationOwner, verifyOnly, confirmedAt
         FROM invent_journal_line WHERE journalId = :journalId ORDER BY lineNumber ASC
         """,
     )
@@ -54,7 +59,8 @@ interface CountingDao {
     @Query(
         """
         SELECT journalLineId, journalId, lineNumber, itemId, itemName, locationId, batchId,
-               serialId, countedQuantity, markedCounted, countedBy, countedAt
+               serialId, countedQuantity, markedCounted, countedBy, countedAt,
+               locationType, locationOwner, verifyOnly, confirmedAt
         FROM invent_journal_line WHERE journalId = :journalId ORDER BY lineNumber ASC
         """,
     )
@@ -84,6 +90,29 @@ interface CountingDao {
         "UPDATE invent_journal_line SET lineCountStartedAt = :at WHERE journalLineId = :journalLineId AND lineCountStartedAt IS NULL",
     )
     suspend fun markLineStarted(journalLineId: String, at: Long)
+
+    /** Location type, owner and verify-only, as the server described each line. */
+    @Query(
+        """
+        UPDATE invent_journal_line SET locationType = :locationType, locationOwner = :owner, verifyOnly = :verifyOnly
+        WHERE journalId = :journalId AND lineNumber = :lineNumber
+        """,
+    )
+    suspend fun setLineAttributes(journalId: String, lineNumber: Int, locationType: String, owner: String?, verifyOnly: Boolean)
+
+    /** A verify-only line confirmed present (null [at] withdraws the confirmation). */
+    @Query("UPDATE invent_journal_line SET confirmedBy = :by, confirmedAt = :at WHERE journalLineId = :journalLineId")
+    suspend fun confirmLine(journalLineId: String, by: String?, at: Long?)
+
+    @Query(
+        "SELECT * FROM invent_journal_line WHERE journalId = :journalId AND verifyOnly = 1 AND confirmedAt IS NOT NULL AND confirmationSentAt IS NULL",
+    )
+    suspend fun unsentConfirmations(journalId: String): List<com.d365fo.mobileops.data.local.entity.JournalLineEntity>
+
+    @Query(
+        "UPDATE invent_journal_line SET confirmationSentAt = :at WHERE journalId = :journalId AND verifyOnly = 1 AND confirmedAt IS NOT NULL AND confirmationSentAt IS NULL",
+    )
+    suspend fun markConfirmationsSent(journalId: String, at: Long)
 
     // -- On-hand reference (submit path only) ------------------------------------------------
 

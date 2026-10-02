@@ -9,6 +9,7 @@ class HSMobileOpsJournalListRequest
     DataAreaId       dataAreaId;
     InventLocationId warehouseId;
 
+    str userId;
 }
 ]]></Declaration>
 		<Methods>
@@ -39,6 +40,21 @@ class HSMobileOpsJournalListRequest
     {
         warehouseId = _value;
         return warehouseId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmUserId</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Who is asking - an external counter only sees journals assigned to their team.
+    /// </summary>
+    [DataMemberAttribute('UserId')]
+    public str parmUserId(str _value = userId)
+    {
+        userId = _value;
+        return userId;
     }
 ]]></Source>
 			</Method>

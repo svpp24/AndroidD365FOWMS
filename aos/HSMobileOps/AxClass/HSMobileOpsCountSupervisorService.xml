@@ -203,7 +203,8 @@ class HSMobileOpsCountSupervisorService
         }
 
         user = HSMobileOpsUser::find(_userId);
-        if (!user.RecId || !user.IsActive || !user.IsCycleCountSupervisor)
+        // An external counter is never a supervisor, whatever else is ticked.
+        if (!user.RecId || !user.IsActive || !user.IsCycleCountSupervisor || user.IsExternalCounter)
         {
             return 'NOT_SUPERVISOR';
         }

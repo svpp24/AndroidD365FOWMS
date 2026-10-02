@@ -38,6 +38,12 @@ interface FeatureFlags {
 
     /** Background notification of new TRIGGERED counts (stand-in for push). */
     val countTriggeredAlerts: Boolean
+
+    /** Location-type badges / filters and verify-only lines (fetches getLineAttributes). */
+    val countLocationTypes: Boolean
+
+    /** Fetch the counter profile (external counters, teams) on entering counting. */
+    val countExternalCounters: Boolean
 }
 
 @Singleton
@@ -52,4 +58,6 @@ class BuildConfigFeatureFlags @Inject constructor() : FeatureFlags {
     override val countOpportunity: Boolean get() = BuildConfig.FEATURE_COUNT_OPPORTUNITY
     override val countDiscrepancy: Boolean get() = BuildConfig.FEATURE_COUNT_DISCREPANCY
     override val countTriggeredAlerts: Boolean get() = BuildConfig.FEATURE_COUNT_TRIGGERED_ALERTS
+    override val countLocationTypes: Boolean get() = BuildConfig.FEATURE_COUNT_LOCATION_TYPES
+    override val countExternalCounters: Boolean get() = BuildConfig.FEATURE_COUNT_EXTERNAL_COUNTERS
 }

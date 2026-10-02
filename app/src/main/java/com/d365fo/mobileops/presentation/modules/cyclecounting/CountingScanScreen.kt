@@ -1,6 +1,8 @@
 package com.d365fo.mobileops.presentation.modules.cyclecounting
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -25,6 +27,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Switch
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.Text
@@ -137,6 +140,26 @@ fun CountingScanScreen(
                 }
                 if (state.totalLines > 0) {
                     CountProgressBar(progress = state.counted.toFloat() / state.totalLines)
+                }
+
+                state.freezeBanner?.let {
+                    Text(text = it, style = MaterialTheme.typography.bodySmall, color = WarehouseStatusColors.amber)
+                }
+
+                if (state.locationTypes.isNotEmpty()) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        FilterChip(selected = state.typeFilter == null, onClick = { viewModel.setTypeFilter(null) }, label = { Text("All") })
+                        state.locationTypes.forEach { type ->
+                            FilterChip(
+                                selected = state.typeFilter == type,
+                                onClick = { viewModel.setTypeFilter(type) },
+                                label = { Text(com.d365fo.mobileops.domain.model.locationTypeLabel(type) ?: "Physical") },
+                            )
+                        }
+                    }
                 }
 
                 if (state.zeroStockCheck) {
@@ -304,6 +327,28 @@ fun CountingScanScreen(
             lines = state.choice,
             onPick = viewModel::pickLine,
             onCancel = viewModel::cancelChoice,
+        )
+    }
+
+    state.verifyLine?.let { line ->
+        AlertDialog(
+            onDismissRequest = viewModel::cancelVerify,
+            title = { Text("Verify, don't count") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("${line.itemId} · ${com.d365fo.mobileops.domain.model.locationTypeLabel(line.locationType) ?: "Physical"}")
+                    line.locationOwner?.let { Text("Owner $it", style = MaterialTheme.typography.bodySmall) }
+                    Text("This line is confirmed, not counted. Is it there?")
+                }
+            },
+            confirmButton = { ConfirmButton(onClick = { viewModel.confirmVerified(line.journalLineId, true) }) { Text("Confirm present") } },
+            dismissButton = {
+                CancelOutlinedButton(
+                    onClick = {
+                        if (line.confirmedAt != null) viewModel.confirmVerified(line.journalLineId, false) else viewModel.cancelVerify()
+                    },
+                ) { Text(if (line.confirmedAt != null) "Withdraw confirmation" else "Cancel") }
+            },
         )
     }
 

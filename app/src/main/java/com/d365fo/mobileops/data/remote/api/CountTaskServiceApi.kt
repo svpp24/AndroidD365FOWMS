@@ -62,6 +62,18 @@ interface CountTaskServiceApi {
         @Body body: com.d365fo.mobileops.data.remote.dto.DiscrepancyServiceRequest,
     ): Response<com.d365fo.mobileops.data.remote.dto.DiscrepancyServiceResponse>
 
+    @POST("HSMobileOpsServiceGroup/HSMobileOpsCountTaskSvc/getCounterProfile")
+    suspend fun getCounterProfile(
+        @Body body: com.d365fo.mobileops.data.remote.dto.CounterProfileServiceRequest,
+        @Tag tag: IdempotentRead = IdempotentRead,
+    ): Response<com.d365fo.mobileops.data.remote.dto.CounterProfileServiceResponse>
+
+    @POST("HSMobileOpsServiceGroup/HSMobileOpsCountTaskSvc/getLineAttributes")
+    suspend fun getLineAttributes(
+        @Body body: com.d365fo.mobileops.data.remote.dto.LineAttributesServiceRequest,
+        @Tag tag: IdempotentRead = IdempotentRead,
+    ): Response<com.d365fo.mobileops.data.remote.dto.LineAttributesServiceResponse>
+
     @POST("HSMobileOpsServiceGroup/HSMobileOpsCountTaskSvc/submitExceptions")
     suspend fun submitExceptions(
         @Body body: com.d365fo.mobileops.data.remote.dto.CountExceptionsServiceRequest,

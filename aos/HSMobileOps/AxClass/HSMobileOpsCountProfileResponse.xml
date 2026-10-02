@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsCountProfileResponse</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// What kind of counter UserId is (HSMobileOpsUser). The app hides screens accordingly; every counting
+/// service enforces the same rules server-side.
+/// </summary>
+[DataContractAttribute]
+class HSMobileOpsCountProfileResponse
+{
+    boolean success;
+    str     errorCode;
+    boolean isExternalCounter;
+    str     counterTeam;
+    boolean isCycleCountSupervisor;
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmSuccess</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Success')]
+    public boolean parmSuccess(boolean _value = success)
+    {
+        success = _value;
+        return success;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmErrorCode</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ErrorCode')]
+    public str parmErrorCode(str _value = errorCode)
+    {
+        errorCode = _value;
+        return errorCode;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmIsExternalCounter</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('IsExternalCounter')]
+    public boolean parmIsExternalCounter(boolean _value = isExternalCounter)
+    {
+        isExternalCounter = _value;
+        return isExternalCounter;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmCounterTeam</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('CounterTeam')]
+    public str parmCounterTeam(str _value = counterTeam)
+    {
+        counterTeam = _value;
+        return counterTeam;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmIsCycleCountSupervisor</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('IsCycleCountSupervisor')]
+    public boolean parmIsCycleCountSupervisor(boolean _value = isCycleCountSupervisor)
+    {
+        isCycleCountSupervisor = _value;
+        return isCycleCountSupervisor;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

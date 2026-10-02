@@ -48,6 +48,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.d365fo.mobileops.data.local.entity.CountClaimEntity
 import com.d365fo.mobileops.domain.model.CountRange
 import com.d365fo.mobileops.domain.model.CountingJournalSummary
+import com.d365fo.mobileops.domain.model.freezeBanner
 import com.d365fo.mobileops.domain.model.originLabel
 import com.d365fo.mobileops.domain.model.ExportJobStatus
 import com.d365fo.mobileops.presentation.common.components.ErrorBanner
@@ -189,6 +190,16 @@ fun CountingJournalListScreen(
                         contentPadding = PaddingValues(vertical = WarehouseDimens.ItemSpacing),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
+                        if (state.externalCounter) {
+                            item(key = "external") {
+                                Text(
+                                    text = "External counter" + (state.counterTeam?.let { " · team $it" } ?: "") +
+                                        " - only journals assigned to your team are listed.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = WarehouseStatusColors.text3,
+                                )
+                            }
+                        }
                         state.error?.let { error ->
                             item(key = "error") {
                                 ErrorBanner(
@@ -310,6 +321,9 @@ private fun CountingJournalRow(
             }
 
             PassBadges(journal)
+            freezeBanner(journal.freezeState, journal.snapshotAt) { Formatters.clockTime(it) }?.let {
+                Text(text = it, style = MaterialTheme.typography.bodySmall, color = WarehouseStatusColors.amber)
+            }
             if (claimsEnabled) {
                 ClaimLine(journal = journal, myClaim = myClaim)
             }

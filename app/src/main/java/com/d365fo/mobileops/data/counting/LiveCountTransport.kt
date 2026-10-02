@@ -29,7 +29,8 @@ class LiveCountTransport @Inject constructor(
         claimToken: String?,
         exceptions: List<CountExceptionEntity>,
         emptyLocations: List<CountLocationCheckEntity>,
-    ) = direct.submitExceptions(journalId, audit, claimToken, exceptions, emptyLocations).toTransport()
+        confirmations: List<com.d365fo.mobileops.data.local.entity.JournalLineEntity>,
+    ) = direct.submitExceptions(journalId, audit, claimToken, exceptions, emptyLocations, confirmations).toTransport()
 
     private fun <T> NetworkResult<T>.toTransport(): TransportResult<T> = when (this) {
         is NetworkResult.Success -> TransportResult.Ok(data)

@@ -15,7 +15,9 @@ import com.d365fo.mobileops.data.security.SecureStore
 import com.d365fo.mobileops.domain.counting.ClaimOutcome
 import com.d365fo.mobileops.domain.counting.ClaimRefusal
 import com.d365fo.mobileops.domain.counting.CountTaskRepository
+import com.d365fo.mobileops.domain.counting.CounterProfile
 import com.d365fo.mobileops.domain.counting.DiscrepancyReason
+import com.d365fo.mobileops.domain.counting.LineAttributes
 import com.d365fo.mobileops.domain.counting.JournalRemoteState
 import com.d365fo.mobileops.domain.counting.OpportunityTask
 import com.d365fo.mobileops.domain.counting.TaskResult
@@ -81,6 +83,59 @@ class LiveCountTaskRepository @Inject constructor(
                 } else {
                     NetworkResult.Error(AppFailure.BusinessRule("Could not read the journal's state", body.errorCode))
                 }
+            }
+        }
+    }
+
+    override suspend fun counterProfile(): NetworkResult<CounterProfile> {
+        val result = errorMapper.safeCall {
+            api.getCounterProfile(
+                com.d365fo.mobileops.data.remote.dto.CounterProfileServiceRequest(
+                    com.d365fo.mobileops.data.remote.dto.CounterProfileRequestBody(company(), userId()),
+                ),
+            )
+        }
+        return when (result) {
+            is NetworkResult.Error -> result
+            NetworkResult.Loading -> NetworkResult.Error(AppFailure.Fatal("unexpected Loading"))
+            is NetworkResult.Success -> if (result.data.success) {
+                NetworkResult.Success(
+                    CounterProfile(
+                        isExternalCounter = result.data.isExternalCounter,
+                        counterTeam = result.data.counterTeam?.takeIf { it.isNotBlank() },
+                        isCycleCountSupervisor = result.data.isCycleCountSupervisor,
+                    ),
+                )
+            } else {
+                NetworkResult.Error(AppFailure.BusinessRule(taskMessage(result.data.errorCode), result.data.errorCode))
+            }
+        }
+    }
+
+    override suspend fun lineAttributes(journalId: String): NetworkResult<List<LineAttributes>> {
+        val result = errorMapper.safeCall {
+            api.getLineAttributes(
+                com.d365fo.mobileops.data.remote.dto.LineAttributesServiceRequest(
+                    com.d365fo.mobileops.data.remote.dto.LineAttributesRequestBody(company(), journalId, userId()),
+                ),
+            )
+        }
+        return when (result) {
+            is NetworkResult.Error -> result
+            NetworkResult.Loading -> NetworkResult.Error(AppFailure.Fatal("unexpected Loading"))
+            is NetworkResult.Success -> if (result.data.success) {
+                NetworkResult.Success(
+                    result.data.lines.map {
+                        LineAttributes(
+                            lineNumber = it.lineNumber.toInt(),
+                            locationType = it.locationType?.takeIf { t -> t.isNotBlank() } ?: "PHYSICAL",
+                            owner = it.owner?.takeIf { o -> o.isNotBlank() },
+                            verifyOnly = it.verifyOnly,
+                        )
+                    },
+                )
+            } else {
+                NetworkResult.Error(AppFailure.BusinessRule(taskMessage(result.data.errorCode), result.data.errorCode))
             }
         }
     }

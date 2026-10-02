@@ -222,6 +222,10 @@ class HSMobileOpsCountTaskService
                 // TODO (X++ owner): real pass number once recounts exist (attempt table).
                 row.parmPassNumber(1);
                 row.parmRecount(false);
+                // TODO (X++ owner): location type / owner / verify-only, as getLineAttributes.
+                row.parmLocationType('PHYSICAL');
+                row.parmOwner('');
+                row.parmVerifyOnly(false);
                 lines.addEnd(row);
             }
         }
@@ -401,6 +405,74 @@ class HSMobileOpsCountTaskService
         // TODO (X++ owner): record the discrepancy (user, device, warehouse, location, item,
         // reason, note) and, by your rules, create a TRIGGERED counting journal.
         response.parmErrorCode('NOT_IMPLEMENTED');
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>getCounterProfile</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// What kind of counter a user is. The app hides screens from this; every counting service
+    /// applies the same rules itself.
+    /// </summary>
+    public HSMobileOpsCountProfileResponse getCounterProfile(HSMobileOpsCountProfileRequest _request)
+    {
+        HSMobileOpsCountProfileResponse response = new HSMobileOpsCountProfileResponse();
+        HSMobileOpsUser                 user;
+
+        response.parmSuccess(false);
+
+        if (!_request || !_request.parmUserId())
+        {
+            response.parmErrorCode('INVALID_REQUEST');
+            return response;
+        }
+
+        user = HSMobileOpsUser::find(_request.parmUserId());
+        if (!user.RecId || !user.IsActive)
+        {
+            response.parmErrorCode('USER_NOT_FOUND');
+            return response;
+        }
+
+        response.parmIsExternalCounter(user.IsExternalCounter == NoYes::Yes);
+        response.parmCounterTeam(user.CounterTeam);
+        // An external counter never gets supervisor rights, whatever else is ticked.
+        response.parmIsCycleCountSupervisor(user.IsCycleCountSupervisor == NoYes::Yes && user.IsExternalCounter == NoYes::No);
+        response.parmSuccess(true);
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>getLineAttributes</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Location type, owner and verify-only per line. A line not returned is PHYSICAL, own stock,
+    /// counted normally - so the empty answer below is a safe default.
+    /// </summary>
+    public HSMobileOpsCountLineAttributesResponse getLineAttributes(HSMobileOpsCountLineAttributesRequest _request)
+    {
+        HSMobileOpsCountLineAttributesResponse response = new HSMobileOpsCountLineAttributesResponse();
+
+        response.parmSuccess(false);
+        response.parmLines(new List(Types::Class));
+
+        if (!_request || !_request.parmDataAreaId() || !_request.parmJournalId()
+            || !CompanyInfo::findDataArea(_request.parmDataAreaId()).RecId)
+        {
+            response.parmErrorCode('INVALID_REQUEST');
+            return response;
+        }
+
+        // TODO (X++ owner): per line, the location's type (VIRTUAL, CONSIGNMENT_OWN,
+        // CONSIGNMENT_VENDOR, TRANSIT), the stock owner for consignment / third-party stock, and
+        // whether it is verify-only (confirmed present, not counted). Which location types appear
+        // in a journal at all is decided when the journal is generated.
+        response.parmSuccess(true);
         return response;
     }
 ]]></Source>

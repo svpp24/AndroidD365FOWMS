@@ -106,6 +106,8 @@ class CountingDownloadTracker @Inject constructor(
     private val repository: CountingJournalRepository,
     private val direct: DirectCountingRepository,
     private val countSubmissions: CountSubmissions,
+    private val lineAttributes: com.d365fo.mobileops.data.counting.LineAttributesSync,
+    private val flags: com.d365fo.mobileops.domain.FeatureFlags,
     journalDao: JournalDao,
     private val scope: CoroutineScope,
 ) {
@@ -169,7 +171,10 @@ class CountingDownloadTracker @Inject constructor(
         when (val result = direct.downloadLines(journal, warehouseId, range, claimToken)) {
             is NetworkResult.Error -> failDownload(journal, result.failure.message)
             NetworkResult.Loading -> Unit
-            is NetworkResult.Success -> setDownload(journal, ExportJobStatus.Ready(""), imported = true, note = result.data.note)
+            is NetworkResult.Success -> {
+                if (flags.countLocationTypes) runCatching { lineAttributes.apply(journal.journalId) }
+                setDownload(journal, ExportJobStatus.Ready(""), imported = true, note = result.data.note)
+            }
         }
     }
 
@@ -215,6 +220,9 @@ class CountingDownloadTracker @Inject constructor(
             is NetworkResult.Error -> failDownload(journal, result.failure.message)
             NetworkResult.Loading -> Unit
             is NetworkResult.Success -> {
+                // Location types / verify-only before the journal shows as ready, so a counter
+                // never starts counting a transit line as if it were physical stock.
+                if (flags.countLocationTypes) runCatching { lineAttributes.apply(journal.journalId) }
                 setDownload(journal, ready, imported = true, note = result.data.note)
                 // The export carries no item names; resolve them now that the lines are on the
                 // device. Best effort and after the journal is usable - the lines screen picks

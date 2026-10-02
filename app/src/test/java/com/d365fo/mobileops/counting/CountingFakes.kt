@@ -52,6 +52,12 @@ class FakeCountTaskRepository : CountTaskRepository {
 
     override suspend fun journalState(journalId: String) = state
 
+    var profile: NetworkResult<com.d365fo.mobileops.domain.counting.CounterProfile> =
+        NetworkResult.Error(AppFailure.Offline())
+    override suspend fun counterProfile() = profile
+    var attributes: List<com.d365fo.mobileops.domain.counting.LineAttributes> = emptyList()
+    override suspend fun lineAttributes(journalId: String) = NetworkResult.Success(attributes)
+
     var spotAnswer: com.d365fo.mobileops.domain.counting.TaskResult<String> =
         com.d365fo.mobileops.domain.counting.TaskResult.Ok("SPOT-1")
     val spotCalls = mutableListOf<Triple<String, String?, String?>>()
@@ -107,6 +113,7 @@ class FakeSubmissionStore : SubmissionStore {
     val journalStatus = mutableMapOf<String, String>()
     val exceptions = mutableListOf<CountExceptionEntity>()
     val locationChecks = mutableListOf<CountLocationCheckEntity>()
+    val confirmations = mutableListOf<com.d365fo.mobileops.data.local.entity.JournalLineEntity>()
 
     fun queue(journalId: String, mode: TransferMode = TransferMode.DMF, executionId: String? = null) {
         rows[journalId] = CountSubmissionEntity(
@@ -145,7 +152,10 @@ class FakeSubmissionStore : SubmissionStore {
     }
     override suspend fun unsentExceptions(journalId: String) = exceptions.filter { it.journalId == journalId && it.sentAt == null }
     override suspend fun unsentLocationChecks(journalId: String) = locationChecks.filter { it.journalId == journalId && it.sentAt == null }
+    override suspend fun unsentConfirmations(journalId: String) =
+        confirmations.filter { it.journalId == journalId && it.confirmationSentAt == null }
     override suspend fun markExceptionsSent(journalId: String) {
+        confirmations.replaceAll { if (it.journalId == journalId) it.copy(confirmationSentAt = 1L) else it }
         exceptions.replaceAll { if (it.journalId == journalId && it.sentAt == null) it.copy(sentAt = 1L, sendError = null) else it }
         locationChecks.replaceAll { if (it.journalId == journalId) it.copy(sentAt = 1L) else it }
     }
@@ -207,6 +217,7 @@ class FakeCountTransport : CountTransport {
     var exceptions: TransportResult<Int> = TransportResult.Ok(1)
     val sentExceptions = mutableListOf<List<CountExceptionEntity>>()
     val sentEmptyLocations = mutableListOf<List<CountLocationCheckEntity>>()
+    val sentConfirmations = mutableListOf<com.d365fo.mobileops.data.local.entity.JournalLineEntity>()
 
     var startCalls = 0
     val audits = mutableListOf<SubmissionAudit>()
@@ -234,7 +245,9 @@ class FakeCountTransport : CountTransport {
         claimToken: String?,
         exceptions: List<CountExceptionEntity>,
         emptyLocations: List<CountLocationCheckEntity>,
+        confirmations: List<com.d365fo.mobileops.data.local.entity.JournalLineEntity>,
     ): TransportResult<Int> {
+        sentConfirmations += confirmations
         sentExceptions += exceptions
         sentEmptyLocations += emptyLocations
         return this.exceptions

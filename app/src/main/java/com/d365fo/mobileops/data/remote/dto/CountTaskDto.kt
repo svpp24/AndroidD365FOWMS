@@ -112,6 +112,9 @@ data class DirectLineRowDto(
     @SerialName("SerialId") val serialId: String? = null,
     @SerialName("PassNumber") val passNumber: Int = 1,
     @SerialName("Recount") val recount: Boolean = false,
+    @SerialName("LocationType") val locationType: String? = null,
+    @SerialName("Owner") val owner: String? = null,
+    @SerialName("VerifyOnly") val verifyOnly: Boolean = false,
 )
 
 @Serializable
@@ -172,6 +175,14 @@ data class CountExceptionsRequestBody(
     @SerialName("DeviceId") val deviceId: String,
     @SerialName("Exceptions") val exceptions: List<CountExceptionRowDto>,
     @SerialName("EmptyLocations") val emptyLocations: List<CountEmptyLocationRowDto>,
+    @SerialName("Confirmations") val confirmations: List<CountConfirmationRowDto> = emptyList(),
+)
+
+@Serializable
+data class CountConfirmationRowDto(
+    @SerialName("LineNumber") val lineNumber: Double,
+    @SerialName("ConfirmedBy") val confirmedBy: String? = null,
+    @SerialName("ConfirmedAtUtc") val confirmedAtUtc: String,
 )
 
 @Serializable
@@ -267,4 +278,47 @@ data class DiscrepancyServiceResponse(
     @SerialName("ErrorCode") val errorCode: String? = null,
     @SerialName("Message") val message: String? = null,
     @SerialName("TriggeredJournalId") val triggeredJournalId: String? = null,
+)
+
+@Serializable
+data class CounterProfileServiceRequest(@SerialName("_request") val request: CounterProfileRequestBody)
+
+@Serializable
+data class CounterProfileRequestBody(
+    @SerialName("DataAreaId") val dataAreaId: String,
+    @SerialName("UserId") val userId: String,
+)
+
+@Serializable
+data class CounterProfileServiceResponse(
+    @SerialName("Success") val success: Boolean = false,
+    @SerialName("ErrorCode") val errorCode: String? = null,
+    @SerialName("IsExternalCounter") val isExternalCounter: Boolean = false,
+    @SerialName("CounterTeam") val counterTeam: String? = null,
+    @SerialName("IsCycleCountSupervisor") val isCycleCountSupervisor: Boolean = false,
+)
+
+@Serializable
+data class LineAttributesServiceRequest(@SerialName("_request") val request: LineAttributesRequestBody)
+
+@Serializable
+data class LineAttributesRequestBody(
+    @SerialName("DataAreaId") val dataAreaId: String,
+    @SerialName("JournalId") val journalId: String,
+    @SerialName("UserId") val userId: String,
+)
+
+@Serializable
+data class LineAttributeRowDto(
+    @SerialName("LineNumber") val lineNumber: Double = 0.0,
+    @SerialName("LocationType") val locationType: String? = null,
+    @SerialName("Owner") val owner: String? = null,
+    @SerialName("VerifyOnly") val verifyOnly: Boolean = false,
+)
+
+@Serializable
+data class LineAttributesServiceResponse(
+    @SerialName("Success") val success: Boolean = false,
+    @SerialName("ErrorCode") val errorCode: String? = null,
+    @SerialName("Lines") val lines: List<LineAttributeRowDto> = emptyList(),
 )

@@ -118,7 +118,7 @@ interface JournalDao {
         SELECT journalId,
                COUNT(*) AS total,
                SUM(CASE WHEN countedQuantity IS NOT NULL THEN 1 ELSE 0 END) AS withQuantity,
-               SUM(CASE WHEN countedQuantity IS NULL AND markedCounted = 1 THEN 1 ELSE 0 END) AS markedOnly
+               SUM(CASE WHEN countedQuantity IS NULL AND (markedCounted = 1 OR (verifyOnly = 1 AND confirmedAt IS NOT NULL)) THEN 1 ELSE 0 END) AS markedOnly
         FROM invent_journal_line
         WHERE journalId IN (SELECT journalId FROM invent_journal WHERE type = 'COUNTING')
         GROUP BY journalId
@@ -164,6 +164,9 @@ interface JournalDao {
                 countedBy = old.countedBy ?: fresh.countedBy,
                 countedAt = old.countedAt ?: fresh.countedAt,
                 lineCountStartedAt = old.lineCountStartedAt,
+                confirmedBy = old.confirmedBy,
+                confirmedAt = old.confirmedAt,
+                confirmationSentAt = old.confirmationSentAt,
             )
         }
         upsertLinesChunked(merged)
@@ -235,7 +238,8 @@ interface JournalDao {
         UPDATE invent_journal
         SET transferMode = :transferMode, locationFirst = :locationFirst, zeroStockCheck = :zeroStockCheck,
             countMode = :countMode, passNumber = :passNumber, recountOf = :recountOf,
-            originType = :originType, priority = :priority, toleranceInfo = :toleranceInfo, abcClass = :abcClass
+            originType = :originType, priority = :priority, toleranceInfo = :toleranceInfo, abcClass = :abcClass,
+            freezeState = :freezeState, snapshotAt = :snapshotAt
         WHERE journalId = :journalId
         """,
     )
@@ -251,6 +255,8 @@ interface JournalDao {
         priority: Int,
         toleranceInfo: String?,
         abcClass: String?,
+        freezeState: String,
+        snapshotAt: Long?,
     )
 
     @Query("DELETE FROM invent_journal WHERE status = 'POSTED' AND postedAt < :olderThan")

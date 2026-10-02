@@ -38,6 +38,7 @@ internal fun CountingLineRow(line: CountLine, onClick: (() -> Unit)? = null) {
         ) {
             val (icon, tint) = when {
                 line.countedQuantity != null -> Icons.Default.CheckCircle to WarehouseStatusColors.green
+                line.verifyOnly && line.confirmedAt != null -> Icons.Default.CheckCircle to WarehouseStatusColors.green
                 line.markedCounted -> Icons.Default.Flag to WarehouseStatusColors.amber
                 else -> Icons.Default.RadioButtonUnchecked to WarehouseStatusColors.text3
             }
@@ -64,6 +65,9 @@ internal fun CountingLineRow(line: CountLine, onClick: (() -> Unit)? = null) {
                     line.locationId?.takeIf { it.isNotBlank() }?.let { "Loc $it" },
                     line.batchId?.takeIf { it.isNotBlank() }?.let { "Batch $it" },
                     line.serialId?.takeIf { it.isNotBlank() }?.let { "Serial $it" },
+                    com.d365fo.mobileops.domain.model.locationTypeLabel(line.locationType),
+                    line.locationOwner?.let { "Owner $it" },
+                    "Verify only".takeIf { line.verifyOnly },
                 ).joinToString(" · ")
                 if (where.isNotEmpty()) {
                     Text(
@@ -77,12 +81,12 @@ internal fun CountingLineRow(line: CountLine, onClick: (() -> Unit)? = null) {
             }
 
             Text(
-                text = line.countedQuantity ?: "-",
+                text = line.countedQuantity ?: if (line.verifyOnly && line.confirmedAt != null) "Verified" else "-",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold,
                 maxLines = 1,
                 softWrap = false,
-                color = if (line.countedQuantity != null) WarehouseStatusColors.green else WarehouseStatusColors.text3,
+                color = if (line.isCounted) WarehouseStatusColors.green else WarehouseStatusColors.text3,
             )
         }
     }

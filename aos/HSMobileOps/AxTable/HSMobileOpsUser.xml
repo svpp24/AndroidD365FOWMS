@@ -137,6 +137,20 @@ public class HSMobileOpsUser extends common
 			<EnumType>NoYes</EnumType>
 		</AxTableField>
 		<AxTableField xmlns=""
+			i:type="AxTableFieldEnum">
+			<Name>IsExternalCounter</Name>
+			<Label>External counter</Label>
+			<HelpText>A third-party counter: sees only counting journals assigned to their counter team, never prices, values or supervisor screens. Enforced by the counting services.</HelpText>
+			<EnumType>NoYes</EnumType>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>CounterTeam</Name>
+			<Label>Counter team</Label>
+			<HelpText>The external counting team this worker belongs to. Counting journals are assigned to a team.</HelpText>
+			<StringSize>30</StringSize>
+		</AxTableField>
+		<AxTableField xmlns=""
 			i:type="AxTableFieldReal">
 			<Name>MaxOverPercent</Name>
 			<Label>Maximum over-delivery percent</Label>

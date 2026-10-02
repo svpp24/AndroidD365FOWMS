@@ -70,4 +70,6 @@ data class TestFlags(
     override val countOpportunity: Boolean = false,
     override val countDiscrepancy: Boolean = false,
     override val countTriggeredAlerts: Boolean = false,
+    override val countLocationTypes: Boolean = false,
+    override val countExternalCounters: Boolean = false,
 ) : FeatureFlags

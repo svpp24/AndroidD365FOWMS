@@ -316,6 +316,16 @@ class LiveCountTaskServiceApi @Inject constructor(
 
     override suspend fun reportDiscrepancy(body: com.d365fo.mobileops.data.remote.dto.DiscrepancyServiceRequest) =
         delegate.get().reportDiscrepancy(body)
+
+    override suspend fun getCounterProfile(
+        body: com.d365fo.mobileops.data.remote.dto.CounterProfileServiceRequest,
+        tag: com.d365fo.mobileops.data.remote.interceptor.IdempotentRead,
+    ) = delegate.get().getCounterProfile(body, tag)
+
+    override suspend fun getLineAttributes(
+        body: com.d365fo.mobileops.data.remote.dto.LineAttributesServiceRequest,
+        tag: com.d365fo.mobileops.data.remote.interceptor.IdempotentRead,
+    ) = delegate.get().getLineAttributes(body, tag)
 }
 
 @Singleton

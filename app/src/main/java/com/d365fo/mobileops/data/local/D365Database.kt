@@ -88,7 +88,7 @@ import com.d365fo.mobileops.data.local.entity.WorkerPermissionEntity
         WorkerPermissionEntity::class,
         WorkerDirectoryEntity::class,
     ],
-    version = 11,
+    version = 12,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -373,10 +373,24 @@ abstract class D365Database : RoomDatabase() {
             }
         }
 
+        /** 11 -> 12: location types, verify-only lines, stock freeze. Additive only. */
+        private val MIGRATION_11_12 = object : androidx.room.migration.Migration(11, 12) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `invent_journal` ADD COLUMN `freezeState` TEXT NOT NULL DEFAULT 'NONE'")
+                db.execSQL("ALTER TABLE `invent_journal` ADD COLUMN `snapshotAt` INTEGER")
+                db.execSQL("ALTER TABLE `invent_journal_line` ADD COLUMN `locationType` TEXT NOT NULL DEFAULT 'PHYSICAL'")
+                db.execSQL("ALTER TABLE `invent_journal_line` ADD COLUMN `locationOwner` TEXT")
+                db.execSQL("ALTER TABLE `invent_journal_line` ADD COLUMN `verifyOnly` INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE `invent_journal_line` ADD COLUMN `confirmedBy` TEXT")
+                db.execSQL("ALTER TABLE `invent_journal_line` ADD COLUMN `confirmedAt` INTEGER")
+                db.execSQL("ALTER TABLE `invent_journal_line` ADD COLUMN `confirmationSentAt` INTEGER")
+            }
+        }
+
         val MIGRATIONS: Array<androidx.room.migration.Migration> =
             arrayOf(
                 MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7,
-                MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11,
+                MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12,
             )
     }
 }

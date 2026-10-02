@@ -59,6 +59,7 @@ interface CountTransport {
         claimToken: String?,
         exceptions: List<CountExceptionEntity>,
         emptyLocations: List<CountLocationCheckEntity>,
+        confirmations: List<com.d365fo.mobileops.data.local.entity.JournalLineEntity>,
     ): TransportResult<Int>
 }
 
@@ -74,6 +75,7 @@ interface SubmissionStore {
     suspend fun recordPassResult(journalId: String, note: String?, thirdCountNeeded: Boolean)
     suspend fun unsentExceptions(journalId: String): List<CountExceptionEntity>
     suspend fun unsentLocationChecks(journalId: String): List<CountLocationCheckEntity>
+    suspend fun unsentConfirmations(journalId: String): List<com.d365fo.mobileops.data.local.entity.JournalLineEntity>
     suspend fun markExceptionsSent(journalId: String)
     suspend fun markExceptionsFailed(journalId: String, error: String)
 }
@@ -100,9 +102,11 @@ class RoomSubmissionStore @Inject constructor(
         countingDao.recordPassResult(journalId, note, thirdCountNeeded)
     override suspend fun unsentExceptions(journalId: String) = countingDao.unsentExceptions(journalId)
     override suspend fun unsentLocationChecks(journalId: String) = countingDao.unsentLocationChecks(journalId)
+    override suspend fun unsentConfirmations(journalId: String) = countingDao.unsentConfirmations(journalId)
     override suspend fun markExceptionsSent(journalId: String) {
         countingDao.markExceptionsSent(journalId, now())
         countingDao.markLocationChecksSent(journalId, now())
+        countingDao.markConfirmationsSent(journalId, now())
     }
     override suspend fun markExceptionsFailed(journalId: String, error: String) =
         countingDao.markExceptionsFailed(journalId, error)
@@ -177,10 +181,13 @@ class CountSubmitRunner @Inject constructor(
         val journalId = submission.journalId
         val exceptions = store.unsentExceptions(journalId)
         val emptyLocations = store.unsentLocationChecks(journalId)
-        if (exceptions.isEmpty() && emptyLocations.isEmpty()) return succeed(journalId, warning)
+        val confirmations = store.unsentConfirmations(journalId)
+        if (exceptions.isEmpty() && emptyLocations.isEmpty() && confirmations.isEmpty()) return succeed(journalId, warning)
 
-        store.update(journalId, CountSubmissionState.UPLOADING, message = "Sending unexpected items…")
-        return when (val result = transport.submitExceptions(journalId, submission.audit(), claimToken, exceptions, emptyLocations)) {
+        store.update(journalId, CountSubmissionState.UPLOADING, message = "Sending unexpected items and confirmations…")
+        return when (
+            val result = transport.submitExceptions(journalId, submission.audit(), claimToken, exceptions, emptyLocations, confirmations)
+        ) {
             is TransportResult.Ok -> {
                 store.markExceptionsSent(journalId)
                 succeed(journalId, warning)
@@ -194,6 +201,7 @@ class CountSubmitRunner @Inject constructor(
                 val what = listOfNotNull(
                     exceptions.size.takeIf { it > 0 }?.let { "$it unexpected item${if (it == 1) "" else "s"}" },
                     emptyLocations.size.takeIf { it > 0 }?.let { "$it empty location${if (it == 1) "" else "s"}" },
+                    confirmations.size.takeIf { it > 0 }?.let { "$it verified line${if (it == 1) "" else "s"}" },
                 ).joinToString(" and ")
                 succeed(
                     journalId,
@@ -220,7 +228,13 @@ class CountSubmitRunner @Inject constructor(
                     store.update(journalId, CountSubmissionState.QUEUED, message = "Waiting to retry: ${started.reason}")
                     return Stage.Stop(RunResult.RETRY)
                 }
-                is TransportResult.Fail -> return Stage.Stop(fail(journalId, started.error, started.message))
+                is TransportResult.Fail ->
+                    // Only verify-only confirmations / exceptions to send - nothing for the import.
+                    return if (started.error == CountSubmissionError.NOTHING_COUNTED && hasExtras(journalId)) {
+                        Stage.Continue(warning = null)
+                    } else {
+                        Stage.Stop(fail(journalId, started.error, started.message))
+                    }
             }
         }
 
@@ -262,9 +276,16 @@ class CountSubmitRunner @Inject constructor(
                 store.update(journalId, CountSubmissionState.QUEUED, message = "Waiting to retry: ${result.reason}")
                 Stage.Stop(RunResult.RETRY)
             }
-            is TransportResult.Fail -> Stage.Stop(fail(journalId, result.error, result.message))
+            is TransportResult.Fail ->
+                if (result.error == CountSubmissionError.NOTHING_COUNTED && hasExtras(journalId)) Stage.Continue(warning = null)
+                else Stage.Stop(fail(journalId, result.error, result.message))
         }
     }
+
+    private suspend fun hasExtras(journalId: String): Boolean =
+        store.unsentConfirmations(journalId).isNotEmpty() ||
+            store.unsentExceptions(journalId).isNotEmpty() ||
+            store.unsentLocationChecks(journalId).isNotEmpty()
 
     private suspend fun succeed(journalId: String, warning: String?, error: CountSubmissionError? = null): RunResult {
         store.update(
