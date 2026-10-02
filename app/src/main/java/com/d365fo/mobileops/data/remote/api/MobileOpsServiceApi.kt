@@ -302,4 +302,14 @@ interface MobileOpsServiceApi {
         @Body body: com.d365fo.mobileops.data.remote.dto.OrdersForDateServiceRequest,
         @Tag tag: IdempotentRead = IdempotentRead,
     ): Response<com.d365fo.mobileops.data.remote.dto.OrdersForDateServiceResponse>
+
+    // -- Assigned warehouses (HSMobileOpsUserWarehouseSvc) -----------------------------------
+    //
+    // The worker's warehouses with names, for the warehouse switcher. A pure read.
+
+    @POST("HSMobileOpsServiceGroup/HSMobileOpsUserWarehouseSvc/getUserWarehouses")
+    suspend fun getUserWarehouses(
+        @Body body: com.d365fo.mobileops.data.remote.dto.UserWarehousesServiceRequest,
+        @Tag tag: IdempotentRead = IdempotentRead,
+    ): Response<com.d365fo.mobileops.data.remote.dto.UserWarehousesServiceResponse>
 }

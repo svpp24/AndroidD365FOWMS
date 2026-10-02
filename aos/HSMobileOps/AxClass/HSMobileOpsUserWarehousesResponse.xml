@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsUserWarehousesResponse</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// getUserWarehouses response - the same rows signIn returns.
+/// </summary>
+[DataContractAttribute]
+class HSMobileOpsUserWarehousesResponse
+{
+    boolean    success;
+    str        errorCode;
+    List       warehouses;
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmSuccess</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Success')]
+    public boolean parmSuccess(boolean _value = success)
+    {
+        success = _value;
+        return success;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmErrorCode</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ErrorCode')]
+    public str parmErrorCode(str _value = errorCode)
+    {
+        errorCode = _value;
+        return errorCode;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmWarehouses</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Warehouses'),
+     DataCollectionAttribute(Types::Class, classStr(HSMobileOpsWarehouseAssignment))]
+    public List parmWarehouses(List _value = warehouses)
+    {
+        warehouses = _value;
+        return warehouses;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

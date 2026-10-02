@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsUserWarehouseService</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// A mobile user's assigned warehouses with their names, for the app's warehouse switcher
+/// without a fresh sign-in. Same rows and default rule as HSMobileOpsUserService's sign-in list.
+/// Registered as HSMobileOpsUserWarehouseSvc.
+/// </summary>
+class HSMobileOpsUserWarehouseService
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>getUserWarehouses</Name>
+				<Source><![CDATA[
+
+    public HSMobileOpsUserWarehousesResponse getUserWarehouses(HSMobileOpsUserWarehousesRequest _request)
+    {
+        HSMobileOpsUserWarehousesResponse response = new HSMobileOpsUserWarehousesResponse();
+        List                              warehouses = new List(Types::Class);
+        HSMobileOpsUser                   user;
+        HSMobileOpsUserWarehouse          assignment;
+        HSMobileOpsUserWarehouse          defaultAssignment;
+        InventLocation                    inventLocation;
+        HSMobileOpsWarehouseAssignment    contract;
+
+        response.parmSuccess(false);
+        response.parmWarehouses(warehouses);
+
+        if (!_request || !_request.parmDataAreaId() || !_request.parmUserId()
+            || !CompanyInfo::findDataArea(_request.parmDataAreaId()).RecId)
+        {
+            response.parmErrorCode('INVALID_REQUEST');
+            return response;
+        }
+
+        // HSMobileOpsUser is per company - looked up in the request's company, as signIn does.
+        changecompany (_request.parmDataAreaId())
+        {
+            user = HSMobileOpsUser::find(_request.parmUserId());
+            if (!user.RecId || !user.IsActive)
+            {
+                response.parmErrorCode('USER_NOT_FOUND');
+                return response;
+            }
+
+            defaultAssignment = HSMobileOpsUserWarehouse::findDefault(user.RecId);
+
+            while select SiteId, WarehouseId, IsDefault, RecId from assignment
+                order by assignment.WarehouseId
+                where assignment.UserRecId == user.RecId
+                outer join Name from inventLocation
+                    where inventLocation.InventLocationId == assignment.WarehouseId
+            {
+                contract = new HSMobileOpsWarehouseAssignment();
+                contract.parmSiteId(assignment.SiteId);
+                contract.parmWarehouseId(assignment.WarehouseId);
+                contract.parmWarehouseName(inventLocation.Name);
+                contract.parmIsDefault(assignment.RecId == defaultAssignment.RecId);
+                warehouses.addEnd(contract);
+            }
+        }
+
+        response.parmWarehouses(warehouses);
+        response.parmSuccess(true);
+        return response;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

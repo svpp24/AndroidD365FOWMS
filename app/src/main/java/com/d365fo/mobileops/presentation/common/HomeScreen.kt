@@ -286,15 +286,8 @@ fun HomeScreen(
                 actions = {
                     // Outlined pill, like the reference layout's site selector - reads as "where
                     // I am" chrome rather than loose text in the header.
-                    Text(
-                        text = warehouseId?.takeIf { it.isNotBlank() } ?: "No warehouse assigned",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = WarehouseStatusColors.accent,
-                        modifier = Modifier
-                            .padding(end = 4.dp)
-                            .border(1.dp, WarehouseStatusColors.accent, RoundedCornerShape(50))
-                            .padding(horizontal = 12.dp, vertical = 5.dp),
-                    )
+                    // Name and code; tap to switch when several warehouses are assigned.
+                    WarehouseChip()
                     if (onSignOut != null) {
                         IconButton(onClick = { confirmSignOut = true }) {
                             Icon(

@@ -197,6 +197,11 @@ class LiveMobileOpsServiceApi @Inject constructor(
         body: com.d365fo.mobileops.data.remote.dto.OrdersForDateServiceRequest,
         tag: com.d365fo.mobileops.data.remote.interceptor.IdempotentRead,
     ) = delegate.get().getOrdersForDate(body, tag)
+
+    override suspend fun getUserWarehouses(
+        body: com.d365fo.mobileops.data.remote.dto.UserWarehousesServiceRequest,
+        tag: com.d365fo.mobileops.data.remote.interceptor.IdempotentRead,
+    ) = delegate.get().getUserWarehouses(body, tag)
 }
 
 @Singleton

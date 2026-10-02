@@ -51,5 +51,9 @@
 			<Name>HSMobileOpsPurchListSvc</Name>
 			<Service>HSMobileOpsPurchListSvc</Service>
 		</AxServiceGroupService>
+		<AxServiceGroupService>
+			<Name>HSMobileOpsUserWarehouseSvc</Name>
+			<Service>HSMobileOpsUserWarehouseSvc</Service>
+		</AxServiceGroupService>
 	</Services>
 </AxServiceGroup>

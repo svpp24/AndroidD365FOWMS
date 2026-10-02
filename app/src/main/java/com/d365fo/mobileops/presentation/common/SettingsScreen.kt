@@ -351,13 +351,7 @@ fun SettingsScreen(
                 // Read-only - a worker works the warehouse D365FO assigned them, and this exists
                 // only so they can see what that is without having to guess from a scan failing.
                 SettingsSection("Assigned warehouse") {
-                    Text(
-                        text = worker.warehouseId.ifBlank {
-                            "No warehouse is assigned to you. Ask a supervisor."
-                        },
-                        style = MaterialTheme.typography.headlineSmall,
-                        fontFamily = FontFamily.Monospace,
-                    )
+                    AssignedWarehouseText(fallbackId = worker.warehouseId)
                 }
 
                 // Sign-out itself lives one tap away on Home's own top bar now, not buried here -

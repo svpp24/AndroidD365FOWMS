@@ -287,6 +287,23 @@ class WorkerSessionRepository @Inject constructor(
         }
     }
 
+    /**
+     * Replaces the assigned warehouses with a fresh list from D365FO (names included). The
+     * current warehouse stays selected while it is still assigned; otherwise the default, or
+     * none when several are assigned and none is default.
+     */
+    fun replaceWarehouses(warehouses: List<AssignedWarehouse>) {
+        if (warehouses.isEmpty()) return
+        _session.update { current ->
+            current?.copy(
+                warehouses = warehouses,
+                selected = current.selected?.let { sel -> warehouses.firstOrNull { it.warehouseId == sel.warehouseId } }
+                    ?: warehouses.firstOrNull { it.isDefault }
+                    ?: warehouses.singleOrNull(),
+            )
+        }
+    }
+
     /** Switches to another assigned warehouse. Anything not on the list is refused. */
     fun selectWarehouse(warehouseId: String) {
         _session.update { current ->
