@@ -167,6 +167,8 @@ class CountingJournalRepository @Inject constructor(
                             abcClass = row.abcClass?.takeIf { it.isNotBlank() },
                             freezeState = row.freezeState?.takeIf { it.isNotBlank() } ?: FREEZE_NONE,
                             snapshotAt = Formatters.serviceDateTimeToEpochMillis(row.snapshotAtUtc),
+                            controlGroupId = row.controlGroupId?.takeIf { it.isNotBlank() },
+                            repeatInfo = row.repeatInfo?.takeIf { it.isNotBlank() },
                         )
                     }.byPriority(),
                 )

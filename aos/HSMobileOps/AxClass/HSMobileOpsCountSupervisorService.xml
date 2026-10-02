@@ -186,6 +186,127 @@ class HSMobileOpsCountSupervisorService
 ]]></Source>
 			</Method>
 			<Method>
+				<Name>getAccuracyReport</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Count accuracy for a warehouse and date range, grouped by LOCATION or ITEM: of the posted
+    /// counting lines in the range, the share with no adjustment (Qty = 0), and the absolute
+    /// adjusted cost. A simple, real fallback over standard tables. TODO (X++ owner): ABC_CLASS
+    /// and COUNTER grouping (they need the ABC classification and the attempt table), the
+    /// per-class tolerance text per row, and your own accuracy definition if it differs.
+    /// </summary>
+    public HSMobileOpsCountAccuracyResponse getAccuracyReport(HSMobileOpsCountAccuracyRequest _request)
+    {
+        HSMobileOpsCountAccuracyResponse response = new HSMobileOpsCountAccuracyResponse();
+        HSMobileOpsCountAccuracyRow      row;
+        List                             rows = new List(Types::Class);
+        Map                              groups = new Map(Types::String, Types::Container);
+        MapEnumerator                    groupEnumerator;
+        InventJournalTrans               inventJournalTrans;
+        InventJournalTable               inventJournalTable;
+        InventDim                        inventDim;
+        HSMobileOpsUser                  user;
+        container                        totals;
+        str                              groupBy;
+        str                              key;
+        TransDate                        fromDate;
+        TransDate                        toDate;
+        int                              counted;
+        int                              accurate;
+        int                              allCounted;
+        int                              allAccurate;
+        real                             value;
+
+        response.parmSuccess(false);
+        response.parmRows(rows);
+
+        if (!_request || !_request.parmDataAreaId() || !_request.parmUserId() || !_request.parmWarehouseId()
+            || !CompanyInfo::findDataArea(_request.parmDataAreaId()).RecId)
+        {
+            response.parmErrorCode('INVALID_REQUEST');
+            return response;
+        }
+
+        user = HSMobileOpsUser::find(_request.parmUserId());
+        if (!user.RecId || !user.IsActive || !user.IsCycleCountSupervisor || user.IsExternalCounter)
+        {
+            response.parmErrorCode('NOT_SUPERVISOR');
+            return response;
+        }
+
+        groupBy = _request.parmGroupBy();
+        if (groupBy != 'LOCATION' && groupBy != 'ITEM')
+        {
+            response.parmErrorCode('GROUPING_NOT_AVAILABLE');
+            return response;
+        }
+
+        fromDate = str2Date(_request.parmFromDate(), 321);
+        toDate   = str2Date(_request.parmToDate(), 321);
+        if (!fromDate || !toDate || fromDate > toDate)
+        {
+            response.parmErrorCode('INVALID_REQUEST');
+            return response;
+        }
+
+        changecompany (_request.parmDataAreaId())
+        {
+            response.parmCurrencyCode(Ledger::accountingCurrency());
+
+            while select ItemId, Qty, CostAmount from inventJournalTrans
+                where inventJournalTrans.TransDate >= fromDate
+                   && inventJournalTrans.TransDate <= toDate
+                join wMSLocationId from inventDim
+                    where inventDim.InventDimId      == inventJournalTrans.InventDimId
+                       && inventDim.InventLocationId == _request.parmWarehouseId()
+                exists join inventJournalTable
+                    where inventJournalTable.JournalId   == inventJournalTrans.JournalId
+                       && inventJournalTable.JournalType == InventJournalType::Count
+                       && inventJournalTable.Posted      == NoYes::Yes
+            {
+                key = groupBy == 'ITEM' ? inventJournalTrans.ItemId : inventDim.wMSLocationId;
+                totals = groups.exists(key) ? groups.lookup(key) : [0, 0, 0.0];
+
+                counted  = conPeek(totals, 1) + 1;
+                accurate = conPeek(totals, 2) + (inventJournalTrans.Qty == 0 ? 1 : 0);
+                value    = conPeek(totals, 3) + abs(inventJournalTrans.CostAmount);
+                groups.insert(key, [counted, accurate, value]);
+            }
+
+            groupEnumerator = groups.getEnumerator();
+            while (groupEnumerator.moveNext())
+            {
+                key      = groupEnumerator.currentKey();
+                totals   = groupEnumerator.currentValue();
+                counted  = conPeek(totals, 1);
+                accurate = conPeek(totals, 2);
+
+                row = new HSMobileOpsCountAccuracyRow();
+                row.parmGroupKey(key);
+                row.parmLabel(groupBy == 'ITEM' ? InventTable::find(key).itemName() : (key ? key : '(no location)'));
+                row.parmCountedLines(counted);
+                row.parmAccurateLines(accurate);
+                row.parmAccuracyPct(counted ? accurate * 100.0 / counted : 0);
+                row.parmVarianceValue(conPeek(totals, 3));
+                row.parmTolerance('');
+                rows.addEnd(row);
+
+                allCounted  += counted;
+                allAccurate += accurate;
+            }
+        }
+
+        response.parmRows(rows);
+        response.parmCountedLines(allCounted);
+        response.parmAccurateLines(allAccurate);
+        response.parmOverallPct(allCounted ? allAccurate * 100.0 / allCounted : 0);
+        response.parmSuccess(true);
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
 				<Name>refusal</Name>
 				<Source><![CDATA[
 

@@ -348,4 +348,9 @@ class LiveCountSupervisorServiceApi @Inject constructor(
 
     override suspend fun postJournal(body: com.d365fo.mobileops.data.remote.dto.PostJournalServiceRequest) =
         delegate.get().postJournal(body)
+
+    override suspend fun getAccuracyReport(
+        body: com.d365fo.mobileops.data.remote.dto.AccuracyServiceRequest,
+        tag: com.d365fo.mobileops.data.remote.interceptor.IdempotentRead,
+    ) = delegate.get().getAccuracyReport(body, tag)
 }

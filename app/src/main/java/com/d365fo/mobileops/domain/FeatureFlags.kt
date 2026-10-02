@@ -44,6 +44,9 @@ interface FeatureFlags {
 
     /** Fetch the counter profile (external counters, teams) on entering counting. */
     val countExternalCounters: Boolean
+
+    /** Supervisor accuracy report (getAccuracyReport). */
+    val countAccuracy: Boolean
 }
 
 @Singleton
@@ -60,4 +63,5 @@ class BuildConfigFeatureFlags @Inject constructor() : FeatureFlags {
     override val countTriggeredAlerts: Boolean get() = BuildConfig.FEATURE_COUNT_TRIGGERED_ALERTS
     override val countLocationTypes: Boolean get() = BuildConfig.FEATURE_COUNT_LOCATION_TYPES
     override val countExternalCounters: Boolean get() = BuildConfig.FEATURE_COUNT_EXTERNAL_COUNTERS
+    override val countAccuracy: Boolean get() = BuildConfig.FEATURE_COUNT_ACCURACY
 }

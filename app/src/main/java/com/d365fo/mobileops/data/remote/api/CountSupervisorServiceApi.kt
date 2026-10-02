@@ -25,4 +25,10 @@ interface CountSupervisorServiceApi {
 
     @POST("HSMobileOpsServiceGroup/HSMobileOpsCountSupervisorSvc/postJournal")
     suspend fun postJournal(@Body body: PostJournalServiceRequest): Response<SupervisorServiceResponse>
+
+    @POST("HSMobileOpsServiceGroup/HSMobileOpsCountSupervisorSvc/getAccuracyReport")
+    suspend fun getAccuracyReport(
+        @Body body: com.d365fo.mobileops.data.remote.dto.AccuracyServiceRequest,
+        @Tag tag: IdempotentRead = IdempotentRead,
+    ): Response<com.d365fo.mobileops.data.remote.dto.AccuracyServiceResponse>
 }

@@ -615,6 +615,15 @@ TRIGGERED journals once. App flags: `FEATURE_COUNT_SPOT`, `FEATURE_COUNT_SPOT_WO
 
 App flags: `FEATURE_COUNT_LOCATION_TYPES`, `FEATURE_COUNT_EXTERNAL_COUNTERS`.
 
+**Control groups and accuracy.** List rows carry `ControlGroupId` and `RepeatInfo` (empty today —
+**TODO**); a CONTROL_GROUP journal shows its origin badge and repeat note and is otherwise counted
+like any other — the analysis is server-side. New supervisor operation `getAccuracyReport`
+(warehouse, `FromDate`/`ToDate` as yyyy-MM-dd, `GroupBy`): real for LOCATION and ITEM — over
+posted counting lines in the range, accuracy = share with no adjustment (`Qty = 0`), plus the
+absolute adjusted cost. ABC_CLASS and COUNTER return `GROUPING_NOT_AVAILABLE` and the per-row
+`Tolerance` text is empty (**TODO** — they need the ABC classification and the attempt table).
+The app never computes accuracy or tolerance itself. App flag: `FEATURE_COUNT_ACCURACY`.
+
 ## Licensing
 
 **Full replacement, this session — a certificate-chain design, not the earlier single-key-per-

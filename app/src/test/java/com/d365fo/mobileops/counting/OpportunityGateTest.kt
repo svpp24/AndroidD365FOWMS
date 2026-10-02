@@ -72,4 +72,5 @@ data class TestFlags(
     override val countTriggeredAlerts: Boolean = false,
     override val countLocationTypes: Boolean = false,
     override val countExternalCounters: Boolean = false,
+    override val countAccuracy: Boolean = false,
 ) : FeatureFlags

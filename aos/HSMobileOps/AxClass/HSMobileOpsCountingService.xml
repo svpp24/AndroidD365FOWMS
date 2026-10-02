@@ -165,6 +165,10 @@ class HSMobileOpsCountingService
                 // TODO (X++ owner): freeze handling - LOCATION_FROZEN while movements are
                 // blocked at the counted locations, or SNAPSHOT_ONLY with the snapshot moment.
                 row.parmFreezeState('NONE');
+                // TODO (X++ owner): for CONTROL_GROUP journals, the sample they repeat and a
+                // display-only repeat description.
+                row.parmControlGroupId('');
+                row.parmRepeatInfo('');
                 // TODO (X++ owner): when _request.parmUserId() is an external counter
                 // (HSMobileOpsUser.IsExternalCounter), skip journals not assigned to their
                 // CounterTeam.

@@ -66,6 +66,7 @@ import com.d365fo.mobileops.presentation.modules.cyclecounting.CountingCaptureSc
 import com.d365fo.mobileops.presentation.modules.cyclecounting.CountingJournalListScreen
 import com.d365fo.mobileops.presentation.modules.cyclecounting.CountingScanScreen
 import com.d365fo.mobileops.presentation.modules.cyclecounting.spot.SpotCountScreen
+import com.d365fo.mobileops.presentation.modules.cyclecounting.supervisor.AccuracyReportScreen
 import com.d365fo.mobileops.presentation.modules.cyclecounting.supervisor.SupervisorVarianceScreen
 import com.d365fo.mobileops.presentation.modules.stepflow.OnHandEntryScreen
 import com.d365fo.mobileops.presentation.modules.stepflow.OnHandInquiryScreen
@@ -122,6 +123,9 @@ object Routes {
 
     /** Create a spot count (server creates the journal). */
     const val COUNTING_SPOT = "counting/spot"
+
+    /** Supervisor only: count accuracy by location / item / class / counter. */
+    const val COUNTING_ACCURACY = "counting/supervisor/accuracy"
 
     /**
      * The read-only lookups - promoted to first-class Home tiles directly (see HomeScreen's own
@@ -317,6 +321,7 @@ fun AppNavGraph(
                         navController.navigate(Routes.countingVariance(journalId))
                     },
                     onNewSpotCount = { navController.navigate(Routes.COUNTING_SPOT) },
+                    onAccuracy = { navController.navigate(Routes.COUNTING_ACCURACY) },
                     onStartCounting = { journalId ->
                         navController.navigate(Routes.countingCapture(journalId))
                     },
@@ -342,6 +347,10 @@ fun AppNavGraph(
                 arguments = listOf(navArgument("journalId") { type = NavType.StringType }),
             ) {
                 SupervisorVarianceScreen(onBack = { navController.popBackStack() })
+            }
+
+            composable(Routes.COUNTING_ACCURACY) {
+                AccuracyReportScreen(onBack = { navController.popBackStack() })
             }
 
             composable(Routes.COUNTING_SPOT) {

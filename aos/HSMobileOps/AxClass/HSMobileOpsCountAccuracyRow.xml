@@ -1,0 +1,110 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsCountAccuracyRow</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// One group of the accuracy report. Tolerance: the tolerance that applies to this group, for display
+/// (per ABC class when grouped by class).
+/// </summary>
+[DataContractAttribute]
+class HSMobileOpsCountAccuracyRow
+{
+    str  groupKey;
+    str  label;
+    int  countedLines;
+    int  accurateLines;
+    real accuracyPct;
+    real varianceValue;
+    str  tolerance;
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmGroupKey</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('GroupKey')]
+    public str parmGroupKey(str _value = groupKey)
+    {
+        groupKey = _value;
+        return groupKey;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmLabel</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Label')]
+    public str parmLabel(str _value = label)
+    {
+        label = _value;
+        return label;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmCountedLines</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('CountedLines')]
+    public int parmCountedLines(int _value = countedLines)
+    {
+        countedLines = _value;
+        return countedLines;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmAccurateLines</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('AccurateLines')]
+    public int parmAccurateLines(int _value = accurateLines)
+    {
+        accurateLines = _value;
+        return accurateLines;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmAccuracyPct</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('AccuracyPct')]
+    public real parmAccuracyPct(real _value = accuracyPct)
+    {
+        accuracyPct = _value;
+        return accuracyPct;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmVarianceValue</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('VarianceValue')]
+    public real parmVarianceValue(real _value = varianceValue)
+    {
+        varianceValue = _value;
+        return varianceValue;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmTolerance</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Tolerance')]
+    public str parmTolerance(str _value = tolerance)
+    {
+        tolerance = _value;
+        return tolerance;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

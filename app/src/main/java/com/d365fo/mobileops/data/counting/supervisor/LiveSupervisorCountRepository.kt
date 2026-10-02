@@ -100,6 +100,62 @@ class LiveSupervisorCountRepository @Inject constructor(
         api.postJournal(PostJournalServiceRequest(PostJournalRequestBody(company(), journalId, userId())))
     }.toResult()
 
+    override suspend fun accuracy(
+        warehouseId: String,
+        from: String,
+        to: String,
+        groupBy: com.d365fo.mobileops.domain.counting.supervisor.AccuracyGroupBy,
+    ): NetworkResult<com.d365fo.mobileops.domain.counting.supervisor.AccuracyReport> {
+        val result = errorMapper.safeCall {
+            api.getAccuracyReport(
+                com.d365fo.mobileops.data.remote.dto.AccuracyServiceRequest(
+                    com.d365fo.mobileops.data.remote.dto.AccuracyRequestBody(
+                        dataAreaId = company(),
+                        userId = userId(),
+                        warehouseId = warehouseId,
+                        fromDate = from,
+                        toDate = to,
+                        groupBy = groupBy.name,
+                    ),
+                ),
+            )
+        }
+        return when (result) {
+            is NetworkResult.Error -> result
+            NetworkResult.Loading -> NetworkResult.Error(AppFailure.Fatal("unexpected Loading"))
+            is NetworkResult.Success -> {
+                val body = result.data
+                if (!body.success) {
+                    val message = when (body.errorCode) {
+                        "GROUPING_NOT_AVAILABLE" -> "This server can't group accuracy by ${groupBy.label.lowercase()} yet."
+                        else -> messageFor(refusalFor(body.errorCode), null)
+                    }
+                    NetworkResult.Error(AppFailure.BusinessRule(message, body.errorCode))
+                } else {
+                    NetworkResult.Success(
+                        com.d365fo.mobileops.domain.counting.supervisor.AccuracyReport(
+                            currencyCode = body.currencyCode,
+                            countedLines = body.countedLines,
+                            accurateLines = body.accurateLines,
+                            overallPct = body.overallPct,
+                            rows = body.rows.map {
+                                com.d365fo.mobileops.domain.counting.supervisor.AccuracyRow(
+                                    key = it.groupKey,
+                                    label = it.label?.takeIf { l -> l.isNotBlank() } ?: it.groupKey,
+                                    countedLines = it.countedLines,
+                                    accurateLines = it.accurateLines,
+                                    accuracyPct = it.accuracyPct,
+                                    varianceValue = it.varianceValue,
+                                    tolerance = it.tolerance?.takeIf { t -> t.isNotBlank() },
+                                )
+                            },
+                        ),
+                    )
+                }
+            }
+        }
+    }
+
     private fun NetworkResult<SupervisorServiceResponse>.toResult(): SupervisorResult = when (this) {
         NetworkResult.Loading -> SupervisorResult.Unreachable("did not complete")
         is NetworkResult.Error -> when (val f = failure) {

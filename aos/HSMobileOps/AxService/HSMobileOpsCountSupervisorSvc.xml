@@ -17,5 +17,9 @@
 			<Name>postJournal</Name>
 			<Method>postJournal</Method>
 		</AxServiceOperation>
+		<AxServiceOperation>
+			<Name>getAccuracyReport</Name>
+			<Method>getAccuracyReport</Method>
+		</AxServiceOperation>
 	</ServiceOperations>
 </AxService>

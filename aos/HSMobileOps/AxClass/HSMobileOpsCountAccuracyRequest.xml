@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsCountAccuracyRequest</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// getAccuracyReport's request (supervisor only). FromDate / ToDate are ISO dates (yyyy-MM-dd),
+/// inclusive. GroupBy: LOCATION, ITEM, ABC_CLASS or COUNTER.
+/// </summary>
+[DataContractAttribute]
+class HSMobileOpsCountAccuracyRequest
+{
+    DataAreaId dataAreaId;
+    str        userId;
+    str        warehouseId;
+    str        fromDate;
+    str        toDate;
+    str        groupBy;
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmDataAreaId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('DataAreaId')]
+    public DataAreaId parmDataAreaId(DataAreaId _value = dataAreaId)
+    {
+        dataAreaId = _value;
+        return dataAreaId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmUserId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('UserId')]
+    public str parmUserId(str _value = userId)
+    {
+        userId = _value;
+        return userId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmWarehouseId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('WarehouseId')]
+    public str parmWarehouseId(str _value = warehouseId)
+    {
+        warehouseId = _value;
+        return warehouseId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmFromDate</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('FromDate')]
+    public str parmFromDate(str _value = fromDate)
+    {
+        fromDate = _value;
+        return fromDate;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmToDate</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ToDate')]
+    public str parmToDate(str _value = toDate)
+    {
+        toDate = _value;
+        return toDate;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmGroupBy</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('GroupBy')]
+    public str parmGroupBy(str _value = groupBy)
+    {
+        groupBy = _value;
+        return groupBy;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

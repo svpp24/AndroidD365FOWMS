@@ -128,6 +128,9 @@ class CountingJournalListViewModel @Inject constructor(
             it.copy(
                 canReviewVariance = caps.canReviewVariance,
                 canCreateSpot = caps.canCreateSpot,
+                // Same supervisor gate as variance review; getAccuracyReport checks it again.
+                canViewAccuracy = flags.countAccuracy && !caps.externalCounter &&
+                    (profile?.isCycleCountSupervisor ?: (workerSession.session.value?.isCycleCountSupervisor == true)),
                 externalCounter = caps.externalCounter,
                 counterTeam = profile?.counterTeam,
             )
@@ -439,6 +442,7 @@ data class CountingJournalListState(
     /** Cycle-count supervisor with the supervisor feature on. */
     val canReviewVariance: Boolean = false,
     val canCreateSpot: Boolean = false,
+    val canViewAccuracy: Boolean = false,
     /** A third-party counter - sees only their team's journals (server-side). */
     val externalCounter: Boolean = false,
     val counterTeam: String? = null,

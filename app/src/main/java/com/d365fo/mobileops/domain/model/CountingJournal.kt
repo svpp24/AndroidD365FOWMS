@@ -40,6 +40,9 @@ data class CountingJournalSummary(
     /** NONE, LOCATION_FROZEN or SNAPSHOT_ONLY - decided by the server. */
     val freezeState: String = FREEZE_NONE,
     val snapshotAt: Long? = null,
+    /** CONTROL_GROUP: the fixed sample this journal repeats, and a display-only repeat note. */
+    val controlGroupId: String? = null,
+    val repeatInfo: String? = null,
 ) {
     val doubleBlind: Boolean get() = countMode == COUNT_MODE_DOUBLE_BLIND
 }

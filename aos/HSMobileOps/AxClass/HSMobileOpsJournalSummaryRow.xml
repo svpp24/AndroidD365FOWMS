@@ -26,6 +26,8 @@ class HSMobileOpsJournalSummaryRow
     str abcClass;
     str freezeState;
     utcdatetime snapshotAtUtc;
+    str controlGroupId;
+    str repeatInfo;
 }
 ]]></Declaration>
 		<Methods>
@@ -301,6 +303,36 @@ class HSMobileOpsJournalSummaryRow
     {
         snapshotAtUtc = _value;
         return snapshotAtUtc;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmControlGroupId</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// CONTROL_GROUP journals: the fixed item/location sample this journal repeats.
+    /// </summary>
+    [DataMemberAttribute('ControlGroupId')]
+    public str parmControlGroupId(str _value = controlGroupId)
+    {
+        controlGroupId = _value;
+        return controlGroupId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmRepeatInfo</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Display-only description of the repeat, e.g. 'Repeats weekly'.
+    /// </summary>
+    [DataMemberAttribute('RepeatInfo')]
+    public str parmRepeatInfo(str _value = repeatInfo)
+    {
+        repeatInfo = _value;
+        return repeatInfo;
     }
 ]]></Source>
 			</Method>

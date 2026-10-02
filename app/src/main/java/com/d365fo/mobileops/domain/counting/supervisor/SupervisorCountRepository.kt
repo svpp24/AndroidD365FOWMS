@@ -33,6 +33,33 @@ data class JournalVariance(val currencyCode: String?, val lines: List<VarianceLi
 
 enum class ReviewAction { APPROVE, REJECT, RECOUNT }
 
+enum class AccuracyGroupBy(val label: String) {
+    LOCATION("Location"),
+    ITEM("Item"),
+    ABC_CLASS("ABC class"),
+    COUNTER("Counter"),
+}
+
+/** One group of the accuracy report - every number from the server. */
+data class AccuracyRow(
+    val key: String,
+    val label: String,
+    val countedLines: Int,
+    val accurateLines: Int,
+    val accuracyPct: Double,
+    val varianceValue: Double,
+    /** The tolerance that applies to this group (per ABC class), as the server words it. */
+    val tolerance: String?,
+)
+
+data class AccuracyReport(
+    val currencyCode: String?,
+    val countedLines: Int,
+    val accurateLines: Int,
+    val overallPct: Double,
+    val rows: List<AccuracyRow>,
+)
+
 /** A refusal from a supervisor call, with the code the screen explains. */
 enum class SupervisorRefusal {
     NOT_SUPERVISOR,
@@ -56,4 +83,7 @@ interface SupervisorCountRepository {
     suspend fun variance(journalId: String): NetworkResult<JournalVariance>
     suspend fun review(journalId: String, lineNumbers: List<Double>, action: ReviewAction, assignTo: String?, note: String?): SupervisorResult
     suspend fun post(journalId: String): SupervisorResult
+
+    /** [from] / [to] are ISO dates (yyyy-MM-dd), inclusive. */
+    suspend fun accuracy(warehouseId: String, from: String, to: String, groupBy: AccuracyGroupBy): NetworkResult<AccuracyReport>
 }

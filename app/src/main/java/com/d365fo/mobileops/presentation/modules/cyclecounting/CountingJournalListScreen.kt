@@ -17,6 +17,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Insights
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -75,6 +76,7 @@ fun CountingJournalListScreen(
     onStartCounting: (String) -> Unit,
     onReviewVariance: (String) -> Unit = {},
     onNewSpotCount: () -> Unit = {},
+    onAccuracy: () -> Unit = {},
     viewModel: CountingJournalListViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -147,6 +149,11 @@ fun CountingJournalListScreen(
                     }
                 },
                 actions = {
+                    if (state.canViewAccuracy) {
+                        IconButton(onClick = onAccuracy) {
+                            Icon(Icons.Default.Insights, contentDescription = "Count accuracy")
+                        }
+                    }
                     if (state.canCreateSpot) {
                         IconButton(onClick = onNewSpotCount) {
                             Icon(Icons.Default.Add, contentDescription = "New spot count")
@@ -669,6 +676,8 @@ private fun PassBadges(journal: CountingJournalSummary) {
         journal.recountOf?.let { "Recount of $it" },
         "Pass ${journal.passNumber}".takeIf { journal.passNumber > 1 && journal.recountOf == null },
         "Double-blind".takeIf { journal.doubleBlind },
+        // A control group repeats the same sample on a schedule; the analysis is server-side.
+        (journal.repeatInfo ?: "Repeats").takeIf { journal.originType == "CONTROL_GROUP" },
     )
     val blind = journal.passNumber > 1 || journal.doubleBlind || journal.recountOf != null
     if (badges.isNotEmpty()) {

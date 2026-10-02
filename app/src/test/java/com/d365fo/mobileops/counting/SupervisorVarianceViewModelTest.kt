@@ -44,6 +44,13 @@ class SupervisorVarianceViewModelTest {
             return reviewAnswer
         }
         override suspend fun post(journalId: String) = postAnswer
+        override suspend fun accuracy(
+            warehouseId: String,
+            from: String,
+            to: String,
+            groupBy: com.d365fo.mobileops.domain.counting.supervisor.AccuracyGroupBy,
+        ): NetworkResult<com.d365fo.mobileops.domain.counting.supervisor.AccuracyReport> =
+            NetworkResult.Error(com.d365fo.mobileops.util.AppFailure.Offline())
     }
 
     private val repository = FakeSupervisorRepository()

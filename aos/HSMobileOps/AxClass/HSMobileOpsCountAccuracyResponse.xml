@@ -1,0 +1,110 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsCountAccuracyResponse</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// getAccuracyReport's answer. ErrorCode: NOT_SUPERVISOR, INVALID_REQUEST, GROUPING_NOT_AVAILABLE.
+/// </summary>
+[DataContractAttribute]
+class HSMobileOpsCountAccuracyResponse
+{
+    boolean success;
+    str     errorCode;
+    str     currencyCode;
+    int     countedLines;
+    int     accurateLines;
+    real    overallPct;
+    List    rows;
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmSuccess</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Success')]
+    public boolean parmSuccess(boolean _value = success)
+    {
+        success = _value;
+        return success;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmErrorCode</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ErrorCode')]
+    public str parmErrorCode(str _value = errorCode)
+    {
+        errorCode = _value;
+        return errorCode;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmCurrencyCode</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('CurrencyCode')]
+    public str parmCurrencyCode(str _value = currencyCode)
+    {
+        currencyCode = _value;
+        return currencyCode;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmCountedLines</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('CountedLines')]
+    public int parmCountedLines(int _value = countedLines)
+    {
+        countedLines = _value;
+        return countedLines;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmAccurateLines</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('AccurateLines')]
+    public int parmAccurateLines(int _value = accurateLines)
+    {
+        accurateLines = _value;
+        return accurateLines;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmOverallPct</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('OverallPct')]
+    public real parmOverallPct(real _value = overallPct)
+    {
+        overallPct = _value;
+        return overallPct;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmRows</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Rows'),
+     DataCollectionAttribute(Types::Class, classStr(HSMobileOpsCountAccuracyRow))]
+    public List parmRows(List _value = rows)
+    {
+        rows = _value;
+        return rows;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

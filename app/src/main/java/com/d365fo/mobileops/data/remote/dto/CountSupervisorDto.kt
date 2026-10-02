@@ -74,3 +74,39 @@ data class SupervisorServiceResponse(
     @SerialName("Message") val message: String? = null,
     @SerialName("Affected") val affected: Int = 0,
 )
+
+@Serializable
+data class AccuracyServiceRequest(@SerialName("_request") val request: AccuracyRequestBody)
+
+@Serializable
+data class AccuracyRequestBody(
+    @SerialName("DataAreaId") val dataAreaId: String,
+    @SerialName("UserId") val userId: String,
+    @SerialName("WarehouseId") val warehouseId: String,
+    /** ISO date, yyyy-MM-dd, inclusive. */
+    @SerialName("FromDate") val fromDate: String,
+    @SerialName("ToDate") val toDate: String,
+    @SerialName("GroupBy") val groupBy: String,
+)
+
+@Serializable
+data class AccuracyRowDto(
+    @SerialName("GroupKey") val groupKey: String = "",
+    @SerialName("Label") val label: String? = null,
+    @SerialName("CountedLines") val countedLines: Int = 0,
+    @SerialName("AccurateLines") val accurateLines: Int = 0,
+    @SerialName("AccuracyPct") val accuracyPct: Double = 0.0,
+    @SerialName("VarianceValue") val varianceValue: Double = 0.0,
+    @SerialName("Tolerance") val tolerance: String? = null,
+)
+
+@Serializable
+data class AccuracyServiceResponse(
+    @SerialName("Success") val success: Boolean = false,
+    @SerialName("ErrorCode") val errorCode: String? = null,
+    @SerialName("CurrencyCode") val currencyCode: String? = null,
+    @SerialName("CountedLines") val countedLines: Int = 0,
+    @SerialName("AccurateLines") val accurateLines: Int = 0,
+    @SerialName("OverallPct") val overallPct: Double = 0.0,
+    @SerialName("Rows") val rows: List<AccuracyRowDto> = emptyList(),
+)

@@ -273,6 +273,8 @@ data class JournalSummaryServiceRow(
     @SerialName("FreezeState") val freezeState: String? = null,
     /** No zone suffix, UTC - see Formatters.serviceDateTimeToEpochMillis. */
     @SerialName("SnapshotAtUtc") val snapshotAtUtc: String? = null,
+    @SerialName("ControlGroupId") val controlGroupId: String? = null,
+    @SerialName("RepeatInfo") val repeatInfo: String? = null,
 )
 
 // -- Counting journal export -- one AOS call creates a request-private DMF project scoped to one
