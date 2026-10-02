@@ -612,7 +612,8 @@ private fun LineChoice(lines: List<PurchaseOrderLine>, onPick: (PurchaseOrderLin
                             style = MaterialTheme.typography.titleMedium,
                         )
                         Text(
-                            text = line.itemName.ifBlank { line.itemId },
+                            text = line.itemName.ifBlank { line.itemId } +
+                                line.variant.label.takeIf { it.isNotBlank() }?.let { " \u00B7 $it" }.orEmpty(),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )

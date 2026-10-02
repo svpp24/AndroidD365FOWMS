@@ -222,6 +222,7 @@ class CachedLookupRepository @Inject constructor(
         itemNumber = itemId,
         quantityPerScan = quantityPerScan.toBigDecimal(),
         unitSymbol = scanUnit,
+        variant = variant,
     )
 
     private fun BarcodeMatch.toEntity() = BarcodeEntity(

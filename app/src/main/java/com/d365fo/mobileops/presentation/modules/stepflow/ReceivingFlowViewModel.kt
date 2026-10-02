@@ -640,7 +640,11 @@ class ReceivingFlowViewModel @Inject constructor(
                     ?: return fail(
                         "${match.itemNumber} is not outstanding on ${_state.value.capture.purchId}",
                     )
-                chooseAmong(matched, quantityPerScan = match.quantityPerScan)
+                val ofVariant = matched.filter { it.variant.acceptsScanOf(match.variant) }
+                if (ofVariant.isEmpty()) {
+                    return fail("${match.itemNumber} ${match.variant.label} is not outstanding on ${_state.value.capture.purchId}")
+                }
+                chooseAmong(ofVariant, quantityPerScan = match.quantityPerScan)
             }
         }
     }

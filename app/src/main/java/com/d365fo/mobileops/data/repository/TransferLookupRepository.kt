@@ -147,6 +147,7 @@ private fun TransferLineDto.toDomain(): TransferOrderLine = TransferOrderLine(
     toSiteId = toSiteId,
     toWarehouseId = toWarehouseId,
     locationId = locationId?.takeIf { it.isNotBlank() },
+    variant = com.d365fo.mobileops.domain.model.ProductVariant.of(configId, sizeId, colorId, styleId),
     batchRequired = batchRequired,
     serialRequired = serialRequired,
     locationRequired = locationRequired,

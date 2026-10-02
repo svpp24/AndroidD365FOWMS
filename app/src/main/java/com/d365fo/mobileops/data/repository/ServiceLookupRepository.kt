@@ -454,6 +454,7 @@ internal fun com.d365fo.mobileops.data.remote.dto.PurchLineServiceDto.toDomain(
     siteId = siteId,
     warehouseId = warehouseId,
     locationId = locationId?.takeIf { it.isNotBlank() },
+    variant = com.d365fo.mobileops.domain.model.ProductVariant.of(configId, sizeId, colorId, styleId),
     tolerance = DeliveryTolerance(
         overPercent = overDeliveryPct.takeIf { it > 0.0 }?.let { BigDecimal.valueOf(it) },
         underPercent = underDeliveryPct.takeIf { it > 0.0 }?.let { BigDecimal.valueOf(it) },

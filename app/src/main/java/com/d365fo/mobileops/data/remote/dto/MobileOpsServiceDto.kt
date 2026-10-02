@@ -80,6 +80,10 @@ data class PurchLineServiceDto(
     @SerialName("SiteId") val siteId: String? = null,
     @SerialName("WarehouseId") val warehouseId: String? = null,
     @SerialName("LocationId") val locationId: String? = null,
+    @SerialName("ConfigId") val configId: String? = null,
+    @SerialName("SizeId") val sizeId: String? = null,
+    @SerialName("ColorId") val colorId: String? = null,
+    @SerialName("StyleId") val styleId: String? = null,
     /** Straight from InventDimGroupSetup — the step sequence is computed from these three. */
     @SerialName("BatchRequired") val batchRequired: Boolean = false,
     @SerialName("SerialRequired") val serialRequired: Boolean = false,

@@ -93,6 +93,10 @@ data class TransferLineDto(
     @SerialName("ToWarehouseId") val toWarehouseId: String? = null,
     /** The line's own location on the source side. A hint when shipping; never an answer. */
     @SerialName("LocationId") val locationId: String? = null,
+    @SerialName("ConfigId") val configId: String? = null,
+    @SerialName("SizeId") val sizeId: String? = null,
+    @SerialName("ColorId") val colorId: String? = null,
+    @SerialName("StyleId") val styleId: String? = null,
     @SerialName("BatchRequired") val batchRequired: Boolean = false,
     @SerialName("SerialRequired") val serialRequired: Boolean = false,
     @SerialName("LocationRequired") val locationRequired: Boolean = false,

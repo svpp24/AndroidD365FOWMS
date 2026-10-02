@@ -148,6 +148,8 @@ data class BarcodeMatch(
     /** Units per scan, for a case or inner-pack barcode. One for a plain item barcode. */
     val quantityPerScan: java.math.BigDecimal,
     val unitSymbol: String?,
+    /** The variant a variant barcode identifies; empty for an item-level barcode. */
+    val variant: com.d365fo.mobileops.domain.model.ProductVariant = com.d365fo.mobileops.domain.model.ProductVariant(),
 )
 
 /** The item facts a receiving step needs, and nothing else. */

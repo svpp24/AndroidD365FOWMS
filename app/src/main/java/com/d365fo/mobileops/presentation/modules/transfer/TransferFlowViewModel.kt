@@ -484,7 +484,11 @@ class TransferFlowViewModel @Inject constructor(
                         "${match.itemNumber} is not outstanding on " +
                             "${_state.value.capture.transferId}",
                     )
-                chooseAmong(matched)
+                val ofVariant = matched.filter { it.variant.acceptsScanOf(match.variant) }
+                if (ofVariant.isEmpty()) {
+                    return fail("${match.itemNumber} ${match.variant.label} is not outstanding on ${_state.value.capture.transferId}")
+                }
+                chooseAmong(ofVariant)
             }
         }
     }

@@ -134,6 +134,8 @@ data class TransferOrderLine(
     val toWarehouseId: String?,
     /** The source-side location. A hint when shipping, never an answer when receiving. */
     val locationId: String?,
+    /** Which variant of a product master the line is (product dimensions), from D365FO. */
+    val variant: com.d365fo.mobileops.domain.model.ProductVariant = com.d365fo.mobileops.domain.model.ProductVariant(),
     val batchRequired: Boolean,
     val serialRequired: Boolean,
     val locationRequired: Boolean,
