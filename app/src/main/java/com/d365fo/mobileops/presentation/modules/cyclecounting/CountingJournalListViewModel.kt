@@ -334,13 +334,19 @@ class CountingJournalListViewModel @Inject constructor(
         _loaded.update { it.copy(claiming = journal.journalId) }
         val outcome = claims.claim(journal.journalId, range)
         _loaded.update { it.copy(claiming = null) }
-        when (outcome) {
-            is ClaimOutcome.Granted -> downloads.start(
+        when {
+            outcome is ClaimOutcome.Granted -> downloads.start(
                 journal,
                 warehouseId,
                 range ?: outcome.rangeId?.let { CountRange(it, it, outcome.locationFrom, outcome.locationTo, 0) },
                 outcome.claimToken,
             )
+            // The server doesn't do claims (yet): it isn't enforcing them either, so count unclaimed
+            // rather than block counting altogether.
+            outcome is ClaimOutcome.Refused && outcome.reason == ClaimRefusal.NOT_AVAILABLE -> {
+                downloads.start(journal, warehouseId, range, claimToken = null)
+                showMessage("This server doesn't support claiming journals yet - counting without a claim.")
+            }
             else -> showMessage(outcome.describe())
         }
     }
