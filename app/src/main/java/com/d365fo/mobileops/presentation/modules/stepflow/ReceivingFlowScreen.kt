@@ -206,6 +206,7 @@ fun ReceivingFlowScreen(
                             onSkip = viewModel::skipStep,
                             onSearchItem = { showItemSearch = true },
                             onPostSoFar = viewModel::postReceipt,
+                            onSelectUnit = viewModel::selectEntryUnit,
                         )
                         if (state.step == ReceivingStep.PURCHASE_ORDER && state.todaysOrders.isNotEmpty()) {
                             TodaysOrders(state.todaysOrders, enabled = !state.busy, onPick = viewModel::pickTodaysOrder)
@@ -269,6 +270,7 @@ private fun StepPrompt(
     onSkip: () -> Unit = {},
     onSearchItem: () -> Unit,
     onPostSoFar: () -> Unit,
+    onSelectUnit: (String) -> Unit = {},
 ) {
     val focusRequester = remember { FocusRequester() }
 
@@ -365,6 +367,14 @@ private fun StepPrompt(
                         text = "Scanned barcode is a pack of ${plain(pack)}",
                         style = MaterialTheme.typography.labelMedium,
                         color = WarehouseStatusColors.text3,
+                    )
+                }
+                state.capture.line?.takeIf { it.units.size > 1 }?.let { line ->
+                    com.d365fo.mobileops.presentation.common.components.UnitChips(
+                        units = line.units,
+                        lineUnit = line.purchaseUnit,
+                        selected = state.entryUnit ?: line.purchaseUnit,
+                        onSelect = onSelectUnit,
                     )
                 }
             }
@@ -861,7 +871,8 @@ private fun hintFor(state: ReceivingFlowState): String? = when (state.step) {
 
     ReceivingStep.QUANTITY -> state.capture.line?.let { line ->
         "${plain(line.outstandingQuantity)} ${line.purchaseUnit} outstanding of " +
-            "${plain(line.orderedQuantity)} ordered"
+            "${plain(line.orderedQuantity)} ordered" +
+            (state.entryUnit?.let { unit -> " · entering in $unit" } ?: "")
     }
 
     ReceivingStep.PACKING_SLIP ->

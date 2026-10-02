@@ -708,7 +708,7 @@ class ReceivingFlowViewModel @Inject constructor(
                 if (ofVariant.isEmpty()) {
                     return fail("${match.itemNumber} ${match.variant.label} is not outstanding on ${_state.value.capture.purchId}")
                 }
-                chooseAmong(ofVariant, quantityPerScan = match.quantityPerScan)
+                chooseAmong(ofVariant, quantityPerScan = match.quantityPerScan, scanUnit = match.unitSymbol)
             }
         }
     }
@@ -787,28 +787,33 @@ class ReceivingFlowViewModel @Inject constructor(
      * each has its own quantity and its own delivery schedule. When that happens the operator
      * picks, because nothing in the scan says which was meant.
      */
-    private suspend fun chooseAmong(lines: List<PurchaseOrderLine>, quantityPerScan: BigDecimal) {
+    private suspend fun chooseAmong(lines: List<PurchaseOrderLine>, quantityPerScan: BigDecimal, scanUnit: String? = null) {
         if (lines.size > 1) {
-            _state.update { it.copy(lineChoices = lines, scannedPackSize = quantityPerScan) }
+            _state.update { it.copy(lineChoices = lines, scannedPackSize = quantityPerScan, scannedPackUnit = scanUnit) }
             return
         }
-        selectLine(lines.single(), quantityPerScan)
+        selectLine(lines.single(), quantityPerScan, scanUnit)
     }
 
     fun chooseLine(line: PurchaseOrderLine) {
         pending?.cancel()
         pending = viewModelScope.launch {
             val packSize = _state.value.scannedPackSize ?: BigDecimal.ONE
-            _state.update { it.copy(busy = true, lineChoices = emptyList(), scannedPackSize = null) }
-            selectLine(line, packSize)
+            val packUnit = _state.value.scannedPackUnit
+            _state.update { it.copy(busy = true, lineChoices = emptyList(), scannedPackSize = null, scannedPackUnit = null) }
+            selectLine(line, packSize, packUnit)
             _state.update { it.copy(busy = false) }
         }
     }
 
     private suspend fun selectLine(
         line: PurchaseOrderLine,
-        quantityPerScan: BigDecimal = BigDecimal.ONE,
+        scannedQuantity: BigDecimal = BigDecimal.ONE,
+        scanUnit: String? = null,
     ) {
+        // A pack barcode counts in its own unit (1 BOX); the line is in its purchase unit.
+        val quantityPerScan = com.d365fo.mobileops.domain.model.UnitConversion
+            .packInLineUnit(scannedQuantity, scanUnit, line.units, line.purchaseUnit) ?: scannedQuantity
         // The item's dimension groups decide which steps come next, so these facts have to be
         // in hand before the flow can know what it is going to ask.
         //
@@ -864,6 +869,8 @@ class ReceivingFlowViewModel @Inject constructor(
                 suggestedQuantity = sessionRemaining(line),
                 suggestedLocation = line.locationId?.takeIf { loc -> loc.isNotBlank() },
                 scannedPackSize = quantityPerScan.takeIf { size -> size > BigDecimal.ONE },
+                entryUnit = null,
+                conversionNote = null,
                 error = null,
             )
         }
@@ -872,9 +879,15 @@ class ReceivingFlowViewModel @Inject constructor(
 
     private fun onQuantity(value: String) {
         val line = _state.value.capture.line ?: return fail("Pick a line first")
-        val entered = value.toBigDecimalOrNull()
-            ?: return fail("\"$value\" is not a number")
+        // "3", or "3 BOX" / a unit chip: converted to the line's unit per the item's conversions.
+        val converted = com.d365fo.mobileops.domain.model.UnitConversion
+            .parse(value, line.units, _state.value.entryUnit, line.purchaseUnit)
+            .getOrElse { return fail(it.message ?: "\"$value\" is not a number") }
+        val entered = converted.quantity
         if (entered.signum() <= 0) return fail("Quantity must be more than zero")
+        val note = converted.enteredUnit.takeIf { it.isNotBlank() }?.let {
+            "${plain(converted.entered)} $it = ${plain(entered)} ${line.purchaseUnit}"
+        }
 
         val item = _state.value.capture.item
         if (item?.serialRequired == true && entered.stripTrailingZeros().scale() > 0) {
@@ -900,8 +913,14 @@ class ReceivingFlowViewModel @Inject constructor(
             )
         }
 
-        _state.update { it.copy(capture = it.capture.copy(quantity = entered), error = null) }
+        _state.update { it.copy(capture = it.capture.copy(quantity = entered), conversionNote = note, error = null) }
         advance()
+    }
+
+    /** Picks the unit the quantity step reads its number in; the line's own unit clears it. */
+    fun selectEntryUnit(unitId: String) = _state.update { s ->
+        val lineUnit = s.capture.line?.purchaseUnit
+        s.copy(entryUnit = unitId.takeUnless { lineUnit != null && it.equals(lineUnit, ignoreCase = true) })
     }
 
     /**
@@ -1118,6 +1137,12 @@ data class ReceivingFlowState(
     val lineChoices: List<PurchaseOrderLine> = emptyList(),
     /** Units per scan from a case barcode, offered as the default at the quantity step. */
     val scannedPackSize: BigDecimal? = null,
+    /** The scanned pack barcode's own unit, converted per line when one is picked. */
+    val scannedPackUnit: String? = null,
+    /** The unit the quantity is being entered in; null = the line's own unit. */
+    val entryUnit: String? = null,
+    /** "2 BOX = 24 PCS" after a converted entry, shown on the next steps' summary. */
+    val conversionNote: String? = null,
     val suggestedQuantity: BigDecimal? = null,
     /** Where the order line said the goods would go. A hint only — never an answer. */
     val suggestedLocation: String? = null,

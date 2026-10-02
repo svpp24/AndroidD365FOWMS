@@ -1,5 +1,6 @@
 package com.d365fo.mobileops.data.repository
 
+import com.d365fo.mobileops.data.remote.dto.toItemUnits
 import com.d365fo.mobileops.data.remote.api.MobileOpsServiceApi
 import com.d365fo.mobileops.data.remote.dto.BatchRequestBody
 import com.d365fo.mobileops.data.remote.dto.BatchServiceRequest
@@ -470,4 +471,5 @@ internal fun com.d365fo.mobileops.data.remote.dto.PurchLineServiceDto.toDomain(
     // PurchaseOrderLine.locationRequired for why that has to be more than just this value.
     locationRequired = locationRequired,
     rules = com.d365fo.mobileops.domain.model.DimensionRules(batchMandatory, serialMandatory, locationMandatory, serialPerUnit),
+    units = units.toItemUnits(),
 )

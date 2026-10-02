@@ -96,7 +96,21 @@ data class PurchLineServiceDto(
     @SerialName("UnderDeliveryPct") val underDeliveryPct: Double = 0.0,
     @SerialName("LineStatus") val lineStatus: String? = null,
     @SerialName("Stopped") val stopped: Boolean = false,
+    /** Units the quantity can be entered in, to PurchUnit - empty from a server without UoM support. */
+    @SerialName("Units") val units: List<ItemUnitDto> = emptyList(),
 )
+
+/** One HSMobileOpsItemUnitRow: 1 UnitId = Factor of the line's (or inventory) unit. */
+@Serializable
+data class ItemUnitDto(
+    @SerialName("UnitId") val unitId: String = "",
+    @SerialName("Factor") val factor: Double = 0.0,
+    @SerialName("Decimals") val decimals: Int = 0,
+)
+
+internal fun List<ItemUnitDto>.toItemUnits(): List<com.d365fo.mobileops.domain.model.ItemUnit> =
+    filter { it.unitId.isNotBlank() && it.factor > 0.0 }
+        .map { com.d365fo.mobileops.domain.model.ItemUnit(it.unitId, java.math.BigDecimal.valueOf(it.factor), it.decimals) }
 
 // -- Location -------------------------------------------------------------------------------
 

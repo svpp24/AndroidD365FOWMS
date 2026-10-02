@@ -78,6 +78,7 @@ class CountingScanViewModel @Inject constructor(
     private val scanFeedback: ScanFeedback,
     private val capture: CountCaptureActions,
     private val flags: FeatureFlags,
+    private val itemUnits: com.d365fo.mobileops.data.repository.ItemUnitRepository,
 ) : ViewModel() {
 
     val journalId: String = checkNotNull(savedStateHandle["journalId"])
@@ -239,7 +240,11 @@ class CountingScanViewModel @Inject constructor(
             // scan is instant and works offline.
             val resolved = itemDao.resolveBarcode(value)
                 ?: return miss("$value is not an item on this journal", typed, unexpectedItemId = value)
-            perScan = resolved.quantityPerScan.toBigDecimalOrNull()?.takeIf { it.signum() > 0 } ?: BigDecimal.ONE
+            perScan = inInventoryUnit(
+                resolved,
+                resolved.quantityPerScan.toBigDecimalOrNull()?.takeIf { it.signum() > 0 } ?: BigDecimal.ONE,
+                lines,
+            )
             scannedVariant = resolved.variant
             itemId = lines.firstOrNull { it.itemId.equals(resolved.itemId, ignoreCase = true) }?.itemId
                 ?: return miss(
@@ -336,9 +341,28 @@ class CountingScanViewModel @Inject constructor(
             return miss("$what is not on this journal${location?.let { " at $it" }.orEmpty()}", typed, unexpectedItemId = resolved.itemId)
         }
         val perScan = gs1.quantity?.takeIf { it.signum() > 0 }
-            ?: resolved.quantityPerScan.toBigDecimalOrNull()?.takeIf { it.signum() > 0 }
-            ?: BigDecimal.ONE
+            ?: inInventoryUnit(
+                resolved,
+                resolved.quantityPerScan.toBigDecimalOrNull()?.takeIf { it.signum() > 0 } ?: BigDecimal.ONE,
+                lines,
+            )
         routeToLine(matching, perScan, scanned = !typed)
+    }
+
+    /**
+     * A pack barcode's quantity is in the barcode's own unit (1 BOX); counting journals are in
+     * the inventory unit. Only such a barcode asks the server - once, for the whole journal.
+     */
+    private suspend fun inInventoryUnit(
+        resolved: com.d365fo.mobileops.data.local.dao.ScannedItem,
+        quantity: BigDecimal,
+        lines: List<CountLine>,
+    ): BigDecimal {
+        val scanUnit = resolved.scanUnit?.takeIf { it.isNotBlank() } ?: return quantity
+        if (scanUnit.equals(resolved.inventoryUnit, ignoreCase = true)) return quantity
+        val units = itemUnits.unitsFor(resolved.itemId, resolved.variant, lines.map { it.itemId to it.variant })
+        return com.d365fo.mobileops.domain.model.UnitConversion
+            .packInLineUnit(quantity, scanUnit, units, resolved.inventoryUnit) ?: quantity
     }
 
     /** Takes back the last scan-to-count addition - the line returns to its count before it. */

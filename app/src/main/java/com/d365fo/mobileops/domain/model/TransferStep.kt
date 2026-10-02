@@ -158,6 +158,8 @@ data class TransferOrderLine(
     val locationRequired: Boolean,
     /** Required vs optional per dimension for this process - see [com.d365fo.mobileops.domain.model.DimensionRules]. */
     val rules: com.d365fo.mobileops.domain.model.DimensionRules = com.d365fo.mobileops.domain.model.DimensionRules(),
+    /** Units the quantity can be entered in, from the item's conversion setup - see [ItemUnit]. */
+    val units: List<com.d365fo.mobileops.domain.model.ItemUnit> = emptyList(),
 ) {
     val hasOutstanding: Boolean get() = remainingQuantity.signum() > 0
 }

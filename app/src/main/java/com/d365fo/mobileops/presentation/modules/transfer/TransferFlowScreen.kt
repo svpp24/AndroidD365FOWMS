@@ -184,6 +184,7 @@ fun TransferFlowScreen(
                         onOpenCamera = { showCamera = true },
                             onSkip = viewModel::skipStep,
                         onSearchItem = { showItemSearch = true },
+                        onSelectUnit = viewModel::selectEntryUnit,
                     )
                 }
             }
@@ -241,6 +242,7 @@ private fun StepPrompt(
     onOpenCamera: () -> Unit,
     onSkip: () -> Unit = {},
     onSearchItem: () -> Unit,
+    onSelectUnit: (String) -> Unit = {},
 ) {
     val focusRequester = remember { FocusRequester() }
 
@@ -325,6 +327,14 @@ private fun StepPrompt(
                             },
                         )
                     }
+                }
+                state.capture.line?.takeIf { it.units.size > 1 }?.let { line ->
+                    com.d365fo.mobileops.presentation.common.components.UnitChips(
+                        units = line.units,
+                        lineUnit = line.unitId,
+                        selected = state.entryUnit ?: line.unitId,
+                        onSelect = onSelectUnit,
+                    )
                 }
             }
 

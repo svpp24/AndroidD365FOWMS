@@ -567,6 +567,7 @@ class TransferFlowViewModel @Inject constructor(
                     locationId = null,
                 ),
                 suggestedQuantity = sessionRemaining(line),
+                entryUnit = null,
                 error = null,
             )
         }
@@ -575,7 +576,11 @@ class TransferFlowViewModel @Inject constructor(
 
     private fun onQuantity(value: String) {
         val line = _state.value.capture.line ?: return fail("Pick a line first")
-        val entered = value.toBigDecimalOrNull() ?: return fail("\"$value\" is not a number")
+        // "3", or "3 BOX" / a unit chip: converted to the line's unit per the item's conversions.
+        val entered = com.d365fo.mobileops.domain.model.UnitConversion
+            .parse(value, line.units, _state.value.entryUnit, line.unitId)
+            .getOrElse { return fail(it.message ?: "\"$value\" is not a number") }
+            .quantity
         if (entered.signum() <= 0) return fail("Quantity must be more than zero")
 
         if (line.serialRequired && entered.stripTrailingZeros().scale() > 0) {
@@ -599,6 +604,12 @@ class TransferFlowViewModel @Inject constructor(
 
         _state.update { it.copy(capture = it.capture.copy(quantity = entered), error = null) }
         advance()
+    }
+
+    /** Picks the unit the quantity step reads its number in; the line's own unit clears it. */
+    fun selectEntryUnit(unitId: String) = _state.update { s ->
+        val lineUnit = s.capture.line?.unitId
+        s.copy(entryUnit = unitId.takeUnless { lineUnit != null && it.equals(lineUnit, ignoreCase = true) })
     }
 
     private suspend fun onLocation(value: String) {
@@ -706,6 +717,8 @@ data class TransferFlowState(
     val openLines: List<TransferOrderLine> = emptyList(),
     val lineChoices: List<TransferOrderLine> = emptyList(),
     val suggestedQuantity: BigDecimal? = null,
+    /** The unit the quantity is being entered in; null = the line's own unit. */
+    val entryUnit: String? = null,
     val captured: List<CapturedTransferLine> = emptyList(),
     val showingCaptured: Boolean = false,
     val busy: Boolean = false,

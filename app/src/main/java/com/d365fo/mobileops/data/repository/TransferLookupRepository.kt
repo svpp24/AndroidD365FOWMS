@@ -1,5 +1,6 @@
 package com.d365fo.mobileops.data.repository
 
+import com.d365fo.mobileops.data.remote.dto.toItemUnits
 import com.d365fo.mobileops.data.remote.api.MobileOpsServiceApi
 import com.d365fo.mobileops.data.remote.dto.TransferLineDto
 import com.d365fo.mobileops.data.remote.dto.TransferLineRequestBody
@@ -152,4 +153,5 @@ private fun TransferLineDto.toDomain(): TransferOrderLine = TransferOrderLine(
     serialRequired = serialRequired,
     locationRequired = locationRequired,
     rules = com.d365fo.mobileops.domain.model.DimensionRules(batchMandatory, serialMandatory, locationMandatory, serialPerUnit),
+    units = units.toItemUnits(),
 )

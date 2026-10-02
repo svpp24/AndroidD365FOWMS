@@ -104,4 +104,6 @@ data class TransferLineDto(
     @SerialName("SerialMandatory") val serialMandatory: Boolean = true,
     @SerialName("LocationMandatory") val locationMandatory: Boolean = true,
     @SerialName("SerialPerUnit") val serialPerUnit: Boolean = true,
+    /** Units the quantity can be entered in, to UnitId - empty from a server without UoM support. */
+    @SerialName("Units") val units: List<ItemUnitDto> = emptyList(),
 )

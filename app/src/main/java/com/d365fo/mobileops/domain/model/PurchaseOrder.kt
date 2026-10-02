@@ -66,6 +66,8 @@ data class PurchaseOrderLine(
      * enough to skip that lookup entirely, not just this one field.
      */
     val locationRequired: Boolean? = null,
+    /** Units the quantity can be entered in, from the item's conversion setup - see [ItemUnit]. */
+    val units: List<com.d365fo.mobileops.domain.model.ItemUnit> = emptyList(),
 ) {
     /** What D365FO still expects, ignoring anything queued locally. */
     val serverRemaining: BigDecimal get() = orderedQuantity - receivedQuantity

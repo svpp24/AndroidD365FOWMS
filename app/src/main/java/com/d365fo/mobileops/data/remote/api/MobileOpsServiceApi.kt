@@ -303,6 +303,17 @@ interface MobileOpsServiceApi {
         @Tag tag: IdempotentRead = IdempotentRead,
     ): Response<com.d365fo.mobileops.data.remote.dto.OrdersForDateServiceResponse>
 
+    // -- Item units (HSMobileOpsUnitSvc) ------------------------------------------------------
+    //
+    // Units to the inventory unit for many item variants in one call - counting only; receiving
+    // and transfer lines carry their units already. A pure read.
+
+    @POST("HSMobileOpsServiceGroup/HSMobileOpsUnitSvc/getItemUnits")
+    suspend fun getItemUnits(
+        @Body body: com.d365fo.mobileops.data.remote.dto.ItemUnitsServiceRequest,
+        @Tag tag: IdempotentRead = IdempotentRead,
+    ): Response<com.d365fo.mobileops.data.remote.dto.ItemUnitsServiceResponse>
+
     // -- Assigned warehouses (HSMobileOpsUserWarehouseSvc) -----------------------------------
     //
     // The worker's warehouses with names, for the warehouse switcher. A pure read.
