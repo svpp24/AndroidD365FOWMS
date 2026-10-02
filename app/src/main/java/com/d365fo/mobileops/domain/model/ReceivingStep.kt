@@ -116,7 +116,13 @@ data class ReceivingCapture(
      * (keep asking) is the safe default before an order has been resolved.
      */
     val requireLocationCaptureFallback: Boolean = true,
+    /** Optional steps the operator skipped - see [canSkipStep]. */
+    val skipped: Set<ReceivingStep> = emptySet(),
 ) {
+    /** Serials needed: one per unit under serial number control, otherwise one for the line. */
+    private val serialsNeeded: Int
+        get() = if (line?.rules?.serialPerUnit == false) 1 else quantity?.toBigIntegerExact()?.toInt() ?: 0
+
     /**
      * Serial capture is complete when there is one serial per unit.
      *
@@ -125,12 +131,12 @@ data class ReceivingCapture(
      * "done" and "one more please".
      */
     fun serialsComplete(): Boolean {
-        val required = quantity?.toBigIntegerExact()?.toInt() ?: return false
-        return serialIds.size >= required
+        if (quantity == null) return false
+        return serialIds.size >= serialsNeeded
     }
 
     val serialsOutstanding: Int
-        get() = ((quantity?.toBigIntegerExact()?.toInt() ?: 0) - serialIds.size).coerceAtLeast(0)
+        get() = (serialsNeeded - serialIds.size).coerceAtLeast(0)
 }
 
 /**
@@ -189,7 +195,18 @@ fun stepsFor(capture: ReceivingCapture): List<ReceivingStep> = buildList {
 fun nextIncompleteStep(capture: ReceivingCapture): ReceivingStep =
     stepsFor(capture).first { step -> !isAnswered(step, capture) }
 
-private fun isAnswered(step: ReceivingStep, capture: ReceivingCapture): Boolean = when (step) {
+/** A batch, serial or location step the dimension group does not require for a receipt. */
+fun canSkipStep(step: ReceivingStep, capture: ReceivingCapture): Boolean {
+    val rules = capture.line?.rules ?: return false
+    return when (step) {
+        ReceivingStep.LOCATION -> !rules.locationMandatory
+        ReceivingStep.BATCH -> !rules.batchMandatory
+        ReceivingStep.SERIAL -> !rules.serialMandatory
+        else -> false
+    }
+}
+
+private fun isAnswered(step: ReceivingStep, capture: ReceivingCapture): Boolean = step in capture.skipped || when (step) {
     ReceivingStep.PURCHASE_ORDER -> !capture.purchId.isNullOrBlank()
     ReceivingStep.PACKING_SLIP -> !capture.vendorPackingSlipId.isNullOrBlank()
     ReceivingStep.ITEM -> capture.line != null && capture.item != null

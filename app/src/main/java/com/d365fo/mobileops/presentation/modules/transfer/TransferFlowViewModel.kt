@@ -108,6 +108,14 @@ class TransferFlowViewModel @Inject constructor(
 
     fun onManualEntry(value: String) = submit(value)
 
+    /** Skips the current batch/serial/location step when D365FO allows it blank for this direction. */
+    fun skipStep() {
+        val s = _state.value
+        if (s.busy || !com.d365fo.mobileops.domain.model.canSkipTransferStep(s.step, s.capture)) return
+        _state.update { it.copy(capture = it.capture.copy(skipped = it.capture.skipped + it.step), error = null) }
+        advance()
+    }
+
     fun onCameraDecoded(value: String) = scannerBridge.submitCameraScan(value)
 
     /** See [HidScannerBridge.justScanned] - used by the screen's BackHandler. */

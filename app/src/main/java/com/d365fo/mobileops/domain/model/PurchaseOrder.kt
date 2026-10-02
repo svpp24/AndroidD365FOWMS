@@ -53,6 +53,8 @@ data class PurchaseOrderLine(
     val variant: com.d365fo.mobileops.domain.model.ProductVariant = com.d365fo.mobileops.domain.model.ProductVariant(),
     val tolerance: DeliveryTolerance,
     val tracking: TrackingRequirement,
+    /** Required vs optional per dimension for this process - see [com.d365fo.mobileops.domain.model.DimensionRules]. */
+    val rules: com.d365fo.mobileops.domain.model.DimensionRules = com.d365fo.mobileops.domain.model.DimensionRules(),
     /**
      * Whether this item needs a put-away location, when the source already knows — the AOS
      * service resolves it per line (see PurchLineServiceDto.LocationRequired) alongside

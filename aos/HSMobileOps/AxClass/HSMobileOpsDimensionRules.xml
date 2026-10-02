@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsDimensionRules</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Whether an inventory or tracking dimension must be given for a receipt or an issue - the same
+/// rule as the standard InventMovement.checkInventDimForInventDimField: an active dimension may be
+/// left blank unless it is mandatory, or the direction does not allow it blank (Blank receipt
+/// allowed / Blank issue allowed on the dimension group). Purchase receipt, transfer ship and
+/// transfer receive (InventMov_Purch / _TransferFrom / _TransferTo) use those base rules
+/// unchanged, so this matches what D365FO itself enforces at posting.
+/// </summary>
+class HSMobileOpsDimensionRules
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>mustSpecify</Name>
+				<Source><![CDATA[
+
+    /// <summary>True when the dimension is active and may not be blank for this direction.</summary>
+    public static boolean mustSpecify(InventDimGroupSetup _setup, FieldId _dimensionField, boolean _receipt)
+    {
+        InventDimGroupFieldSetup fieldSetup = _setup.getFieldSetup(_dimensionField);
+
+        if (!fieldSetup.isActive())
+        {
+            return false;
+        }
+        return fieldSetup.isMandatory()
+            || (_receipt ? !fieldSetup.isAllowBlankReceiptEnabled() : !fieldSetup.isAllowBlankIssueEnabled());
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>serialPerUnit</Name>
+				<Source><![CDATA[
+
+    /// <summary>Serial number control: every unit carries its own serial number.</summary>
+    public static boolean serialPerUnit(InventDimGroupSetup _setup)
+    {
+        return _setup.getFieldSetup(fieldNum(InventDim, InventSerialId)).isSerialNumberControlEnabled();
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

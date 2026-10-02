@@ -100,4 +100,8 @@ data class TransferLineDto(
     @SerialName("BatchRequired") val batchRequired: Boolean = false,
     @SerialName("SerialRequired") val serialRequired: Boolean = false,
     @SerialName("LocationRequired") val locationRequired: Boolean = false,
+    @SerialName("BatchMandatory") val batchMandatory: Boolean = true,
+    @SerialName("SerialMandatory") val serialMandatory: Boolean = true,
+    @SerialName("LocationMandatory") val locationMandatory: Boolean = true,
+    @SerialName("SerialPerUnit") val serialPerUnit: Boolean = true,
 )

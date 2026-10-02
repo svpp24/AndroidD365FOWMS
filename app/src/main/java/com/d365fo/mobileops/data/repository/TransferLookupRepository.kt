@@ -151,4 +151,5 @@ private fun TransferLineDto.toDomain(): TransferOrderLine = TransferOrderLine(
     batchRequired = batchRequired,
     serialRequired = serialRequired,
     locationRequired = locationRequired,
+    rules = com.d365fo.mobileops.domain.model.DimensionRules(batchMandatory, serialMandatory, locationMandatory, serialPerUnit),
 )

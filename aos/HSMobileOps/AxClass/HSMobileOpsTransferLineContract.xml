@@ -30,6 +30,10 @@ class HSMobileOpsTransferLineContract
     str     sizeId;
     str     colorId;
     str     styleId;
+    boolean batchMandatory;
+    boolean serialMandatory;
+    boolean locationMandatory;
+    boolean serialPerUnit;
 }
 ]]></Declaration>
 		<Methods>
@@ -282,6 +286,54 @@ class HSMobileOpsTransferLineContract
     {
         styleId = _value;
         return styleId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmBatchMandatory</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('BatchMandatory')]
+    public boolean parmBatchMandatory(boolean _value = batchMandatory)
+    {
+        batchMandatory = _value;
+        return batchMandatory;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmSerialMandatory</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('SerialMandatory')]
+    public boolean parmSerialMandatory(boolean _value = serialMandatory)
+    {
+        serialMandatory = _value;
+        return serialMandatory;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmLocationMandatory</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('LocationMandatory')]
+    public boolean parmLocationMandatory(boolean _value = locationMandatory)
+    {
+        locationMandatory = _value;
+        return locationMandatory;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmSerialPerUnit</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('SerialPerUnit')]
+    public boolean parmSerialPerUnit(boolean _value = serialPerUnit)
+    {
+        serialPerUnit = _value;
+        return serialPerUnit;
     }
 ]]></Source>
 			</Method>

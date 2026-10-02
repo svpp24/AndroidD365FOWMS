@@ -182,6 +182,7 @@ fun TransferFlowScreen(
                         onSubmit = viewModel::onManualEntry,
                         onTypeManually = onManualEntryRequested,
                         onOpenCamera = { showCamera = true },
+                            onSkip = viewModel::skipStep,
                         onSearchItem = { showItemSearch = true },
                     )
                 }
@@ -238,6 +239,7 @@ private fun StepPrompt(
     onSubmit: (String) -> Unit,
     onTypeManually: () -> Unit,
     onOpenCamera: () -> Unit,
+    onSkip: () -> Unit = {},
     onSearchItem: () -> Unit,
 ) {
     val focusRequester = remember { FocusRequester() }
@@ -324,6 +326,14 @@ private fun StepPrompt(
                         )
                     }
                 }
+            }
+
+            if (com.d365fo.mobileops.domain.model.canSkipTransferStep(state.step, state.capture)) {
+                OutlinedButton(
+                    onClick = onSkip,
+                    enabled = !state.busy,
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
+                ) { Text("Skip - not required for this item") }
             }
 
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

@@ -64,14 +64,31 @@ data class TransferCapture(
     val serialIds: List<String> = emptyList(),
     /** See the identical field on ReceivingCapture - the same per-process fallback flag. */
     val requireLocationCaptureFallback: Boolean = true,
+    /** Optional steps the operator skipped - see [canSkipTransferStep]. */
+    val skipped: Set<TransferStep> = emptySet(),
 ) {
+    /** Serials needed: one per unit under serial number control, otherwise one for the line. */
+    private val serialsNeeded: Int
+        get() = if (line?.rules?.serialPerUnit == false) 1 else quantity?.toBigIntegerExact()?.toInt() ?: 0
+
     fun serialsComplete(): Boolean {
-        val required = quantity?.toBigIntegerExact()?.toInt() ?: return false
-        return serialIds.size >= required
+        if (quantity == null) return false
+        return serialIds.size >= serialsNeeded
     }
 
     val serialsOutstanding: Int
-        get() = ((quantity?.toBigIntegerExact()?.toInt() ?: 0) - serialIds.size).coerceAtLeast(0)
+        get() = (serialsNeeded - serialIds.size).coerceAtLeast(0)
+}
+
+/** A batch, serial or location step the dimension group does not require for this process. */
+fun canSkipTransferStep(step: TransferStep, capture: TransferCapture): Boolean {
+    val rules = capture.line?.rules ?: return false
+    return when (step) {
+        TransferStep.LOCATION -> !rules.locationMandatory
+        TransferStep.BATCH -> !rules.batchMandatory
+        TransferStep.SERIAL -> !rules.serialMandatory
+        else -> false
+    }
 }
 
 /**
@@ -102,7 +119,7 @@ fun nextIncompleteTransferStep(capture: TransferCapture): TransferStep =
     stepsForTransfer(capture).first { step -> !isTransferStepAnswered(step, capture) }
 
 private fun isTransferStepAnswered(step: TransferStep, capture: TransferCapture): Boolean =
-    when (step) {
+    step in capture.skipped || when (step) {
         TransferStep.TRANSFER_ORDER -> !capture.transferId.isNullOrBlank()
         TransferStep.ITEM -> capture.line != null
         TransferStep.QUANTITY -> capture.quantity != null
@@ -139,6 +156,8 @@ data class TransferOrderLine(
     val batchRequired: Boolean,
     val serialRequired: Boolean,
     val locationRequired: Boolean,
+    /** Required vs optional per dimension for this process - see [com.d365fo.mobileops.domain.model.DimensionRules]. */
+    val rules: com.d365fo.mobileops.domain.model.DimensionRules = com.d365fo.mobileops.domain.model.DimensionRules(),
 ) {
     val hasOutstanding: Boolean get() = remainingQuantity.signum() > 0
 }

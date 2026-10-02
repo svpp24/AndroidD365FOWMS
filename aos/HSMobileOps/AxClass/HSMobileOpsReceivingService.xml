@@ -459,6 +459,11 @@ class HSMobileOpsReceivingService
             line.parmBatchRequired(dimSetup.isDimensionActive(fieldNum(InventDim, InventBatchId)));
             line.parmSerialRequired(dimSetup.isDimensionActive(fieldNum(InventDim, InventSerialId)));
             line.parmLocationRequired(dimSetup.isDimensionActive(fieldNum(InventDim, wMSLocationId)));
+            // Required vs optional per the dimension group, as standard posting decides it.
+            line.parmBatchMandatory(HSMobileOpsDimensionRules::mustSpecify(dimSetup, fieldNum(InventDim, InventBatchId), true));
+            line.parmSerialMandatory(HSMobileOpsDimensionRules::mustSpecify(dimSetup, fieldNum(InventDim, InventSerialId), true));
+            line.parmLocationMandatory(HSMobileOpsDimensionRules::mustSpecify(dimSetup, fieldNum(InventDim, wMSLocationId), true));
+            line.parmSerialPerUnit(HSMobileOpsDimensionRules::serialPerUnit(dimSetup));
 
             line.parmOverDeliveryPct(purchLine.OverDeliveryPct);
             line.parmUnderDeliveryPct(purchLine.UnderDeliveryPct);

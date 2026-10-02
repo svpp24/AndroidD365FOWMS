@@ -118,6 +118,14 @@ class ReceivingFlowViewModel @Inject constructor(
             .singleOrNull()?.purchId ?: value
     }
 
+    /** Skips the current batch/serial/location step when D365FO allows it blank. */
+    fun skipStep() {
+        val s = _state.value
+        if (s.busy || !com.d365fo.mobileops.domain.model.canSkipStep(s.step, s.capture)) return
+        _state.update { it.copy(capture = it.capture.copy(skipped = it.capture.skipped + it.step), error = null) }
+        advance()
+    }
+
     /** Typed entry - damaged label, or a device with neither imager nor wedge. */
     fun onManualEntry(value: String) = submit(value)
 

@@ -469,4 +469,5 @@ internal fun com.d365fo.mobileops.data.remote.dto.PurchLineServiceDto.toDomain(
     // this line needs and can skip lookupItem's round trip. See the field doc on
     // PurchaseOrderLine.locationRequired for why that has to be more than just this value.
     locationRequired = locationRequired,
+    rules = com.d365fo.mobileops.domain.model.DimensionRules(batchMandatory, serialMandatory, locationMandatory, serialPerUnit),
 )

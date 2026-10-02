@@ -203,6 +203,7 @@ fun ReceivingFlowScreen(
                             onSubmit = viewModel::onManualEntry,
                             onTypeManually = onManualEntryRequested,
                             onOpenCamera = { showCamera = true },
+                            onSkip = viewModel::skipStep,
                             onSearchItem = { showItemSearch = true },
                             onPostSoFar = viewModel::postReceipt,
                         )
@@ -265,6 +266,7 @@ private fun StepPrompt(
     onSubmit: (String) -> Unit,
     onTypeManually: () -> Unit,
     onOpenCamera: () -> Unit,
+    onSkip: () -> Unit = {},
     onSearchItem: () -> Unit,
     onPostSoFar: () -> Unit,
 ) {
@@ -383,6 +385,14 @@ private fun StepPrompt(
                             (if (state.captured.size == 1) "line" else "lines") + " scanned so far",
                     )
                 }
+            }
+
+            if (com.d365fo.mobileops.domain.model.canSkipStep(state.step, state.capture)) {
+                OutlinedButton(
+                    onClick = onSkip,
+                    enabled = !state.busy,
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
+                ) { Text("Skip - not required for this item") }
             }
 
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
