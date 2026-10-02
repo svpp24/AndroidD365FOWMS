@@ -98,10 +98,16 @@ fun AiCountSheet(
 
     var phase by remember { mutableStateOf<AiPhase>(AiPhase.Live) }
     var preview by remember { mutableStateOf<PreviewView?>(null) }
+    var camera by remember { mutableStateOf<androidx.camera.core.Camera?>(null) }
+    var torch by remember { mutableStateOf(false) }
     var pickSample by remember { mutableStateOf(false) }
 
     fun analyse() {
         val photo = preview?.bitmap ?: return
+        if (isTooDark(photo)) {
+            phase = AiPhase.Failed("The photo is too dark to count. Turn on Light or move to better lighting.")
+            return
+        }
         phase = AiPhase.Analysing(photo)
         scope.launch {
             phase = runCatching { AiPhase.Result(photo, AiCount(viewModel.counter.detect(photo))) }
@@ -115,7 +121,7 @@ fun AiCountSheet(
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Box(Modifier.fillMaxSize().background(Color.Black)) {
             when (val p = phase) {
-                AiPhase.Live -> if (hasPermission) LivePreview { preview = it }
+                AiPhase.Live -> if (hasPermission) LivePreview(onView = { preview = it }, onCamera = { camera = it })
                 is AiPhase.Analysing -> {
                     PhotoWithMarks(p.photo, null, onTap = { _, _ -> })
                     Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -154,6 +160,15 @@ fun AiCountSheet(
                     style = MaterialTheme.typography.headlineSmall,
                     fontWeight = FontWeight.SemiBold,
                 )
+                if (phase == AiPhase.Live && camera?.cameraInfo?.hasFlashUnit() == true) {
+                    FilterChip(
+                        selected = torch,
+                        onClick = { torch = !torch; camera?.cameraControl?.enableTorch(torch) },
+                        label = { Text(if (torch) "Light on" else "Light") },
+                        colors = chipColors(),
+                        modifier = Modifier.padding(top = 6.dp),
+                    )
+                }
                 if (result != null) {
                     Text(
                         text = if (pickSample) "Tap one item to count only items like it"
@@ -162,9 +177,9 @@ fun AiCountSheet(
                         style = MaterialTheme.typography.bodySmall,
                     )
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 6.dp)) {
-                        FilterChip(selected = pickSample, onClick = { pickSample = !pickSample }, label = { Text("Count only like…") })
+                        FilterChip(selected = pickSample, onClick = { pickSample = !pickSample }, label = { Text("Count only like…") }, colors = chipColors())
                         if (result.count.sample != null) {
-                            FilterChip(selected = false, onClick = { phase = result.copy(count = result.count.copy(sample = null)) }, label = { Text("Count all") })
+                            FilterChip(selected = false, onClick = { phase = result.copy(count = result.count.copy(sample = null)) }, label = { Text("Count all") }, colors = chipColors())
                         }
                     }
                 }
@@ -176,7 +191,7 @@ fun AiCountSheet(
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 OutlinedButton(onClick = onDismiss, modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget)) {
-                    Text("Cancel")
+                    Text("Cancel", color = Color.White)
                 }
                 when (val p = phase) {
                     AiPhase.Live -> Button(
@@ -188,7 +203,7 @@ fun AiCountSheet(
                         OutlinedButton(
                             onClick = { phase = AiPhase.Live },
                             modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget),
-                        ) { Text("Retake") }
+                        ) { Text("Retake", color = Color.White) }
                         Button(
                             onClick = { onUse(p.count.count) },
                             modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget),
@@ -197,7 +212,7 @@ fun AiCountSheet(
                     is AiPhase.Failed -> Button(
                         onClick = { phase = AiPhase.Live },
                         modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget),
-                    ) { Text("Retake") }
+                    ) { Text("Retake", color = Color.White) }
                     else -> Unit
                 }
             }
@@ -206,7 +221,7 @@ fun AiCountSheet(
 }
 
 @Composable
-private fun LivePreview(onView: (PreviewView) -> Unit) {
+private fun LivePreview(onView: (PreviewView) -> Unit, onCamera: (androidx.camera.core.Camera) -> Unit) {
     val lifecycleOwner = LocalLifecycleOwner.current
     AndroidView(
         modifier = Modifier.fillMaxSize(),
@@ -219,7 +234,7 @@ private fun LivePreview(onView: (PreviewView) -> Unit) {
                     val provider = future.get()
                     val preview = Preview.Builder().build().also { it.setSurfaceProvider(view.surfaceProvider) }
                     provider.unbindAll()
-                    provider.bindToLifecycle(lifecycleOwner, CameraSelector.DEFAULT_BACK_CAMERA, preview)
+                    onCamera(provider.bindToLifecycle(lifecycleOwner, CameraSelector.DEFAULT_BACK_CAMERA, preview))
                 }.onFailure { Timber.e(it, "camera bind failed") }
             }, ContextCompat.getMainExecutor(ctx))
             onView(view)
@@ -267,3 +282,26 @@ private fun fit(photo: Bitmap, box: Size): Triple<Float, Float, Float> {
     val scale = min(box.width / photo.width, box.height / photo.height)
     return Triple(scale, (box.width - photo.width * scale) / 2, (box.height - photo.height * scale) / 2)
 }
+
+@Composable
+private fun chipColors() = androidx.compose.material3.FilterChipDefaults.filterChipColors(
+    labelColor = Color.White,
+    selectedLabelColor = Color.Black,
+    selectedContainerColor = Color(0xFFFFC61A),
+)
+
+/** Average brightness of a coarse pixel sample - a black frame would count as zero items. */
+private fun isTooDark(photo: Bitmap): Boolean {
+    var sum = 0L
+    var n = 0
+    val stepX = (photo.width / 32).coerceAtLeast(1)
+    val stepY = (photo.height / 32).coerceAtLeast(1)
+    for (y in 0 until photo.height step stepY) for (x in 0 until photo.width step stepX) {
+        val c = photo.getPixel(x, y)
+        sum += (299 * ((c shr 16) and 0xFF) + 587 * ((c shr 8) and 0xFF) + 114 * (c and 0xFF)) / 1000
+        n++
+    }
+    return n > 0 && sum / n < DARK_LUMA
+}
+
+private const val DARK_LUMA = 28
