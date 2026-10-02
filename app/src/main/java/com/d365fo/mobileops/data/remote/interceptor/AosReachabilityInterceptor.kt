@@ -28,7 +28,24 @@ class AosReachabilityInterceptor @Inject constructor(
     private val monitor: AosReachabilityMonitor,
 ) : Interceptor {
 
+    /** When the last real attempt went out while the tenant was marked unreachable. */
+    @Volatile private var lastAttemptWhileDownAt = 0L
+
     override fun intercept(chain: Interceptor.Chain): Response {
+        // Fail fast while the tenant is known to be down: a read would otherwise sit out the
+        // full read timeout (up to a minute) only to end in "request timed out". One real
+        // attempt still goes through every PROBE_INTERVAL_MS, so recovery is noticed as soon
+        // as the tenant answers. Postings are never short-circuited here - the sync queue owns
+        // their retries and they are not what a worker is waiting on.
+        val request = chain.request()
+        val isRead = request.method == "GET" || request.tag(IdempotentRead::class.java) != null
+        if (isRead && !monitor.reachable.value) {
+            val now = System.currentTimeMillis()
+            if (now - lastAttemptWhileDownAt < PROBE_INTERVAL_MS) {
+                throw AosUnreachableException()
+            }
+            lastAttemptWhileDownAt = now
+        }
         val response = try {
             chain.proceed(chain.request())
         } catch (e: IOException) {
@@ -38,4 +55,11 @@ class AosReachabilityInterceptor @Inject constructor(
         monitor.markReachable()
         return response
     }
+
+    private companion object {
+        const val PROBE_INTERVAL_MS = 15_000L
+    }
 }
+
+/** Thrown instead of waiting out a timeout while D365FO is already known to be unreachable. */
+class AosUnreachableException : java.io.IOException("D365FO unreachable")

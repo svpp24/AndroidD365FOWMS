@@ -1,5 +1,6 @@
 package com.d365fo.mobileops.presentation.modules.stepflow
 
+import com.d365fo.mobileops.presentation.common.components.StepTrail
 import com.d365fo.mobileops.presentation.common.components.BarcodeFieldIcon
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
@@ -196,14 +197,19 @@ fun ReceivingFlowScreen(
                     state.lineChoices.isNotEmpty() ->
                         LineChoice(state.lineChoices, viewModel::chooseLine)
 
-                    else -> StepPrompt(
-                        state = state,
-                        onSubmit = viewModel::onManualEntry,
-                        onTypeManually = onManualEntryRequested,
-                        onOpenCamera = { showCamera = true },
-                        onSearchItem = { showItemSearch = true },
-                        onPostSoFar = viewModel::postReceipt,
-                    )
+                    else -> Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        StepPrompt(
+                            state = state,
+                            onSubmit = viewModel::onManualEntry,
+                            onTypeManually = onManualEntryRequested,
+                            onOpenCamera = { showCamera = true },
+                            onSearchItem = { showItemSearch = true },
+                            onPostSoFar = viewModel::postReceipt,
+                        )
+                        if (state.step == ReceivingStep.PURCHASE_ORDER && state.todaysOrders.isNotEmpty()) {
+                            TodaysOrders(state.todaysOrders, enabled = !state.busy, onPick = viewModel::pickTodaysOrder)
+                        }
+                    }
                 }
             }
 
@@ -249,11 +255,7 @@ private fun StepProgress(state: ReceivingFlowState) {
             // eyes every time a lookup starts and finishes.
             Box(modifier = Modifier.fillMaxWidth().heightIn(min = 4.dp))
         }
-        Text(
-            text = "Step $position of ${sequence.size}",
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        StepTrail(names = sequence.map { it.shortName() }, current = position - 1)
     }
 }
 
@@ -886,8 +888,13 @@ fun ReceivingEntryScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     TextEntryScreen(
-        title = promptFor(state),
-        hint = hintFor(state),
+        // Typing here, so "Enter", not "Scan".
+        title = promptFor(state).replaceFirst("Scan ", "Enter "),
+        hint = hintFor(state) ?: if (state.step == ReceivingStep.PURCHASE_ORDER) {
+            "Type the PO number - for today's orders the last digits are enough"
+        } else {
+            null
+        },
         keyboardType = if (state.step == ReceivingStep.QUANTITY) KeyboardType.Decimal else KeyboardType.Text,
         showNumericKeypad = state.step == ReceivingStep.QUANTITY,
         onBack = onBack,
@@ -897,3 +904,61 @@ fun ReceivingEntryScreen(
         },
     )
 }
+
+/** The step's name in the step trail - short, so the whole flow fits on one line. */
+private fun ReceivingStep.shortName(): String = when (this) {
+    ReceivingStep.PURCHASE_ORDER -> "PO"
+    ReceivingStep.PACKING_SLIP -> "Slip"
+    ReceivingStep.ITEM -> "Item"
+    ReceivingStep.QUANTITY -> "Qty"
+    ReceivingStep.LOCATION -> "Location"
+    ReceivingStep.BATCH -> "Batch"
+    ReceivingStep.BATCH_EXPIRY_DATE -> "Expiry"
+    ReceivingStep.SERIAL -> "Serial"
+    ReceivingStep.CONFIRM -> "Confirm"
+}
+
+/** Today's open POs at this warehouse under the PO step - one tap starts receiving. */
+@Composable
+private fun TodaysOrders(
+    orders: List<com.d365fo.mobileops.domain.repository.PurchaseOrderSummary>,
+    enabled: Boolean,
+    onPick: (String) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(
+            "Due today - tap to start",
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.SemiBold,
+        )
+        orders.take(MAX_TODAYS_ORDERS).forEach { order ->
+            com.d365fo.mobileops.presentation.common.components.AppCard(
+                modifier = Modifier.fillMaxWidth().clickable(enabled = enabled) { onPick(order.purchId) },
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(order.purchId, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                        Text(
+                            "Vendor ${order.vendorAccount}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = WarehouseStatusColors.text3,
+                        )
+                    }
+                    Text("\u203A", style = MaterialTheme.typography.titleLarge, color = WarehouseStatusColors.accent)
+                }
+            }
+        }
+        if (orders.size > MAX_TODAYS_ORDERS) {
+            Text(
+                "+${orders.size - MAX_TODAYS_ORDERS} more - see PO's of today, or scan",
+                style = MaterialTheme.typography.bodySmall,
+                color = WarehouseStatusColors.text3,
+            )
+        }
+    }
+}
+
+private const val MAX_TODAYS_ORDERS = 6

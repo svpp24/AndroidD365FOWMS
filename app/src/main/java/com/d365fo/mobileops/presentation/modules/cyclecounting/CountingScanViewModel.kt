@@ -32,7 +32,13 @@ import javax.inject.Inject
  * What the last scan did, shown under the scan box. [unexpectedItemId] non-null offers
  * "Not on this journal" for that item.
  */
-data class ScanMessage(val text: String, val isError: Boolean, val unexpectedItemId: String? = null)
+data class ScanMessage(
+    val text: String,
+    val isError: Boolean,
+    val unexpectedItemId: String? = null,
+    /** Shows Undo: the scan just added to a count (see [CountingScanViewModel.undoLastScan]). */
+    val undoable: Boolean = false,
+)
 
 /** The quantity popup: which line, and what to start the box at. */
 data class CountPrompt(val line: CountLine, val initial: String)
@@ -255,10 +261,61 @@ class CountingScanViewModel @Inject constructor(
         if (ofVariant.isEmpty()) {
             return miss("$itemId ${scannedVariant.label} is not on this journal", typed, unexpectedItemId = itemId)
         }
-        return pickLine(ofVariant, perScan)
+        return routeToLine(ofVariant, perScan, scanned = !typed)
     }
 
-    private fun pickLine(matching: List<CountLine>, perScan: BigDecimal) {
+    /**
+     * Scan-to-count: a *scan* of an item on one line adds [perScan] (1, or the pack size) to that
+     * line straight away - no popup - with Undo. Typed entries, taps and verify-only lines still
+     * open the popup, where a number can be typed.
+     */
+    private fun routeToLine(matching: List<CountLine>, perScan: BigDecimal, scanned: Boolean) {
+        if (scanned && matching.size == 1 && !matching.single().verifyOnly && !state.value.locked) {
+            _query.value = ""
+            addScanned(matching.single(), perScan)
+            return
+        }
+        pickLine(matching, perScan, scanned)
+    }
+
+    private fun addScanned(line: CountLine, perScan: BigDecimal) {
+        viewModelScope.launch {
+            val before = line.countedQuantity
+            val now = (before?.toBigDecimalOrNull() ?: BigDecimal.ZERO) + perScan
+            val text = now.stripTrailingZeros().toPlainString()
+            val by = workerSession.session.value?.userName
+            countingDao.markLineStarted(line.journalLineId, System.currentTimeMillis())
+            countingDao.recordCount(line.journalLineId, text, by, System.currentTimeMillis())
+            lastScan = LastScan(line.journalLineId, before)
+            scanFeedback.success()
+            val what = listOfNotNull(line.itemId, line.variant.label.takeIf { it.isNotBlank() }, line.locationId)
+                .joinToString(" \u00B7 ")
+            _message.value = ScanMessage("$what: $text counted. Tap the line to type a number.", isError = false, undoable = true)
+            _refocus.update { it + 1 }
+        }
+    }
+
+    /** Takes back the last scan-to-count addition - the line returns to its count before it. */
+    fun undoLastScan() {
+        val undo = lastScan ?: return
+        lastScan = null
+        viewModelScope.launch {
+            countingDao.recordCount(undo.journalLineId, undo.before, workerSession.session.value?.userName, System.currentTimeMillis())
+            _message.value = ScanMessage("Last scan undone.", isError = false)
+            _refocus.update { it + 1 }
+        }
+    }
+
+    /** The count a line had before the last scan-to-count addition, for Undo. */
+    private data class LastScan(val journalLineId: String, val before: String?)
+
+    private var lastScan: LastScan? = null
+
+    /** Lines the scan could be, after a variant/location narrowing: one opens the popup, several ask. */
+    private var choiceIsScan = false
+    private var choicePerScan: BigDecimal = BigDecimal.ONE
+
+    private fun pickLine(matching: List<CountLine>, perScan: BigDecimal, scanned: Boolean = false) {
 
         _query.value = ""
         _message.value = null
@@ -266,6 +323,8 @@ class CountingScanViewModel @Inject constructor(
 
         if (matching.size > 1) {
             // The same item on several lines: a scan cannot say which.
+            choiceIsScan = scanned
+            choicePerScan = perScan
             _choiceIds.value = matching.map { it.journalLineId }
         } else {
             openPrompt(matching.single(), perScan)
@@ -398,7 +457,13 @@ class CountingScanViewModel @Inject constructor(
     fun pickLine(journalLineId: String) {
         val line = state.value.choice.firstOrNull { it.journalLineId == journalLineId } ?: return
         _choiceIds.value = null
-        openPrompt(line, BigDecimal.ONE)
+        // Chosen after a scan: count that scan on the chosen line, same as a single-line scan.
+        if (choiceIsScan && !line.verifyOnly && !state.value.locked) {
+            choiceIsScan = false
+            addScanned(line, choicePerScan)
+        } else {
+            openPrompt(line, BigDecimal.ONE)
+        }
     }
 
     fun cancelChoice() {

@@ -237,6 +237,9 @@ fun CountingScanScreen(
                         color = if (message.isError) MaterialTheme.colorScheme.error else WarehouseStatusColors.green,
                         modifier = Modifier.fillMaxWidth().clickable(onClick = viewModel::dismissMessage),
                     )
+                    if (message.undoable) {
+                        TextButton(onClick = viewModel::undoLastScan) { Text("Undo") }
+                    }
                     message.unexpectedItemId?.let { itemId ->
                         OutlinedButton(
                             onClick = { viewModel.openUnexpected(itemId) },

@@ -86,6 +86,36 @@ class ReceivingFlowViewModel @Inject constructor(
         viewModelScope.launch {
             scannerBridge.scans.collect { submit(it.value) }
         }
+        loadTodaysOrders()
+    }
+
+    /**
+     * Today's purchase orders for the worker's warehouse, offered under the PO step so a tap
+     * starts receiving and a typed tail ("552000") is enough. Best-effort: a failure just leaves
+     * the list empty - scanning and typing the full number still work.
+     */
+    fun loadTodaysOrders() {
+        viewModelScope.launch {
+            val warehouse = workerSession.session.value?.selected?.warehouseId
+            val result = lookups.lookupOrdersForToday(warehouse)
+            if (result is NetworkResult.Success) {
+                _state.update { s -> s.copy(todaysOrders = result.data.filter { it.status.isOpen }) }
+            }
+        }
+    }
+
+    /** Starts receiving one of [ReceivingFlowState.todaysOrders] - same path as a scan. */
+    fun pickTodaysOrder(purchId: String) = submit(purchId)
+
+    /**
+     * A typed or scanned PO number, completed from today's orders when it is only the tail of
+     * one (and of exactly one) - otherwise as given.
+     */
+    private fun completeOrderNumber(value: String): String {
+        val todays = _state.value.todaysOrders
+        if (todays.any { it.purchId.equals(value, ignoreCase = true) }) return value
+        return todays.filter { it.purchId.endsWith(value, ignoreCase = true) }
+            .singleOrNull()?.purchId ?: value
     }
 
     /** Typed entry - damaged label, or a device with neither imager nor wedge. */
@@ -514,7 +544,8 @@ class ReceivingFlowViewModel @Inject constructor(
 
     // -- steps ---------------------------------------------------------------------------
 
-    private suspend fun onPurchaseOrder(value: String) {
+    private suspend fun onPurchaseOrder(typed: String) {
+        val value = completeOrderNumber(typed)
         when (val result = lookups.lookupOrder(value)) {
             is NetworkResult.Error -> fail(result.failure.message)
             NetworkResult.Loading -> Unit
@@ -1017,6 +1048,8 @@ class ReceivingFlowViewModel @Inject constructor(
  */
 data class ReceivingFlowState(
     val step: ReceivingStep = ReceivingStep.PURCHASE_ORDER,
+    /** Open POs due today at the worker's warehouse - tap to start, see [ReceivingFlowViewModel.loadTodaysOrders]. */
+    val todaysOrders: List<com.d365fo.mobileops.domain.repository.PurchaseOrderSummary> = emptyList(),
     val capture: ReceivingCapture = ReceivingCapture(),
     val order: PurchaseOrder? = null,
     val openLines: List<PurchaseOrderLine> = emptyList(),

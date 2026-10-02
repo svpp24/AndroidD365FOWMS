@@ -59,8 +59,10 @@ class D365ErrorMapper @Inject constructor(
     }
 
     fun fromThrowable(e: Throwable): AppFailure = when (e) {
-        is UnknownHostException -> AppFailure.Offline()
-        is SocketTimeoutException -> AppFailure.Transient("request timed out")
+        is UnknownHostException -> AppFailure.Offline("No connection - check Wi-Fi and try again.")
+        is com.d365fo.mobileops.data.remote.interceptor.AosUnreachableException ->
+            AppFailure.Offline("D365FO can't be reached right now. Your work is saved - try again when the orange banner clears.")
+        is SocketTimeoutException -> AppFailure.Transient("D365FO took too long to answer. Try again in a moment.")
         // A pinning failure is never retried: it means the chain we got is not the one we
         // trust, and retrying only repeats the exposure.
         is SSLPeerUnverifiedException ->

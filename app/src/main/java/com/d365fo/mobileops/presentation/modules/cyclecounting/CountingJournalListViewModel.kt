@@ -345,7 +345,11 @@ class CountingJournalListViewModel @Inject constructor(
             // rather than block counting altogether.
             outcome is ClaimOutcome.Refused && outcome.reason == ClaimRefusal.NOT_AVAILABLE -> {
                 downloads.start(journal, warehouseId, range, claimToken = null)
-                showMessage("This server doesn't support claiming journals yet - counting without a claim.")
+                // Said once per app session - repeating it on every "Get data" only interrupts.
+                if (!claimNoticeShown) {
+                    claimNoticeShown = true
+                    showMessage("This server doesn't support claiming journals yet - counting without a claim.")
+                }
             }
             else -> showMessage(outcome.describe())
         }
@@ -370,6 +374,11 @@ class CountingJournalListViewModel @Inject constructor(
         rangeId?.let { CountRange(it, it, locationFrom, locationTo, 0) }
 
     private fun showMessage(text: String) = _loaded.update { it.copy(message = text) }
+
+    private companion object {
+        /** Whether the "server doesn't support claiming" notice was shown this app session. */
+        @Volatile var claimNoticeShown = false
+    }
 
     private fun JournalEntity.toCountState(
         progress: CountingProgressRow?,

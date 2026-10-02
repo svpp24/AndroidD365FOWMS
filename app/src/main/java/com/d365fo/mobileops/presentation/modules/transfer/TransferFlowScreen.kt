@@ -1,5 +1,6 @@
 package com.d365fo.mobileops.presentation.modules.transfer
 
+import com.d365fo.mobileops.presentation.common.components.StepTrail
 import com.d365fo.mobileops.presentation.common.components.BarcodeFieldIcon
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
@@ -227,11 +228,7 @@ private fun StepProgress(state: TransferFlowState) {
             // eyes every time a lookup starts and finishes.
             Box(modifier = Modifier.fillMaxWidth().heightIn(min = 4.dp))
         }
-        Text(
-            text = "Step $position of ${sequence.size}",
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        StepTrail(names = sequence.map { it.shortName() }, current = position - 1)
     }
 }
 
@@ -747,4 +744,15 @@ fun TransferEntryScreen(
             onBack()
         },
     )
+}
+
+/** The step's name in the step trail - short, so the whole flow fits on one line. */
+private fun TransferStep.shortName(): String = when (this) {
+    TransferStep.TRANSFER_ORDER -> "Transfer"
+    TransferStep.ITEM -> "Item"
+    TransferStep.QUANTITY -> "Qty"
+    TransferStep.LOCATION -> "Location"
+    TransferStep.BATCH -> "Batch"
+    TransferStep.SERIAL -> "Serial"
+    TransferStep.CONFIRM -> "Confirm"
 }
