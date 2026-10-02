@@ -19,6 +19,7 @@ sqlcipher = "4.5.4"
 sqlite = "2.4.0"
 mlkit-barcode = "17.3.0"
 camerax = "1.4.1"
+mediapipe = "0.10.14"
 biometric = "1.2.0-alpha05"
 datastore = "1.1.1"
 junit5 = "5.11.3"
@@ -90,6 +91,7 @@ camerax-core     = { module = "androidx.camera:camera-core", version.ref = "came
 camerax-camera2  = { module = "androidx.camera:camera-camera2", version.ref = "camerax" }
 camerax-lifecycle= { module = "androidx.camera:camera-lifecycle", version.ref = "camerax" }
 camerax-view     = { module = "androidx.camera:camera-view", version.ref = "camerax" }
+mediapipe-tasks-vision = { module = "com.google.mediapipe:tasks-vision", version.ref = "mediapipe" }
 
 timber = { module = "com.jakewharton.timber:timber", version.ref = "timber" }
 

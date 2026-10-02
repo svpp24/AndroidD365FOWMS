@@ -27,6 +27,8 @@ fun secret(key: String, default: String = ""): String =
         ?: default
 
 android {
+    // The AI-count model is memory-mapped from the APK; compressed it would be copied out first.
+    androidResources { noCompress += "tflite" }
     namespace = "com.d365fo.mobileops"
     compileSdk = 35
 
@@ -220,6 +222,8 @@ dependencies {
     implementation(libs.camerax.camera2)
     implementation(libs.camerax.lifecycle)
     implementation(libs.camerax.view)
+    // On-device object detection for AI counting (model in assets/count_detector.tflite).
+    implementation(libs.mediapipe.tasks.vision)
 
     implementation(libs.timber)
 

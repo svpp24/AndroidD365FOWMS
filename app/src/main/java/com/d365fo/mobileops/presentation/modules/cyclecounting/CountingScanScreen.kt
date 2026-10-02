@@ -423,6 +423,20 @@ private fun QuantityDialog(prompt: CountPrompt, onOk: (String) -> Unit, onCancel
     }
     val quantityFocus = remember { FocusRequester() }
     LaunchedEffect(Unit) { runCatching { quantityFocus.requestFocus() } }
+    val aiCounter = androidx.hilt.navigation.compose.hiltViewModel<AiCountViewModel>().counter
+    var showAiCount by remember { mutableStateOf(false) }
+
+    if (showAiCount) {
+        AiCountSheet(
+            itemLabel = listOfNotNull(line.itemId, whereLine(line)).joinToString(" · "),
+            onUse = { n ->
+                val text = n.toString()
+                value = TextFieldValue(text, TextRange(0, text.length))
+                showAiCount = false
+            },
+            onDismiss = { showAiCount = false },
+        )
+    }
 
     Dialog(onDismissRequest = onCancel) {
         Card(modifier = Modifier.fillMaxWidth()) {
@@ -457,6 +471,14 @@ private fun QuantityDialog(prompt: CountPrompt, onOk: (String) -> Unit, onCancel
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
                     keyboardActions = KeyboardActions(onDone = { onOk(value.text) }),
                 )
+
+                // On-device AI count: fills the field above; OK still saves it.
+                if (aiCounter.isAvailable) {
+                    CancelOutlinedButton(
+                        onClick = { showAiCount = true },
+                        modifier = Modifier.fillMaxWidth().heightIn(min = WarehouseDimens.MinTouchTarget),
+                    ) { Text("AI count with camera") }
+                }
 
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
