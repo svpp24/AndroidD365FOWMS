@@ -59,7 +59,7 @@ class HSMobileOpsCountSupervisorService
             response.parmToleranceText(tolerance.describe());
             response.parmReasonCodes(HSMobileOpsCountSupervisorService::reasonCodes());
 
-            while select LineNum, ItemId, Counted, InventOnHand, Qty, CostAmount, InventCountingReasonCode
+            while select LineNum, ItemId, Counted, InventOnHand, Qty, CostAmount, CountingReasonCode
                 from inventJournalTrans
                 order by LineNum
                 where inventJournalTrans.JournalId == _request.parmJournalId()
@@ -86,7 +86,7 @@ class HSMobileOpsCountSupervisorService
                 line.parmRecountQty(conPeek(state, 3));
                 line.parmInitialQty(review.RecId ? review.InitialQty : inventJournalTrans.Counted);
                 line.parmReviewStatus(review.Decision ? review.Decision : 'PENDING');
-                line.parmReasonCode(inventJournalTrans.InventCountingReasonCode ? inventJournalTrans.InventCountingReasonCode : review.ReasonCode);
+                line.parmReasonCode(inventJournalTrans.CountingReasonCode ? inventJournalTrans.CountingReasonCode : review.ReasonCode);
                 line.parmComment(review.Comment);
                 line.parmReviewedBy(review.ReviewedBy);
                 // TODO (X++ owner): ABC class and who counted the line (attempt table).
@@ -186,9 +186,9 @@ class HSMobileOpsCountSupervisorService
                     review.Recounted = NoYes::No;
                 }
 
-                if (_request.parmReasonCode() && inventJournalTrans.InventCountingReasonCode != _request.parmReasonCode())
+                if (_request.parmReasonCode() && inventJournalTrans.CountingReasonCode != _request.parmReasonCode())
                 {
-                    inventJournalTrans.InventCountingReasonCode = _request.parmReasonCode();
+                    inventJournalTrans.CountingReasonCode = _request.parmReasonCode();
                     inventJournalTrans.update();
                 }
 
