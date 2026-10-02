@@ -192,6 +192,11 @@ class LiveMobileOpsServiceApi @Inject constructor(
         delegate.get().dmfGetExecutionErrors(body, tag)
 
     override suspend fun dmfGetAzureWriteUrl(body: com.d365fo.mobileops.data.remote.dto.DmfServiceRequest) = delegate.get().dmfGetAzureWriteUrl(body)
+
+    override suspend fun getOrdersForDate(
+        body: com.d365fo.mobileops.data.remote.dto.OrdersForDateServiceRequest,
+        tag: com.d365fo.mobileops.data.remote.interceptor.IdempotentRead,
+    ) = delegate.get().getOrdersForDate(body, tag)
 }
 
 @Singleton

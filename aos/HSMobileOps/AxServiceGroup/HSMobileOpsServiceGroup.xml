@@ -47,5 +47,9 @@
 			<Name>HSMobileOpsDmfSvc</Name>
 			<Service>HSMobileOpsDmfSvc</Service>
 		</AxServiceGroupService>
+		<AxServiceGroupService>
+			<Name>HSMobileOpsPurchListSvc</Name>
+			<Service>HSMobileOpsPurchListSvc</Service>
+		</AxServiceGroupService>
 	</Services>
 </AxServiceGroup>

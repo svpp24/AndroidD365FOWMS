@@ -6,6 +6,8 @@ import com.d365fo.mobileops.data.remote.dto.BatchServiceRequest
 import com.d365fo.mobileops.data.remote.dto.LocationRequestBody
 import com.d365fo.mobileops.data.remote.dto.LocationServiceRequest
 import com.d365fo.mobileops.data.remote.dto.OnHandRequestBody
+import com.d365fo.mobileops.data.remote.dto.OrdersForDateRequestBody
+import com.d365fo.mobileops.data.remote.dto.OrdersForDateServiceRequest
 import com.d365fo.mobileops.data.remote.dto.OnHandServiceRequest
 import com.d365fo.mobileops.data.remote.dto.PurchOrderRequestBody
 import com.d365fo.mobileops.data.remote.dto.PurchOrderServiceRequest
@@ -26,6 +28,7 @@ import com.d365fo.mobileops.domain.repository.LocationFacts
 import com.d365fo.mobileops.domain.repository.OnDemandLookupRepository
 import com.d365fo.mobileops.domain.repository.OnHandLine
 import com.d365fo.mobileops.domain.repository.OrderLookup
+import com.d365fo.mobileops.domain.repository.PurchaseOrderSummary
 import com.d365fo.mobileops.util.AppFailure
 import com.d365fo.mobileops.util.Formatters
 import com.d365fo.mobileops.util.NetworkResult
@@ -332,11 +335,60 @@ class ServiceLookupRepository @Inject constructor(
 
     override suspend fun listWarehouses() = odataFallback.listWarehouses()
 
-    // No AOS service method returns a header list (see HSMobileOpsInquiryService /
-    // HSMobileOpsReceivingService - every existing method is keyed to one order or one item),
-    // so this is OData-only, same as listWarehouses.
-    override suspend fun lookupOrdersForToday(warehouseId: String?) =
-        odataFallback.lookupOrdersForToday(warehouseId)
+    /**
+     * PO of today from HSMobileOpsPurchListSvc (PurchTable in X++) - no OData. "Today" is the
+     * device's own day, as before: the operator reading the list is standing in this warehouse.
+     * No OData fallback: if the service isn't deployed, the screen says so.
+     */
+    override suspend fun lookupOrdersForToday(
+        warehouseId: String?,
+    ): NetworkResult<List<PurchaseOrderSummary>> = withContext(ioDispatcher) {
+        val zone = java.time.ZoneId.systemDefault()
+        val today = java.time.LocalDate.now(zone)
+        val result = errorMapper.safeCall {
+            service.getOrdersForDate(
+                OrdersForDateServiceRequest(
+                    OrdersForDateRequestBody(
+                        dataAreaId = companyProvider()?.takeIf { it.isNotBlank() }?.lowercase().orEmpty(),
+                        warehouseId = warehouseId?.trim().orEmpty(),
+                        deliveryDate = today.toString(),
+                    ),
+                ),
+            )
+        }
+        when (result) {
+            is NetworkResult.Error -> result
+            NetworkResult.Loading -> NetworkResult.Error(AppFailure.Fatal("unexpected Loading"))
+            is NetworkResult.Success -> if (!result.data.success) {
+                NetworkResult.Error(
+                    AppFailure.BusinessRule("D365FO couldn't list today's orders (${result.data.errorCode ?: "unknown"}).", result.data.errorCode),
+                )
+            } else {
+                NetworkResult.Success(
+                    result.data.orders.filter { it.purchId.isNotBlank() }.map { row ->
+                        PurchaseOrderSummary(
+                            purchId = row.purchId,
+                            vendorAccount = row.vendorAccount.orEmpty(),
+                            status = orderStatusOf(row.status),
+                            siteId = row.siteId?.takeIf { it.isNotBlank() },
+                            warehouseId = row.warehouseId?.takeIf { it.isNotBlank() },
+                            deliveryDate = row.deliveryDate
+                                ?.let { runCatching { java.time.LocalDate.parse(it) }.getOrNull() }
+                                ?.atStartOfDay(zone)?.toInstant()?.toEpochMilli(),
+                        )
+                    },
+                )
+            }
+        }
+    }
+
+    private fun orderStatusOf(symbol: String?): OrderStatus = when (symbol?.lowercase()) {
+        "backorder" -> OrderStatus.BACKORDER
+        "received" -> OrderStatus.RECEIVED
+        "invoiced" -> OrderStatus.INVOICED
+        "canceled" -> OrderStatus.CANCELED
+        else -> OrderStatus.NONE
+    }
 
     /** Only a 404 means "not deployed here". Everything else is a real failure to surface. */
     private fun isNotDeployed(failure: AppFailure): Boolean =

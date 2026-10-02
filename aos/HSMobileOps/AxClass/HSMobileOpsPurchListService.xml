@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsPurchListService</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Purchase order header lists for the app (PO of today), read from PurchTable in X++ so the
+/// app does not query the PurchaseOrderHeadersV2 OData entity. Registered as
+/// HSMobileOpsPurchListSvc.
+/// </summary>
+class HSMobileOpsPurchListService
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>getOrdersForDate</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Purchase orders whose delivery date is DeliveryDate, for WarehouseId when given, in
+    /// purchase order order, at most maxOrders() of them.
+    /// </summary>
+    public HSMobileOpsOrdersForDateResponse getOrdersForDate(HSMobileOpsOrdersForDateRequest _request)
+    {
+        HSMobileOpsOrdersForDateResponse response = new HSMobileOpsOrdersForDateResponse();
+        HSMobileOpsOrderSummaryRow       row;
+        List                             orders = new List(Types::Class);
+        PurchTable                       purchTable;
+        TransDate                        deliveryDate;
+        str                              warehouseId;
+        int                              count;
+
+        response.parmSuccess(false);
+        response.parmOrders(orders);
+
+        if (!_request || !_request.parmDataAreaId() || !CompanyInfo::findDataArea(_request.parmDataAreaId()).RecId)
+        {
+            response.parmErrorCode('INVALID_REQUEST');
+            return response;
+        }
+        deliveryDate = str2Date(_request.parmDeliveryDate(), 321);
+        if (!deliveryDate)
+        {
+            response.parmErrorCode('INVALID_DATE');
+            return response;
+        }
+        warehouseId = _request.parmWarehouseId();
+
+        changecompany (_request.parmDataAreaId())
+        {
+            while select PurchId, OrderAccount, PurchStatus, DeliveryDate, InventSiteId, InventLocationId
+                from purchTable
+                order by PurchId
+                where purchTable.DeliveryDate == deliveryDate
+                   && (!warehouseId || purchTable.InventLocationId == warehouseId)
+            {
+                row = new HSMobileOpsOrderSummaryRow();
+                row.parmPurchId(purchTable.PurchId);
+                row.parmVendorAccount(purchTable.OrderAccount);
+                row.parmStatus(enum2Symbol(enumNum(PurchStatus), purchTable.PurchStatus));
+                row.parmSiteId(purchTable.InventSiteId);
+                row.parmWarehouseId(purchTable.InventLocationId);
+                row.parmDeliveryDate(date2Str(purchTable.DeliveryDate, 321, DateDay::Digits2,
+                    DateSeparator::Hyphen, DateMonth::Digits2, DateSeparator::Hyphen, DateYear::Digits4));
+                orders.addEnd(row);
+
+                count++;
+                if (count >= HSMobileOpsPurchListService::maxOrders())
+                {
+                    break;
+                }
+            }
+        }
+
+        response.parmOrders(orders);
+        response.parmSuccess(true);
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>maxOrders</Name>
+				<Source><![CDATA[
+
+    /// <summary>The same cap the app's list used over OData.</summary>
+    private static int maxOrders()
+    {
+        return 200;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

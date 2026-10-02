@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxService xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsPurchListSvc</Name>
+	<Class>HSMobileOpsPurchListService</Class>
+	<ExternalName>PurchListService</ExternalName>
+	<Namespace>http://schemas.hs.com/mobileops</Namespace>
+	<ServiceOperations>
+		<AxServiceOperation>
+			<Name>getOrdersForDate</Name>
+			<Method>getOrdersForDate</Method>
+		</AxServiceOperation>
+	</ServiceOperations>
+</AxService>

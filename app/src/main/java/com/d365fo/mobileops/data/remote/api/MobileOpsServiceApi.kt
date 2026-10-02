@@ -292,4 +292,14 @@ interface MobileOpsServiceApi {
 
     @POST("HSMobileOpsServiceGroup/HSMobileOpsDmfSvc/getAzureWriteUrl")
     suspend fun dmfGetAzureWriteUrl(@Body body: com.d365fo.mobileops.data.remote.dto.DmfServiceRequest): Response<com.d365fo.mobileops.data.remote.dto.DmfServiceResponse>
+
+    // -- Purchase order lists (HSMobileOpsPurchListSvc) --------------------------------------
+    //
+    // PO of today, read in X++ instead of PurchaseOrderHeadersV2. A pure read.
+
+    @POST("HSMobileOpsServiceGroup/HSMobileOpsPurchListSvc/getOrdersForDate")
+    suspend fun getOrdersForDate(
+        @Body body: com.d365fo.mobileops.data.remote.dto.OrdersForDateServiceRequest,
+        @Tag tag: IdempotentRead = IdempotentRead,
+    ): Response<com.d365fo.mobileops.data.remote.dto.OrdersForDateServiceResponse>
 }

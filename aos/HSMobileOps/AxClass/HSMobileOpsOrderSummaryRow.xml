@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsOrderSummaryRow</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// One purchase order header for the PO-of-today list. Status is the PurchStatus symbol (Backorder, Received, Invoiced, Canceled, None).
+/// </summary>
+[DataContractAttribute]
+class HSMobileOpsOrderSummaryRow
+{
+    str        purchId;
+    str        vendorAccount;
+    str        status;
+    str        siteId;
+    str        warehouseId;
+    str        deliveryDate;
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmPurchId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('PurchId')]
+    public str parmPurchId(str _value = purchId)
+    {
+        purchId = _value;
+        return purchId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmVendorAccount</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('VendorAccount')]
+    public str parmVendorAccount(str _value = vendorAccount)
+    {
+        vendorAccount = _value;
+        return vendorAccount;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmStatus</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Status')]
+    public str parmStatus(str _value = status)
+    {
+        status = _value;
+        return status;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmSiteId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('SiteId')]
+    public str parmSiteId(str _value = siteId)
+    {
+        siteId = _value;
+        return siteId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmWarehouseId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('WarehouseId')]
+    public str parmWarehouseId(str _value = warehouseId)
+    {
+        warehouseId = _value;
+        return warehouseId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmDeliveryDate</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('DeliveryDate')]
+    public str parmDeliveryDate(str _value = deliveryDate)
+    {
+        deliveryDate = _value;
+        return deliveryDate;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>
