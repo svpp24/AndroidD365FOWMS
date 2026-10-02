@@ -21,7 +21,6 @@ import com.d365fo.mobileops.data.local.entity.JournalType
 import com.d365fo.mobileops.data.local.entity.SyncState
 import com.d365fo.mobileops.data.remote.api.BlobTransferService
 import com.d365fo.mobileops.data.remote.api.D365ODataApi
-import com.d365fo.mobileops.data.remote.api.ODataFilter
 import com.d365fo.mobileops.data.remote.api.MobileOpsServiceApi
 import com.d365fo.mobileops.data.remote.dto.AzureWritableBlob
 import com.d365fo.mobileops.data.remote.dto.DmfExecutionStatus
@@ -98,6 +97,7 @@ class CountingJournalRepository @Inject constructor(
     private val secureStore: SecureStore,
     private val journalDao: JournalDao,
     private val countingDao: CountingDao,
+    private val itemDao: com.d365fo.mobileops.data.local.dao.ItemDao,
     private val json: Json,
     private val ioDispatcher: CoroutineDispatcher,
     @ApplicationContext private val context: Context,
@@ -695,36 +695,23 @@ class CountingJournalRepository @Inject constructor(
 
     /**
      * Fills in item names for [journalId]'s lines. The export has no item name column (only
-     * `ITEMNUMBER`), so every line starts out named after its own number; this resolves the
-     * distinct item numbers against `ReleasedProductsV2` in small `or`-chained batches and writes
-     * the operator-facing name (`SearchName`, same as the rest of the app) back. Best effort:
-     * a failed batch leaves those lines named by number, and the next call retries only what is
-     * still unresolved. Returns how many item numbers are still unnamed afterwards.
+     * `ITEMNUMBER`), so every line starts out named after its own number; this looks the distinct
+     * item numbers up in the on-device SKU cache and writes the operator-facing name (search name,
+     * same as the rest of the app) back. The next call retries only what is still unresolved.
+     * Returns how many item numbers are still unnamed afterwards.
      */
     suspend fun enrichItemNames(journalId: String): Int = withContext(ioDispatcher) {
         val unnamed = journalDao.unnamedItemIds(journalId)
         if (unnamed.isEmpty()) return@withContext 0
 
-        val dataArea = companyProvider()?.lowercase()?.takeIf { it.isNotBlank() }
+        // From the on-device SKU cache (SkuSyncWorker), never OData. An item the cache doesn't
+        // have yet keeps its number as its name until the next SKU sync lands.
         var stillUnnamed = unnamed.size
-
-        unnamed.chunked(ITEM_NAME_BATCH).forEach { batch ->
-            val result = errorMapper.safeCall {
-                odata.getReleasedProducts(
-                    filter = ODataFilter.and(
-                        dataArea?.let { ODataFilter.eq("dataAreaId", it) },
-                        ODataFilter.anyOf("ItemNumber", batch),
-                    ),
-                    top = batch.size,
-                )
-            }
-            if (result is NetworkResult.Success) {
-                result.data.value.forEach { product ->
-                    val name = product.searchName?.takeIf { it.isNotBlank() } ?: return@forEach
-                    journalDao.setItemName(journalId, product.itemNumber, name)
-                    stillUnnamed--
-                }
-            }
+        unnamed.forEach { itemId ->
+            val item = itemDao.getItem(itemId) ?: return@forEach
+            val name = item.searchName?.takeIf { it.isNotBlank() } ?: item.itemName.takeIf { it.isNotBlank() } ?: return@forEach
+            journalDao.setItemName(journalId, itemId, name)
+            stillUnnamed--
         }
         stillUnnamed.coerceAtLeast(0)
     }
@@ -765,8 +752,6 @@ class CountingJournalRepository @Inject constructor(
          *  since exportOpenJournals runs the export itself rather than the app triggering it. */
         const val IMPORT_DEFINITION_GROUP = "HSMobileOpsCountingImport"
 
-        /** Item numbers per ReleasedProductsV2 request - an `or` chain, kept short enough for the URL. */
-        const val ITEM_NAME_BATCH = 20
 
         /** RIS's execution-id timestamp shape. A getter, not a shared instance - SimpleDateFormat isn't thread-safe. */
         val EXECUTION_STAMP: SimpleDateFormat get() = SimpleDateFormat("yyyy-MM-dd_HH-mm-ss", Locale.US)

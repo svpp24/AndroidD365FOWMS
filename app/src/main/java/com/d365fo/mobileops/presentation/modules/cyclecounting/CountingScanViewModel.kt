@@ -12,10 +12,9 @@ import com.d365fo.mobileops.data.local.entity.CountExceptionEntity
 import com.d365fo.mobileops.data.local.entity.JournalEntity
 import com.d365fo.mobileops.data.repository.WorkerSessionRepository
 import com.d365fo.mobileops.domain.FeatureFlags
-import com.d365fo.mobileops.domain.repository.OnDemandLookupRepository
+import com.d365fo.mobileops.data.local.dao.ItemDao
 import com.d365fo.mobileops.presentation.common.scan.HidScannerBridge
 import com.d365fo.mobileops.presentation.common.scan.ScanFeedback
-import com.d365fo.mobileops.util.NetworkResult
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -65,7 +64,7 @@ class CountingScanViewModel @Inject constructor(
     private val journalDao: JournalDao,
     private val countingDao: CountingDao,
     private val workerSession: WorkerSessionRepository,
-    private val lookups: OnDemandLookupRepository,
+    private val itemDao: ItemDao,
     private val scannerBridge: HidScannerBridge,
     private val scanFeedback: ScanFeedback,
     private val capture: CountCaptureActions,
@@ -215,21 +214,17 @@ class CountingScanViewModel @Inject constructor(
         var perScan = BigDecimal.ONE
 
         if (itemId == null) {
-            when (val match = lookups.lookupBarcode(value)) {
-                is NetworkResult.Error -> return miss("Could not look up $value: ${match.failure.message}", typed)
-                NetworkResult.Loading -> return miss("Lookup did not complete", typed)
-                is NetworkResult.Success -> {
-                    val resolved = match.data
-                        ?: return miss("$value is not an item on this journal", typed, unexpectedItemId = value)
-                    perScan = resolved.quantityPerScan
-                    itemId = lines.firstOrNull { it.itemId.equals(resolved.itemNumber, ignoreCase = true) }?.itemId
-                        ?: return miss(
-                            "${resolved.itemNumber} (barcode $value) is not on this journal",
-                            typed,
-                            unexpectedItemId = resolved.itemNumber,
-                        )
-                }
-            }
+            // Barcodes resolve against the on-device SKU cache (SkuSyncWorker) - never OData, so a
+            // scan is instant and works offline.
+            val resolved = itemDao.resolveBarcode(value)
+                ?: return miss("$value is not an item on this journal", typed, unexpectedItemId = value)
+            perScan = resolved.quantityPerScan.toBigDecimalOrNull()?.takeIf { it.signum() > 0 } ?: BigDecimal.ONE
+            itemId = lines.firstOrNull { it.itemId.equals(resolved.itemId, ignoreCase = true) }?.itemId
+                ?: return miss(
+                    "${resolved.itemId} (barcode $value) is not on this journal",
+                    typed,
+                    unexpectedItemId = resolved.itemId,
+                )
         }
 
         if (current.locked) {
