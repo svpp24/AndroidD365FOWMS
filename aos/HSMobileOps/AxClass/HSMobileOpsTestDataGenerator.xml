@@ -1,0 +1,463 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsTestDataGenerator</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Development helper: volume test data for the app in BSP. Creates five product masters with
+/// all four product dimensions (configuration x size x color x style = 36 variants each) through
+/// the standard data entities, then queues one batch job whose tasks run in parallel: 5 purchase
+/// orders (110 lines each), 4 transfer orders AAC to ABB (520 lines each) and 5 counting
+/// journals at AAC (2040 lines each). Run on purpose only:
+/// ?cmp=BSP&amp;mi=SysClassRunner&amp;cls=HSMobileOpsTestDataGenerator
+/// </summary>
+class HSMobileOpsTestDataGenerator
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>main</Name>
+				<Source><![CDATA[
+
+    public static void main(Args _args)
+    {
+        BatchHeader batchHeader;
+        int         i;
+
+        changecompany ('BSP')
+        {
+            HSMobileOpsTestDataGenerator::ensureDimensionGroup();
+            for (i = 1; i <= HSMobileOpsTestDataGenerator::masterCount(); i++)
+            {
+                HSMobileOpsTestDataGenerator::ensureMaster(HSMobileOpsTestDataGenerator::itemId(i), i, '');
+            }
+            // Tracked masters: HST001 batch + serial, HST002 batch, HST003 serial.
+            HSMobileOpsTestDataGenerator::ensureTrackingGroup('HSBatchSerial', true, true);
+            HSMobileOpsTestDataGenerator::ensureTrackingGroup('HSBatch', true, false);
+            HSMobileOpsTestDataGenerator::ensureTrackingGroup('HSSerial', false, true);
+            HSMobileOpsTestDataGenerator::ensureMaster(HSMobileOpsTestDataGenerator::trackedItemId(1), 101, 'HSBatchSerial');
+            HSMobileOpsTestDataGenerator::ensureMaster(HSMobileOpsTestDataGenerator::trackedItemId(2), 102, 'HSBatch');
+            HSMobileOpsTestDataGenerator::ensureMaster(HSMobileOpsTestDataGenerator::trackedItemId(3), 103, 'HSSerial');
+
+            // The HSV purchase orders and counting journals exist already (first run); queued
+            // here: the transfer orders, and a purchase and a transfer order of tracked items.
+            batchHeader = BatchHeader::construct();
+            batchHeader.parmCaption('HS mobile ops test data (TOs, tracked PO and TO)');
+            for (i = 1; i <= 4; i++)
+            {
+                batchHeader.addTask(HSMobileOpsTestDataTask::newTask('TO', i));
+            }
+            batchHeader.addTask(HSMobileOpsTestDataTask::newTask('POT', 1));
+            batchHeader.addTask(HSMobileOpsTestDataTask::newTask('TOT', 1));
+            batchHeader.save();
+        }
+        info('Items ready: HSV001-HSV005 and tracked HST001-HST003 (36 variants each). Batch job queued: 4 TOs, tracked PO and TO.');
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>masterCount</Name>
+				<Source><![CDATA[
+
+    public static int masterCount()
+    {
+        return 5;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>itemId</Name>
+				<Source><![CDATA[
+
+    public static ItemId itemId(int _i)
+    {
+        return 'HSV' + num2Str0(_i, 3);
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>trackedItemId</Name>
+				<Source><![CDATA[
+
+    public static ItemId trackedItemId(int _i)
+    {
+        return 'HST' + num2Str0(_i, 3);
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>trackedCount</Name>
+				<Source><![CDATA[
+
+    public static int trackedCount()
+    {
+        return 3;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>configs</Name>
+				<Source><![CDATA[
+
+    public static container configs() { return ['C1', 'C2']; }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>sizes</Name>
+				<Source><![CDATA[
+
+    public static container sizes() { return ['S', 'M', 'L']; }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>colors</Name>
+				<Source><![CDATA[
+
+    public static container colors() { return ['Red', 'Blue', 'Black']; }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>styles</Name>
+				<Source><![CDATA[
+
+    public static container styles() { return ['Slim', 'Regular']; }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>dimensionGroupName</Name>
+				<Source><![CDATA[
+
+    public static str dimensionGroupName() { return 'HSAll4'; }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>ensureDimensionGroup</Name>
+				<Source><![CDATA[
+
+    /// <summary>A product dimension group with configuration, size, color and style active.</summary>
+    private static void ensureDimensionGroup()
+    {
+        EcoResProductDimensionGroup         grp;
+        EcoResProductDimensionGroupFldSetup setup;
+        container                           fields = [fieldNum(InventDim, ConfigId), fieldNum(InventDim, InventSizeId),
+                                                      fieldNum(InventDim, InventColorId), fieldNum(InventDim, InventStyleId)];
+        int                                 i;
+
+        select firstonly grp where grp.Name == HSMobileOpsTestDataGenerator::dimensionGroupName();
+        if (grp.RecId)
+        {
+            return;
+        }
+        ttsbegin;
+        grp.Name        = HSMobileOpsTestDataGenerator::dimensionGroupName();
+        grp.Description = 'Config, size, color, style (HS test data)';
+        grp.insert();
+        for (i = 1; i <= conLen(fields); i++)
+        {
+            select forupdate firstonly setup
+                where setup.ProductDimensionGroup == grp.RecId
+                   && setup.DimensionFieldId == conPeek(fields, i);
+            setup.ProductDimensionGroup = grp.RecId;
+            setup.DimensionFieldId      = conPeek(fields, i);
+            setup.IsActive              = NoYes::Yes;
+            setup.DisplayOrder          = i;
+            if (setup.RecId)
+            {
+                setup.update();
+            }
+            else
+            {
+                setup.insert();
+            }
+        }
+        ttscommit;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>ensureTrackingGroup</Name>
+				<Source><![CDATA[
+
+    /// <summary>A tracking dimension group with batch and/or serial active, blank not allowed.</summary>
+    private static void ensureTrackingGroup(str _name, boolean _batch, boolean _serial)
+    {
+        EcoResTrackingDimensionGroup         grp;
+        EcoResTrackingDimensionGroupFldSetup setup;
+        container                            fields = [fieldNum(InventDim, InventBatchId), fieldNum(InventDim, InventSerialId)];
+        container                            active = [_batch, _serial];
+        int                                  i;
+
+        select firstonly grp where grp.Name == _name;
+        if (grp.RecId)
+        {
+            return;
+        }
+        ttsbegin;
+        grp.Name        = _name;
+        grp.Description = strFmt('%1 (HS test data)', _name);
+        grp.insert();
+        for (i = 1; i <= conLen(fields); i++)
+        {
+            select forupdate firstonly setup
+                where setup.TrackingDimensionGroup == grp.RecId
+                   && setup.DimensionFieldId == conPeek(fields, i);
+            setup.TrackingDimensionGroup = grp.RecId;
+            setup.DimensionFieldId       = conPeek(fields, i);
+            setup.IsActive               = conPeek(active, i) ? NoYes::Yes : NoYes::No;
+            if (setup.RecId)
+            {
+                setup.update();
+            }
+            else
+            {
+                setup.insert();
+            }
+        }
+        ttscommit;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>ensureMaster</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// A released product master with all 36 variants, set up like Dm001 (item model group, item
+    /// group, storage and tracking groups, Pieces), then the WMS setup and approved vendor.
+    /// </summary>
+    private static void ensureMaster(ItemId _itemId, int _n, str _trackingGroup)
+    {
+        InventTable                          template = InventTable::find('Dm001');
+        EcoResReleasedProductCreationV2Entity creation;
+        EcoResReleasedProductVariantV2Entity variant;
+        int                                  c, s, k, y;
+
+        if (!InventTable::find(_itemId).RecId)
+        {
+            ttsbegin;
+            creation.ItemNumber                     = _itemId;
+            creation.ProductNumber                  = _itemId;
+            creation.ProductType                    = EcoResProductType::Item;
+            creation.ProductSubType                 = EcoResProductSubtype::ProductMaster;
+            creation.VariantConfigurationTechnology = EcoResVariantConfigurationTechnologyType::PredefinedVariants;
+            creation.ProductName                    = _trackingGroup
+                ? strFmt('HS test tracked item %1 (%2)', _n - 100, _trackingGroup)
+                : strFmt('HS test variant item %1', _n);
+            creation.ProductSearchName              = _itemId;
+            creation.SearchName                     = _itemId;
+            creation.ItemModelGroupId               = template.modelGroupId();
+            creation.ProductGroupId                 = template.itemGroupId();
+            creation.ProductDimensionGroupName      = HSMobileOpsTestDataGenerator::dimensionGroupName();
+            creation.StorageDimensionGroupName      = EcoResStorageDimensionGroup::find(
+                EcoResStorageDimensionGroupItem::findByItem(curExt(), template.ItemId).StorageDimensionGroup).Name;
+            creation.TrackingDimensionGroupName     = _trackingGroup ? _trackingGroup : EcoResTrackingDimensionGroup::find(
+                EcoResTrackingDimensionGroupItem::findByItem(curExt(), template.ItemId).TrackingDimensionGroup).Name;
+            creation.InventoryReservationHierarchyName = 'LP Con';
+            creation.InventoryUnitSymbol            = template.inventUnitId();
+            creation.PurchaseUnitSymbol             = template.purchUnitId();
+            creation.SalesUnitSymbol                = template.salesUnitId();
+            creation.BOMUnitSymbol                  = template.inventUnitId();
+            creation.insert();
+            ttscommit;
+        }
+
+        HSMobileOpsTestDataGenerator::ensureValues(_itemId);
+
+        for (c = 1; c <= conLen(HSMobileOpsTestDataGenerator::configs()); c++)
+        for (s = 1; s <= conLen(HSMobileOpsTestDataGenerator::sizes()); s++)
+        for (k = 1; k <= conLen(HSMobileOpsTestDataGenerator::colors()); k++)
+        for (y = 1; y <= conLen(HSMobileOpsTestDataGenerator::styles()); y++)
+        {
+            if (!HSMobileOpsTestDataGenerator::variantDimId(_itemId, conPeek(HSMobileOpsTestDataGenerator::configs(), c),
+                conPeek(HSMobileOpsTestDataGenerator::sizes(), s), conPeek(HSMobileOpsTestDataGenerator::colors(), k),
+                conPeek(HSMobileOpsTestDataGenerator::styles(), y), false))
+            {
+                ttsbegin;
+                variant.clear();
+                variant.ItemNumber             = _itemId;
+                variant.ProductMasterNumber    = _itemId;
+                variant.ProductConfigurationId = conPeek(HSMobileOpsTestDataGenerator::configs(), c);
+                variant.ProductSizeId          = conPeek(HSMobileOpsTestDataGenerator::sizes(), s);
+                variant.ProductColorId         = conPeek(HSMobileOpsTestDataGenerator::colors(), k);
+                variant.ProductStyleId         = conPeek(HSMobileOpsTestDataGenerator::styles(), y);
+                variant.ProductName            = strFmt('%1 %2 %3 %4 %5', _itemId, variant.ProductConfigurationId,
+                    variant.ProductSizeId, variant.ProductColorId, variant.ProductStyleId);
+                variant.insert();
+                ttscommit;
+            }
+        }
+
+        HSMobileOpsCreateVariantTestPO::ensureWmsSetup(_itemId);
+        HSMobileOpsCreateVariantTestPO::ensureApprovedVendor(_itemId, '19721');
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>ensureValues</Name>
+				<Source><![CDATA[
+
+    /// <summary>The product master's allowed configuration, size, color and style values.</summary>
+    private static void ensureValues(ItemId _itemId)
+    {
+        EcoResSize                             sizeValue;
+        EcoResColor                            colorValue;
+        EcoResStyle                            styleValue;
+        EcoResConfiguration                    configValue;
+        int                                    i;
+
+        // The shared dimension values first - the product master's own values point at them.
+        ttsbegin;
+        for (i = 1; i <= conLen(HSMobileOpsTestDataGenerator::configs()); i++)
+        {
+            if (!EcoResConfiguration::findByName(conPeek(HSMobileOpsTestDataGenerator::configs(), i)).RecId)
+            {
+                configValue.clear();
+                configValue.Name = conPeek(HSMobileOpsTestDataGenerator::configs(), i);
+                configValue.insert();
+            }
+        }
+        for (i = 1; i <= conLen(HSMobileOpsTestDataGenerator::sizes()); i++)
+        {
+            if (!EcoResSize::findByName(conPeek(HSMobileOpsTestDataGenerator::sizes(), i)).RecId)
+            {
+                sizeValue.clear();
+                sizeValue.Name = conPeek(HSMobileOpsTestDataGenerator::sizes(), i);
+                sizeValue.insert();
+            }
+        }
+        for (i = 1; i <= conLen(HSMobileOpsTestDataGenerator::colors()); i++)
+        {
+            if (!EcoResColor::findByName(conPeek(HSMobileOpsTestDataGenerator::colors(), i)).RecId)
+            {
+                colorValue.clear();
+                colorValue.Name = conPeek(HSMobileOpsTestDataGenerator::colors(), i);
+                colorValue.insert();
+            }
+        }
+        for (i = 1; i <= conLen(HSMobileOpsTestDataGenerator::styles()); i++)
+        {
+            if (!EcoResStyle::findByName(conPeek(HSMobileOpsTestDataGenerator::styles(), i)).RecId)
+            {
+                styleValue.clear();
+                styleValue.Name = conPeek(HSMobileOpsTestDataGenerator::styles(), i);
+                styleValue.insert();
+            }
+        }
+        ttscommit;
+
+        HSMobileOpsTestDataGenerator::addValues(_itemId, fieldNum(InventDim, ConfigId), HSMobileOpsTestDataGenerator::configs());
+        HSMobileOpsTestDataGenerator::addValues(_itemId, fieldNum(InventDim, InventSizeId), HSMobileOpsTestDataGenerator::sizes());
+        HSMobileOpsTestDataGenerator::addValues(_itemId, fieldNum(InventDim, InventColorId), HSMobileOpsTestDataGenerator::colors());
+        HSMobileOpsTestDataGenerator::addValues(_itemId, fieldNum(InventDim, InventStyleId), HSMobileOpsTestDataGenerator::styles());
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>addValues</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Assigns dimension values to the product master through the standard
+    /// EcoResProductMasterManager (the product master form's own path); values already
+    /// assigned are skipped.
+    /// </summary>
+    private static void addValues(ItemId _itemId, FieldId _dimField, container _values)
+    {
+        RefRecId product   = InventTable::find(_itemId).Product;
+        RefRecId attribute = EcoResProductDimensionAttribute::inventDimFieldId2DimensionAttributeRecId(_dimField);
+        int      i;
+
+        for (i = 1; i <= conLen(_values); i++)
+        {
+            try
+            {
+                ttsbegin;
+                EcoResProductMasterManager::addProductDimensionValue(product, attribute, conPeek(_values, i), '', '');
+                ttscommit;
+            }
+            catch
+            {
+                // Already assigned to this product master (a re-run) - nothing to add.
+            }
+        }
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>variantDimId</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The InventDimId of a released variant (product dimensions only); blank when the variant
+    /// is not released. With _site/_warehouse/_location, the full dimension combination instead.
+    /// </summary>
+    public static InventDimId variantDimId(ItemId _itemId, str _config, str _size, str _color, str _style,
+        boolean _create = true, InventSiteId _site = '', InventLocationId _warehouse = '', WMSLocationId _location = '',
+        WHSInventStatusId _status = '')
+    {
+        InventDim         dim;
+        InventDimCombination combo;
+
+        dim.ConfigId      = _config;
+        dim.InventSizeId  = _size;
+        dim.InventColorId = _color;
+        dim.InventStyleId = _style;
+        dim = InventDim::findOrCreate(dim);
+        combo = InventDimCombination::findByInventDim(_itemId, dim);
+        if (!combo.RecId)
+        {
+            return '';
+        }
+        if (!_create)
+        {
+            return dim.inventDimId;
+        }
+        dim.InventSiteId     = _site;
+        dim.InventLocationId = _warehouse;
+        dim.wMSLocationId    = _location;
+        dim.InventStatusId   = _status;
+        return InventDim::findOrCreate(dim).inventDimId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>variantCount</Name>
+				<Source><![CDATA[
+
+    public static int variantCount()
+    {
+        return HSMobileOpsTestDataGenerator::masterCount() * conLen(HSMobileOpsTestDataGenerator::configs())
+            * conLen(HSMobileOpsTestDataGenerator::sizes()) * conLen(HSMobileOpsTestDataGenerator::colors())
+            * conLen(HSMobileOpsTestDataGenerator::styles());
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>variantAt</Name>
+				<Source><![CDATA[
+
+    /// <summary>The _n-th variant (0-based, wraps): [itemId, config, size, color, style].</summary>
+    public static container variantAt(int _n, boolean _tracked = false)
+    {
+        int nc = conLen(HSMobileOpsTestDataGenerator::configs());
+        int ns = conLen(HSMobileOpsTestDataGenerator::sizes());
+        int nk = conLen(HSMobileOpsTestDataGenerator::colors());
+        int ny = conLen(HSMobileOpsTestDataGenerator::styles());
+        int masters = _tracked ? HSMobileOpsTestDataGenerator::trackedCount() : HSMobileOpsTestDataGenerator::masterCount();
+        int n  = _n mod (masters * nc * ns * nk * ny);
+        int y  = n mod ny;
+        int k  = (n div ny) mod nk;
+        int s  = (n div (ny * nk)) mod ns;
+        int c  = (n div (ny * nk * ns)) mod nc;
+        int m  = n div (ny * nk * ns * nc);
+
+        return [_tracked ? HSMobileOpsTestDataGenerator::trackedItemId(m + 1) : HSMobileOpsTestDataGenerator::itemId(m + 1), conPeek(HSMobileOpsTestDataGenerator::configs(), c + 1),
+                conPeek(HSMobileOpsTestDataGenerator::sizes(), s + 1), conPeek(HSMobileOpsTestDataGenerator::colors(), k + 1),
+                conPeek(HSMobileOpsTestDataGenerator::styles(), y + 1)];
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

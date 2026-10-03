@@ -1,0 +1,331 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsTestDataTask</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// One batch task of HSMobileOpsTestDataGenerator: creates one purchase order (PO), transfer
+/// order (TO) or counting journal (COUNT) in BSP over the HSV test variants. Each document is
+/// one transaction, so a failure leaves nothing half made. Tasks of one job run in parallel.
+/// </summary>
+class HSMobileOpsTestDataTask extends RunBaseBatch
+{
+    str kind;
+    int docNumber;
+
+    #define.CurrentVersion(1)
+    #localmacro.CurrentList
+        kind,
+        docNumber
+    #endmacro
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>main</Name>
+				<Source><![CDATA[
+
+    /// <summary>Runs one task in the foreground: &amp;cls=HSMobileOpsTestDataTask creates transfer order 1.</summary>
+    public static void main(Args _args)
+    {
+        HSMobileOpsTestDataTask::newTask('TO', 1).run();
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>newTask</Name>
+				<Source><![CDATA[
+
+    public static HSMobileOpsTestDataTask newTask(str _kind, int _index)
+    {
+        HSMobileOpsTestDataTask task = new HSMobileOpsTestDataTask();
+
+        task.parmKind(_kind);
+        task.parmDocNumber(_index);
+        task.batchInfo().parmCaption(strFmt('HS test data %1 %2', _kind, _index));
+        return task;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmKind</Name>
+				<Source><![CDATA[
+
+    public str parmKind(str _value = kind)
+    {
+        kind = _value;
+        return kind;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmDocNumber</Name>
+				<Source><![CDATA[
+
+    public int parmDocNumber(int _value = docNumber)
+    {
+        docNumber = _value;
+        return docNumber;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>pack</Name>
+				<Source><![CDATA[
+
+    public container pack()
+    {
+        return [#CurrentVersion, #CurrentList];
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>unpack</Name>
+				<Source><![CDATA[
+
+    public boolean unpack(container _packedClass)
+    {
+        int version = RunBase::getVersion(_packedClass);
+
+        switch (version)
+        {
+            case #CurrentVersion:
+                [version, #CurrentList] = _packedClass;
+                return true;
+            default:
+                return false;
+        }
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>canGoBatch</Name>
+				<Source><![CDATA[
+
+    public boolean canGoBatch()
+    {
+        return true;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>runsImpersonated</Name>
+				<Source><![CDATA[
+
+    public boolean runsImpersonated()
+    {
+        return true;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>description</Name>
+				<Source><![CDATA[
+
+    public static ClassDescription description()
+    {
+        return 'HS mobile ops test data task';
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>run</Name>
+				<Source><![CDATA[
+
+    public void run()
+    {
+        changecompany ('BSP')
+        {
+            switch (kind)
+            {
+                case 'PO':
+                    this.createPurchaseOrder(110);
+                    break;
+                case 'TO':
+                    this.createTransferOrder(520);
+                    break;
+                case 'COUNT':
+                    this.createCountingJournal(2040);
+                    break;
+                case 'POT':
+                    this.createPurchaseOrder(108, true);
+                    break;
+                case 'TOT':
+                    this.createTransferOrder(108, true);
+                    break;
+            }
+        }
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>variant</Name>
+				<Source><![CDATA[
+
+    /// <summary>Line _j's variant, offset per document so documents differ.</summary>
+    private container variant(int _j, boolean _tracked = false)
+    {
+        return HSMobileOpsTestDataGenerator::variantAt(_j + (docNumber - 1) * 37, _tracked);
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>createPurchaseOrder</Name>
+				<Source><![CDATA[
+
+    private void createPurchaseOrder(int _lines, boolean _tracked = false)
+    {
+        PurchTable purchTable;
+        PurchLine  purchLine;
+        container  v;
+        ItemId     itemId;
+        str        config, size, color, style;
+        int        j;
+
+        ttsbegin;
+        purchTable.clear();
+        purchTable.initValue();
+        purchTable.PurchId      = NumberSeq::newGetNum(PurchParameters::numRefPurchId()).num();
+        purchTable.OrderAccount = '19721';
+        purchTable.initFromVendTable(VendTable::find(purchTable.OrderAccount));
+        purchTable.InventSiteId     = 'AAC';
+        purchTable.InventLocationId = 'AAC';
+        purchTable.DeliveryDate     = today();
+        purchTable.insert();
+
+        for (j = 0; j < _lines; j++)
+        {
+            v = this.variant(j, _tracked);
+            [itemId, config, size, color, style] = v;
+            purchLine.clear();
+            purchLine.initFromPurchTable(purchTable);
+            purchLine.ItemId      = itemId;
+            purchLine.InventDimId = HSMobileOpsTestDataGenerator::variantDimId(itemId, config, size, color, style, true, 'AAC', 'AAC');
+            purchLine.PurchQty    = 1 + (j mod 10);
+            purchLine.createLine(true, false, true, true, true, true);
+        }
+        ttscommit;
+
+        HSMobileOpsCreateVariantTestPO::confirm(purchTable);
+        info(strFmt('PO %1: %2 lines', purchTable.PurchId, _lines));
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>createTransferOrder</Name>
+				<Source><![CDATA[
+
+    private void createTransferOrder(int _lines, boolean _tracked = false)
+    {
+        InventTransferTable transferTable;
+        InventTransferLine  transferLine;
+        container           v;
+        ItemId              itemId;
+        str                 config, size, color, style;
+        int                 j;
+        real                qty;
+
+        ttsbegin;
+        transferTable.clear();
+        transferTable.initValue();
+        transferTable.TransferId           = NumberSeq::newGetNum(InventParameters::numRefTransferId()).num();
+        transferTable.InventLocationIdFrom = 'AAC';
+        transferTable.modifiedField(fieldNum(InventTransferTable, InventLocationIdFrom));
+        transferTable.InventLocationIdTo   = 'ABB';
+        transferTable.modifiedField(fieldNum(InventTransferTable, InventLocationIdTo));
+        transferTable.ShipDate             = today();
+        transferTable.ReceiveDate          = today();
+        transferTable.insert();
+
+        for (j = 0; j < _lines; j++)
+        {
+            v = this.variant(j, _tracked);
+            [itemId, config, size, color, style] = v;
+            qty = 1 + (j mod 5);
+            transferLine.clear();
+            transferLine.initValue();
+            transferLine.initFromInventTransferTable(transferTable, NoYes::Yes);
+            transferLine.ItemId = itemId;
+            transferLine.initFromInventTable(InventTable::find(itemId));
+            // Warehouse-management warehouse: a transfer line needs an inventory status.
+            transferLine.InventDimId      = HSMobileOpsTestDataGenerator::variantDimId(itemId, config, size, color, style, true, 'AAC', 'AAC', '', 'Available');
+            transferLine.QtyTransfer      = qty;
+            transferLine.QtyRemainShip    = qty;
+            transferLine.QtyRemainReceive = qty;
+            transferLine.LineNum          = j + 1;
+            transferLine.insert();
+        }
+        ttscommit;
+        info(strFmt('TO %1: %2 lines', transferTable.TransferId, _lines));
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>createCountingJournal</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// A counting journal at AAC: each line one variant at one location (locations whose
+    /// profile is not license-plate controlled, so a line needs no license plate).
+    /// </summary>
+    private void createCountingJournal(int _lines)
+    {
+        InventJournalTable  journalTable;
+        InventJournalTrans  journalTrans;
+        InventJournalName   journalName = InventJournalName::find(InventJournalTable::find('BSP-JN-000552000').JournalNameId);
+        WMSLocation         wmsLocation;
+        WHSLocationProfile  profile;
+        container           v, locs;
+        ItemId              itemId;
+        str                 config, size, color, style;
+        int                 j, nVariants = HSMobileOpsTestDataGenerator::variantCount();
+
+        while select wMSLocationId from wmsLocation
+            order by wMSLocationId
+            where wmsLocation.inventLocationId == 'AAC'
+            notexists join profile
+                where profile.LocProfileId == wmsLocation.LocProfileId
+                   && profile.LPControlled == NoYes::Yes
+        {
+            locs += wmsLocation.wMSLocationId;
+        }
+        if (!conLen(locs))
+        {
+            locs = [''];
+        }
+
+        ttsbegin;
+        journalTable.clear();
+        journalTable.initValue();
+        journalTable.JournalNameId = journalName.JournalNameId;
+        journalTable.initFromInventJournalName(journalName);
+        journalTable.JournalId   = NumberSeq::newGetNum(InventParameters::numRefInventJournalId()).num();
+        journalTable.Description = strFmt('HS test counting %1', docNumber);
+        journalTable.insert();
+
+        for (j = 0; j < _lines; j++)
+        {
+            v = this.variant(j mod nVariants);
+            [itemId, config, size, color, style] = v;
+            journalTrans.clear();
+            journalTrans.initValue();
+            journalTrans.initFromInventJournalTable(journalTable);
+            journalTrans.TransDate = today();
+            journalTrans.ItemId    = itemId;
+            journalTrans.initFromInventTable(InventTable::find(itemId));
+            journalTrans.InventDimId = HSMobileOpsTestDataGenerator::variantDimId(itemId, config, size, color, style, true,
+                'AAC', 'AAC', conPeek(locs, 1 + ((j div nVariants) mod conLen(locs))));
+            journalTrans.LineNum = j + 1;
+            journalTrans.insert();
+        }
+        journalTable.selectForUpdate(true);
+        journalTable.NumOfLines = _lines;
+        journalTable.update();
+        ttscommit;
+        info(strFmt('Counting journal %1: %2 lines over %3 locations', journalTable.JournalId, _lines, conLen(locs)));
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

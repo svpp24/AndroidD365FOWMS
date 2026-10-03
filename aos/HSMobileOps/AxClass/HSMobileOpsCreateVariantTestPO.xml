@@ -84,7 +84,7 @@ class HSMobileOpsCreateVariantTestPO
     /// a unit sequence group containing its inventory unit, and a reservation hierarchy. Only
     /// fills what is missing - an item already set up is left as it is. Called in BSP.
     /// </summary>
-    private static void ensureWmsSetup(ItemId _itemId)
+    public static void ensureWmsSetup(ItemId _itemId)
     {
         InventTable                 inventTable = InventTable::find(_itemId);
         UnitOfMeasureSymbol         unit = inventTable.inventUnitId();
@@ -156,7 +156,7 @@ class HSMobileOpsCreateVariantTestPO
     /// item checks approved vendors and the vendor is not on it - instead of switching the
     /// item's own approved-vendor check off.
     /// </summary>
-    private static void ensureApprovedVendor(ItemId _itemId, VendAccount _vendAccount)
+    public static void ensureApprovedVendor(ItemId _itemId, VendAccount _vendAccount)
     {
         PdsApprovedVendorList approved;
 
@@ -220,7 +220,7 @@ class HSMobileOpsCreateVariantTestPO
 				<Source><![CDATA[
 
     /// <summary>Purchase order confirmation through the standard posting class.</summary>
-    private static void confirm(PurchTable _purchTable)
+    public static void confirm(PurchTable _purchTable)
     {
         PurchFormLetter purchFormLetter = PurchFormLetter::construct(DocumentStatus::PurchaseOrder);
 
