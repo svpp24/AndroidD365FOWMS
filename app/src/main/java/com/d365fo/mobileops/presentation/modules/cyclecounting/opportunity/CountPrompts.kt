@@ -13,6 +13,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -148,8 +149,10 @@ class DiscrepancyViewModel @Inject constructor(
 fun ReportDiscrepancyAction(locationId: String?, itemId: String?, viewModel: DiscrepancyViewModel = hiltViewModel()) {
     if (!viewModel.enabled) return
     val state by viewModel.state.collectAsStateWithLifecycle()
-    IconButton(onClick = viewModel::open) {
-        Icon(Icons.Default.ReportProblem, contentDescription = "Report discrepancy")
+    // Labelled, not icon-only: a warning triangle alone does not say what tapping it does.
+    androidx.compose.material3.TextButton(onClick = viewModel::open) {
+        Icon(Icons.Default.ReportProblem, contentDescription = null)
+        Text("Report", modifier = androidx.compose.ui.Modifier.padding(start = 4.dp), maxLines = 1)
     }
     if (!state.open) return
 
