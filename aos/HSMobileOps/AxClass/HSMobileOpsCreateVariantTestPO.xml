@@ -28,6 +28,9 @@ class HSMobileOpsCreateVariantTestPO
 
         changecompany ('BSP')
         {
+            HSMobileOpsCreateVariantTestPO::ensureWmsSetup('Dm001');
+            HSMobileOpsCreateVariantTestPO::ensureApprovedVendor('Dm001', '19721');
+
             ttsbegin;
 
             purchTable.clear();
@@ -60,6 +63,113 @@ class HSMobileOpsCreateVariantTestPO
         }
 
         info(strFmt('Created test purchase order %1 (Dm001 C1 and C2, 5 each, warehouse AAC).', purchTable.PurchId));
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>ensureWmsSetup</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The warehouse-management setup a WMS-enabled item needs before it can go on an order:
+    /// a unit sequence group containing its inventory unit, and a reservation hierarchy. Only
+    /// fills what is missing - an item already set up is left as it is. Called in BSP.
+    /// </summary>
+    private static void ensureWmsSetup(ItemId _itemId)
+    {
+        InventTable                 inventTable = InventTable::find(_itemId);
+        UnitOfMeasureSymbol         unit = inventTable.inventUnitId();
+        WHSUOMSeqGroupId            groupId = unit;
+        WHSUOMSeqGroupTable         groupTable;
+        WHSUOMSeqGroupLine          groupLine;
+        WHSInventTable              whsInventTable;
+        WHSReservationHierarchy     hierarchy;
+        WHSReservationHierarchyItem hierarchyItem;
+
+        ttsbegin;
+
+        // Unit sequence group: an existing one whose lowest unit is the item's unit, or a new one.
+        select firstonly groupLine order by LineNum where groupLine.UnitId == unit;
+        if (groupLine.RecId)
+        {
+            groupId = groupLine.UOMSeqGroupId;
+        }
+        else if (!WHSUOMSeqGroupTable::find(groupId).RecId)
+        {
+            groupTable.UOMSeqGroupId   = groupId;
+            groupTable.UOMSeqGroupName = strFmt('%1 only', unit);
+            groupTable.insert();
+
+            groupLine.clear();
+            groupLine.UOMSeqGroupId = groupId;
+            groupLine.LineNum       = 1;
+            groupLine.UnitId        = unit;
+            groupLine.insert();
+            info(strFmt('Created unit sequence group %1 (%2).', groupId, unit));
+        }
+
+        select forupdate firstonly whsInventTable where whsInventTable.ItemId == _itemId;
+        if (whsInventTable.RecId && !whsInventTable.UOMSeqGroupId)
+        {
+            whsInventTable.UOMSeqGroupId = groupId;
+            whsInventTable.update();
+            info(strFmt('Unit sequence group of %1 set to %2.', _itemId, groupId));
+        }
+
+        // Reservation hierarchy: LP Con, the hierarchy already in use in this environment.
+        select firstonly hierarchyItem
+            where hierarchyItem.ItemId == _itemId
+               && hierarchyItem.ItemDataAreaId == curExt();
+        if (!hierarchyItem.RecId)
+        {
+            select firstonly hierarchy where hierarchy.Name == 'LP Con';
+            if (!hierarchy.RecId)
+            {
+                throw error('Reservation hierarchy LP Con was not found.');
+            }
+            hierarchyItem.ItemId               = _itemId;
+            hierarchyItem.ItemDataAreaId       = curExt();
+            hierarchyItem.ReservationHierarchy = hierarchy.RecId;
+            hierarchyItem.insert();
+            info(strFmt('Reservation hierarchy of %1 set to %2.', _itemId, hierarchy.Name));
+        }
+
+        ttscommit;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>ensureApprovedVendor</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Adds _vendAccount to the item's approved vendor list (from today, open-ended) when the
+    /// item checks approved vendors and the vendor is not on it - instead of switching the
+    /// item's own approved-vendor check off.
+    /// </summary>
+    private static void ensureApprovedVendor(ItemId _itemId, VendAccount _vendAccount)
+    {
+        PdsApprovedVendorList approved;
+
+        select firstonly approved
+            where approved.ItemId == _itemId
+               && approved.PdsApprovedVendor == _vendAccount
+               && approved.ValidFrom <= today()
+               && (approved.ValidTo >= today() || !approved.ValidTo);
+        if (approved.RecId)
+        {
+            return;
+        }
+
+        ttsbegin;
+        approved.clear();
+        approved.ItemId            = _itemId;
+        approved.PdsApprovedVendor = _vendAccount;
+        approved.ValidFrom         = today();
+        approved.ValidTo           = dateMax();
+        approved.insert();
+        ttscommit;
+        info(strFmt('Vendor %1 added to the approved vendor list of %2.', _vendAccount, _itemId));
     }
 ]]></Source>
 			</Method>
