@@ -1,5 +1,6 @@
 package com.d365fo.mobileops.presentation.modules.dataenquiry
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -50,6 +51,8 @@ import com.d365fo.mobileops.util.Formatters
 @Composable
 fun PoOfTodayScreen(
     onBack: () -> Unit,
+    /** Opens PO receiving; the order was handed over through [PoOfTodayViewModel.startReceiving]. */
+    onReceive: () -> Unit = {},
     viewModel: PoOfTodayViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -102,7 +105,10 @@ fun PoOfTodayScreen(
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         items(state.orders, key = { it.purchId }) { order ->
-                            PurchaseOrderRow(order)
+                            PurchaseOrderRow(order, onReceive = {
+                                viewModel.startReceiving(order.purchId)
+                                onReceive()
+                            })
                         }
                     }
                 }
@@ -112,7 +118,7 @@ fun PoOfTodayScreen(
 }
 
 @Composable
-private fun PurchaseOrderRow(order: PurchaseOrderSummary) {
+private fun PurchaseOrderRow(order: PurchaseOrderSummary, onReceive: () -> Unit) {
     val (statusText, statusColor, statusDim) = when (order.status) {
         OrderStatus.NONE, OrderStatus.BACKORDER -> Triple(
             "Open", WarehouseStatusColors.accent, WarehouseStatusColors.accentDim,
@@ -128,7 +134,12 @@ private fun PurchaseOrderRow(order: PurchaseOrderSummary) {
         )
     }
 
-    Card(modifier = Modifier.fillMaxWidth()) {
+    // Open orders start receiving on tap; received/invoiced/cancelled ones are information only.
+    val receivable = order.status.isOpen
+    Card(
+        modifier = Modifier.fillMaxWidth()
+            .then(if (receivable) Modifier.clickable(onClick = onReceive) else Modifier),
+    ) {
         Column(
             modifier = Modifier.padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp),

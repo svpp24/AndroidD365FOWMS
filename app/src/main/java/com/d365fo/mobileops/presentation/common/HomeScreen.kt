@@ -255,9 +255,14 @@ fun HomeScreen(
     // Ordered once per visit to the app, not after every tap - tiles must not move while the
     // worker goes back and forth.
     val modules = remember(blockedWorkflows) {
+        // Home is rebuilt each time it is shown, so the order is fixed once per app run.
+        val order = HomeTileOrder.titles ?: MODULES
+            .sortedWith(compareBy<ModuleTile>({ !it.available }, { -usage.count(it.title) }))
+            .map { it.title }
+            .also { HomeTileOrder.titles = it }
         MODULES
             .filter { it.workflow == null || it.workflow !in blockedWorkflows }
-            .sortedWith(compareBy<ModuleTile>({ !it.available }, { -usage.count(it.title) }))
+            .sortedBy { order.indexOf(it.title) }
     }
 
     infoFor?.let { module ->
@@ -637,4 +642,9 @@ private fun rememberModuleUsage(@Suppress("UNUSED_PARAMETER") key: String?): Mod
     return remember {
         ModuleUsage(runCatching { context.getSharedPreferences("home_module_usage", android.content.Context.MODE_PRIVATE) }.getOrNull())
     }
+}
+
+/** The Home tile order for this app run - see HomeScreen. */
+private object HomeTileOrder {
+    var titles: List<String>? = null
 }

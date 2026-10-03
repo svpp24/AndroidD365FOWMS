@@ -302,7 +302,10 @@ fun AppNavGraph(
             }
 
             composable(Routes.INQUIRY_PO_TODAY) {
-                PoOfTodayScreen(onBack = { navController.popBackStack() })
+                PoOfTodayScreen(
+                    onBack = { navController.popBackStack() },
+                    onReceive = { navController.navigate(Routes.RECEIVE_FLOW) },
+                )
             }
 
             composable(Routes.INQUIRY_PO_LINES) {

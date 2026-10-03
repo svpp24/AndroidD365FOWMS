@@ -24,7 +24,12 @@ import javax.inject.Inject
 class PoOfTodayViewModel @Inject constructor(
     private val lookups: OnDemandLookupRepository,
     private val workerSession: WorkerSessionRepository,
+    private val pendingFlowResume: com.d365fo.mobileops.data.repository.PendingFlowResume,
 ) : ViewModel() {
+
+    /** Hands [purchId] to the receiving flow, which opens on it - the caller then navigates there. */
+    fun startReceiving(purchId: String) =
+        pendingFlowResume.set(com.d365fo.mobileops.data.local.entity.FlowType.RECEIVING, purchId)
 
     private val _state = MutableStateFlow(PoOfTodayState())
     val state: StateFlow<PoOfTodayState> = _state.asStateFlow()
