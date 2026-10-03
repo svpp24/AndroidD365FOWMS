@@ -155,13 +155,10 @@ private fun VarianceContent(state: SupervisorVarianceState, viewModel: Superviso
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
                 VarianceFilterMenu(state, viewModel)
                 Spacer(Modifier.weight(1f))
-                Text(
-                    text = "${state.selected.size} selected",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = WarehouseStatusColors.text3,
-                )
-                TextButton(onClick = viewModel::selectAllVisible) { Text("Select shown") }
-                if (state.selected.isNotEmpty()) TextButton(onClick = viewModel::clearSelection) { Text("Clear") }
+                TextButton(onClick = viewModel::selectAllVisible) { Text("Select all", maxLines = 1) }
+                if (state.selected.isNotEmpty()) {
+                    TextButton(onClick = viewModel::clearSelection) { Text("Clear (${state.selected.size})", maxLines = 1) }
+                }
             }
         }
 
@@ -194,7 +191,8 @@ private fun VarianceContent(state: SupervisorVarianceState, viewModel: Superviso
                 OutlinedButton(onClick = { viewModel.openDecision(ReviewAction.INVESTIGATE) }, enabled = canAct, modifier = buttonModifier.weight(1f)) { Text("Investigate") }
                 OutlinedButton(onClick = { viewModel.openDecision(ReviewAction.REJECT) }, enabled = canAct, modifier = buttonModifier.weight(1f)) { Text("Reject") }
             }
-            Button(
+            // While lines are selected the decisions take Post's place, so the list keeps its room.
+            if (!canAct) Button(
                 onClick = viewModel::askPost,
                 enabled = !state.busy && !state.posted,
                 modifier = Modifier.fillMaxWidth().heightIn(min = WarehouseDimens.MinTouchTarget),

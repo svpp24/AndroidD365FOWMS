@@ -67,7 +67,7 @@ class HSMobileOpsReceivingService
         }
 
         company = _request.parmDataAreaId();
-        purchId = _request.parmPurchId();
+        purchId = HSMobileOpsOrderNumber::complete(_request.parmPurchId(), _request.parmDataAreaId(), false);
 
         if (!company || !purchId)
         {
@@ -185,7 +185,7 @@ class HSMobileOpsReceivingService
         if (_request)
         {
             company = _request.parmDataAreaId();
-            purchId = _request.parmPurchId();
+            purchId = HSMobileOpsOrderNumber::complete(_request.parmPurchId(), _request.parmDataAreaId(), false);
             itemId  = _request.parmItemId();
         }
 

@@ -733,7 +733,7 @@ private fun hintFor(state: TransferFlowState): String? = when (state.step) {
             // Says "shipped", not "ordered", because that is the number that bounds this.
             "${plain(line.shippedQuantity)} shipped · " +
                 "${plain(line.remainingQuantity)} ${line.unitId} still to receive"
-        }
+        } + (state.entryUnit?.let { unit -> " · entering in $unit" } ?: "")
     }
 
     TransferStep.LOCATION -> state.capture.toWarehouseId?.let { "Bulk storage in warehouse $it" }

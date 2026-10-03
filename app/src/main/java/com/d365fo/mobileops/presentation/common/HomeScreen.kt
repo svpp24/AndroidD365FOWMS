@@ -252,7 +252,9 @@ fun HomeScreen(
     val blockedWorkflows by accessViewModel.blockedWorkflows.collectAsStateWithLifecycle()
     val usage = rememberModuleUsage(warehouseId)
     // Most-used first; modules this worker has no permission for are left out, planned ones last.
-    val modules = remember(blockedWorkflows, usage.version) {
+    // Ordered once per visit to the app, not after every tap - tiles must not move while the
+    // worker goes back and forth.
+    val modules = remember(blockedWorkflows) {
         MODULES
             .filter { it.workflow == null || it.workflow !in blockedWorkflows }
             .sortedWith(compareBy<ModuleTile>({ !it.available }, { -usage.count(it.title) }))

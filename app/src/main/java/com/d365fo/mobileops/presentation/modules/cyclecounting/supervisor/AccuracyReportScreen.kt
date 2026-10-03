@@ -153,7 +153,7 @@ fun AccuracyReportScreen(onBack: () -> Unit, viewModel: AccuracyReportViewModel 
                 }
                 state.report?.let { report ->
                     Text(
-                        text = "${percent(report.overallPct)} accurate · ${report.accurateLines} of ${report.countedLines} lines" +
+                        text = (if (report.countedLines == 0) "No counts in this period" else "${percent(report.overallPct)} accurate · ${report.accurateLines} of ${report.countedLines} lines") +
                             (state.warehouseId?.let { " · $it" } ?: ""),
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.SemiBold,

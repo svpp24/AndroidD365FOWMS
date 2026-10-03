@@ -54,7 +54,7 @@ class HSMobileOpsTransferService
         if (_request)
         {
             company     = _request.parmDataAreaId();
-            transferId  = _request.parmTransferId();
+            transferId  = HSMobileOpsOrderNumber::complete(_request.parmTransferId(), _request.parmDataAreaId(), true);
             atWarehouse = _request.parmWarehouseId();
             shipping    = HSMobileOpsTransferService::isShipMode(_request.parmMode());
         }
@@ -158,7 +158,7 @@ class HSMobileOpsTransferService
         if (_request)
         {
             company    = _request.parmDataAreaId();
-            transferId = _request.parmTransferId();
+            transferId = HSMobileOpsOrderNumber::complete(_request.parmTransferId(), _request.parmDataAreaId(), true);
             itemId     = _request.parmItemId();
             shipping   = HSMobileOpsTransferService::isShipMode(_request.parmMode());
         }

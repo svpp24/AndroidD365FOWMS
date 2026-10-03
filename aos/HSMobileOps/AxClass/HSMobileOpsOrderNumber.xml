@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsOrderNumber</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Lets a worker type only the number of an order: "4" becomes BSP-TO-000000004 using the
+/// order's own number sequence format (NumberSeq::numInsertFormat), so the lookup stays an
+/// exact, indexed find. Anything that is not all digits is returned unchanged.
+/// </summary>
+class HSMobileOpsOrderNumber
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>complete</Name>
+				<Source><![CDATA[
+
+    public static str complete(str _id, DataAreaId _company, boolean _transfer)
+    {
+        NumberSequenceReference reference;
+        NumberSequenceTable     sequence;
+        str                     id = strLTrim(strRTrim(_id));
+        str                     full = id;
+
+        if (!id || !_company || strKeep(id, '0123456789') != id || strLen(id) > 15)
+        {
+            return id;
+        }
+
+        changecompany (_company)
+        {
+            reference = _transfer ? InventParameters::numRefTransferId() : PurchParameters::numRefPurchId();
+            sequence  = NumberSequenceTable::find(reference.NumberSequenceId);
+            if (sequence.RecId && sequence.Format)
+            {
+                full = NumberSeq::numInsertFormat(str2Int64(id), sequence.Format);
+            }
+        }
+        return full;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>
