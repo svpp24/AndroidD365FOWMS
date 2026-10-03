@@ -31,6 +31,12 @@ class HSMobileOpsCreateVariantTestPO
             HSMobileOpsCreateVariantTestPO::ensureWmsSetup('Dm001');
             HSMobileOpsCreateVariantTestPO::ensureApprovedVendor('Dm001', '19721');
 
+            // Today's test orders already exist: confirm them instead of creating more.
+            if (HSMobileOpsCreateVariantTestPO::confirmTodaysTestOrders())
+            {
+                return;
+            }
+
             ttsbegin;
 
             purchTable.clear();
@@ -60,6 +66,9 @@ class HSMobileOpsCreateVariantTestPO
             }
 
             ttscommit;
+
+            // Receiving takes confirmed orders only - confirm it as purchasing would.
+            HSMobileOpsCreateVariantTestPO::confirm(purchTable);
         }
 
         info(strFmt('Created test purchase order %1 (Dm001 C1 and C2, 5 each, warehouse AAC).', purchTable.PurchId));
@@ -170,6 +179,53 @@ class HSMobileOpsCreateVariantTestPO
         approved.insert();
         ttscommit;
         info(strFmt('Vendor %1 added to the approved vendor list of %2.', _vendAccount, _itemId));
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>confirmTodaysTestOrders</Name>
+				<Source><![CDATA[
+
+    /// <summary>Confirms today's open test orders (vendor 19721, Dm001); false when there are none.</summary>
+    private static boolean confirmTodaysTestOrders()
+    {
+        PurchTable purchTable;
+        PurchLine  purchLine;
+        boolean    found;
+
+        while select purchTable
+            where purchTable.OrderAccount == '19721'
+               && purchTable.DeliveryDate == today()
+               && purchTable.PurchStatus == PurchStatus::Backorder
+            exists join purchLine
+                where purchLine.PurchId == purchTable.PurchId
+                   && purchLine.ItemId == 'Dm001'
+        {
+            found = true;
+            if (purchTable.DocumentState != VersioningDocumentState::Confirmed)
+            {
+                HSMobileOpsCreateVariantTestPO::confirm(purchTable);
+            }
+            else
+            {
+                info(strFmt('%1 is already confirmed.', purchTable.PurchId));
+            }
+        }
+        return found;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>confirm</Name>
+				<Source><![CDATA[
+
+    /// <summary>Purchase order confirmation through the standard posting class.</summary>
+    private static void confirm(PurchTable _purchTable)
+    {
+        PurchFormLetter purchFormLetter = PurchFormLetter::construct(DocumentStatus::PurchaseOrder);
+
+        purchFormLetter.update(_purchTable, _purchTable.PurchId);
+        info(strFmt('Confirmed %1.', _purchTable.PurchId));
     }
 ]]></Source>
 			</Method>

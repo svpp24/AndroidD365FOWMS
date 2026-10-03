@@ -207,10 +207,14 @@ fun ReceivingFlowScreen(
                             onSearchItem = { showItemSearch = true },
                             onPostSoFar = viewModel::postReceipt,
                             onSelectUnit = viewModel::selectEntryUnit,
+                            belowField = {
+                                // Inside the prompt's scrolling top group: placed after the prompt,
+                                // it sat below the prompt's full-height layout, off the screen.
+                                if (state.step == ReceivingStep.PURCHASE_ORDER && state.todaysOrders.isNotEmpty()) {
+                                    TodaysOrders(state.todaysOrders, enabled = !state.busy, onPick = viewModel::pickTodaysOrder)
+                                }
+                            },
                         )
-                        if (state.step == ReceivingStep.PURCHASE_ORDER && state.todaysOrders.isNotEmpty()) {
-                            TodaysOrders(state.todaysOrders, enabled = !state.busy, onPick = viewModel::pickTodaysOrder)
-                        }
                     }
                 }
             }
@@ -271,6 +275,7 @@ private fun StepPrompt(
     onSearchItem: () -> Unit,
     onPostSoFar: () -> Unit,
     onSelectUnit: (String) -> Unit = {},
+    belowField: @Composable () -> Unit = {},
 ) {
     val focusRequester = remember { FocusRequester() }
 
@@ -342,6 +347,7 @@ private fun StepPrompt(
                 )
             }
             }
+            belowField()
         }
 
         Column(
