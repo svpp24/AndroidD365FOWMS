@@ -65,7 +65,16 @@ import kotlin.math.min
 
 /** Gives the sheet the app-wide detector, so the model loads once per process. */
 @HiltViewModel
-class AiCountViewModel @Inject constructor(val counter: ObjectCounter) : ViewModel() {
+class AiCountViewModel @Inject constructor(
+    val counter: ObjectCounter,
+    private val samples: com.d365fo.mobileops.data.ai.TrainingSampleStore,
+    private val uploads: com.d365fo.mobileops.data.ai.AiSampleUploadScheduler,
+) : ViewModel() {
+    /** A corrected count's photo and marks, sent to D365FO as shared training data - see TrainingSampleStore. */
+    fun keepSample(photo: Bitmap, count: AiCount, itemId: String) {
+        viewModelScope.launch { if (samples.save(photo, count, itemId)) uploads.enqueue() }
+    }
+
     private var job: kotlinx.coroutines.Job? = null
 
     fun run(photo: Bitmap, closer: Boolean, onDone: (Result<List<com.d365fo.mobileops.domain.ai.Detection>>) -> Unit) {
@@ -92,6 +101,7 @@ private sealed interface AiPhase {
 @Composable
 fun AiCountSheet(
     itemLabel: String,
+    itemId: String = itemLabel,
     onUse: (Int) -> Unit,
     onDismiss: () -> Unit,
     viewModel: AiCountViewModel = hiltViewModel(),
@@ -202,12 +212,12 @@ fun AiCountSheet(
                         style = MaterialTheme.typography.bodySmall,
                     )
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 6.dp)) {
-                        FilterChip(selected = pickSample, onClick = { pickSample = !pickSample }, label = { Text("Count only like…") }, colors = chipColors())
+                        FilterChip(selected = pickSample, onClick = { pickSample = !pickSample }, label = { Text("Only like…") }, colors = chipColors())
                         if (!result.closer) {
-                            FilterChip(selected = false, onClick = { analyse(result.photo, closer = true) }, label = { Text("Look closer") }, colors = chipColors())
+                            FilterChip(selected = false, onClick = { analyse(result.photo, closer = true) }, label = { Text("Closer") }, colors = chipColors())
                         }
                         if (result.count.sample != null) {
-                            FilterChip(selected = false, onClick = { phase = result.copy(count = result.count.copy(sample = null)) }, label = { Text("Count all") }, colors = chipColors())
+                            FilterChip(selected = false, onClick = { phase = result.copy(count = result.count.copy(sample = null)) }, label = { Text("All") }, colors = chipColors())
                         }
                     }
                 }
@@ -233,7 +243,10 @@ fun AiCountSheet(
                             modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget),
                         ) { Text("Retake", color = Color.White) }
                         Button(
-                            onClick = { onUse(p.count.count) },
+                            onClick = {
+                                viewModel.keepSample(p.photo, p.count, itemId)
+                                onUse(p.count.count)
+                            },
                             modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget),
                         ) { Text("Use ${p.count.count}") }
                     }

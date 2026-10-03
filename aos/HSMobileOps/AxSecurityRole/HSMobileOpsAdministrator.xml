@@ -18,6 +18,9 @@
 		<AxSecurityRolePrivilegeReference>
 			<Name>HSMobileOpsCountToleranceMaintain</Name>
 		</AxSecurityRolePrivilegeReference>
+		<AxSecurityRolePrivilegeReference>
+			<Name>HSMobileOpsAiSampleMaintain</Name>
+		</AxSecurityRolePrivilegeReference>
 	</Privileges>
 	<SubRoles />
 </AxSecurityRole>

@@ -325,6 +325,15 @@ interface MobileOpsServiceApi {
         @Tag tag: IdempotentRead = IdempotentRead,
     ): Response<com.d365fo.mobileops.data.remote.dto.WarehousesServiceResponse>
 
+    // -- AI count training samples (HSMobileOpsAiSampleSvc) ------------------------------------
+    //
+    // One small sample per call; idempotent on SampleId, so a retried call is harmless.
+
+    @POST("HSMobileOpsServiceGroup/HSMobileOpsAiSampleSvc/uploadSample")
+    suspend fun uploadAiSample(
+        @Body body: com.d365fo.mobileops.data.remote.dto.AiSampleServiceRequest,
+    ): Response<com.d365fo.mobileops.data.remote.dto.AiSampleServiceResponse>
+
     // -- Item units (HSMobileOpsUnitSvc) ------------------------------------------------------
     //
     // Units to the inventory unit for many item variants in one call - counting only; receiving

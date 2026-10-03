@@ -429,6 +429,7 @@ private fun QuantityDialog(prompt: CountPrompt, onOk: (String) -> Unit, onCancel
     if (showAiCount) {
         AiCountSheet(
             itemLabel = listOfNotNull(line.itemId, whereLine(line)).joinToString(" · "),
+            itemId = line.itemId,
             onUse = { n ->
                 val text = n.toString()
                 value = TextFieldValue(text, TextRange(0, text.length))

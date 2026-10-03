@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxSecurityPrivilege xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsAiSampleMaintain</Name>
+	<Label>Review mobile AI count samples</Label>
+	<HelpText>See and remove the AI count training samples uploaded by the handhelds.</HelpText>
+	<EntryPoints>
+		<AxSecurityEntryPointReference>
+			<Name>HSMobileOpsAiSample</Name>
+			<ObjectName>HSMobileOpsAiSample</ObjectName>
+			<ObjectType>MenuItemDisplay</ObjectType>
+			<AccessLevel>Delete</AccessLevel>
+		</AxSecurityEntryPointReference>
+	</EntryPoints>
+	<Tables>
+		<AxSecurityPrivilegeTablePermission>
+			<Name>HSMobileOpsAiSample</Name>
+			<Delete>Allow</Delete>
+			<Insert>NoAccess</Insert>
+			<Read>Allow</Read>
+			<Update>NoAccess</Update>
+		</AxSecurityPrivilegeTablePermission>
+	</Tables>
+</AxSecurityPrivilege>

@@ -373,6 +373,10 @@ fun SettingsScreen(
                 LogsSection()
             }
 
+            if (openSection == SettingsMenuItem.AiTraining && onSignOut != null) {
+                com.d365fo.mobileops.presentation.modules.cyclecounting.AiTrainingSection()
+            }
+
             // Menu entry itself is already gated on isAdmin (see SettingsMenu's showAdminCenter
             // param) - the onSignOut != null check here is only defence against the unreachable
             // case of openSection somehow still pointing at AdminCenter after signing out.
@@ -393,6 +397,7 @@ private enum class SettingsMenuItem(val title: String) {
     Session("My warehouse & sign-in"),
     Lockout("Lockout settings"),
     Logs("Logs"),
+    AiTraining("AI training data"),
     AdminCenter("Admin Center"),
 }
 
@@ -428,6 +433,9 @@ private fun SettingsMenu(
             SettingsMenuRow(SettingsMenuItem.AdminCenter, onOpen)
         }
         SettingsMenuRow(SettingsMenuItem.Logs, onOpen)
+        if (showSignedInSections) {
+            SettingsMenuRow(SettingsMenuItem.AiTraining, onOpen)
+        }
     }
 }
 

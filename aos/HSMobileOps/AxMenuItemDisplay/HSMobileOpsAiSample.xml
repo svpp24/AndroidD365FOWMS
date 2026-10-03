@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxMenuItemDisplay xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsAiSample</Name>
+	<Label>Mobile AI count samples</Label>
+	<HelpText>Photos and corrected marks from AI counts on the handhelds - training data for a model on this company's products.</HelpText>
+	<Object>HSMobileOpsAiSample</Object>
+	<ObjectType>Form</ObjectType>
+</AxMenuItemDisplay>

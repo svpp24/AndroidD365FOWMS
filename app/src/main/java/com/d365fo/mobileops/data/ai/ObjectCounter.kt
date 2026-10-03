@@ -69,7 +69,7 @@ class ObjectCounter @Inject constructor(@ApplicationContext private val context:
             }
         }
 
-    /** The GPU when the device can run the model there (much faster), otherwise the CPU. */
+    /** The detector, on the CPU (XNNPACK). */
     private fun create(): ObjectDetector {
         val started = System.currentTimeMillis()
         fun build(delegate: Delegate) = ObjectDetector.createFromOptions(
@@ -81,9 +81,9 @@ class ObjectCounter @Inject constructor(@ApplicationContext private val context:
                 .setScoreThreshold(DETECTOR_FLOOR)
                 .build(),
         )
-        val detector = runCatching { build(Delegate.GPU) }
-            .onFailure { Timber.w(it, "count detector: GPU unavailable, using CPU") }
-            .getOrElse { build(Delegate.CPU) }
+        // CPU only: on low-end handhelds (MediaTek MT6761 / PowerVR, measured) the GPU delegate
+        // is accepted but then stalls for minutes in GL setup - far slower than the CPU.
+        val detector = build(Delegate.CPU)
         Timber.d("count detector loaded in %d ms", System.currentTimeMillis() - started)
         return detector
     }
