@@ -165,8 +165,12 @@ class CountingJournalListViewModel @Inject constructor(
         // the server list could not be loaded (offline) or no longer includes it (posted/closed
         // there) - its counts must stay reachable. Server rows win when both exist.
         val serverIds = loaded.journals.mapTo(HashSet()) { it.journalId }
+        // Only this warehouse's: a journal downloaded at another warehouse stays on the device
+        // (on hold) and is listed again when the worker switches back there.
+        val here = loaded.warehouseId
         val localOnly = room.journals
             .filter { it.journalId !in serverIds }
+            .filter { here.isNullOrBlank() || it.warehouseId.isNullOrBlank() || it.warehouseId.equals(here, ignoreCase = true) }
             .map { journal ->
                 CountingJournalSummary(
                     journalId = journal.journalId,
