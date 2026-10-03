@@ -50,6 +50,7 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.d365fo.mobileops.data.ai.ObjectCounter
 import com.d365fo.mobileops.domain.ai.AiCount
@@ -64,12 +65,22 @@ import kotlin.math.min
 
 /** Gives the sheet the app-wide detector, so the model loads once per process. */
 @HiltViewModel
-class AiCountViewModel @Inject constructor(val counter: ObjectCounter) : ViewModel()
+class AiCountViewModel @Inject constructor(val counter: ObjectCounter) : ViewModel() {
+    private var job: kotlinx.coroutines.Job? = null
+
+    fun run(photo: Bitmap, closer: Boolean, onDone: (Result<List<com.d365fo.mobileops.domain.ai.Detection>>) -> Unit) {
+        job?.cancel()
+        job = viewModelScope.launch {
+            val result = runCatching { counter.detect(photo, closer) }
+            if (result.exceptionOrNull() !is kotlinx.coroutines.CancellationException) onDone(result)
+        }
+    }
+}
 
 private sealed interface AiPhase {
     data object Live : AiPhase
-    data class Analysing(val photo: Bitmap) : AiPhase
-    data class Result(val photo: Bitmap, val count: AiCount) : AiPhase
+    data class Analysing(val photo: Bitmap, val startedAt: Long = System.currentTimeMillis()) : AiPhase
+    data class Result(val photo: Bitmap, val count: AiCount, val closer: Boolean = false) : AiPhase
     data class Failed(val message: String) : AiPhase
 }
 
@@ -102,20 +113,27 @@ fun AiCountSheet(
     var torch by remember { mutableStateOf(false) }
     var pickSample by remember { mutableStateOf(false) }
 
+    fun analyse(photo: Bitmap, closer: Boolean) {
+        phase = AiPhase.Analysing(photo)
+        // In the view model's scope: leaving this screen mid-count must not lose or crash it.
+        viewModel.run(photo, closer) { result ->
+            phase = result.fold(
+                { AiPhase.Result(photo, AiCount(it), closer) },
+                {
+                    Timber.e(it, "ai count failed")
+                    AiPhase.Failed("Couldn't count this photo: ${it.message ?: it.javaClass.simpleName}")
+                },
+            )
+        }
+    }
+
     fun analyse() {
         val photo = preview?.bitmap ?: return
         if (isTooDark(photo)) {
             phase = AiPhase.Failed("The photo is too dark to count. Turn on Light or move to better lighting.")
             return
         }
-        phase = AiPhase.Analysing(photo)
-        scope.launch {
-            phase = runCatching { AiPhase.Result(photo, AiCount(viewModel.counter.detect(photo))) }
-                .getOrElse {
-                    Timber.e(it, "ai count failed")
-                    AiPhase.Failed("Couldn't count this photo: ${it.message ?: it.javaClass.simpleName}")
-                }
-        }
+        analyse(photo, closer = false)
     }
 
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
@@ -124,9 +142,16 @@ fun AiCountSheet(
                 AiPhase.Live -> if (hasPermission) LivePreview(onView = { preview = it }, onCamera = { camera = it })
                 is AiPhase.Analysing -> {
                     PhotoWithMarks(p.photo, null, onTap = { _, _ -> })
+                    var seconds by remember(p) { mutableStateOf(0) }
+                    LaunchedEffect(p) {
+                        while (true) {
+                            kotlinx.coroutines.delay(1_000)
+                            seconds = ((System.currentTimeMillis() - p.startedAt) / 1_000).toInt()
+                        }
+                    }
                     Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
                         CircularProgressIndicator(color = Color.White)
-                        Text("Counting…", color = Color.White, modifier = Modifier.padding(top = 12.dp))
+                        Text("Counting… ${seconds}s", color = Color.White, modifier = Modifier.padding(top = 12.dp))
                     }
                 }
                 is AiPhase.Result -> PhotoWithMarks(p.photo, p.count) { x, y ->
@@ -178,6 +203,9 @@ fun AiCountSheet(
                     )
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 6.dp)) {
                         FilterChip(selected = pickSample, onClick = { pickSample = !pickSample }, label = { Text("Count only like…") }, colors = chipColors())
+                        if (!result.closer) {
+                            FilterChip(selected = false, onClick = { analyse(result.photo, closer = true) }, label = { Text("Look closer") }, colors = chipColors())
+                        }
                         if (result.count.sample != null) {
                             FilterChip(selected = false, onClick = { phase = result.copy(count = result.count.copy(sample = null)) }, label = { Text("Count all") }, colors = chipColors())
                         }

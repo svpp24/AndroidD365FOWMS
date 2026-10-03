@@ -35,12 +35,17 @@ class ObjectCounter @Inject constructor(@ApplicationContext private val context:
         runCatching { context.assets.list("")?.contains(MODEL_ASSET) == true }.getOrDefault(false)
     }
 
-    suspend fun detect(bitmap: Bitmap, minScore: Float = DEFAULT_MIN_SCORE): List<Detection> =
+    /**
+     * One pass over the whole photo, or with [closer] also the overlapping tiles - several times
+     * the work, for small items the whole-frame pass misses.
+     */
+    suspend fun detect(bitmap: Bitmap, closer: Boolean = false, minScore: Float = DEFAULT_MIN_SCORE): List<Detection> =
         withContext(Dispatchers.Default) {
             mutex.withLock {
+                val started = System.currentTimeMillis()
                 val d = detector ?: create().also { detector = it }
                 val all = mutableListOf<Detection>()
-                for (tile in CountDetections.tiles(bitmap.width, bitmap.height, grid = TILE_GRID)) {
+                for (tile in CountDetections.tiles(bitmap.width, bitmap.height, grid = if (closer) TILE_GRID else 1)) {
                     val crop = if (tile.width == bitmap.width && tile.height == bitmap.height) bitmap
                     else Bitmap.createBitmap(bitmap, tile.left, tile.top, tile.width, tile.height)
                     val result = d.detect(BitmapImageBuilder(crop).build())
@@ -58,21 +63,29 @@ class ObjectCounter @Inject constructor(@ApplicationContext private val context:
                     }
                     if (crop !== bitmap) crop.recycle()
                 }
-                CountDetections.merge(CountDetections.plausible(all, bitmap.width, bitmap.height, minScore))
+                CountDetections.merge(CountDetections.plausible(all, bitmap.width, bitmap.height, minScore)).also {
+                    Timber.d("ai count: %d found in %d ms (closer=%b)", it.size, System.currentTimeMillis() - started, closer)
+                }
             }
         }
 
+    /** The GPU when the device can run the model there (much faster), otherwise the CPU. */
     private fun create(): ObjectDetector {
         val started = System.currentTimeMillis()
-        val options = ObjectDetector.ObjectDetectorOptions.builder()
-            .setBaseOptions(BaseOptions.builder().setModelAssetPath(MODEL_ASSET).setDelegate(Delegate.CPU).build())
-            .setRunningMode(RunningMode.IMAGE)
-            .setMaxResults(MAX_RESULTS)
-            .setScoreThreshold(DETECTOR_FLOOR)
-            .build()
-        return ObjectDetector.createFromOptions(context, options).also {
-            Timber.d("count detector loaded in %d ms", System.currentTimeMillis() - started)
-        }
+        fun build(delegate: Delegate) = ObjectDetector.createFromOptions(
+            context,
+            ObjectDetector.ObjectDetectorOptions.builder()
+                .setBaseOptions(BaseOptions.builder().setModelAssetPath(MODEL_ASSET).setDelegate(delegate).build())
+                .setRunningMode(RunningMode.IMAGE)
+                .setMaxResults(MAX_RESULTS)
+                .setScoreThreshold(DETECTOR_FLOOR)
+                .build(),
+        )
+        val detector = runCatching { build(Delegate.GPU) }
+            .onFailure { Timber.w(it, "count detector: GPU unavailable, using CPU") }
+            .getOrElse { build(Delegate.CPU) }
+        Timber.d("count detector loaded in %d ms", System.currentTimeMillis() - started)
+        return detector
     }
 
     fun release() {
