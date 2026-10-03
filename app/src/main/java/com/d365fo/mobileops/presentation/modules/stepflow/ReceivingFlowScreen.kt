@@ -800,7 +800,11 @@ private fun CaptureSummary(state: ReceivingFlowState) {
             verticalArrangement = Arrangement.spacedBy(2.dp),
         ) {
             Field("Purchase order", capture.purchId)
-            Field("Item", capture.item?.let { "${it.itemNumber} — ${it.productName}" })
+            Field("Item", capture.item?.let {
+                // The name only when it says more than the number (not "Dm001 — DM001").
+                if (it.productName.isBlank() || it.productName.equals(it.itemNumber, ignoreCase = true)) it.itemNumber
+                else "${it.itemNumber} — ${it.productName}"
+            })
             Field(
                 "Quantity",
                 capture.quantity?.let { "${plain(it)} ${capture.unitSymbol.orEmpty()}".trimEnd() },

@@ -284,6 +284,9 @@ class HSMobileOpsUserService
             case HSMobileOpsModule::TRANSFER_SHIP:   return 'TRANSFER_SHIP';
             case HSMobileOpsModule::TRANSFER_RECEIVE: return 'TRANSFER_RECEIVE';
             case HSMobileOpsModule::INVENTORY_COUNT: return 'INVENTORY_COUNT';
+            case HSMobileOpsModule::LOCATION_INQUIRY: return 'LOCATION_INQUIRY';
+            case HSMobileOpsModule::PO_OF_TODAY:     return 'PO_OF_TODAY';
+            case HSMobileOpsModule::PO_LINES:        return 'PO_LINES';
             default: return '';
         }
     }
@@ -306,6 +309,9 @@ class HSMobileOpsUserService
             case 'TRANSFER_SHIP':    return HSMobileOpsModule::TRANSFER_SHIP;
             case 'TRANSFER_RECEIVE': return HSMobileOpsModule::TRANSFER_RECEIVE;
             case 'INVENTORY_COUNT':  return HSMobileOpsModule::INVENTORY_COUNT;
+            case 'LOCATION_INQUIRY': return HSMobileOpsModule::LOCATION_INQUIRY;
+            case 'PO_OF_TODAY':      return HSMobileOpsModule::PO_OF_TODAY;
+            case 'PO_LINES':         return HSMobileOpsModule::PO_LINES;
             default: return -1;
         }
     }

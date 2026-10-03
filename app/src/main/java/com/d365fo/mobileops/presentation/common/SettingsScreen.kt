@@ -165,7 +165,8 @@ fun SettingsScreen(
                 SettingsMenu(
                     showConnectionProfile = onSignOut == null,
                     showSignedInSections = onSignOut != null,
-                    showAdminCenter = onSignOut != null && isAdmin,
+                    // Users and their menu access are set up in D365FO (Mobile device users).
+                    showAdminCenter = false,
                     onOpen = { openSection = it },
                 )
             }
@@ -375,9 +376,6 @@ fun SettingsScreen(
             // Menu entry itself is already gated on isAdmin (see SettingsMenu's showAdminCenter
             // param) - the onSignOut != null check here is only defence against the unreachable
             // case of openSection somehow still pointing at AdminCenter after signing out.
-            if (openSection == SettingsMenuItem.AdminCenter && onSignOut != null && isAdmin) {
-                AdminCenterSection()
-            }
 
             Row(modifier = Modifier.padding(bottom = 28.dp)) { }
         }

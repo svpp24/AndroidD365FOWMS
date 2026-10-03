@@ -336,7 +336,9 @@ class ReceivingFlowViewModel @Inject constructor(
     fun reset() {
         pending?.cancel()
         val purchId = _state.value.capture.purchId
-        _state.value = ReceivingFlowState()
+        // Keep today's orders on screen for the next receipt.
+        _state.value = ReceivingFlowState(todaysOrders = _state.value.todaysOrders)
+        loadTodaysOrders()
 
         // Abandoning means abandoning. Leaving the saved copy behind would offer the work back
         // on the home screen moments after someone deliberately threw it away.

@@ -2,7 +2,7 @@
 <AxEnum xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
 	<Name>HSMobileOpsModule</Name>
 	<Label>Mobile module</Label>
-	<HelpText>One of the four warehouse workflows an admin can allow or block per worker on the handheld app. Element names are also the wire format - see HSMobileOpsModulePermission::parmModule and the app's own WarehouseWorkflow enum, which matches these names exactly rather than translating between the two.</HelpText>
+	<HelpText>A handheld app menu (module) an administrator allows or blocks per worker, on the Mobile device users form (Menu access). Element names are also the wire format - see HSMobileOpsModulePermission::parmModule and the app's own WarehouseWorkflow enum, which matches these names exactly rather than translating between the two.</HelpText>
 	<EnumValues>
 		<AxEnumValue>
 			<Name>PO_RECEIVING</Name>
@@ -23,6 +23,19 @@
 			<Name>INVENTORY_COUNT</Name>
 			<Label>Inventory count</Label>
 			<Value>3</Value>
+		</AxEnumValue>
+		<AxEnumValue>
+			<Name>LOCATION_INQUIRY</Name>
+			<Label>Location inquiry</Label>
+			<Value>4</Value>		</AxEnumValue>
+		<AxEnumValue>
+			<Name>PO_OF_TODAY</Name>
+			<Label>PO's of today</Label>
+			<Value>5</Value>		</AxEnumValue>
+		<AxEnumValue>
+			<Name>PO_LINES</Name>
+			<Label>PO lines</Label>
+			<Value>6</Value>
 		</AxEnumValue>
 	</EnumValues>
 	<UseEnumValueForDisplayValue>No</UseEnumValueForDisplayValue>

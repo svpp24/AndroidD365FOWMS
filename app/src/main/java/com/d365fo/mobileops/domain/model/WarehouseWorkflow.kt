@@ -1,7 +1,8 @@
 package com.d365fo.mobileops.domain.model
 
 /**
- * The four warehouse workflows an Admin can individually enable or disable per worker.
+ * The app menus (modules) an administrator allows or blocks per worker - set in D365FO on the
+ * Mobile device users form, Menu access tab, and sent with sign-in. Names match HSMobileOpsModule.
  *
  * Kept as its own enum rather than reusing `Routes.RECEIVE_FLOW`/etc. (`AppNavGraph.kt`)
  * directly: those are plain strings that exist for Compose Navigation's own reasons (and are
@@ -15,4 +16,7 @@ enum class WarehouseWorkflow(val label: String) {
     TRANSFER_SHIP("Transfer — Ship"),
     TRANSFER_RECEIVE("Transfer — Receive"),
     INVENTORY_COUNT("Inventory count"),
+    LOCATION_INQUIRY("Location inquiry"),
+    PO_OF_TODAY("PO's of today"),
+    PO_LINES("PO lines"),
 }

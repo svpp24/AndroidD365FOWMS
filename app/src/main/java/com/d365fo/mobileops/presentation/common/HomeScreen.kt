@@ -174,6 +174,7 @@ private val MODULES = listOf(
         d365 = "WarehouseLocations (OData reads only)",
         icon = Icons.Default.LocationOn,
         route = Routes.INQUIRY_LOCATION,
+        workflow = com.d365fo.mobileops.domain.model.WarehouseWorkflow.LOCATION_INQUIRY,
     ),
     ModuleTile(
         title = "PO's of today",
@@ -182,6 +183,7 @@ private val MODULES = listOf(
         d365 = "PurchaseOrderHeadersV2 (OData reads only)",
         icon = Icons.Default.Today,
         route = Routes.INQUIRY_PO_TODAY,
+        workflow = com.d365fo.mobileops.domain.model.WarehouseWorkflow.PO_OF_TODAY,
     ),
     ModuleTile(
         title = "PO lines",
@@ -191,6 +193,7 @@ private val MODULES = listOf(
         d365 = "PurchaseOrderLinesV2 (OData reads only)",
         icon = Icons.Default.Inventory,
         route = Routes.INQUIRY_PO_LINES,
+        workflow = com.d365fo.mobileops.domain.model.WarehouseWorkflow.PO_LINES,
     ),
     ModuleTile(
         title = "TO's by Store",
