@@ -39,3 +39,15 @@ Priority: **H** = hurts every shift, **M** = noticeable, **L** = polish.
 
 1, 2, 5, 10, 15, 16 – they cover the most frequent actions (start receiving, enter quantities,
 count lines) and the two messages that interrupt every shift.
+
+## Status (3 Oct 2026)
+
+All 21 items are done.
+
+- 1-20: built and checked on the device (batches 1 and 2, then 7, 8, 18, 19 and 9).
+- 9: after sign-in, a worker with several warehouses and no default picks one ("Choose your warehouse") before Home.
+- 21: the "This device at risk" watermark is not from this app - it is a "Security Mode" window drawn by the
+  handheld's system UI (com.android.systemui) over every app, the firmware flagging developer mode / USB
+  debugging on this test device. Release builds of the app cannot show it; production devices without
+  debugging enabled will not either.
+

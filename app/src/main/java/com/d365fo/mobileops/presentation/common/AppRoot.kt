@@ -138,6 +138,13 @@ fun AppRoot(
             onOpenSettings = { settingsWhileSignedOut = true },
         )
 
+        // Several warehouses in D365FO and none is the default: ask once, before Home.
+        session is SessionState.Ready && worker?.selected == null && (worker?.warehouses?.size ?: 0) > 1 ->
+            PickWarehouseScreen(
+                warehouses = worker?.warehouses.orEmpty(),
+                onSignOut = workerSessionViewModel::signOut,
+            )
+
         session is SessionState.Ready -> Column(modifier = Modifier.fillMaxSize()) {
             // Shown once, right where a worker lands after signing in, for as long as the
             // license's renewal-warning window lasts - dismissed here, not auto-hidden, so it
