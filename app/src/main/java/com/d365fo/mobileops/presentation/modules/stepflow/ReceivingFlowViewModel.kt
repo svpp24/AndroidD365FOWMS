@@ -576,6 +576,18 @@ class ReceivingFlowViewModel @Inject constructor(
                 if (lookup.outstandingLineCount == 0) {
                     return fail("${order.purchId} has nothing left to receive")
                 }
+                // Only orders for the warehouse the worker is in: the header's warehouse, or any
+                // line's (a line can deliver elsewhere than its header).
+                val here = workerSession.session.value?.selected?.warehouseId
+                if (!here.isNullOrBlank()) {
+                    val forHere = order.warehouseId.equals(here, ignoreCase = true) ||
+                        order.lines.any { it.warehouseId.equals(here, ignoreCase = true) }
+                    val elsewhere = order.warehouseId?.takeIf { it.isNotBlank() }
+                        ?: order.lines.firstNotNullOfOrNull { it.warehouseId?.takeIf { w -> w.isNotBlank() } }
+                    if (!forHere && elsewhere != null) {
+                        return fail("${order.purchId} is for warehouse $elsewhere - you are working in $here")
+                    }
+                }
 
                 val open = order.lines.filter { it.hasOutstanding }
 
