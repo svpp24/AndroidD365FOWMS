@@ -4,7 +4,6 @@ import android.os.Build
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.d365fo.mobileops.BuildConfig
-import com.d365fo.mobileops.data.repository.AssignedWarehouse
 import com.d365fo.mobileops.data.repository.WorkerSessionRepository
 import com.d365fo.mobileops.domain.repository.WorkerContextRepository
 import com.d365fo.mobileops.util.NetworkResult
@@ -71,19 +70,12 @@ class WorkerLoginViewModel @Inject constructor(
 
                     NetworkResult.Loading -> state.copy(busy = false)
 
-                    is NetworkResult.Success -> WorkerLoginState(
-                        // Nothing carried forward: no name, no password, no error.
-                        needsWarehouseChoice = result.data.selected == null,
-                        warehouses = result.data.warehouses,
-                    )
+                    // Nothing carried forward: no name, no password, no error. A warehouse
+                    // choice, when one is needed, is PickWarehouseScreen's (see AppRoot).
+                    is NetworkResult.Success -> WorkerLoginState()
                 }
             }
         }
-    }
-
-    fun chooseWarehouse(warehouseId: String) {
-        sessions.selectWarehouse(warehouseId)
-        _state.update { it.copy(needsWarehouseChoice = false) }
     }
 
     fun dismissError() = _state.update { it.copy(error = null) }
@@ -94,7 +86,4 @@ data class WorkerLoginState(
     val password: String = "",
     val busy: Boolean = false,
     val error: String? = null,
-    /** True when several warehouses are assigned and none is flagged default. */
-    val needsWarehouseChoice: Boolean = false,
-    val warehouses: List<AssignedWarehouse> = emptyList(),
 )

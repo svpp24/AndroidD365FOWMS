@@ -70,11 +70,6 @@ fun WorkerLoginScreen(
         keyboardController?.hide()
     }
 
-    if (state.needsWarehouseChoice) {
-        WarehouseChoice(state, viewModel::chooseWarehouse)
-        return
-    }
-
     // Scrollable, not just centered - when the keyboard opens (an explicit tap on a field;
     // see the hide() above for why it is not open by default) it shrinks the space this
     // Column has to work with. Centered-but-fixed content that no longer fits its viewport
@@ -178,41 +173,6 @@ fun WorkerLoginScreen(
             modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
         ) {
             Text("Connection settings")
-        }
-    }
-}
-
-/**
- * Shown only when a worker is assigned several warehouses and none is flagged default.
- *
- * Not a free-text box, deliberately. The list is exactly what the server says this worker may
- * work in, so a warehouse cannot be typed wrong and cannot be one they have no business in — the
- * two failure modes the old settings field had.
- */
-@Composable
-private fun WarehouseChoice(
-    state: WorkerLoginState,
-    onChoose: (String) -> Unit,
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(24.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterVertically),
-    ) {
-        Text(
-            text = "Which warehouse today?",
-            style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.SemiBold,
-        )
-
-        state.warehouses.forEach { warehouse ->
-            Button(
-                onClick = { onChoose(warehouse.warehouseId) },
-                modifier = Modifier.fillMaxWidth().heightIn(min = 64.dp),
-            ) {
-                Text(warehouse.label)
-            }
         }
     }
 }
