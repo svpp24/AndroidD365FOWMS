@@ -310,6 +310,11 @@ class WorkerSessionRepository @Inject constructor(
             val match = current?.warehouses?.firstOrNull { it.warehouseId == warehouseId }
             if (match == null) current else current.copy(selected = match)
         }
+        // Debug builds keep the session across a rebuild (see restoreDebugSession); keep the
+        // chosen warehouse with it, so a reinstall does not ask for the warehouse again.
+        if (BuildConfig.DEBUG && secureStore.getString(SecureStore.KEY_DEBUG_WORKER_SESSION) != null) {
+            _session.value?.let { secureStore.putString(SecureStore.KEY_DEBUG_WORKER_SESSION, json.encodeToString(WorkerSession.serializer(), it)) }
+        }
     }
 
     fun signOut() {
