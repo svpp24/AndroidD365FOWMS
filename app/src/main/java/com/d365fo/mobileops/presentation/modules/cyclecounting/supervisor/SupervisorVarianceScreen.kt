@@ -4,6 +4,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -138,48 +140,21 @@ private fun VarianceContent(state: SupervisorVarianceState, viewModel: Superviso
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             Text(
-                text = "${all.count { it.counted }} of ${all.size} lines counted · ${state.overToleranceCount} need a decision",
-                style = MaterialTheme.typography.titleSmall,
+                text = listOfNotNull(
+                    "${all.count { it.counted }}/${all.size} counted",
+                    "${state.overToleranceCount} need a decision",
+                    state.variance?.toleranceText?.let { "tolerance $it" },
+                ).joinToString(" · "),
+                style = MaterialTheme.typography.bodyMedium,
                 fontWeight = FontWeight.SemiBold,
+                maxLines = 2,
             )
-            state.variance?.toleranceText?.let {
-                Text("Tolerance: $it", style = MaterialTheme.typography.bodySmall, color = WarehouseStatusColors.text3)
-            }
             if (state.posted) {
                 Text("Posted in D365FO.", color = WarehouseStatusColors.green, style = MaterialTheme.typography.bodyMedium)
             }
-            Row(
-                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-            ) {
-                FilterChip(
-                    selected = state.filter.overToleranceOnly,
-                    onClick = { viewModel.setFilter(state.filter.copy(overToleranceOnly = !state.filter.overToleranceOnly)) },
-                    label = { Text("Needs decision") },
-                )
-                state.statusCounts.forEach { (status, count) ->
-                    FilterChip(
-                        selected = state.filter.status == status,
-                        onClick = { viewModel.setFilter(state.filter.copy(status = status.takeIf { state.filter.status != it })) },
-                        label = { Text("${status.label} $count") },
-                    )
-                }
-                state.abcClasses.forEach { abc ->
-                    FilterChip(
-                        selected = state.filter.abcClass == abc,
-                        onClick = { viewModel.setFilter(state.filter.copy(abcClass = abc.takeIf { state.filter.abcClass != it })) },
-                        label = { Text("Class $abc") },
-                    )
-                }
-                state.counters.forEach { counter ->
-                    FilterChip(
-                        selected = state.filter.countedBy == counter,
-                        onClick = { viewModel.setFilter(state.filter.copy(countedBy = counter.takeIf { state.filter.countedBy != it })) },
-                        label = { Text(counter) },
-                    )
-                }
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                VarianceFilterMenu(state, viewModel)
+                Spacer(Modifier.weight(1f))
                 Text(
                     text = "${state.selected.size} selected",
                     style = MaterialTheme.typography.bodySmall,
@@ -224,6 +199,43 @@ private fun VarianceContent(state: SupervisorVarianceState, viewModel: Superviso
                 enabled = !state.busy && !state.posted,
                 modifier = Modifier.fillMaxWidth().heightIn(min = WarehouseDimens.MinTouchTarget),
             ) { Text(if (state.busy) "Working…" else "Post journal") }
+        }
+    }
+}
+
+/** Every filter in one menu - status, class, counter and "needs decision" - instead of a sideways chip row. */
+@Composable
+private fun VarianceFilterMenu(state: SupervisorVarianceState, viewModel: SupervisorVarianceViewModel) {
+    var open by remember { mutableStateOf(false) }
+    val f = state.filter
+    val active = listOfNotNull(
+        "Needs decision".takeIf { f.overToleranceOnly },
+        f.status?.label,
+        f.abcClass?.let { "Class $it" },
+        f.countedBy,
+    )
+    Box {
+        TextButton(onClick = { open = true }) {
+            Text(if (active.isEmpty()) "Filter: all lines \u25BE" else "Filter: ${active.joinToString(", ")} \u25BE", maxLines = 1)
+        }
+        androidx.compose.material3.DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            @Composable
+            fun item(label: String, checked: Boolean, onClick: () -> Unit) = androidx.compose.material3.DropdownMenuItem(
+                text = { Text(label, fontWeight = if (checked) FontWeight.SemiBold else FontWeight.Normal) },
+                leadingIcon = { Checkbox(checked = checked, onCheckedChange = null) },
+                onClick = onClick,
+            )
+            item("All lines", active.isEmpty()) { viewModel.setFilter(f.copy(overToleranceOnly = false, status = null, abcClass = null, countedBy = null)); open = false }
+            item("Needs decision", f.overToleranceOnly) { viewModel.setFilter(f.copy(overToleranceOnly = !f.overToleranceOnly)) }
+            state.statusCounts.forEach { (status, count) ->
+                item("${status.label} ($count)", f.status == status) { viewModel.setFilter(f.copy(status = status.takeIf { f.status != it })) }
+            }
+            state.abcClasses.forEach { abc ->
+                item("Class $abc", f.abcClass == abc) { viewModel.setFilter(f.copy(abcClass = abc.takeIf { f.abcClass != it })) }
+            }
+            state.counters.forEach { counter ->
+                item("Counted by $counter", f.countedBy == counter) { viewModel.setFilter(f.copy(countedBy = counter.takeIf { f.countedBy != it })) }
+            }
         }
     }
 }
@@ -304,6 +316,7 @@ private fun StatusLabel(status: CountStatus) {
  * and for a recount who should do it. The reason code is written to the journal line in D365FO,
  * so it posts with the count.
  */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 private fun DecisionDialog(
     action: ReviewAction,
@@ -338,16 +351,34 @@ private fun DecisionDialog(
                 )
                 if (reasonCodes.isNotEmpty()) {
                     Text("Reason", style = MaterialTheme.typography.labelLarge)
-                    Row(
-                        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    ) {
-                        reasonCodes.forEach { code ->
-                            FilterChip(
-                                selected = reason == code.code,
-                                onClick = { reason = code.code.takeIf { reason != it } },
-                                label = { Text(if (code.description != code.code) "${code.code} \u00B7 ${code.description}" else code.code) },
-                            )
+                    fun label(code: CountReasonCode) =
+                        if (code.description.isNotBlank() && code.description != code.code) "${code.description} (${code.code})" else code.code
+                    if (reasonCodes.size > 4) {
+                        Column(
+                            modifier = Modifier.fillMaxWidth().heightIn(max = 220.dp)
+                                .verticalScroll(rememberScrollState()),
+                        ) {
+                            reasonCodes.forEach { code ->
+                                Row(
+                                    modifier = Modifier.fillMaxWidth()
+                                        .clickable { reason = code.code.takeIf { reason != it } }
+                                        .heightIn(min = 44.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    androidx.compose.material3.RadioButton(selected = reason == code.code, onClick = null)
+                                    Text(label(code), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(start = 8.dp))
+                                }
+                            }
+                        }
+                    } else {
+                        androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            reasonCodes.forEach { code ->
+                                FilterChip(
+                                    selected = reason == code.code,
+                                    onClick = { reason = code.code.takeIf { reason != it } },
+                                    label = { Text(label(code)) },
+                                )
+                            }
                         }
                     }
                 }

@@ -468,7 +468,30 @@ class TransferFlowViewModel @Inject constructor(
         }
     }
 
-    private suspend fun onItem(value: String) {
+    /**
+     * Answers carried by a GS1 barcode (count, batch, serial), applied as the flow reaches each
+     * step - one GS1 scan can answer the item, quantity, batch and serial. Cleared per line.
+     */
+    private val gs1Answers = HashMap<TransferStep, String>()
+
+    /** The item step: a GS1 element string first (GTIN + data), otherwise item number or barcode. */
+    private suspend fun onItem(raw: String) {
+        val gs1 = com.d365fo.mobileops.domain.model.Gs1Parser.parse(raw) ?: return onItemCode(raw)
+        gs1Answers.clear()
+        gs1.quantity?.let { gs1Answers[TransferStep.QUANTITY] = it.stripTrailingZeros().toPlainString() }
+        gs1.batch?.let { gs1Answers[TransferStep.BATCH] = it }
+        gs1.serial?.let { gs1Answers[TransferStep.SERIAL] = it }
+        // The GTIN is the item's barcode in D365FO, stored as GTIN-14 or shortened to 13/12/8.
+        val code = gs1.gtinCandidates.firstOrNull { candidate ->
+            (lookups.lookupBarcode(candidate) as? NetworkResult.Success)?.data != null
+        } ?: run {
+            gs1Answers.clear()
+            return fail("GTIN ${gs1.gtin} is not a barcode of any item in D365FO")
+        }
+        onItemCode(code)
+    }
+
+    private suspend fun onItemCode(value: String) {
         linesFor(value)?.let { return chooseAmong(it) }
 
         // See the identical fast-fail on ReceivingFlowViewModel.onItem and the same reasoning:
@@ -693,12 +716,21 @@ class TransferFlowViewModel @Inject constructor(
     private fun advance() {
         val next = nextIncompleteTransferStep(_state.value.capture)
         if (next == TransferStep.CONFIRM) {
+            gs1Answers.clear()
             bankCurrentLine()
             _state.update { it.copy(step = TransferStep.ITEM) }
             persist()
         } else {
             scanFeedback.success()
             _state.update { it.copy(step = next) }
+            // A GS1 scan already answered this step: apply it, after this submit has finished.
+            gs1Answers.remove(next)?.let { answer ->
+                viewModelScope.launch {
+                    kotlinx.coroutines.delay(GS1_AUTOFILL_DELAY_MS)
+                    lastRaw = null
+                    submit(answer)
+                }
+            }
         }
     }
 
@@ -776,3 +808,5 @@ private fun StoredLine.toCapturedTransfer() = CapturedTransferLine(
     batchId = batchId,
     serialIds = serialIds,
 )
+
+private const val GS1_AUTOFILL_DELAY_MS = 150L

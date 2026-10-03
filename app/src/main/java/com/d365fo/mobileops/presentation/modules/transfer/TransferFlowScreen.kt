@@ -318,7 +318,10 @@ private fun StepPrompt(
             // booked in full.
             if (state.step == TransferStep.QUANTITY) {
                 state.suggestedQuantity?.let { outstanding ->
-                    TextButton(onClick = { onSubmit(plain(outstanding)) }) {
+                    com.d365fo.mobileops.presentation.common.components.SquareOutlinedButton(
+                        onClick = { onSubmit(plain(outstanding)) },
+                        modifier = Modifier.fillMaxWidth().heightIn(min = WarehouseDimens.MinTouchTarget),
+                    ) {
                         Text(
                             if (state.capture.mode == TransferMode.SHIP) {
                                 "Ship all outstanding (${plain(outstanding)})"

@@ -247,6 +247,13 @@ fun HomeScreen(
     val unfinished by unfinishedViewModel.unfinished.collectAsStateWithLifecycle()
     val onHoldElsewhere by unfinishedViewModel.onHoldElsewhere.collectAsStateWithLifecycle()
     val blockedWorkflows by accessViewModel.blockedWorkflows.collectAsStateWithLifecycle()
+    val usage = rememberModuleUsage(warehouseId)
+    // Most-used first; modules this worker has no permission for are left out, planned ones last.
+    val modules = remember(blockedWorkflows, usage.version) {
+        MODULES
+            .filter { it.workflow == null || it.workflow !in blockedWorkflows }
+            .sortedWith(compareBy<ModuleTile>({ !it.available }, { -usage.count(it.title) }))
+    }
 
     infoFor?.let { module ->
         val enabled = module.workflow == null || module.workflow !in blockedWorkflows
@@ -361,7 +368,7 @@ fun HomeScreen(
             // reference layout's menu grid, on explicit instruction. Chunked into rows rather than
             // a lazy grid: ten tiles gain nothing from lazy grid composition, and chunking keeps
             // both cards in a row equal-width via weight(1f).
-            items(MODULES.chunked(2), key = { row -> row.joinToString { it.title } }, contentType = { "module-row" }) { row ->
+            items(modules.chunked(2), key = { row -> row.joinToString { it.title } }, contentType = { "module-row" }) { row ->
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                     modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min),
@@ -373,7 +380,10 @@ fun HomeScreen(
                             enabled = enabled,
                             onClick = {
                                 if (!unfinishedViewModel.justScanned()) {
-                                    if (enabled) module.route?.let(onModuleSelected)
+                                    if (enabled) module.route?.let { route ->
+                                        usage.record(module.title)
+                                        onModuleSelected(route)
+                                    }
                                 }
                             },
                             onInfo = { infoFor = module },
@@ -597,5 +607,29 @@ private fun relativeTime(epochMs: Long): String {
         minutes < 60 -> "$minutes min ago"
         minutes < 60 * 24 -> "${minutes / 60} h ago"
         else -> "${minutes / (60 * 24)} d ago"
+    }
+}
+
+/**
+ * How often each module was opened on this device - a per-device convenience for ordering the
+ * Home tiles, nothing that needs to survive a reinstall. Reads and writes never throw.
+ */
+private class ModuleUsage(private val prefs: android.content.SharedPreferences?) {
+    var version by mutableStateOf(0)
+        private set
+
+    fun count(title: String): Int = runCatching { prefs?.getInt(title, 0) ?: 0 }.getOrDefault(0)
+
+    fun record(title: String) {
+        runCatching { prefs?.edit()?.putInt(title, count(title) + 1)?.apply() }
+        version++
+    }
+}
+
+@Composable
+private fun rememberModuleUsage(@Suppress("UNUSED_PARAMETER") key: String?): ModuleUsage {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    return remember {
+        ModuleUsage(runCatching { context.getSharedPreferences("home_module_usage", android.content.Context.MODE_PRIVATE) }.getOrNull())
     }
 }

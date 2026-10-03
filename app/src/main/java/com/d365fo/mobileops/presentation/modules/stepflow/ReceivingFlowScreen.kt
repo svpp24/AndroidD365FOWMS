@@ -358,8 +358,14 @@ private fun StepPrompt(
             // full.
             if (state.step == ReceivingStep.QUANTITY) {
                 state.suggestedQuantity?.let { outstanding ->
-                    TextButton(onClick = { onSubmit(plain(outstanding)) }) {
-                        Text("Receive all outstanding (${plain(outstanding)})")
+                    // The main action when one scanned pack already covers what is left.
+                    val primary = state.scannedPackSize?.let { outstanding <= it } == true
+                    val label = "Receive all outstanding (${plain(outstanding)})"
+                    val mod = Modifier.fillMaxWidth().heightIn(min = WarehouseDimens.MinTouchTarget)
+                    if (primary) {
+                        com.d365fo.mobileops.presentation.common.components.SquareButton(onClick = { onSubmit(plain(outstanding)) }, modifier = mod) { Text(label) }
+                    } else {
+                        com.d365fo.mobileops.presentation.common.components.SquareOutlinedButton(onClick = { onSubmit(plain(outstanding)) }, modifier = mod) { Text(label) }
                     }
                 }
                 state.scannedPackSize?.let { pack ->
