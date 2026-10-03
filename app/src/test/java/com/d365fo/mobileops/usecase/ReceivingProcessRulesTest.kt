@@ -55,22 +55,17 @@ class ReceivingProcessRulesTest {
         tracking = TrackingRequirement.NONE,
     )
 
-    @Test
-    fun `the delivery note is asked for before any goods are counted`() {
-        val steps = stepsFor(ReceivingCapture())
+    // Receiving only registers now, so the vendor's delivery note is no longer asked
+    // (see ReceivingStep.PACKING_SLIP) - an order goes straight to the item.
 
-        // Ask afterwards and the operator has to walk back to the cab for the note.
-        assertThat(steps.indexOf(ReceivingStep.PACKING_SLIP))
-            .isLessThan(steps.indexOf(ReceivingStep.ITEM))
-        assertThat(steps.indexOf(ReceivingStep.PACKING_SLIP))
-            .isGreaterThan(steps.indexOf(ReceivingStep.PURCHASE_ORDER))
+    @Test
+    fun `the delivery note is no longer asked`() {
+        assertThat(stepsFor(ReceivingCapture())).doesNotContain(ReceivingStep.PACKING_SLIP)
     }
 
     @Test
-    fun `an order alone does not get past the delivery note`() {
-        val capture = ReceivingCapture(purchId = "PO-1")
-
-        assertThat(nextIncompleteStep(capture)).isEqualTo(ReceivingStep.PACKING_SLIP)
+    fun `an order goes straight to the item`() {
+        assertThat(nextIncompleteStep(ReceivingCapture(purchId = "PO-1"))).isEqualTo(ReceivingStep.ITEM)
     }
 
     @Test
@@ -78,15 +73,6 @@ class ReceivingProcessRulesTest {
         val capture = ReceivingCapture(purchId = "PO-1", vendorPackingSlipId = "DN-99812")
 
         assertThat(nextIncompleteStep(capture)).isEqualTo(ReceivingStep.ITEM)
-    }
-
-    @Test
-    fun `a blank delivery note does not count as captured`() {
-        // Posting a product receipt without the vendor's reference leaves a GRN nobody can
-        // reconcile, so an empty string must not satisfy the step.
-        val capture = ReceivingCapture(purchId = "PO-1", vendorPackingSlipId = "   ")
-
-        assertThat(nextIncompleteStep(capture)).isEqualTo(ReceivingStep.PACKING_SLIP)
     }
 
     @Test
@@ -105,10 +91,9 @@ class ReceivingProcessRulesTest {
     }
 
     @Test
-    fun `stepping back to the delivery note clears everything captured after it`() {
+    fun `stepping back to the item clears everything captured after it`() {
         val complete = ReceivingCapture(
             purchId = "PO-1",
-            vendorPackingSlipId = "DN-1",
             line = line(),
             item = item(),
             quantity = BigDecimal("5"),
@@ -117,21 +102,15 @@ class ReceivingProcessRulesTest {
 
         assertThat(nextIncompleteStep(complete)).isEqualTo(ReceivingStep.CONFIRM)
 
-        // Correcting the note must not leave a quantity banked against the old one.
-        val corrected = complete.copy(
-            vendorPackingSlipId = null,
-            item = null,
-            quantity = null,
-            locationId = null,
-        )
-        assertThat(nextIncompleteStep(corrected)).isEqualTo(ReceivingStep.PACKING_SLIP)
+        // Correcting the item must not leave a quantity banked against the old one.
+        val corrected = complete.copy(line = null, item = null, quantity = null, locationId = null)
+        assertThat(nextIncompleteStep(corrected)).isEqualTo(ReceivingStep.ITEM)
     }
 
     @Test
-    fun `an item with no location dimension still needs the delivery note`() {
+    fun `an item with no location dimension skips the location`() {
         val steps = stepsFor(ReceivingCapture(item = item(location = false)))
 
-        assertThat(steps).contains(ReceivingStep.PACKING_SLIP)
         assertThat(steps).doesNotContain(ReceivingStep.LOCATION)
     }
 }

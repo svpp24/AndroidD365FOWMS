@@ -14,10 +14,6 @@
 			<Method>changePassword</Method>
 		</AxServiceOperation>
 		<AxServiceOperation>
-			<Name>setModulePermission</Name>
-			<Method>setModulePermission</Method>
-		</AxServiceOperation>
-		<AxServiceOperation>
 			<Name>getWorkerDirectory</Name>
 			<Method>getWorkerDirectory</Method>
 		</AxServiceOperation>

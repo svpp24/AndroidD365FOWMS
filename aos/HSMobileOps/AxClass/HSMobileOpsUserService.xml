@@ -514,79 +514,12 @@ class HSMobileOpsUserService
         HSMobileOpsSetModulePermissionRequest _request)
     {
         HSMobileOpsSetModulePermissionResponse response = new HSMobileOpsSetModulePermissionResponse();
-        HSMobileOpsUser                        actingUser;
-        HSMobileOpsUser                        targetUser;
-        HSMobileOpsModule                      module;
-        HSMobileOpsUserModulePermission        permission;
-        DataAreaId                             company;
 
+        // Menu access is maintained in D365FO only (Mobile device users, Menu access tab). The
+        // operation is no longer published on HSMobileOpsUserSvc; this refuses any other caller.
         response.parmSuccess(false);
-
-        if (!_request
-         || !_request.parmDataAreaId()
-         || !_request.parmActingUserName()
-         || !_request.parmTargetUserName()
-         || !_request.parmModule())
-        {
-            response.parmErrorCode('INVALID_REQUEST');
-            response.parmMessage('Company, acting user, target user and module are all required');
-            return response;
-        }
-
-        company = _request.parmDataAreaId();
-        module  = HSMobileOpsUserService::moduleFromCode(_request.parmModule());
-
-        if (module == -1)
-        {
-            response.parmErrorCode('INVALID_MODULE');
-            response.parmMessage(strFmt('Unrecognised module %1', _request.parmModule()));
-            return response;
-        }
-
-        changecompany (company)
-        {
-            actingUser = HSMobileOpsUser::find(_request.parmActingUserName());
-            if (!actingUser.RecId)
-            {
-                response.parmErrorCode('ACTING_USER_NOT_FOUND');
-                response.parmMessage('The signed-in user could not be re-verified');
-                return response;
-            }
-
-            if (actingUser.IsSupervisor != NoYes::Yes)
-            {
-                response.parmErrorCode('NOT_SUPERVISOR');
-                response.parmMessage('Only a supervisor may change module access');
-                return response;
-            }
-
-            targetUser = HSMobileOpsUser::find(_request.parmTargetUserName());
-            if (!targetUser.RecId)
-            {
-                response.parmErrorCode('TARGET_USER_NOT_FOUND');
-                response.parmMessage(strFmt('No mobile user %1', _request.parmTargetUserName()));
-                return response;
-            }
-
-            ttsbegin;
-            select forUpdate permission
-                where permission.UserRecId == targetUser.RecId
-                   && permission.Module    == module;
-
-            if (!permission.RecId)
-            {
-                permission.UserRecId = targetUser.RecId;
-                permission.Module    = module;
-                permission.insert();
-            }
-
-            permission.IsAllowed = _request.parmIsAllowed() ? NoYes::Yes : NoYes::No;
-            permission.update();
-            ttscommit;
-
-            response.parmSuccess(true);
-        }
-
+        response.parmErrorCode('MANAGED_IN_D365');
+        response.parmMessage('Menu access is set up in D365FO on the Mobile device users form.');
         return response;
     }
 ]]></Source>

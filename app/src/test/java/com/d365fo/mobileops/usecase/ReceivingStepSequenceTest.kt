@@ -63,7 +63,6 @@ class ReceivingStepSequenceTest {
 
         assertThat(steps).containsExactly(
             ReceivingStep.PURCHASE_ORDER,
-            ReceivingStep.PACKING_SLIP,
             ReceivingStep.ITEM,
             ReceivingStep.QUANTITY,
             ReceivingStep.LOCATION,
