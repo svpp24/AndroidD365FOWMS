@@ -328,13 +328,69 @@ class ServiceLookupRepository @Inject constructor(
      * inside [lookupOrder]'s line contracts — so on the service path the item step costs nothing.
      * These two remain for the barcode case and for callers that ask about an item outside a PO.
      */
-    override suspend fun lookupBarcode(barcode: String): NetworkResult<BarcodeMatch?> =
-        odataFallback.lookupBarcode(barcode)
+    // Item, barcode and warehouse reads from HSMobileOpsItemSvc - no OData.
 
-    override suspend fun lookupItem(itemNumber: String): NetworkResult<ItemFacts?> =
-        odataFallback.lookupItem(itemNumber)
+    private fun <T> refused(code: String, whatFailed: String): NetworkResult<T> =
+        NetworkResult.Error(AppFailure.BusinessRule(com.d365fo.mobileops.util.plainError(code, whatFailed), code))
 
-    override suspend fun listWarehouses() = odataFallback.listWarehouses()
+    override suspend fun lookupBarcode(barcode: String): NetworkResult<BarcodeMatch?> = withContext(ioDispatcher) {
+        val code = barcode.trim()
+        if (code.isEmpty()) return@withContext NetworkResult.Success(null)
+        when (val r = errorMapper.safeCall { service.getBarcode(com.d365fo.mobileops.data.remote.dto.BarcodeServiceRequest(com.d365fo.mobileops.data.remote.dto.BarcodeRequestBody(company(), code))) }) {
+            is NetworkResult.Error -> r
+            NetworkResult.Loading -> NetworkResult.Error(AppFailure.Fatal("unexpected Loading"))
+            is NetworkResult.Success -> when {
+                !r.data.success -> refused(r.data.errorCode, "Couldn't look up the barcode")
+                r.data.itemId.isBlank() -> NetworkResult.Success(null)
+                else -> NetworkResult.Success(
+                    BarcodeMatch(
+                        barcode = code,
+                        itemNumber = r.data.itemId,
+                        quantityPerScan = BigDecimal.valueOf(r.data.quantity).takeIf { it.signum() > 0 } ?: BigDecimal.ONE,
+                        unitSymbol = r.data.unitId.takeIf { it.isNotBlank() },
+                        variant = com.d365fo.mobileops.domain.model.ProductVariant.of(r.data.configId, r.data.sizeId, r.data.colorId, r.data.styleId),
+                    ),
+                )
+            }
+        }
+    }
+
+    override suspend fun lookupItem(itemNumber: String): NetworkResult<ItemFacts?> = withContext(ioDispatcher) {
+        val id = itemNumber.trim()
+        if (id.isEmpty()) return@withContext NetworkResult.Success(null)
+        when (val r = errorMapper.safeCall { service.getItem(com.d365fo.mobileops.data.remote.dto.ItemServiceRequest(com.d365fo.mobileops.data.remote.dto.ItemRequestBody(company(), id))) }) {
+            is NetworkResult.Error -> r
+            NetworkResult.Loading -> NetworkResult.Error(AppFailure.Fatal("unexpected Loading"))
+            is NetworkResult.Success -> when {
+                !r.data.success -> refused(r.data.errorCode, "Couldn't look up the item")
+                r.data.itemId.isBlank() -> NetworkResult.Success(null)
+                else -> NetworkResult.Success(
+                    ItemFacts(
+                        itemNumber = r.data.itemId,
+                        productName = r.data.itemName,
+                        inventoryUnit = r.data.inventUnit,
+                        purchaseUnit = r.data.purchUnit.takeIf { it.isNotBlank() },
+                        batchRequired = r.data.batchActive,
+                        serialRequired = r.data.serialActive,
+                        locationRequired = r.data.locationActive,
+                    ),
+                )
+            }
+        }
+    }
+
+    override suspend fun listWarehouses(): NetworkResult<List<com.d365fo.mobileops.domain.repository.WarehouseOption>> = withContext(ioDispatcher) {
+        when (val r = errorMapper.safeCall { service.getWarehousesService(com.d365fo.mobileops.data.remote.dto.WarehousesServiceRequest(com.d365fo.mobileops.data.remote.dto.WarehousesRequestBody(company()))) }) {
+            is NetworkResult.Error -> r
+            NetworkResult.Loading -> NetworkResult.Error(AppFailure.Fatal("unexpected Loading"))
+            is NetworkResult.Success -> if (!r.data.success) refused(r.data.errorCode, "Couldn't list warehouses")
+            else NetworkResult.Success(
+                r.data.warehouses.filter { it.warehouseId.isNotBlank() }.map {
+                    com.d365fo.mobileops.domain.repository.WarehouseOption(it.warehouseId, it.warehouseName, it.siteId)
+                },
+            )
+        }
+    }
 
     /**
      * PO of today from HSMobileOpsPurchListSvc (PurchTable in X++) - no OData. "Today" is the

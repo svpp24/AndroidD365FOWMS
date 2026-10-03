@@ -303,6 +303,28 @@ interface MobileOpsServiceApi {
         @Tag tag: IdempotentRead = IdempotentRead,
     ): Response<com.d365fo.mobileops.data.remote.dto.OrdersForDateServiceResponse>
 
+    // -- Items, barcodes, warehouses (HSMobileOpsItemSvc) --------------------------------------
+    //
+    // Replace the ReleasedProductsV2 / item barcode / Warehouses OData reads. All pure reads.
+
+    @POST("HSMobileOpsServiceGroup/HSMobileOpsItemSvc/getItem")
+    suspend fun getItem(
+        @Body body: com.d365fo.mobileops.data.remote.dto.ItemServiceRequest,
+        @Tag tag: IdempotentRead = IdempotentRead,
+    ): Response<com.d365fo.mobileops.data.remote.dto.ItemServiceResponse>
+
+    @POST("HSMobileOpsServiceGroup/HSMobileOpsItemSvc/getBarcode")
+    suspend fun getBarcode(
+        @Body body: com.d365fo.mobileops.data.remote.dto.BarcodeServiceRequest,
+        @Tag tag: IdempotentRead = IdempotentRead,
+    ): Response<com.d365fo.mobileops.data.remote.dto.BarcodeServiceResponse>
+
+    @POST("HSMobileOpsServiceGroup/HSMobileOpsItemSvc/getWarehouses")
+    suspend fun getWarehousesService(
+        @Body body: com.d365fo.mobileops.data.remote.dto.WarehousesServiceRequest,
+        @Tag tag: IdempotentRead = IdempotentRead,
+    ): Response<com.d365fo.mobileops.data.remote.dto.WarehousesServiceResponse>
+
     // -- Item units (HSMobileOpsUnitSvc) ------------------------------------------------------
     //
     // Units to the inventory unit for many item variants in one call - counting only; receiving

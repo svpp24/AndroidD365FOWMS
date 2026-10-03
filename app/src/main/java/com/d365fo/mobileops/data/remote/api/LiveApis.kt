@@ -198,6 +198,21 @@ class LiveMobileOpsServiceApi @Inject constructor(
         tag: com.d365fo.mobileops.data.remote.interceptor.IdempotentRead,
     ) = delegate.get().getOrdersForDate(body, tag)
 
+    override suspend fun getItem(
+        body: com.d365fo.mobileops.data.remote.dto.ItemServiceRequest,
+        tag: com.d365fo.mobileops.data.remote.interceptor.IdempotentRead,
+    ) = delegate.get().getItem(body, tag)
+
+    override suspend fun getBarcode(
+        body: com.d365fo.mobileops.data.remote.dto.BarcodeServiceRequest,
+        tag: com.d365fo.mobileops.data.remote.interceptor.IdempotentRead,
+    ) = delegate.get().getBarcode(body, tag)
+
+    override suspend fun getWarehousesService(
+        body: com.d365fo.mobileops.data.remote.dto.WarehousesServiceRequest,
+        tag: com.d365fo.mobileops.data.remote.interceptor.IdempotentRead,
+    ) = delegate.get().getWarehousesService(body, tag)
+
     override suspend fun getItemUnits(
         body: com.d365fo.mobileops.data.remote.dto.ItemUnitsServiceRequest,
         tag: com.d365fo.mobileops.data.remote.interceptor.IdempotentRead,

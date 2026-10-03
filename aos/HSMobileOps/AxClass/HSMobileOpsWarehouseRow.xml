@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsWarehouseRow</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// One warehouse (InventLocation).
+/// </summary>
+[DataContractAttribute]
+class HSMobileOpsWarehouseRow
+{
+    str warehouseId;
+    str warehouseName;
+    str siteId;
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmWarehouseId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('WarehouseId')]
+    public str parmWarehouseId(str _value = warehouseId)
+    {
+        warehouseId = _value;
+        return warehouseId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmWarehouseName</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('WarehouseName')]
+    public str parmWarehouseName(str _value = warehouseName)
+    {
+        warehouseName = _value;
+        return warehouseName;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmSiteId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('SiteId')]
+    public str parmSiteId(str _value = siteId)
+    {
+        siteId = _value;
+        return siteId;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

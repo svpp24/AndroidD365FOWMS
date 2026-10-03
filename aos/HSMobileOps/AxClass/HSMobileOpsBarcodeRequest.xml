@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsBarcodeRequest</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// getBarcode request.
+/// </summary>
+[DataContractAttribute]
+class HSMobileOpsBarcodeRequest
+{
+    DataAreaId dataAreaId;
+    str barcode;
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmDataAreaId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('DataAreaId')]
+    public DataAreaId parmDataAreaId(DataAreaId _value = dataAreaId)
+    {
+        dataAreaId = _value;
+        return dataAreaId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmBarcode</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Barcode')]
+    public str parmBarcode(str _value = barcode)
+    {
+        barcode = _value;
+        return barcode;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

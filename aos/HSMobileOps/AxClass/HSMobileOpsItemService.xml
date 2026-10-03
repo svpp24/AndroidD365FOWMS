@@ -1,0 +1,144 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsItemService</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Item and warehouse reads for the app, in X++ so the app needs no OData
+/// (ReleasedProductsV2 / Warehouses). Registered as HSMobileOpsItemSvc.
+/// </summary>
+class HSMobileOpsItemService
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>getItem</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// A released product: name, inventory and purchase unit, and whether batch, serial and
+    /// location are active in its dimension groups (InventDimGroupSetup, as posting reads them).
+    /// </summary>
+    public HSMobileOpsItemResponse getItem(HSMobileOpsItemRequest _request)
+    {
+        HSMobileOpsItemResponse response = new HSMobileOpsItemResponse();
+        InventTable             inventTable;
+        InventDimGroupSetup     setup;
+
+        response.parmSuccess(false);
+        if (!_request || !_request.parmDataAreaId() || !_request.parmItemId()
+            || !CompanyInfo::findDataArea(_request.parmDataAreaId()).RecId)
+        {
+            response.parmErrorCode('INVALID_REQUEST');
+            return response;
+        }
+
+        changecompany (_request.parmDataAreaId())
+        {
+            inventTable = InventTable::find(_request.parmItemId());
+            if (!inventTable.RecId)
+            {
+                // Not an error: the caller asked about something that is not a product.
+                response.parmSuccess(true);
+                return response;
+            }
+            setup = InventDimGroupSetup::newItemId(inventTable.ItemId);
+
+            response.parmItemId(inventTable.ItemId);
+            response.parmItemName(inventTable.itemName());
+            response.parmInventUnit(inventTable.inventUnitId());
+            response.parmPurchUnit(inventTable.purchUnitId());
+            response.parmBatchActive(setup.isDimensionActive(fieldNum(InventDim, InventBatchId)));
+            response.parmSerialActive(setup.isDimensionActive(fieldNum(InventDim, InventSerialId)));
+            response.parmLocationActive(setup.isDimensionActive(fieldNum(InventDim, wMSLocationId)));
+        }
+
+        response.parmSuccess(true);
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>getWarehouses</Name>
+				<Source><![CDATA[
+
+    /// <summary>Every warehouse of the company, by id.</summary>
+    public HSMobileOpsWarehousesResponse getWarehouses(HSMobileOpsWarehousesRequest _request)
+    {
+        HSMobileOpsWarehousesResponse response = new HSMobileOpsWarehousesResponse();
+        HSMobileOpsWarehouseRow       row;
+        List                          rows = new List(Types::Class);
+        InventLocation                inventLocation;
+
+        response.parmSuccess(false);
+        response.parmWarehouses(rows);
+        if (!_request || !_request.parmDataAreaId() || !CompanyInfo::findDataArea(_request.parmDataAreaId()).RecId)
+        {
+            response.parmErrorCode('INVALID_REQUEST');
+            return response;
+        }
+
+        changecompany (_request.parmDataAreaId())
+        {
+            while select InventLocationId, Name, InventSiteId from inventLocation
+                order by InventLocationId
+            {
+                row = new HSMobileOpsWarehouseRow();
+                row.parmWarehouseId(inventLocation.InventLocationId);
+                row.parmWarehouseName(inventLocation.Name);
+                row.parmSiteId(inventLocation.InventSiteId);
+                rows.addEnd(row);
+            }
+        }
+
+        response.parmWarehouses(rows);
+        response.parmSuccess(true);
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>getBarcode</Name>
+				<Source><![CDATA[
+
+    /// <summary>The item a barcode identifies (InventItemBarcode), with its variant and pack quantity.</summary>
+    public HSMobileOpsBarcodeResponse getBarcode(HSMobileOpsBarcodeRequest _request)
+    {
+        HSMobileOpsBarcodeResponse response = new HSMobileOpsBarcodeResponse();
+        InventItemBarcode          barcode;
+        InventDim                  inventDim;
+
+        response.parmSuccess(false);
+        if (!_request || !_request.parmDataAreaId() || !_request.parmBarcode()
+            || !CompanyInfo::findDataArea(_request.parmDataAreaId()).RecId)
+        {
+            response.parmErrorCode('INVALID_REQUEST');
+            return response;
+        }
+
+        changecompany (_request.parmDataAreaId())
+        {
+            select firstonly itemId, Qty, UnitID, inventDimId from barcode
+                where barcode.itemBarCode == _request.parmBarcode();
+            if (barcode.itemId)
+            {
+                inventDim = InventDim::find(barcode.inventDimId);
+                response.parmItemId(barcode.itemId);
+                response.parmQuantity(barcode.Qty);
+                response.parmUnitId(barcode.UnitID);
+                response.parmConfigId(inventDim.configId);
+                response.parmSizeId(inventDim.InventSizeId);
+                response.parmColorId(inventDim.InventColorId);
+                response.parmStyleId(inventDim.InventStyleId);
+            }
+        }
+
+        response.parmSuccess(true);
+        return response;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

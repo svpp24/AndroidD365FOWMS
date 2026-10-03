@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxService xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsItemSvc</Name>
+	<Class>HSMobileOpsItemService</Class>
+	<ExternalName>ItemService</ExternalName>
+	<Namespace>http://schemas.hs.com/mobileops</Namespace>
+	<ServiceOperations>
+		<AxServiceOperation>
+			<Name>getItem</Name>
+			<Method>getItem</Method>
+		</AxServiceOperation>
+		<AxServiceOperation>
+			<Name>getWarehouses</Name>
+			<Method>getWarehouses</Method>
+		</AxServiceOperation>
+		<AxServiceOperation>
+			<Name>getBarcode</Name>
+			<Method>getBarcode</Method>
+		</AxServiceOperation>
+	</ServiceOperations>
+</AxService>

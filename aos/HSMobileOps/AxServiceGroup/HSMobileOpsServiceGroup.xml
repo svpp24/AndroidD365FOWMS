@@ -59,5 +59,9 @@
 			<Name>HSMobileOpsUnitSvc</Name>
 			<Service>HSMobileOpsUnitSvc</Service>
 		</AxServiceGroupService>
+		<AxServiceGroupService>
+			<Name>HSMobileOpsItemSvc</Name>
+			<Service>HSMobileOpsItemSvc</Service>
+		</AxServiceGroupService>
 	</Services>
 </AxServiceGroup>

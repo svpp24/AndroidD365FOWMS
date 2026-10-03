@@ -1,0 +1,135 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsItemResponse</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// getItem response: the released product's name, units and which dimensions its dimension groups activate.
+/// </summary>
+[DataContractAttribute]
+class HSMobileOpsItemResponse
+{
+    boolean success;
+    str errorCode;
+    str itemId;
+    str itemName;
+    str inventUnit;
+    str purchUnit;
+    boolean batchActive;
+    boolean serialActive;
+    boolean locationActive;
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmSuccess</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Success')]
+    public boolean parmSuccess(boolean _value = success)
+    {
+        success = _value;
+        return success;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmErrorCode</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ErrorCode')]
+    public str parmErrorCode(str _value = errorCode)
+    {
+        errorCode = _value;
+        return errorCode;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmItemId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ItemId')]
+    public str parmItemId(str _value = itemId)
+    {
+        itemId = _value;
+        return itemId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmItemName</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ItemName')]
+    public str parmItemName(str _value = itemName)
+    {
+        itemName = _value;
+        return itemName;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmInventUnit</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('InventUnit')]
+    public str parmInventUnit(str _value = inventUnit)
+    {
+        inventUnit = _value;
+        return inventUnit;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmPurchUnit</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('PurchUnit')]
+    public str parmPurchUnit(str _value = purchUnit)
+    {
+        purchUnit = _value;
+        return purchUnit;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmBatchActive</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('BatchActive')]
+    public boolean parmBatchActive(boolean _value = batchActive)
+    {
+        batchActive = _value;
+        return batchActive;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmSerialActive</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('SerialActive')]
+    public boolean parmSerialActive(boolean _value = serialActive)
+    {
+        serialActive = _value;
+        return serialActive;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmLocationActive</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('LocationActive')]
+    public boolean parmLocationActive(boolean _value = locationActive)
+    {
+        locationActive = _value;
+        return locationActive;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>
