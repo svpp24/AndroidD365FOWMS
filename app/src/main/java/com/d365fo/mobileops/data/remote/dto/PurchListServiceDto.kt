@@ -24,6 +24,8 @@ data class OrderSummaryRowDto(
     @SerialName("VendorAccount") val vendorAccount: String? = null,
     /** PurchStatus symbol: Backorder, Received, Invoiced, Canceled or None. */
     @SerialName("Status") val status: String? = null,
+    /** False once every line is received - absent (older AOS) reads as still open. */
+    @SerialName("HasOpenLines") val hasOpenLines: Boolean = true,
     @SerialName("SiteId") val siteId: String? = null,
     @SerialName("WarehouseId") val warehouseId: String? = null,
     /** ISO date, yyyy-MM-dd. */

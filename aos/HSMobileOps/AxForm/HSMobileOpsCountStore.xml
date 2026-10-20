@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxForm xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns="Microsoft.Dynamics.AX.Metadata.V6">
+	<Name>HSMobileOpsCountStore</Name>
+	<SourceCode>
+		<Methods xmlns="">
+			<Method>
+				<Name>classDeclaration</Name>
+				<Source><![CDATA[
+/// <summary>
+/// Stock count stores: which stores each supervisor manages in the Stock count control center,
+/// and whether counts against counting journals there go to the control center for review.
+/// </summary>
+[Form]
+public class HSMobileOpsCountStore extends FormRun
+{
+}
+]]></Source>
+			</Method>
+		</Methods>
+		<DataSources xmlns="" />
+		<DataControls xmlns="" />
+		<Members xmlns="" />
+	</SourceCode>
+	<DataSources>
+		<AxFormDataSource xmlns="">
+			<Name>HSMobileOpsCountStore</Name>
+			<Table>HSMobileOpsCountStore</Table>
+			<Fields />
+			<ReferencedDataSources />
+			<InsertIfEmpty>No</InsertIfEmpty>
+			<DataSourceLinks />
+			<DerivedDataSources />
+		</AxFormDataSource>
+	</DataSources>
+	<Design>
+		<Caption xmlns="">Stock count stores</Caption>
+		<DataSource xmlns="">HSMobileOpsCountStore</DataSource>
+		<Controls xmlns="">
+			<AxFormControl xmlns=""
+				i:type="AxFormActionPaneControl">
+				<Name>ActionPane</Name>
+				<Type>ActionPane</Type>
+				<FormControlExtension
+					i:nil="true" />
+				<Controls />
+				<AlignChild>No</AlignChild>
+				<AlignChildren>No</AlignChildren>
+				<ArrangeMethod>Vertical</ArrangeMethod>
+			</AxFormControl>
+			<AxFormControl xmlns=""
+				i:type="AxFormGridControl">
+				<Name>StoreGrid</Name>
+				<Type>Grid</Type>
+				<FormControlExtension
+					i:nil="true" />
+				<Controls>
+							<AxFormControl xmlns=""
+								i:type="AxFormStringControl">
+								<Name>Store_InventLocationId</Name>
+								<Type>String</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<DataField>InventLocationId</DataField>
+								<DataSource>HSMobileOpsCountStore</DataSource>
+							</AxFormControl>
+							<AxFormControl xmlns=""
+								i:type="AxFormStringControl">
+								<Name>Store_SupervisorUserId</Name>
+								<Type>String</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<DataField>SupervisorUserId</DataField>
+								<DataSource>HSMobileOpsCountStore</DataSource>
+							</AxFormControl>
+							<AxFormControl xmlns=""
+								i:type="AxFormCheckBoxControl">
+								<Name>Store_StageJournalCounts</Name>
+								<Type>CheckBox</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<DataField>StageJournalCounts</DataField>
+								<DataSource>HSMobileOpsCountStore</DataSource>
+							</AxFormControl>
+				</Controls>
+				<DataSource>HSMobileOpsCountStore</DataSource>
+				<Style>Tabular</Style>
+			</AxFormControl>
+		</Controls>
+	</Design>
+	<Parts />
+</AxForm>

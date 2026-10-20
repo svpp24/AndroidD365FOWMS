@@ -8,8 +8,6 @@ import com.d365fo.mobileops.data.remote.dto.RegisterDeviceServiceRequest
 import com.d365fo.mobileops.data.remote.dto.RegisterDeviceServiceResponse
 import com.d365fo.mobileops.data.remote.dto.SetModulePermissionServiceRequest
 import com.d365fo.mobileops.data.remote.dto.SetModulePermissionServiceResponse
-import com.d365fo.mobileops.data.remote.dto.SkuExportServiceRequest
-import com.d365fo.mobileops.data.remote.dto.SkuExportServiceResponse
 import com.d365fo.mobileops.data.remote.dto.WorkerDirectoryServiceRequest
 import com.d365fo.mobileops.data.remote.dto.WorkerDirectoryServiceResponse
 import com.d365fo.mobileops.data.remote.dto.ChangePasswordServiceResponse
@@ -221,6 +219,10 @@ interface MobileOpsServiceApi {
     @POST("HSMobileOpsServiceGroup/HSMobileOpsPostingSvc/postTransferReceipt")
     suspend fun postTransferReceipt(@Body body: PostServiceRequest): Response<PostServiceResponse>
 
+    /** Picks (positive quantity) or unpicks a scanned shipment line now - see TransferPicker. */
+    @POST("HSMobileOpsServiceGroup/HSMobileOpsPostingSvc/pickTransferLine")
+    suspend fun pickTransferLine(@Body body: PostServiceRequest): Response<PostServiceResponse>
+
     /**
      * Works every Pending row in HSMobileOpsPostQueue for this company and reports what each
      * became. Operator-triggered from the Activity screen - see the class doc on
@@ -237,16 +239,7 @@ interface MobileOpsServiceApi {
         @Body body: PostQueueServiceRequest,
     ): Response<PostQueueServiceResponse>
 
-    // -- Bulk SKU sync ------------------------------------------------------------------------
-    //
-    // Sets up the two DMF export projects only - the actual export is driven by the app itself
-    // via the public ExportToPackage/.../GetExportedPackageUrl OData actions (see DmfDto.kt),
-    // same flow CountingJournalRepository already uses. NOT tagged IdempotentRead - it creates
-    // DMF definition groups server-side on first call, so it is a write, even though a repeat
-    // call is idempotent by construction (HSMobileOpsSkuExportSetup finds-or-creates).
-
-    @POST("HSMobileOpsServiceGroup/HSMobileOpsSkuSvc/exportSkuMaster")
-    suspend fun exportSkuMaster(@Body body: SkuExportServiceRequest): Response<SkuExportServiceResponse>
+    // -- Bulk SKU sync: see getSkuPage and SkuSyncRepository (paged, delta) ----------------
 
     // -- Offline licensing (certificate-chain design) --------------------------------------
     //
@@ -303,6 +296,20 @@ interface MobileOpsServiceApi {
         @Tag tag: IdempotentRead = IdempotentRead,
     ): Response<com.d365fo.mobileops.data.remote.dto.OrdersForDateServiceResponse>
 
+    // -- Transfer order lists and serial history (HSMobileOpsTransferListSvc) - pure reads ------
+
+    @POST("HSMobileOpsServiceGroup/HSMobileOpsTransferListSvc/listTransferOrders")
+    suspend fun listTransferOrders(
+        @Body body: com.d365fo.mobileops.data.remote.dto.TransferListServiceRequest,
+        @Tag tag: IdempotentRead = IdempotentRead,
+    ): Response<com.d365fo.mobileops.data.remote.dto.TransferListServiceResponse>
+
+    @POST("HSMobileOpsServiceGroup/HSMobileOpsTransferListSvc/listPickedSerials")
+    suspend fun listPickedSerials(
+        @Body body: com.d365fo.mobileops.data.remote.dto.TransferListServiceRequest,
+        @Tag tag: IdempotentRead = IdempotentRead,
+    ): Response<com.d365fo.mobileops.data.remote.dto.TransferListServiceResponse>
+
     // -- Items, barcodes, warehouses (HSMobileOpsItemSvc) --------------------------------------
     //
     // Replace the ReleasedProductsV2 / item barcode / Warehouses OData reads. All pure reads.
@@ -325,15 +332,6 @@ interface MobileOpsServiceApi {
         @Tag tag: IdempotentRead = IdempotentRead,
     ): Response<com.d365fo.mobileops.data.remote.dto.WarehousesServiceResponse>
 
-    // -- AI count training samples (HSMobileOpsAiSampleSvc) ------------------------------------
-    //
-    // One small sample per call; idempotent on SampleId, so a retried call is harmless.
-
-    @POST("HSMobileOpsServiceGroup/HSMobileOpsAiSampleSvc/uploadSample")
-    suspend fun uploadAiSample(
-        @Body body: com.d365fo.mobileops.data.remote.dto.AiSampleServiceRequest,
-    ): Response<com.d365fo.mobileops.data.remote.dto.AiSampleServiceResponse>
-
     // -- Item units (HSMobileOpsUnitSvc) ------------------------------------------------------
     //
     // Units to the inventory unit for many item variants in one call - counting only; receiving
@@ -354,4 +352,119 @@ interface MobileOpsServiceApi {
         @Body body: com.d365fo.mobileops.data.remote.dto.UserWarehousesServiceRequest,
         @Tag tag: IdempotentRead = IdempotentRead,
     ): Response<com.d365fo.mobileops.data.remote.dto.UserWarehousesServiceResponse>
+
+    // -- PO and TO creation (HSMobileOpsOrderCreateSvc) -------------------------------------
+    //
+    // Reads are tagged so the offline cache can replay them; pricing is deliberately not - a
+    // price from yesterday's cache is worse than "priced when sent". The two creates are
+    // posted from the sync queue with an idempotency key, never retried on their own.
+
+    /** The worker's Menu access rows - refreshed without a new sign-in. */
+    @POST("HSMobileOpsServiceGroup/HSMobileOpsOrderCreateSvc/getModulePermissions")
+    suspend fun getModulePermissions(
+        @Body body: com.d365fo.mobileops.data.remote.dto.OrderServiceRequest,
+    ): Response<com.d365fo.mobileops.data.remote.dto.OrderServiceResponse>
+
+    /** Vendors not on hold, a page at a time, for the offline vendor list. */
+    @POST("HSMobileOpsServiceGroup/HSMobileOpsOrderCreateSvc/listVendors")
+    suspend fun listVendors(
+        @Body body: com.d365fo.mobileops.data.remote.dto.OrderServiceRequest,
+        @Tag tag: IdempotentRead = IdempotentRead,
+    ): Response<com.d365fo.mobileops.data.remote.dto.OrderServiceResponse>
+
+    /** Units, active dimensions, valid variants and purchase order settings of an item. */
+    @POST("HSMobileOpsServiceGroup/HSMobileOpsOrderCreateSvc/getOrderItem")
+    suspend fun getOrderItem(
+        @Body body: com.d365fo.mobileops.data.remote.dto.OrderServiceRequest,
+        @Tag tag: IdempotentRead = IdempotentRead,
+    ): Response<com.d365fo.mobileops.data.remote.dto.OrderServiceResponse>
+
+    /** D365FO's price for each line, with its source - online only. */
+    @POST("HSMobileOpsServiceGroup/HSMobileOpsOrderCreateSvc/priceLines")
+    suspend fun priceLines(
+        @Body body: com.d365fo.mobileops.data.remote.dto.OrderServiceRequest,
+    ): Response<com.d365fo.mobileops.data.remote.dto.OrderServiceResponse>
+
+    /** Creates the purchase order (atomic, idempotent on the key). */
+    @POST("HSMobileOpsServiceGroup/HSMobileOpsOrderCreateSvc/createPurchaseOrder")
+    suspend fun createPurchaseOrder(
+        @Body body: com.d365fo.mobileops.data.remote.dto.OrderServiceRequest,
+    ): Response<com.d365fo.mobileops.data.remote.dto.OrderServiceResponse>
+
+    /** Available stock of a variant at a warehouse, per batch and serial. */
+    @POST("HSMobileOpsServiceGroup/HSMobileOpsOrderCreateSvc/getStock")
+    suspend fun getStock(
+        @Body body: com.d365fo.mobileops.data.remote.dto.OrderServiceRequest,
+        @Tag tag: IdempotentRead = IdempotentRead,
+    ): Response<com.d365fo.mobileops.data.remote.dto.OrderServiceResponse>
+
+    /** Creates the transfer order (atomic, idempotent on the key). */
+    @POST("HSMobileOpsServiceGroup/HSMobileOpsOrderCreateSvc/createTransferOrder")
+    suspend fun createTransferOrder(
+        @Body body: com.d365fo.mobileops.data.remote.dto.OrderServiceRequest,
+    ): Response<com.d365fo.mobileops.data.remote.dto.OrderServiceResponse>
+
+    /** Approved, unconfirmed purchase orders of a warehouse - PO confirmation's list. */
+    @POST("HSMobileOpsServiceGroup/HSMobileOpsOrderCreateSvc/listPurchaseOrdersToConfirm")
+    suspend fun listPurchaseOrdersToConfirm(
+        @Body body: com.d365fo.mobileops.data.remote.dto.OrderServiceRequest,
+        @Tag tag: IdempotentRead = IdempotentRead,
+    ): Response<com.d365fo.mobileops.data.remote.dto.OrderServiceResponse>
+
+    /** One purchase order with its priced lines, for confirming it. */
+    @POST("HSMobileOpsServiceGroup/HSMobileOpsOrderCreateSvc/getPurchaseOrder")
+    suspend fun getPurchaseOrderForConfirm(
+        @Body body: com.d365fo.mobileops.data.remote.dto.OrderServiceRequest,
+        @Tag tag: IdempotentRead = IdempotentRead,
+    ): Response<com.d365fo.mobileops.data.remote.dto.OrderServiceResponse>
+
+    /** One page of the offline item / barcode / variant cache - see SkuSyncRepository. */
+    @POST("HSMobileOpsServiceGroup/HSMobileOpsSkuPageSvc/getSkuPage")
+    suspend fun getSkuPage(
+        @Body body: com.d365fo.mobileops.data.remote.dto.SkuPageServiceRequest,
+    ): Response<com.d365fo.mobileops.data.remote.dto.SkuPageServiceResponse>
+
+    /** Worker sign-in history: one session, when it starts and when it ends - see SignInLogRecorder. */
+    @POST("HSMobileOpsServiceGroup/HSMobileOpsSignInLogSvc/logSession")
+    suspend fun logSignInSession(
+        @Body body: com.d365fo.mobileops.data.remote.dto.SignInLogServiceRequest,
+    ): Response<com.d365fo.mobileops.data.remote.dto.SignInLogServiceResponse>
+
+    /** Records feedback from the app (idempotent on FeedbackId). */
+    @POST("HSMobileOpsServiceGroup/HSMobileOpsFeedbackSvc/submitFeedback")
+    suspend fun submitFeedback(
+        @Body body: com.d365fo.mobileops.data.remote.dto.FeedbackServiceRequest,
+    ): Response<com.d365fo.mobileops.data.remote.dto.FeedbackServiceResponse>
+
+    /** Changes feedback the worker sent, while the team has not picked it up yet (status New). */
+    @POST("HSMobileOpsServiceGroup/HSMobileOpsFeedbackSvc/updateFeedback")
+    suspend fun updateFeedback(
+        @Body body: com.d365fo.mobileops.data.remote.dto.FeedbackServiceRequest,
+    ): Response<com.d365fo.mobileops.data.remote.dto.FeedbackServiceResponse>
+
+    /** The worker's own feedback with the team's status and reply. */
+    @POST("HSMobileOpsServiceGroup/HSMobileOpsFeedbackSvc/listMyFeedback")
+    suspend fun listMyFeedback(
+        @Body body: com.d365fo.mobileops.data.remote.dto.FeedbackServiceRequest,
+        @Tag tag: IdempotentRead = IdempotentRead,
+    ): Response<com.d365fo.mobileops.data.remote.dto.FeedbackServiceResponse>
+
+    /** The company's return reason codes (cached for offline replay). */
+    @POST("HSMobileOpsServiceGroup/HSMobileOpsOrderCreateSvc/listReturnReasons")
+    suspend fun listReturnReasons(
+        @Body body: com.d365fo.mobileops.data.remote.dto.OrderServiceRequest,
+        @Tag tag: IdempotentRead = IdempotentRead,
+    ): Response<com.d365fo.mobileops.data.remote.dto.OrderServiceResponse>
+
+    /** Creates a return order, confirms it and posts its packing slip (idempotent on the key). */
+    @POST("HSMobileOpsServiceGroup/HSMobileOpsOrderCreateSvc/createPurchaseReturn")
+    suspend fun createPurchaseReturn(
+        @Body body: com.d365fo.mobileops.data.remote.dto.OrderServiceRequest,
+    ): Response<com.d365fo.mobileops.data.remote.dto.OrderServiceResponse>
+
+    /** Confirms the purchase order (PurchFormLetter; idempotent on the key). */
+    @POST("HSMobileOpsServiceGroup/HSMobileOpsOrderCreateSvc/confirmPurchaseOrder")
+    suspend fun confirmPurchaseOrder(
+        @Body body: com.d365fo.mobileops.data.remote.dto.OrderServiceRequest,
+    ): Response<com.d365fo.mobileops.data.remote.dto.OrderServiceResponse>
 }

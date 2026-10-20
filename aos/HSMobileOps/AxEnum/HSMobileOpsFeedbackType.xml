@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxEnum xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsFeedbackType</Name>
+	<Label>Feedback type</Label>
+	<HelpText>What the worker is reporting from the handheld. Element names are the wire format.</HelpText>
+	<EnumValues>
+		<AxEnumValue>
+			<Name>Problem</Name>
+			<Label>Problem</Label>
+			<Value>0</Value>
+		</AxEnumValue>
+		<AxEnumValue>
+			<Name>Idea</Name>
+			<Label>Idea</Label>
+			<Value>1</Value>
+		</AxEnumValue>
+		<AxEnumValue>
+			<Name>Question</Name>
+			<Label>Question</Label>
+			<Value>2</Value>
+		</AxEnumValue>
+	</EnumValues>
+	<UseEnumValueForDisplayValue>No</UseEnumValueForDisplayValue>
+</AxEnum>

@@ -77,6 +77,7 @@ class ReceivingFlowViewModel @Inject constructor(
     private val pendingFlowResume: PendingFlowResume,
     private val stagedLines: com.d365fo.mobileops.data.repository.StagedLineRepository,
     private val opportunityCounts: com.d365fo.mobileops.data.counting.OpportunityCounts,
+    private val networkPreferences: com.d365fo.mobileops.data.security.NetworkPreferences,
 ) : ViewModel() {
 
     init {
@@ -84,7 +85,13 @@ class ReceivingFlowViewModel @Inject constructor(
         // is why this flow needs no per-field focus management: there is only ever one question
         // on screen, so a scan cannot land in the wrong box.
         viewModelScope.launch {
-            scannerBridge.scans.collect { submit(it.value) }
+            scannerBridge.scans.collect {
+                // Which step each scan landed on - so feedback about a scan "not taking" shows
+                // whether it reached the app at all (see ReceivingFlowScreen's scan prompt).
+                timber.log.Timber.i("receiving scan (%s) at %s%s", it.source, _state.value.step,
+                    if (_state.value.busy) ", busy" else "")
+                submit(it.value)
+            }
         }
         loadTodaysOrders()
     }
@@ -99,7 +106,7 @@ class ReceivingFlowViewModel @Inject constructor(
             val warehouse = workerSession.session.value?.selected?.warehouseId
             val result = lookups.lookupOrdersForToday(warehouse)
             if (result is NetworkResult.Success) {
-                _state.update { s -> s.copy(todaysOrders = result.data.filter { it.status.isOpen }) }
+                _state.update { s -> s.copy(todaysOrders = result.data.filter { it.receivable }) }
             }
         }
     }
@@ -128,6 +135,24 @@ class ReceivingFlowViewModel @Inject constructor(
 
     /** Typed entry - damaged label, or a device with neither imager nor wedge. */
     fun onManualEntry(value: String) = submit(value)
+
+    /**
+     * The line picked in the item search, so the "which line?" step takes it rather than asking
+     * again - the search already showed each line's variant and the worker chose one. Only for
+     * that item, and only briefly: a later scan of the same item still asks.
+     */
+    private var searchedLine: Pair<Double, Long>? = null
+
+    fun pickSearchedLine(itemId: String, lineNumber: Double) {
+        searchedLine = lineNumber to System.currentTimeMillis()
+        submit(itemId)
+    }
+
+    private fun takeSearchedLine(): Double? {
+        val picked = searchedLine ?: return null
+        searchedLine = null
+        return picked.first.takeIf { System.currentTimeMillis() - picked.second < SEARCHED_LINE_VALID_MS }
+    }
 
     /** Camera decode, routed through the same path as a wedge scan. */
     fun onCameraDecoded(value: String) = scannerBridge.submitCameraScan(value)
@@ -199,8 +224,10 @@ class ReceivingFlowViewModel @Inject constructor(
             when (_state.value.step) {
                 ReceivingStep.PURCHASE_ORDER -> onPurchaseOrder(value)
                 ReceivingStep.PACKING_SLIP -> onPackingSlip(value)
-                ReceivingStep.ITEM -> onItem(value)
-                ReceivingStep.QUANTITY -> onQuantity(value)
+                ReceivingStep.ITEM -> if (!switchedOrder(value)) onItem(value)
+                // A single-line order opens straight at the quantity, so another PO scanned
+                // there is the same "wrong order" case as at the item step.
+                ReceivingStep.QUANTITY -> if (!switchedOrder(value) && !isScanOfCurrentItem(value)) onQuantity(value)
                 ReceivingStep.LOCATION -> onLocation(value)
                 ReceivingStep.BATCH -> onBatch(value)
                 ReceivingStep.BATCH_EXPIRY_DATE -> onBatchExpiryDate(value)
@@ -212,6 +239,8 @@ class ReceivingFlowViewModel @Inject constructor(
     }
 
     /** Steps back one prompt, clearing that step's answer so it is asked again. */
+    fun clearLineNotice() = _state.update { it.copy(lineNotice = null) }
+
     fun back() {
         pending?.cancel()
         val current = _state.value
@@ -220,10 +249,17 @@ class ReceivingFlowViewModel @Inject constructor(
         if (index <= 0) return
 
         val previous = sequence[index - 1]
+        // Back to the order prompt starts over, so the lines banked against this order leave
+        // the screen too. They are saved per order (persist) and come back when it is scanned
+        // again; left here, they showed a Register button that could not post them, because
+        // the order they belong to had just been cleared.
+        val toOrder = previous == ReceivingStep.PURCHASE_ORDER
         _state.update {
             it.copy(
                 capture = it.capture.cleared(previous),
                 step = previous,
+                captured = if (toOrder) emptyList() else it.captured,
+                stagedElsewhere = if (toOrder) emptyMap() else it.stagedElsewhere,
                 error = null,
                 busy = false,
             )
@@ -249,6 +285,7 @@ class ReceivingFlowViewModel @Inject constructor(
             batchId = capture.batchId,
             batchExpiryDate = capture.batchExpiryDate,
             serialIds = capture.serialIds,
+            variantLabel = line.variant.label,
             // What was outstanding on the line when this was banked - see the identical field
             // and the same reasoning on CapturedTransferLine.maxQuantity.
             maxQuantity = line.outstandingQuantity,
@@ -267,6 +304,11 @@ class ReceivingFlowViewModel @Inject constructor(
         _state.update {
             it.copy(
                 captured = it.captured + entry,
+                lineNotice = com.d365fo.mobileops.presentation.common.components.QuickNoticeMessage(
+                    id = System.nanoTime(),
+                    text = "Received ${quantity.stripTrailingZeros().toPlainString()} × " +
+                        item.productName.ifBlank { item.itemNumber },
+                ),
                 capture = ReceivingCapture(
                     purchId = capture.purchId,
                     vendorAccount = capture.vendorAccount,
@@ -469,7 +511,12 @@ class ReceivingFlowViewModel @Inject constructor(
             // and, with it, the underlying call - the server may still be working when that
             // happens, which is exactly what the durable queue and idempotency key already
             // exist to make safe to walk away from.
-            val postedLive = syncQueue.leaseOne(entry.queueId)?.let { leased ->
+            // Set when D365FO answered and refused it: the entry went straight to Failed
+            // postings, and nothing will post it on its own - see PostOutcome.rejectedReason.
+            var rejectedReason: String? = null
+            // Posting switched off in Settings: queued and held, no live attempt.
+            val held = !postingDispatcher.postingAllowed()
+            val postedLive = if (held) false else syncQueue.leaseOne(entry.queueId)?.let { leased ->
                 when (
                     val result =
                         withTimeoutOrNull(LIVE_POST_TIMEOUT_MS) { postingDispatcher.dispatch(leased) }
@@ -479,7 +526,9 @@ class ReceivingFlowViewModel @Inject constructor(
                         true
                     }
                     is NetworkResult.Error -> {
-                        syncQueue.onFailure(leased, result.failure)
+                        if (syncQueue.onFailure(leased, result.failure)) {
+                            rejectedReason = result.failure.message
+                        }
                         false
                     }
                     NetworkResult.Loading, null -> {
@@ -492,6 +541,12 @@ class ReceivingFlowViewModel @Inject constructor(
                 }
             } ?: false
             if (!postedLive) syncScheduler.requestImmediatePush()
+            // Registered there and then (Post immediately): D365FO's outstanding quantity already
+            // shows it, so the staged figure must go now - kept, it was subtracted a second time
+            // and the order came back as "already staged" with a Pack still open (PO 161706).
+            if (postedLive && networkPreferences.postImmediately.value) {
+                stagedLines.clearForQueue(entry.queueId)
+            }
 
             scanFeedback.success()
             notifier.notifyWorkCompleted(purchId, postedLive)
@@ -509,15 +564,64 @@ class ReceivingFlowViewModel @Inject constructor(
                         lineCount = state.captured.size,
                         postedAtEpochMs = System.currentTimeMillis(),
                         postedLive = postedLive,
+                        rejectedReason = rejectedReason,
+                        held = held,
+                        postedNow = postedLive && networkPreferences.postImmediately.value,
                     ),
                 )
             }
         }
     }
 
-    /** Leaves the post summary and returns to a fresh order prompt. */
+    /**
+     * Leaves the post summary and goes back to Scan item on the same order - even when nothing
+     * is left to receive (feedback, 6 Oct 2026: workers often scan the next pallet of the same
+     * PO). The lines just registered count as staged, so they cannot be received twice. Without
+     * an order in hand, a fresh order prompt.
+     */
     fun dismissPostOutcome() {
-        _state.value = ReceivingFlowState()
+        val s = _state.value
+        val purchId = s.postOutcome?.purchId ?: s.capture.purchId
+        if (purchId.isNullOrBlank() || s.order == null) {
+            _state.value = ReceivingFlowState()
+            return
+        }
+        val c = s.capture
+        _state.value = ReceivingFlowState(
+            step = ReceivingStep.ITEM,
+            todaysOrders = s.todaysOrders,
+            order = s.order,
+            openLines = s.openLines,
+            outstandingLineCount = s.outstandingLineCount,
+            linesInline = s.linesInline,
+            capture = ReceivingCapture(
+                purchId = c.purchId,
+                vendorAccount = c.vendorAccount,
+                vendorPackingSlipId = c.vendorPackingSlipId,
+                siteId = c.siteId,
+                warehouseId = c.warehouseId,
+                requireLocationCaptureFallback = c.requireLocationCaptureFallback,
+            ),
+            stagedElsewhere = s.stagedElsewhere,
+        )
+        viewModelScope.launch {
+            val staged = stagedLines.stagedFor(FlowType.RECEIVING, purchId)
+            _state.update {
+                if (it.capture.purchId != purchId) return@update it
+                it.copy(
+                    stagedElsewhere = staged,
+                    // Lines just registered are not outstanding any more for this device - the
+                    // server count lags until D365FO has processed them.
+                    outstandingLineCount = if (it.linesInline) {
+                        it.openLines.count { line ->
+                            (line.outstandingQuantity - (staged[line.lineNumber] ?: BigDecimal.ZERO)).signum() > 0
+                        }
+                    } else {
+                        it.outstandingLineCount
+                    },
+                )
+            }
+        }
     }
 
     /**
@@ -525,10 +629,17 @@ class ReceivingFlowViewModel @Inject constructor(
      * queued but did not get a live answer in time - see [PostOutcome.postedLive]. Does not
      * retry the live HTTP call inline: the entry is already safely on the same durable queue
      * [postReceipt] itself uses, so this is the one true way anything gets pushed, live tap or
-     * background schedule alike - no second code path to keep in sync with it.
+     * background schedule alike - no second code path to keep in sync with it. The order's
+     * entries are made due first, or the worker would skip them until their backoff ran out.
      */
     fun retryPost() {
-        syncScheduler.requestImmediatePush()
+        val purchId = _state.value.postOutcome?.purchId ?: return
+        viewModelScope.launch {
+            // A timed-out live post put the entry on the backoff ladder (1 minute first); the
+            // push alone would find nothing due and do nothing. The worker asked for now.
+            syncQueue.retryNow(purchId)
+            syncScheduler.requestImmediatePush()
+        }
     }
 
     /**
@@ -545,8 +656,12 @@ class ReceivingFlowViewModel @Inject constructor(
         val warehouse = state.capture.warehouseId
         val user = workerSession.session.value?.userName
 
-        viewModelScope.launch {
-            flowSessions.save(FlowType.RECEIVING, purchId, warehouse, user, lines)
+        // ATOMIC + NonCancellable: the save runs to the end even when the screen closes right
+        // after the scan - a cancelled write is a scanned line that silently isn't there later.
+        viewModelScope.launch(start = kotlinx.coroutines.CoroutineStart.ATOMIC) {
+            kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) {
+                flowSessions.save(FlowType.RECEIVING, purchId, warehouse, user, lines)
+            }
         }
     }
 
@@ -771,10 +886,9 @@ class ReceivingFlowViewModel @Inject constructor(
      * 1. [ReceivingFlowState.captured] - banked in *this* in-progress flow a moment ago, not
      *    even staged yet (postReceipt does that once the whole order is done).
      * 2. [ReceivingFlowState.stagedElsewhere] - handed to D365FO by an earlier "Register" on
-     *    this same order (this session or a previous one) and landed as Pending, but AOS runs no
-     *    automatic job that turns Pending into Registered - see
-     *    [com.d365fo.mobileops.data.repository.StagedLineRepository]'s class doc - so nothing
-     *    server-side reflects it until someone taps "Process pending", which can be a long wait.
+     *    this same order (this session or a previous one) and landed as Pending. Nothing
+     *    server-side reflects it until AOS's batch job or "Process pending" registers it - see
+     *    [com.d365fo.mobileops.data.repository.StagedLineRepository]'s class doc.
      *
      * Without both, banking (or registering) a line's only unit and returning to the item step
      * still offers that same item with its original quantity - confirmed live for both cases,
@@ -802,6 +916,11 @@ class ReceivingFlowViewModel @Inject constructor(
      * picks, because nothing in the scan says which was meant.
      */
     private suspend fun chooseAmong(lines: List<PurchaseOrderLine>, quantityPerScan: BigDecimal, scanUnit: String? = null) {
+        val searched = takeSearchedLine()?.let { number -> lines.firstOrNull { it.lineNumber == number } }
+        if (searched != null) {
+            selectLine(searched, quantityPerScan, scanUnit)
+            return
+        }
         if (lines.size > 1) {
             _state.update { it.copy(lineChoices = lines, scannedPackSize = quantityPerScan, scannedPackUnit = scanUnit) }
             return
@@ -891,21 +1010,85 @@ class ReceivingFlowViewModel @Inject constructor(
         advance()
     }
 
+    /**
+     * Another purchase order scanned at the item or quantity step - same number series as the open one
+     * ("BSP-PO-..."). After registering, the flow stays on the order, and scanning the next one
+     * was read as an item ("… is not an item on this order"). Opens that order instead; with
+     * lines already scanned it asks for them to be registered or removed first.
+     */
+    private suspend fun switchedOrder(value: String): Boolean {
+        val current = _state.value.capture.purchId ?: return false
+        val prefix = current.substringBeforeLast('-', missingDelimiterValue = "").takeIf { it.isNotBlank() } ?: return false
+        if (!value.startsWith("$prefix-", ignoreCase = true)) return false
+        if (_state.value.captured.isNotEmpty()) {
+            fail("Register or remove the lines scanned on $current before opening ${value.uppercase()}")
+            return true
+        }
+        val todays = _state.value.todaysOrders
+        _state.value = ReceivingFlowState(todaysOrders = todays)
+        onPurchaseOrder(value)
+        return true
+    }
+
+    /**
+     * The item already selected, scanned again at the quantity step - the order's only line is
+     * picked as soon as the order is scanned, and the worker then scans the item anyway. Its
+     * number or barcode was read as the quantity: "Only 2 outstanding" for 9502930970077, or
+     * "BSR-47274-0 is not a number". Now it is recognised and the quantity is still asked for.
+     */
+    private suspend fun isScanOfCurrentItem(value: String): Boolean {
+        val line = _state.value.capture.line ?: return false
+        // A short number is a quantity, never an item - barcodes are 8 digits and up.
+        if (value.length < 8 && value.all { it.isDigit() || it == '.' }) return false
+        val same = value.equals(line.itemId, ignoreCase = true) ||
+            ((lookups.lookupBarcode(value) as? NetworkResult.Success)?.data?.itemNumber?.equals(line.itemId, ignoreCase = true) == true)
+        if (same) {
+            _state.update {
+                it.copy(
+                    lineNotice = com.d365fo.mobileops.presentation.common.components.QuickNoticeMessage(
+                        id = System.nanoTime(),
+                        text = "${line.itemId} is already selected - enter the quantity",
+                        hint = true,
+                    ),
+                )
+            }
+        }
+        return same
+    }
+
     private fun onQuantity(value: String) {
+        checkQuantity(value)?.let { return fail(it) }
         val line = _state.value.capture.line ?: return fail("Pick a line first")
-        // "3", or "3 BOX" / a unit chip: converted to the line's unit per the item's conversions.
         val converted = com.d365fo.mobileops.domain.model.UnitConversion
             .parse(value, line.units, _state.value.entryUnit, line.purchaseUnit)
             .getOrElse { return fail(it.message ?: "\"$value\" is not a number") }
         val entered = converted.quantity
-        if (entered.signum() <= 0) return fail("Quantity must be more than zero")
         val note = converted.enteredUnit.takeIf { it.isNotBlank() }?.let {
             "${plain(converted.entered)} $it = ${plain(entered)} ${line.purchaseUnit}"
         }
+        _state.update { it.copy(capture = it.capture.copy(quantity = entered), conversionNote = note, error = null) }
+        advance()
+    }
+
+    /**
+     * Why [value] cannot be the current line's quantity, or null when it can - asked by the
+     * keypad screen before it closes; see TransferFlowViewModel.quantityError.
+     */
+    fun quantityError(value: String): String? =
+        if (_state.value.step != ReceivingStep.QUANTITY) null else checkQuantity(value.trim())
+
+    private fun checkQuantity(value: String): String? {
+        val line = _state.value.capture.line ?: return "Pick a line first"
+        // "3", or "3 BOX" / a unit chip: converted to the line's unit per the item's conversions.
+        val converted = com.d365fo.mobileops.domain.model.UnitConversion
+            .parse(value, line.units, _state.value.entryUnit, line.purchaseUnit)
+            .getOrElse { return it.message ?: "\"$value\" is not a number" }
+        val entered = converted.quantity
+        if (entered.signum() <= 0) return "Quantity must be more than zero"
 
         val item = _state.value.capture.item
         if (item?.serialRequired == true && entered.stripTrailingZeros().scale() > 0) {
-            return fail("${item.itemNumber} is serial tracked, so it is received in whole units")
+            return "${item.itemNumber} is serial tracked, so it is received in whole units"
         }
 
         // Nets out everything already spoken for against this line's tolerance ceiling: posted
@@ -918,17 +1101,13 @@ class ReceivingFlowViewModel @Inject constructor(
             capturedThisSessionFor(line) - stagedElsewhereFor(line)
         if (entered > maximum) {
             val over = entered - maximum
-            return fail(
-                if (ceiling <= line.orderedQuantity) {
-                    "Only ${plain(maximum)} outstanding, and this line allows no over-delivery"
-                } else {
-                    "${plain(over)} over the over-delivery allowance (${plain(maximum)} max)"
-                },
-            )
+            return if (ceiling <= line.orderedQuantity) {
+                "Only ${plain(maximum)} outstanding, and this line allows no over-delivery"
+            } else {
+                "${plain(over)} over the over-delivery allowance (${plain(maximum)} max)"
+            }
         }
-
-        _state.update { it.copy(capture = it.capture.copy(quantity = entered), conversionNote = note, error = null) }
-        advance()
+        return null
     }
 
     /** Picks the unit the quantity step reads its number in; the line's own unit clears it. */
@@ -973,7 +1152,14 @@ class ReceivingFlowViewModel @Inject constructor(
         }
 
         when (val result = lookups.lookupLocation(warehouse, value)) {
-            is NetworkResult.Error -> fail(result.failure.message)
+            // No connection: taken as scanned and left to D365FO, which checks it again when the
+            // posting arrives - a wrong one comes back in Activity rather than stopping work here.
+            is NetworkResult.Error -> if (result.failure.retryable) {
+                _state.update { it.copy(capture = it.capture.copy(locationId = value), error = null) }
+                advance()
+            } else {
+                fail(result.failure.message)
+            }
             NetworkResult.Loading -> Unit
             is NetworkResult.Success -> {
                 val location = result.data
@@ -1003,7 +1189,14 @@ class ReceivingFlowViewModel @Inject constructor(
         // posting itself refuses a batch it cannot resolve a dimension for, and finding that out
         // on the sync queue is much later than the operator standing here.
         when (val result = lookups.isBatchRegistered(item.itemNumber, value)) {
-            is NetworkResult.Error -> return fail(result.failure.message)
+            // No connection: taken as scanned and left to D365FO, which creates a batch it does not know yet when the
+            // posting arrives - a wrong one comes back in Activity rather than stopping work here.
+            is NetworkResult.Error -> if (result.failure.retryable) {
+                _state.update { it.copy(capture = it.capture.copy(batchId = value, batchIsNew = false), error = null) }
+                advance()
+            } else {
+                return fail(result.failure.message)
+            }
             NetworkResult.Loading -> return
             is NetworkResult.Success -> {
                 _state.update {
@@ -1018,7 +1211,12 @@ class ReceivingFlowViewModel @Inject constructor(
     }
 
     private fun onBatchExpiryDate(value: String) {
-        val parsed = parseIsoDate(value) ?: return fail("Enter the date as YYYY-MM-DD")
+        val parsed = parseExpiryDate(value) ?: return fail("$value is not a date - enter it as DD-MM-YYYY")
+        // A new batch that has already expired is a typing slip far more often than real stock -
+        // received as it is, it is unusable stock the moment it lands.
+        if (parsed < java.time.LocalDate.now().toString()) {
+            return fail("$value is in the past - this batch would be received already expired. Check the date on the pack")
+        }
         _state.update {
             it.copy(capture = it.capture.copy(batchExpiryDate = parsed), error = null)
         }
@@ -1026,19 +1224,11 @@ class ReceivingFlowViewModel @Inject constructor(
     }
 
     /**
-     * Accepts only 'YYYY-MM-DD', returning it unchanged rather than a reformatted value - what
-     * the AOS service parses (see HSMobileOpsPostingService::parseIsoDate) is exactly this
-     * shape, so there is nothing to gain from round-tripping it through a date type here and a
-     * real risk of a locale-dependent formatter silently producing a different one.
+     * The expiry date as typed - DD-MM-YYYY (also with / or ., or as 8 digits DDMMYYYY) - or as
+     * a GS1 barcode supplies it (YYYY-MM-DD). Returned as YYYY-MM-DD, the shape the AOS service
+     * parses (see HSMobileOpsPostingService::parseIsoDate); null when it is not a real date.
      */
-    private fun parseIsoDate(value: String): String? {
-        if (!Regex("""\d{4}-\d{2}-\d{2}""").matches(value)) return null
-        val year = value.substring(0, 4).toIntOrNull() ?: return null
-        val month = value.substring(5, 7).toIntOrNull() ?: return null
-        val day = value.substring(8, 10).toIntOrNull() ?: return null
-        if (month !in 1..12 || day !in 1..31) return null
-        return value
-    }
+    internal fun parseExpiryDate(value: String): String? = parseExpiry(value)
 
     private suspend fun onSerial(value: String) {
         val capture = _state.value.capture
@@ -1052,7 +1242,9 @@ class ReceivingFlowViewModel @Inject constructor(
         // second one under the same number makes the two indistinguishable in every later
         // enquiry, so this is checked against the server before it is accepted, not after.
         when (val result = lookups.isSerialRegistered(item.itemNumber, value)) {
-            is NetworkResult.Error -> return fail(result.failure.message)
+            // No connection: taken as scanned and left to D365FO, which checks it again when the
+            // posting arrives - a wrong one comes back in Activity rather than stopping work here.
+            is NetworkResult.Error -> if (!result.failure.retryable) return fail(result.failure.message)
             NetworkResult.Loading -> return
             is NetworkResult.Success ->
                 if (result.data) return fail("$value is already registered in D365FO")
@@ -1162,6 +1354,8 @@ data class ReceivingFlowState(
     val suggestedLocation: String? = null,
     val busy: Boolean = false,
     val error: String? = null,
+    /** "Received 2 × …" for a second after a line is banked - see QuickNotice. */
+    val lineNotice: com.d365fo.mobileops.presentation.common.components.QuickNoticeMessage? = null,
     /** True from the moment "Register scanned so far" is tapped until [postOutcome] is set. */
     val posting: Boolean = false,
     /** Set once a post attempt finishes; cleared only when the operator dismisses the summary. */
@@ -1187,6 +1381,16 @@ data class PostOutcome(
      * the Activity screen later.
      */
     val postedLive: Boolean,
+    /** Posting is switched off in Settings: queued on the device, sent once it is switched on. */
+    val held: Boolean = false,
+    /** Settings > Post immediately: D365FO registered it in the same call - not just staged. */
+    val postedNow: Boolean = false,
+    /**
+     * D365FO's reason when it answered and refused the posting. Not queued for retry then -
+     * it is under Failed postings on the Activity screen - so the outcome must not say it will
+     * post by itself.
+     */
+    val rejectedReason: String? = null,
 )
 
 /**
@@ -1207,6 +1411,8 @@ data class CapturedLine(
     val batchId: String? = null,
     val batchExpiryDate: String? = null,
     val serialIds: List<String> = emptyList(),
+    /** See CapturedTransferLine.variantLabel. */
+    val variantLabel: String = "",
     /** See adjustCapturedQuantity. Null for a line resumed from a saved session - unbounded. */
     val maxQuantity: BigDecimal? = null,
 )
@@ -1277,3 +1483,20 @@ private fun StoredLine.toCaptured() = CapturedLine(
 )
 
 private const val GS1_AUTOFILL_DELAY_MS = 150L
+
+/** How long a line picked in the item search stays the answer to "which line?". */
+private const val SEARCHED_LINE_VALID_MS = 10_000L
+
+/** See [ReceivingFlowViewModel.parseExpiryDate]. */
+internal fun parseExpiry(value: String): String? {
+    val text = value.trim()
+    val (day, month, year) = Regex("""(\d{4})-(\d{2})-(\d{2})""").matchEntire(text)?.destructured?.let { (y, m, d) -> Triple(d, m, y) }
+        ?: Regex("""(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})""").matchEntire(text)?.destructured?.let { (d, m, y) -> Triple(d, m, y) }
+        ?: Regex("""(\d{2})(\d{2})(\d{4})""").matchEntire(text)?.destructured?.let { (d, m, y) -> Triple(d, m, y) }
+        ?: return null
+    return runCatching { java.time.LocalDate.of(year.toInt(), month.toInt(), day.toInt()).toString() }.getOrNull()
+}
+
+/** YYYY-MM-DD as DD-MM-YYYY, for showing; anything else unchanged. */
+internal fun displayDate(iso: String?): String? =
+    iso?.let { Regex("""(\d{4})-(\d{2})-(\d{2})""").matchEntire(it)?.destructured?.let { (y, m, d) -> "$d-$m-$y" } ?: it }

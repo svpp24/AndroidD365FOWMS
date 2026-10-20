@@ -25,10 +25,19 @@ class HSMobileOpsTestDataTask extends RunBaseBatch
 				<Name>main</Name>
 				<Source><![CDATA[
 
-    /// <summary>Runs one task in the foreground: &amp;cls=HSMobileOpsTestDataTask creates transfer order 1.</summary>
+    /// <summary>
+    /// Runs in the foreground (&amp;cls=HSMobileOpsTestDataTask): the mixed purchase order and
+    /// transfer order - one line per kind of item, with and without variants and tracking.
+    /// </summary>
     public static void main(Args _args)
     {
-        HSMobileOpsTestDataTask::newTask('TO', 1).run();
+        changecompany ('BSP')
+        {
+            HSMobileOpsTestDataGenerator::ensureMixItems();
+        }
+        // Earlier runs made the mixed PO and TOs; this run makes a counting journal from AAC's
+        // on-hand of items no other open counting journal has (plain, batch and serial).
+        HSMobileOpsTestDataTask::newTask('COUNTMIX', 1).run();
     }
 ]]></Source>
 			</Method>
@@ -153,6 +162,20 @@ class HSMobileOpsTestDataTask extends RunBaseBatch
                 case 'TOT':
                     this.createTransferOrder(108, true);
                     break;
+                case 'MIXPO':
+                    this.createMixedPurchaseOrder();
+                    break;
+                case 'MIXTO':
+                    this.createMixedTransferOrder(HSMobileOpsTestDataGenerator::mixLines());
+                    break;
+                case 'COUNTMIX':
+                    this.createCountingFromOnHand(['HSN001', 'HSN002', 'HST001', 'HST002', 'HST003']);
+                    break;
+                case 'MIXTO2':
+                    this.createMixedTransferOrder([
+                        ['HSN001', '', '', '', '', 0, 1],
+                        ['HST002', 'C1', 'M', 'Blue', 'Regular', 0, 1]]);
+                    break;
             }
         }
     }
@@ -257,6 +280,159 @@ class HSMobileOpsTestDataTask extends RunBaseBatch
         }
         ttscommit;
         info(strFmt('TO %1: %2 lines', transferTable.TransferId, _lines));
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>createMixedPurchaseOrder</Name>
+				<Source><![CDATA[
+
+    /// <summary>A confirmed PO to AAC with one line per kind of item (HSMobileOpsTestDataGenerator::mixLines).</summary>
+    private void createMixedPurchaseOrder()
+    {
+        PurchTable purchTable;
+        PurchLine  purchLine;
+        container  lines = HSMobileOpsTestDataGenerator::mixLines(), v;
+        ItemId     itemId;
+        str        config, size, color, style;
+        real       poQty, toQty;
+        int        j;
+
+        ttsbegin;
+        purchTable.clear();
+        purchTable.initValue();
+        purchTable.PurchId      = NumberSeq::newGetNum(PurchParameters::numRefPurchId()).num();
+        purchTable.OrderAccount = '19721';
+        purchTable.initFromVendTable(VendTable::find(purchTable.OrderAccount));
+        purchTable.InventSiteId     = 'AAC';
+        purchTable.InventLocationId = 'AAC';
+        purchTable.DeliveryDate     = today();
+        purchTable.insert();
+
+        for (j = 1; j <= conLen(lines); j++)
+        {
+            v = conPeek(lines, j);
+            [itemId, config, size, color, style, poQty, toQty] = v;
+            purchLine.clear();
+            purchLine.initFromPurchTable(purchTable);
+            purchLine.ItemId      = itemId;
+            purchLine.InventDimId = HSMobileOpsTestDataGenerator::variantDimId(itemId, config, size, color, style, true, 'AAC', 'AAC');
+            purchLine.PurchQty    = poQty;
+            purchLine.createLine(true, false, true, true, true, true);
+        }
+        ttscommit;
+
+        HSMobileOpsCreateVariantTestPO::confirm(purchTable);
+        info(strFmt('Mixed PO %1: %2 lines', purchTable.PurchId, conLen(lines)));
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>createMixedTransferOrder</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// A TO AAC to ABB with one line per kind of item. Batch and serial are left open on the
+    /// lines: they are chosen when shipping, from what the mixed PO's receipt put in stock.
+    /// </summary>
+    private void createMixedTransferOrder(container _lines)
+    {
+        InventTransferTable transferTable;
+        InventTransferLine  transferLine;
+        container           lines = _lines, v;
+        ItemId              itemId;
+        str                 config, size, color, style;
+        real                poQty, toQty;
+        int                 j;
+
+        ttsbegin;
+        transferTable.clear();
+        transferTable.initValue();
+        transferTable.TransferId           = NumberSeq::newGetNum(InventParameters::numRefTransferId()).num();
+        transferTable.InventLocationIdFrom = 'AAC';
+        transferTable.modifiedField(fieldNum(InventTransferTable, InventLocationIdFrom));
+        transferTable.InventLocationIdTo   = 'ABB';
+        transferTable.modifiedField(fieldNum(InventTransferTable, InventLocationIdTo));
+        transferTable.ShipDate             = today();
+        transferTable.ReceiveDate          = today();
+        transferTable.insert();
+
+        for (j = 1; j <= conLen(lines); j++)
+        {
+            v = conPeek(lines, j);
+            [itemId, config, size, color, style, poQty, toQty] = v;
+            transferLine.clear();
+            transferLine.initValue();
+            transferLine.initFromInventTransferTable(transferTable, NoYes::Yes);
+            transferLine.ItemId = itemId;
+            transferLine.initFromInventTable(InventTable::find(itemId));
+            // Warehouse-management warehouse: a transfer line needs an inventory status.
+            transferLine.InventDimId      = HSMobileOpsTestDataGenerator::variantDimId(itemId, config, size, color, style, true, 'AAC', 'AAC', '', 'Available');
+            transferLine.QtyTransfer      = toQty;
+            transferLine.QtyRemainShip    = toQty;
+            transferLine.QtyRemainReceive = toQty;
+            transferLine.LineNum          = j;
+            transferLine.insert();
+        }
+        ttscommit;
+        info(strFmt('Mixed TO %1: %2 lines', transferTable.TransferId, conLen(lines)));
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>createCountingFromOnHand</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// A counting journal at AAC with one line per on-hand dimension (variant, location, batch,
+    /// serial, status) of the given items - so each line is what is physically there.
+    /// </summary>
+    private void createCountingFromOnHand(container _items)
+    {
+        InventJournalTable journalTable;
+        InventJournalTrans journalTrans;
+        InventJournalName  journalName = InventJournalName::find(InventJournalTable::find('BSP-JN-000552000').JournalNameId);
+        InventSum          inventSum;
+        InventDim          inventDim;
+        int                i, lineNum;
+
+        ttsbegin;
+        journalTable.clear();
+        journalTable.initValue();
+        journalTable.JournalNameId = journalName.JournalNameId;
+        journalTable.initFromInventJournalName(journalName);
+        journalTable.JournalId   = NumberSeq::newGetNum(InventParameters::numRefInventJournalId()).num();
+        journalTable.Description = 'HS test counting - tracked and plain items';
+        journalTable.insert();
+
+        for (i = 1; i <= conLen(_items); i++)
+        {
+            while select inventSum
+                where inventSum.ItemId         == conPeek(_items, i)
+                   && inventSum.Closed         == NoYes::No
+                   && inventSum.PhysicalInvent >  0
+                join inventDim
+                    where inventDim.inventDimId      == inventSum.InventDimId
+                       && inventDim.InventLocationId == 'AAC'
+            {
+                lineNum++;
+                journalTrans.clear();
+                journalTrans.initValue();
+                journalTrans.initFromInventJournalTable(journalTable);
+                journalTrans.TransDate   = today();
+                journalTrans.ItemId      = inventSum.ItemId;
+                journalTrans.initFromInventTable(InventTable::find(inventSum.ItemId));
+                journalTrans.InventDimId = inventDim.inventDimId;
+                journalTrans.InventOnHand = inventSum.PhysicalInvent;
+                journalTrans.LineNum     = lineNum;
+                journalTrans.insert();
+            }
+        }
+        journalTable.selectForUpdate(true);
+        journalTable.NumOfLines = lineNum;
+        journalTable.update();
+        ttscommit;
+        info(strFmt('Counting journal %1: %2 lines from on-hand', journalTable.JournalId, lineNum));
     }
 ]]></Source>
 			</Method>

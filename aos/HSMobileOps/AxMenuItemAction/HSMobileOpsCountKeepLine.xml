@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxMenuItemAction xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsCountKeepLine</Name>
+	<Label>Keep this count</Label>
+	<HelpText>Use only the selected count of this item and location.</HelpText>
+	<Object>HSMobileOpsCountKeepLine</Object>
+	<ObjectType>Class</ObjectType>
+</AxMenuItemAction>

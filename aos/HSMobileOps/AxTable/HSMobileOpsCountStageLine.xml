@@ -1,0 +1,251 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxTable xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsCountStageLine</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// One counted quantity: an item (with its product dimensions, batch and serial) at a location,
+/// by one counter. DuplicateKey identifies "the same stock"; two or more lines with the same key
+/// in one stock count are a duplicate (IsDuplicate) the supervisor decides (Decision): keep one
+/// count, add them together, or reject them for a recount. Included says whether the line goes
+/// into the counting journal at Transfer. Quantity is in the item's inventory unit.
+/// </summary>
+public class HSMobileOpsCountStageLine extends common
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>findRecId</Name>
+				<Source><![CDATA[
+    public static HSMobileOpsCountStageLine findRecId(RefRecId _recId)
+    {
+        HSMobileOpsCountStageLine line;
+
+        select firstonly line where line.RecId == _recId;
+        return line;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+	<Label>Stock count line</Label>
+	<TitleField1>ItemId</TitleField1>
+	<TitleField2>UserName</TitleField2>
+	<CacheLookup>NotInTTS</CacheLookup>
+	<ClusteredIndex>StageClientIdx</ClusteredIndex>
+	<PrimaryIndex>StageClientIdx</PrimaryIndex>
+	<Fields>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldInt64">
+			<Name>MasterRecId</Name>
+			<AllowEdit>No</AllowEdit>
+			<ExtendedDataType>RefRecId</ExtendedDataType>
+			<Label>Stock count</Label>
+			<Mandatory>Yes</Mandatory>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldInt64">
+			<Name>StageRecId</Name>
+			<AllowEdit>No</AllowEdit>
+			<ExtendedDataType>RefRecId</ExtendedDataType>
+			<Label>Counter journal</Label>
+			<Mandatory>Yes</Mandatory>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>ClientLineId</Name>
+			<AllowEdit>No</AllowEdit>
+			<HelpText>The device's own id for the line - a resend replaces the line instead of adding it again.</HelpText>
+			<Label>Line ID</Label>
+			<StringSize>64</StringSize>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>UserName</Name>
+			<AllowEdit>No</AllowEdit>
+			<ExtendedDataType>HSMobileOpsUserName</ExtendedDataType>
+			<Label>Counter</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>ItemId</Name>
+			<AllowEdit>No</AllowEdit>
+			<ExtendedDataType>ItemId</ExtendedDataType>
+			<Label>Item</Label>
+			<Mandatory>Yes</Mandatory>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>ConfigId</Name>
+			<AllowEdit>No</AllowEdit>
+			<ExtendedDataType>EcoResItemConfigurationName</ExtendedDataType>
+			<Label>Configuration</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>InventSizeId</Name>
+			<AllowEdit>No</AllowEdit>
+			<ExtendedDataType>EcoResItemSizeName</ExtendedDataType>
+			<Label>Size</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>InventColorId</Name>
+			<AllowEdit>No</AllowEdit>
+			<ExtendedDataType>EcoResItemColorName</ExtendedDataType>
+			<Label>Color</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>InventStyleId</Name>
+			<AllowEdit>No</AllowEdit>
+			<ExtendedDataType>EcoResItemStyleName</ExtendedDataType>
+			<Label>Style</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>InventBatchId</Name>
+			<AllowEdit>No</AllowEdit>
+			<ExtendedDataType>InventBatchId</ExtendedDataType>
+			<Label>Batch</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>InventSerialId</Name>
+			<AllowEdit>No</AllowEdit>
+			<ExtendedDataType>InventSerialId</ExtendedDataType>
+			<Label>Serial</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>WMSLocationId</Name>
+			<AllowEdit>No</AllowEdit>
+			<ExtendedDataType>WMSLocationId</ExtendedDataType>
+			<Label>Location</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldReal">
+			<Name>Qty</Name>
+			<AllowEdit>No</AllowEdit>
+			<ExtendedDataType>InventQty</ExtendedDataType>
+			<HelpText>Counted quantity in the item's inventory unit.</HelpText>
+			<Label>Counted</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>UnitId</Name>
+			<AllowEdit>No</AllowEdit>
+			<ExtendedDataType>UnitOfMeasureSymbol</ExtendedDataType>
+			<Label>Unit</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldUtcDateTime">
+			<Name>CountedUtc</Name>
+			<AllowEdit>No</AllowEdit>
+			<Label>Counted at</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldReal">
+			<Name>SourceLineNum</Name>
+			<AllowEdit>No</AllowEdit>
+			<ExtendedDataType>LineNum</ExtendedDataType>
+			<HelpText>The counting journal line counted, for a count against a journal; 0 for stock found that is not on it.</HelpText>
+			<Label>Journal line</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>DuplicateKey</Name>
+			<AllowEdit>No</AllowEdit>
+			<HelpText>Item, dimensions and location - lines sharing it in one stock count are duplicates.</HelpText>
+			<Label>Same stock</Label>
+			<StringSize>250</StringSize>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldEnum">
+			<Name>IsDuplicate</Name>
+			<AllowEdit>No</AllowEdit>
+			<HelpText>Counted more than once in this stock count, by the same counter or another.</HelpText>
+			<Label>Duplicate</Label>
+			<EnumType>NoYes</EnumType>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldEnum">
+			<Name>Decision</Name>
+			<AllowEdit>No</AllowEdit>
+			<Label>Decision</Label>
+			<EnumType>HSMobileOpsCountDuplicateDecision</EnumType>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldEnum">
+			<Name>Included</Name>
+			<AllowEdit>No</AllowEdit>
+			<HelpText>Whether this count is transferred. A duplicate kept elsewhere or rejected is not.</HelpText>
+			<Label>Goes to the journal</Label>
+			<EnumType>NoYes</EnumType>
+		</AxTableField>
+	</Fields>
+	<FullTextIndexes />
+	<Indexes>
+		<AxTableIndex>
+			<Name>StageClientIdx</Name>
+			<AllowDuplicates>No</AllowDuplicates>
+			<Fields>
+				<AxTableIndexField>
+					<DataField>StageRecId</DataField>
+				</AxTableIndexField>
+				<AxTableIndexField>
+					<DataField>ClientLineId</DataField>
+				</AxTableIndexField>
+			</Fields>
+		</AxTableIndex>
+		<AxTableIndex>
+			<Name>MasterKeyIdx</Name>
+			<AllowDuplicates>Yes</AllowDuplicates>
+			<Fields>
+				<AxTableIndexField>
+					<DataField>MasterRecId</DataField>
+				</AxTableIndexField>
+				<AxTableIndexField>
+					<DataField>DuplicateKey</DataField>
+				</AxTableIndexField>
+			</Fields>
+		</AxTableIndex>
+	</Indexes>
+	<Mappings />
+	<Relations>
+		<AxTableRelation xmlns=""
+			i:type="AxTableRelationForeignKey">
+			<Name>HSMobileOpsCountMaster</Name>
+			<Cardinality>ZeroMore</Cardinality>
+			<RelatedTable>HSMobileOpsCountMaster</RelatedTable>
+			<RelatedTableCardinality>ExactlyOne</RelatedTableCardinality>
+			<RelationshipType>Association</RelationshipType>
+			<Constraints>
+				<AxTableRelationConstraint xmlns=""
+					i:type="AxTableRelationConstraintField">
+					<Name>MasterRecId</Name>
+					<Field>MasterRecId</Field>
+					<RelatedField>RecId</RelatedField>
+				</AxTableRelationConstraint>
+			</Constraints>
+		</AxTableRelation>
+		<AxTableRelation xmlns=""
+			i:type="AxTableRelationForeignKey">
+			<Name>HSMobileOpsCountStage</Name>
+			<Cardinality>ZeroMore</Cardinality>
+			<RelatedTable>HSMobileOpsCountStage</RelatedTable>
+			<RelatedTableCardinality>ExactlyOne</RelatedTableCardinality>
+			<RelationshipType>Association</RelationshipType>
+			<Constraints>
+				<AxTableRelationConstraint xmlns=""
+					i:type="AxTableRelationConstraintField">
+					<Name>StageRecId</Name>
+					<Field>StageRecId</Field>
+					<RelatedField>RecId</RelatedField>
+				</AxTableRelationConstraint>
+			</Constraints>
+		</AxTableRelation>
+	</Relations>
+	<StateMachines />
+</AxTable>

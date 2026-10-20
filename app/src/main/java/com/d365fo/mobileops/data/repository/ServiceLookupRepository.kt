@@ -427,6 +427,7 @@ class ServiceLookupRepository @Inject constructor(
                             purchId = row.purchId,
                             vendorAccount = row.vendorAccount.orEmpty(),
                             status = orderStatusOf(row.status),
+                            hasOpenLines = row.hasOpenLines,
                             siteId = row.siteId?.takeIf { it.isNotBlank() },
                             warehouseId = row.warehouseId?.takeIf { it.isNotBlank() },
                             deliveryDate = row.deliveryDate
@@ -502,6 +503,7 @@ internal fun com.d365fo.mobileops.data.remote.dto.PurchLineServiceDto.toDomain(
     lineNumber = lineNumber,
     itemId = itemId,
     itemName = itemName,
+    mobileDescriptions = listOf(mobileDescription1, mobileDescription2).map { it.trim() }.filter { it.isNotEmpty() },
     purchaseUnit = purchUnit,
     inventoryUnit = inventUnit.ifBlank { purchUnit },
     unitConversionFactor = BigDecimal.ONE,

@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsCountRefresh</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Stock count control center: Check for duplicates - re-checks the selected stock count.
+/// </summary>
+class HSMobileOpsCountRefresh
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>main</Name>
+				<Source><![CDATA[
+    public static void main(Args _args)
+    {
+        HSMobileOpsCountMaster master = _args ? _args.record() : null;
+
+        if (!master || !master.RecId)
+        {
+            throw error('Select a stock count first.');
+        }
+        HSMobileOpsCountControl::refresh(master.RecId);
+        if (_args && _args.caller() is FormRun)
+        {
+            FormRun callerForm = _args.caller() as FormRun;
+            int     i;
+            for (i = 1; i <= callerForm.dataSourceCount(); i++)
+            {
+                callerForm.dataSource(i).research(true);
+            }
+        }
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

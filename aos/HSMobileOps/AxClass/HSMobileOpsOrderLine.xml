@@ -1,0 +1,383 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsOrderLine</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// One order line, in and out: what the worker captured, and what D365FO priced, found in stock or created. Also one stock row of getStock (batch, serial, available).
+/// </summary>
+[DataContractAttribute]
+class HSMobileOpsOrderLine
+{
+    real lineNumber;
+    str itemId;
+    str itemName;
+    str configId;
+    str sizeId;
+    str colorId;
+    str styleId;
+    str batchId;
+    str serialId;
+    real qty;
+    str unitId;
+    real price;
+    real priceUnit;
+    boolean priceOverride;
+    real discPct;
+    real discAmount;
+    real lineAmount;
+    str priceSource;
+    real available;
+    str message;
+    str locationId;
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmLineNumber</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('LineNumber')]
+    public real parmLineNumber(real _value = lineNumber)
+    {
+        lineNumber = _value;
+        return lineNumber;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmItemId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ItemId')]
+    public str parmItemId(str _value = itemId)
+    {
+        itemId = _value;
+        return itemId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmItemName</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ItemName')]
+    public str parmItemName(str _value = itemName)
+    {
+        itemName = _value;
+        return itemName;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmConfigId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ConfigId')]
+    public str parmConfigId(str _value = configId)
+    {
+        configId = _value;
+        return configId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmSizeId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('SizeId')]
+    public str parmSizeId(str _value = sizeId)
+    {
+        sizeId = _value;
+        return sizeId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmColorId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ColorId')]
+    public str parmColorId(str _value = colorId)
+    {
+        colorId = _value;
+        return colorId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmStyleId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('StyleId')]
+    public str parmStyleId(str _value = styleId)
+    {
+        styleId = _value;
+        return styleId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmBatchId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('BatchId')]
+    public str parmBatchId(str _value = batchId)
+    {
+        batchId = _value;
+        return batchId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmSerialId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('SerialId')]
+    public str parmSerialId(str _value = serialId)
+    {
+        serialId = _value;
+        return serialId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmQty</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Qty')]
+    public real parmQty(real _value = qty)
+    {
+        qty = _value;
+        return qty;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmUnitId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('UnitId')]
+    public str parmUnitId(str _value = unitId)
+    {
+        unitId = _value;
+        return unitId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmPrice</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Price')]
+    public real parmPrice(real _value = price)
+    {
+        price = _value;
+        return price;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmPriceUnit</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('PriceUnit')]
+    public real parmPriceUnit(real _value = priceUnit)
+    {
+        priceUnit = _value;
+        return priceUnit;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmPriceOverride</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('PriceOverride')]
+    public boolean parmPriceOverride(boolean _value = priceOverride)
+    {
+        priceOverride = _value;
+        return priceOverride;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmDiscPct</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('DiscPct')]
+    public real parmDiscPct(real _value = discPct)
+    {
+        discPct = _value;
+        return discPct;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmDiscAmount</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('DiscAmount')]
+    public real parmDiscAmount(real _value = discAmount)
+    {
+        discAmount = _value;
+        return discAmount;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmLineAmount</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('LineAmount')]
+    public real parmLineAmount(real _value = lineAmount)
+    {
+        lineAmount = _value;
+        return lineAmount;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmPriceSource</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('PriceSource')]
+    public str parmPriceSource(str _value = priceSource)
+    {
+        priceSource = _value;
+        return priceSource;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmAvailable</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Available')]
+    public real parmAvailable(real _value = available)
+    {
+        available = _value;
+        return available;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmMessage</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Message')]
+    public str parmMessage(str _value = message)
+    {
+        message = _value;
+        return message;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>listFromJson</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Lines from a JSON array of this class's members, as the handheld sends them. Missing
+    /// members read as blank / zero / false.
+    /// </summary>
+    public static List listFromJson(str _json)
+    {
+        List                         result = new List(Types::Class);
+        System.Object                parsed;
+        Newtonsoft.Json.Linq.JArray  jArray;
+        Newtonsoft.Json.Linq.JObject jLine;
+        HSMobileOpsOrderLine         line;
+        int                          lineCount;
+        int                          i;
+
+        if (!_json)
+        {
+            return result;
+        }
+        try
+        {
+            parsed = Newtonsoft.Json.Linq.JArray::Parse(_json);
+        }
+        catch (Exception::CLRError)
+        {
+            return result;
+        }
+        jArray = parsed;
+        if (jArray == null)
+        {
+            return result;
+        }
+
+        lineCount = jArray.get_Count();
+        for (i = 0; i < lineCount; i++)
+        {
+            jLine = jArray.get_Item(i);
+            if (jLine == null)
+            {
+                continue;
+            }
+            line = new HSMobileOpsOrderLine();
+            line.parmLineNumber(HSMobileOpsOrderLine::jsonNum(jLine, 'LineNumber'));
+            line.parmItemId(HSMobileOpsOrderLine::jsonStr(jLine, 'ItemId'));
+            line.parmItemName(HSMobileOpsOrderLine::jsonStr(jLine, 'ItemName'));
+            line.parmConfigId(HSMobileOpsOrderLine::jsonStr(jLine, 'ConfigId'));
+            line.parmSizeId(HSMobileOpsOrderLine::jsonStr(jLine, 'SizeId'));
+            line.parmColorId(HSMobileOpsOrderLine::jsonStr(jLine, 'ColorId'));
+            line.parmStyleId(HSMobileOpsOrderLine::jsonStr(jLine, 'StyleId'));
+            line.parmBatchId(HSMobileOpsOrderLine::jsonStr(jLine, 'BatchId'));
+            line.parmSerialId(HSMobileOpsOrderLine::jsonStr(jLine, 'SerialId'));
+            line.parmLocationId(HSMobileOpsOrderLine::jsonStr(jLine, 'LocationId'));
+            line.parmQty(HSMobileOpsOrderLine::jsonNum(jLine, 'Qty'));
+            line.parmUnitId(HSMobileOpsOrderLine::jsonStr(jLine, 'UnitId'));
+            line.parmPrice(HSMobileOpsOrderLine::jsonNum(jLine, 'Price'));
+            line.parmPriceUnit(HSMobileOpsOrderLine::jsonNum(jLine, 'PriceUnit'));
+            line.parmPriceOverride(strLwr(HSMobileOpsOrderLine::jsonStr(jLine, 'PriceOverride')) == 'true');
+            result.addEnd(line);
+        }
+        return result;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>jsonStr</Name>
+				<Source><![CDATA[
+
+    private static str jsonStr(Newtonsoft.Json.Linq.JObject _obj, str _property)
+    {
+        Newtonsoft.Json.Linq.JToken token = _obj ? _obj.get_Item(_property) : null;
+
+        return token == null ? '' : token.ToString();
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>jsonNum</Name>
+				<Source><![CDATA[
+
+    private static real jsonNum(Newtonsoft.Json.Linq.JObject _obj, str _property)
+    {
+        str value = HSMobileOpsOrderLine::jsonStr(_obj, _property);
+
+        return value ? str2num(value) : 0;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmLocationId</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The bin (WMSLocationId) - a return line is issued from it; a stock row says where it lies.
+    /// </summary>
+    [DataMemberAttribute('LocationId')]
+    public str parmLocationId(str _value = locationId)
+    {
+        locationId = _value;
+        return locationId;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

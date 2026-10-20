@@ -82,14 +82,12 @@ interface SyncQueueDao {
     @Query("SELECT * FROM sync_queue WHERE dedupeKey = :dedupeKey LIMIT 1")
     suspend fun findByDedupeKey(dedupeKey: String): SyncQueueEntity?
 
-    @Query("SELECT * FROM sync_queue WHERE aggregateId = :aggregateId ORDER BY createdAt")
-    suspend fun findForAggregate(aggregateId: String): List<SyncQueueEntity>
-
     @Query("SELECT COUNT(*) FROM sync_queue")
     fun observePendingCount(): Flow<Int>
 
-    @Query("SELECT COUNT(*) FROM sync_queue WHERE operation = :operation")
-    suspend fun countFor(operation: SyncOperation): Int
+    /** Everything still on this device waiting to be sent, oldest first - Activity's list. */
+    @Query("SELECT * FROM sync_queue ORDER BY createdAt")
+    fun observeWaiting(): Flow<List<SyncQueueEntity>>
 
     @Query("SELECT MIN(createdAt) FROM sync_queue")
     fun observeOldestQueuedAt(): Flow<Long?>
@@ -104,11 +102,16 @@ interface SyncQueueDao {
     )
     suspend fun scheduleRetry(queueId: String, retryCount: Int, nextAttemptAt: Long, error: String?)
 
+    /** Brings every waiting entry forward to now - see SyncQueueRepository.retryAllNow. */
+    @Query("UPDATE sync_queue SET nextAttemptAt = :now WHERE nextAttemptAt > :now AND leasedUntil <= :now")
+    suspend fun makeAllDue(now: Long)
+
+    /** Brings an order's waiting entries forward to now; ones currently leased are left alone. */
+    @Query("UPDATE sync_queue SET nextAttemptAt = :now WHERE aggregateId = :aggregateId AND leasedUntil <= :now")
+    suspend fun makeDue(aggregateId: String, now: Long)
+
     @Query("DELETE FROM sync_queue WHERE queueId = :queueId")
     suspend fun remove(queueId: String)
-
-    @Query("DELETE FROM sync_queue WHERE aggregateId = :aggregateId")
-    suspend fun removeForAggregate(aggregateId: String)
 
     @Query("DELETE FROM sync_queue")
     suspend fun clear()
@@ -147,6 +150,4 @@ interface SyncQueueDao {
     @Query("DELETE FROM failed_sync WHERE failureId = :failureId")
     suspend fun removeFailure(failureId: String)
 
-    @Query("DELETE FROM failed_sync")
-    suspend fun clearFailures()
 }

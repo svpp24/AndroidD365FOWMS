@@ -36,20 +36,4 @@ interface PermissionDao {
         upsert(permissions)
     }
 
-    @Query("SELECT * FROM worker_directory ORDER BY displayName")
-    fun observeDirectory(): Flow<List<WorkerDirectoryEntity>>
-
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun upsertDirectory(workers: List<WorkerDirectoryEntity>)
-
-    @Query("DELETE FROM worker_directory")
-    suspend fun clearDirectory()
-
-    /** Replaced wholesale, same reasoning as `WarehouseDao.replaceAll` - a worker removed in
-     *  D365FO must disappear from the Admin Center's own list too. */
-    @Transaction
-    suspend fun replaceDirectory(workers: List<WorkerDirectoryEntity>) {
-        clearDirectory()
-        upsertDirectory(workers)
-    }
 }

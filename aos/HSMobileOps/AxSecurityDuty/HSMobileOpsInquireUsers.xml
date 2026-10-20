@@ -1,14 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <AxSecurityDuty xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
 	<Name>HSMobileOpsInquireUsers</Name>
+	<Description>See who is set up on handhelds and what they posted, without being able to change anything.</Description>
 	<Label>Inquire into handheld users</Label>
-	<HelpText>See who is set up on handhelds and what they posted, without being able to change anything.</HelpText>
 	<Privileges>
-		<AxSecurityDutyPrivilegeReference>
+		<AxSecurityPrivilegeReference>
 			<Name>HSMobileOpsUserView</Name>
-		</AxSecurityDutyPrivilegeReference>
-		<AxSecurityDutyPrivilegeReference>
+		</AxSecurityPrivilegeReference>
+		<AxSecurityPrivilegeReference>
 			<Name>HSMobileOpsPostLogView</Name>
-		</AxSecurityDutyPrivilegeReference>
+		</AxSecurityPrivilegeReference>
 	</Privileges>
 </AxSecurityDuty>

@@ -21,8 +21,9 @@ import androidx.compose.material3.Card as MaterialCard
  * the border remains. Kept as one shared modifier so cards and menu tiles stay in step.
  */
 @Composable
-fun Modifier.raised(shape: Shape): Modifier =
-    this.border(1.5.dp, WarehouseStatusColors.border, shape)
+fun Modifier.raised(@Suppress("UNUSED_PARAMETER") shape: Shape): Modifier =
+    // No edge any more: white cards on the grey page, like the reference design (20 Oct restyle).
+    this
 
 /**
  * applied - same alias-import trick as [SquareButton]: files `import ...AppCard as Card` and

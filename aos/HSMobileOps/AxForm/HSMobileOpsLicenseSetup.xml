@@ -47,6 +47,12 @@ public class HSMobileOpsLicenseSetup extends FormRun
 					<DataField>LicenseKey</DataField>
 				</AxFormDataSourceField>
 				<AxFormDataSourceField>
+					<DataField>AzureFunctionUrl</DataField>
+				</AxFormDataSourceField>
+				<AxFormDataSourceField>
+					<DataField>AzureFunctionKey</DataField>
+				</AxFormDataSourceField>
+				<AxFormDataSourceField>
 					<DataField>licenseStatus</DataField>
 				</AxFormDataSourceField>
 				<AxFormDataSourceField>
@@ -156,6 +162,26 @@ public class HSMobileOpsLicenseSetup extends FormRun
 						<FormControlExtension
 							i:nil="true" />
 						<DataField>LicenseKey</DataField>
+						<DataSource>HSMobileOpsLicenseSetup</DataSource>
+					</AxFormControl>
+					<AxFormControl xmlns=""
+						i:type="AxFormStringControl">
+						<Name>AzureFunctionUrl</Name>
+						<Label>License status check URL</Label>
+						<Type>String</Type>
+						<FormControlExtension
+							i:nil="true" />
+						<DataField>AzureFunctionUrl</DataField>
+						<DataSource>HSMobileOpsLicenseSetup</DataSource>
+					</AxFormControl>
+					<AxFormControl xmlns=""
+						i:type="AxFormStringControl">
+						<Name>AzureFunctionKey</Name>
+						<Label>License status check key</Label>
+						<Type>String</Type>
+						<FormControlExtension
+							i:nil="true" />
+						<DataField>AzureFunctionKey</DataField>
 						<DataSource>HSMobileOpsLicenseSetup</DataSource>
 					</AxFormControl>
 					<AxFormControl xmlns=""

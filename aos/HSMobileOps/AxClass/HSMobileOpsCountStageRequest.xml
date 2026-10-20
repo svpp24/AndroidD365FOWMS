@@ -1,0 +1,137 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsCountStageRequest</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// HSMobileOpsCountStageSvc's request. openStage: WarehouseId and, for a count against a counting journal, SourceJournalId.
+/// submitLines: StageId, SubmissionId, LinesJson (an array of {ClientLineId, ItemId, ConfigId, SizeId, ColorId,
+/// StyleId, BatchId, SerialId, LocationId, Quantity (inventory unit), UnitId, CountedAtUtc, SourceLineNum}) and
+/// EndCount when the counter ends their count. getStageMode: WarehouseId.
+/// </summary>
+[DataContractAttribute]
+class HSMobileOpsCountStageRequest
+{
+    str         dataAreaId;
+    str         userName;
+    str         deviceId;
+    str         warehouseId;
+    str         sourceJournalId;
+    str         stageId;
+    str         submissionId;
+    str         linesJson;
+    boolean     endCount;
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmDataAreaId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('DataAreaId')]
+    public str parmDataAreaId(str _value = dataAreaId)
+    {
+        dataAreaId = _value;
+        return dataAreaId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmUserName</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('UserName')]
+    public str parmUserName(str _value = userName)
+    {
+        userName = _value;
+        return userName;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmDeviceId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('DeviceId')]
+    public str parmDeviceId(str _value = deviceId)
+    {
+        deviceId = _value;
+        return deviceId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmWarehouseId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('WarehouseId')]
+    public str parmWarehouseId(str _value = warehouseId)
+    {
+        warehouseId = _value;
+        return warehouseId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmSourceJournalId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('SourceJournalId')]
+    public str parmSourceJournalId(str _value = sourceJournalId)
+    {
+        sourceJournalId = _value;
+        return sourceJournalId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmStageId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('StageId')]
+    public str parmStageId(str _value = stageId)
+    {
+        stageId = _value;
+        return stageId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmSubmissionId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('SubmissionId')]
+    public str parmSubmissionId(str _value = submissionId)
+    {
+        submissionId = _value;
+        return submissionId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmLinesJson</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('LinesJson')]
+    public str parmLinesJson(str _value = linesJson)
+    {
+        linesJson = _value;
+        return linesJson;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmEndCount</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('EndCount')]
+    public boolean parmEndCount(boolean _value = endCount)
+    {
+        endCount = _value;
+        return endCount;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

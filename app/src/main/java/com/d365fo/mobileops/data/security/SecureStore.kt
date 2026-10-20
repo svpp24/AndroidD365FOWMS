@@ -14,8 +14,13 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * Everything sensitive on disk goes through here: the SQLCipher passphrase, cached tokens,
- * the device registration record and the supervisor PIN hash.
+ * The app's key-value store. Only secrets are encrypted (decision, 11 Oct: "only connection and
+ * login accounts need encryption") - the connection settings (tenant, client id and secret,
+ * company, pins), the offline sign-in records and last user, the worker's identity, the
+ * licence records; see [isSecret]. Every other key - device
+ * id, preferences, tour and counting state, sync stats - goes to a plain SharedPreferences
+ * file. A non-secret value still in the encrypted file from an earlier version is moved across
+ * the first time it is read, so callers never notice.
  *
  * The master key lives in the Android Keystore (hardware-backed where available) and is
  * never exportable; EncryptedSharedPreferences holds the ciphertext.
@@ -79,15 +84,52 @@ class SecureStore @Inject constructor(private val context: Context) {
         }.onFailure { Timber.e(it, "SecureStore: failed to clear the Keystore alias during reset") }
     }
 
-    fun getString(key: String): String? = safeRead(key) { prefs.getString(key, null) }
-    fun putString(key: String, value: String?) = safeWrite(key) { prefs.edit().putString(key, value).apply() }
-    fun getLong(key: String, default: Long = 0L): Long = safeRead(key) { prefs.getLong(key, default) } ?: default
-    fun putLong(key: String, value: Long) = safeWrite(key) { prefs.edit().putLong(key, value).apply() }
+    /**
+     * Everything that is not a secret - plain, no Keystore involved. On first use, the non-secret
+     * values an earlier version kept in the encrypted file are moved across in one go.
+     */
+    private val plain: SharedPreferences by lazy {
+        context.getSharedPreferences(PLAIN_FILE_NAME, Context.MODE_PRIVATE).also { moveOutOfEncrypted(it) }
+    }
+
+    private fun moveOutOfEncrypted(target: SharedPreferences) {
+        if (target.getBoolean(KEY_MOVED, false)) return
+        runCatching {
+            val moved = prefs.all.filterKeys { !isSecret(it) }
+            val edit = target.edit()
+            moved.forEach { (key, value) ->
+                when (value) {
+                    is String -> edit.putString(key, value)
+                    is Long -> edit.putLong(key, value)
+                    is Boolean -> edit.putBoolean(key, value)
+                    is Int -> edit.putInt(key, value)
+                    is Float -> edit.putFloat(key, value)
+                }
+            }
+            edit.putBoolean(KEY_MOVED, true)
+            check(edit.commit()) { "writing the plain preferences failed" }
+            prefs.edit().apply { moved.keys.forEach { remove(it) } }.apply()
+            Timber.i("SecureStore: %d non-secret values moved out of the encrypted file", moved.size)
+        }.onFailure { Timber.e(it, "SecureStore: moving non-secret values failed - retried next start") }
+    }
+
+    private fun store(key: String): SharedPreferences = if (isSecret(key)) prefs else plain
+
+    fun getString(key: String): String? = safeRead(key) { store(key).getString(key, null) }
+    fun putString(key: String, value: String?) = safeWrite(key) { store(key).edit().putString(key, value).apply() }
+    fun getLong(key: String, default: Long = 0L): Long = safeRead(key) { store(key).getLong(key, default) } ?: default
+    fun putLong(key: String, value: Long) = safeWrite(key) { store(key).edit().putLong(key, value).apply() }
     fun getBoolean(key: String, default: Boolean = false): Boolean =
-        safeRead(key) { prefs.getBoolean(key, default) } ?: default
-    fun putBoolean(key: String, value: Boolean) = safeWrite(key) { prefs.edit().putBoolean(key, value).apply() }
-    fun remove(key: String) = safeWrite(key) { prefs.edit().remove(key).apply() }
-    fun clear() = safeWrite("<all>") { prefs.edit().clear().apply() }
+        safeRead(key) { store(key).getBoolean(key, default) } ?: default
+    fun putBoolean(key: String, value: Boolean) = safeWrite(key) { store(key).edit().putBoolean(key, value).apply() }
+    fun remove(key: String) = safeWrite(key) {
+        if (!isSecret(key)) plain.edit().remove(key).apply()
+        prefs.edit().remove(key).apply()
+    }
+    fun clear() = safeWrite("<all>") {
+        plain.edit().clear().apply()
+        prefs.edit().clear().apply()
+    }
 
     /**
      * A failed read is reported as "not present" - the same outcome every caller already
@@ -135,18 +177,15 @@ class SecureStore @Inject constructor(private val context: Context) {
     }
 
     /**
-     * SQLCipher passphrase. Generated once from [SecureRandom], stored encrypted, and never
-     * derived from anything guessable such as the device ID.
+     * The old SQLCipher database key, its backup file and the backup's Keystore key - unused
+     * since the database became plain SQLite (1.0.89 converted every device). Removed once.
      */
-    fun databasePassphrase(): ByteArray {
-        prefs.getString(KEY_DB_PASSPHRASE, null)?.let { return it.hexToBytes() }
-        val fresh = ByteArray(32).also { SecureRandom().nextBytes(it) }
-        prefs.edit().putString(KEY_DB_PASSPHRASE, fresh.toHex()).apply()
-        return fresh
+    fun forgetDatabaseKey() = safeWrite(KEY_DB_PASSPHRASE) {
+        if (prefs.contains(KEY_DB_PASSPHRASE)) prefs.edit().remove(KEY_DB_PASSPHRASE).apply()
+        java.io.File(context.noBackupFilesDir, "db_key.bak").delete()
+        val ks = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
+        if (ks.containsAlias("d365_mobileops_db_key_backup")) ks.deleteEntry("d365_mobileops_db_key_backup")
     }
-
-    /** Called on environment switch and on "reset local data" recovery. */
-    fun rotateDatabasePassphrase() = remove(KEY_DB_PASSPHRASE)
 
     /** The raw `WMSCERT1...` string from device activation - see LicenseActivationScreen. Null
      *  means never activated. */
@@ -199,12 +238,32 @@ class SecureStore @Inject constructor(private val context: Context) {
         private const val ANDROID_KEYSTORE = "AndroidKeyStore"
 
         private const val KEY_DB_PASSPHRASE = "db_passphrase"
+        private const val PLAIN_FILE_NAME = "d365_prefs"
+        private const val KEY_MOVED = "moved_from_encrypted_store"
+
+        /** Keys whose name starts with one of these are kept encrypted. */
+        private val SECRET_PREFIXES = listOf(
+            "connection_",          // connection profiles: tenant, client id / secret, company, pool
+            "offline_sign_in::",    // login accounts for offline sign-in (PIN verifiers)
+            "license_",             // licence certificate and trusted-time records
+            "debug_worker_session", // debug builds: the restored worker session
+        )
+
+        /** Single keys kept encrypted. */
+        private val SECRET_KEYS = setOf(
+            KEY_DB_PASSPHRASE,
+            "active_environment",
+            "last_worker_user_name",
+            "worker_id",
+            "worker_data_area",
+            "worker_personnel_number",
+        )
+
+        /** Whether [key] holds a connection or login-account secret, and so stays encrypted. */
+        fun isSecret(key: String): Boolean = key in SECRET_KEYS || SECRET_PREFIXES.any { key.startsWith(it) }
         const val KEY_ACTIVE_ENVIRONMENT = "active_environment"
         const val KEY_DEVICE_ID = "device_id"
-        const val KEY_DEVICE_REGISTRATION_STATE = "device_registration_state"
         const val KEY_WORKER_ID = "worker_id"
-        const val KEY_SUPERVISOR_PIN_HASH = "supervisor_pin_hash"
-        const val KEY_SUPERVISOR_PIN_SALT = "supervisor_pin_salt"
         const val KEY_LAST_FOREGROUND_AT = "last_foreground_at"
         const val KEY_IDLE_LOCK_MS = "idle_lock_ms"
 
@@ -212,10 +271,8 @@ class SecureStore @Inject constructor(private val context: Context) {
          *  shows the first-launch walkthrough once, regardless of who signs into it next. */
         const val KEY_HAS_SEEN_ONBOARDING = "has_seen_onboarding"
 
-        /** See DeviceCodeTokenProvider - the whole point of device-code auth is no stored secret. */
-        const val KEY_DEVICE_CODE_REFRESH_TOKEN = "device_code_refresh_token"
-        const val KEY_DEVICE_CODE_UPN = "device_code_upn"
-        const val KEY_DEVICE_CODE_OBJECT_ID = "device_code_object_id"
+        /** Left by the removed device-code sign-in; deleted on startup (ConnectionSettings). */
+        val LEGACY_DEVICE_CODE_KEYS = listOf("device_code_refresh_token", "device_code_upn", "device_code_object_id")
 
         /**
          * Debug-build-only cache of the last real worker sign-in, so a debug reinstall during

@@ -1,5 +1,6 @@
 package com.d365fo.mobileops
 
+import java.util.concurrent.TimeUnit
 import android.app.Application
 import androidx.hilt.work.HiltWorkerFactory
 import androidx.work.Configuration
@@ -20,10 +21,12 @@ class D365MobileApp : Application(), Configuration.Provider {
 
     @Inject lateinit var workerFactory: HiltWorkerFactory
     @Inject lateinit var syncScheduler: SyncScheduler
+    @Inject lateinit var skuSync: com.d365fo.mobileops.data.repository.SkuSyncRepository
     @Inject lateinit var syncNotifier: SyncNotifier
     @Inject lateinit var applicationScope: CoroutineScope
     @Inject lateinit var logStore: LogStore
     @Inject lateinit var claimHeartbeat: ClaimHeartbeat
+    @Inject lateinit var activeSessionGuard: com.d365fo.mobileops.data.sync.ActiveSessionGuard
     @Inject lateinit var countSubmissions: CountSubmissions
     @Inject lateinit var triggeredCountAlerts: com.d365fo.mobileops.data.counting.TriggeredCountAlerts
     @Inject lateinit var featureFlags: com.d365fo.mobileops.domain.FeatureFlags
@@ -42,6 +45,7 @@ class D365MobileApp : Application(), Configuration.Provider {
         // leaves the device to an adb session" concern the trees below exist to enforce. Planted
         // first, ahead of the sign-in/license gates it needs to be able to explain problems in.
         Timber.plant(AppLogTree(logStore))
+        Timber.w("database: %s", com.d365fo.mobileops.data.local.DatabaseFileCheck.lastOutcome)
 
         // An uncaught exception on any thread never reaches Timber on its own - the process
         // just dies. "Every event, even the errors" (see LogStore's own doc) is hollow if the
@@ -83,8 +87,19 @@ class D365MobileApp : Application(), Configuration.Provider {
         // nothing; a few hundred milliseconds of startup is visible every single shift.
         applicationScope.launch {
             syncScheduler.schedulePeriodicWork()
+            // A handheld with no item cache yet (new install) or a sync left part way gets it
+            // within minutes of being docked, not after the daily job's start delay of up to
+            // four hours. Spread over five minutes so a fleet started together does not all ask at once.
+            if (skuSync.needsCatchUp()) {
+                syncScheduler.scheduleSkuContinuation(
+                    TimeUnit.MINUTES.toMillis(1) + com.d365fo.mobileops.data.sync.FleetJitter.millisUpTo(TimeUnit.MINUTES.toMillis(4)),
+                    replace = true,
+                )
+            }
             // Counting: keep claims alive, and give every unfinished End count a job again.
             claimHeartbeat.start()
+            // One active device per worker: a sign-in elsewhere signs this device out.
+            activeSessionGuard.start()
             triggeredCountAlerts.schedule(featureFlags.countTriggeredAlerts)
             runCatching { countSubmissions.resumePending() }
                 .onFailure { Timber.w(it, "could not resume pending count submissions") }

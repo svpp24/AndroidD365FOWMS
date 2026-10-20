@@ -28,6 +28,8 @@ data class PostRequestBody(
     @SerialName("UserName") val userName: String,
     @SerialName("PersonnelNumber") val personnelNumber: String = "",
     @SerialName("DeviceId") val deviceId: String,
+    /** Settings > Post immediately: D365FO processes the posting in this call - see NetworkPreferences. */
+    @SerialName("ProcessNow") val processNow: Boolean = false,
     /**
      * The captured lines, pre-serialized to a JSON array string rather than sent as a nested
      * array.
@@ -61,6 +63,8 @@ data class PostLineDto(
      * which units.
      */
     @SerialName("SerialIds") val serialIds: List<String> = emptyList(),
+    /** Transfer shipment: picked already when scanned (TransferPicker) - not picked again. */
+    @SerialName("Picked") val picked: Boolean = false,
 )
 
 @Serializable
@@ -76,6 +80,9 @@ data class PostServiceResponse(
      * as a success, never as a duplicate error — see PostingDispatcher.
      */
     @SerialName("AlreadyPosted") val alreadyPosted: Boolean = false,
+    /** With ProcessNow: Registered or Failed (Pending when D365FO could not work it then). */
+    @SerialName("QueueStatus") val queueStatus: String = "",
+    @SerialName("QueueMessage") val queueMessage: String = "",
 )
 
 /**

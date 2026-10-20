@@ -74,6 +74,7 @@ public class HSMobileOpsLicenseSetup extends common
     public void insert()
     {
         this.validateBeforeSave();
+        this.encryptFunctionKeyIfNeeded();
         super();
     }
 ]]></Source>
@@ -85,6 +86,7 @@ public class HSMobileOpsLicenseSetup extends common
     public void update()
     {
         this.validateBeforeSave();
+        this.encryptFunctionKeyIfNeeded();
         super();
     }
 ]]></Source>
@@ -205,6 +207,161 @@ public class HSMobileOpsLicenseSetup extends common
     }
 ]]></Source>
 			</Method>
+			<Method>
+				<Name>fieldEncryptionKeyBase64</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The AES-256 key used only to keep AzureFunctionKey unreadable to a browse of this table -
+    /// NOT a root of trust the way HSMobileOpsLicense::rootPublicKeyXml() is, and NOT a secret
+    /// that protects against anyone who can read this model's own source (this repository, a
+    /// decompile of the deployed model). It exists for exactly one narrower purpose: a customer's
+    /// own D365FO SysAdmin can browse any table in their own tenant, including this one, but has
+    /// no access to this model's compiled X++ source - so a value that never leaves source code
+    /// is unreadable to them even though it sits right next to the ciphertext it protects.
+    ///
+    /// Generated once (openssl rand -base64 32) and compiled in, the same "bake it into the
+    /// model" mechanism as the root key - see licensing/README.md. Unlike the root key, this one
+    /// is safe to be the SAME across every customer's deployment: AzureFunctionKey is already the
+    /// SAME vendor Function key for every customer (see azure-license-function/README.md), so
+    /// there is no per-customer secret here to keep apart in the first place.
+    /// </summary>
+    private static str fieldEncryptionKeyBase64()
+    {
+        return 'Iwy4XckZDt92LHrqT8DL6aD4Fed0X9ny4dmR5B9rbpI=';
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>encryptFunctionKeyIfNeeded</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Encrypts this.AzureFunctionKey in place before it is ever written, unless it is already
+    /// in encrypted form (the 'ENC1:' prefix - set only by this method, so its presence reliably
+    /// means "already encrypted" and this run should leave it alone rather than re-encrypting
+    /// ciphertext as if it were plaintext). A blank value is left blank - "not configured yet" is
+    /// a valid state for a fresh environment, same as blank CertificateString/LicenseKey.
+    ///
+    /// AES-256-CBC with a random IV per encryption, IV prepended to the ciphertext before
+    /// base64 - the standard shape for "store the IV alongside what it encrypted" since a CBC IV
+    /// is not itself secret, only unpredictable. Any CLR failure here must block the save, not
+    /// silently store plaintext under a claimed-encrypted prefix - see the catch below.
+    /// </summary>
+    private void encryptFunctionKeyIfNeeded()
+    {
+        System.Security.Cryptography.Aes  aes;
+        System.Byte[]                      keyBytes, ivBytes, plainBytes, cipherBytes, combined;
+        System.Security.Cryptography.ICryptoTransform  encryptor;
+        System.IO.MemoryStream             memStream;
+        System.Security.Cryptography.CryptoStream      cryptoStream;
+        System.Text.Encoding               utf8;
+        str                                 cipherB64;
+        int                                 i;
+
+        if (!this.AzureFunctionKey || subStr(this.AzureFunctionKey, 1, 5) == 'ENC1:')
+        {
+            return;
+        }
+
+        try
+        {
+            utf8       = System.Text.Encoding::get_UTF8();
+            plainBytes = utf8.GetBytes(this.AzureFunctionKey);
+
+            aes = System.Security.Cryptography.Aes::Create();
+            keyBytes = System.Convert::FromBase64String(HSMobileOpsLicenseSetup::fieldEncryptionKeyBase64());
+            aes.set_Key(keyBytes);
+            aes.GenerateIV();
+            ivBytes = aes.get_IV();
+
+            encryptor    = aes.CreateEncryptor();
+            memStream    = new System.IO.MemoryStream();
+            cryptoStream = new System.Security.Cryptography.CryptoStream(
+                memStream, encryptor, System.Security.Cryptography.CryptoStreamMode::Write);
+            cryptoStream.Write(plainBytes, 0, System.Array::get_Length(plainBytes));
+            cryptoStream.FlushFinalBlock();
+            cipherBytes = memStream.ToArray();
+
+            combined = System.Array::CreateInstance(
+                System.Type::GetType('System.Byte'),
+                System.Array::get_Length(ivBytes) + System.Array::get_Length(cipherBytes));
+            System.Array::Copy(ivBytes, 0, combined, 0, System.Array::get_Length(ivBytes));
+            System.Array::Copy(cipherBytes, 0, combined, System.Array::get_Length(ivBytes), System.Array::get_Length(cipherBytes));
+
+            cipherB64 = System.Convert::ToBase64String(combined);
+        }
+        catch (Exception::CLRError)
+        {
+            throw error('Could not encrypt the license status check key. Nothing was saved.');
+        }
+
+        this.AzureFunctionKey = 'ENC1:' + cipherB64;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>decryptFunctionKey</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The plaintext Function key, or '' if nothing is configured or decryption fails for any
+    /// reason - HSMobileOpsLicenseCloudClient treats either the same as "not configured", never
+    /// as a reason to throw past this point. `internal` - only that class (same package) needs
+    /// this; nothing else should ever see the plaintext key.
+    /// </summary>
+    internal static str decryptFunctionKey()
+    {
+        HSMobileOpsLicenseSetup            setup = HSMobileOpsLicenseSetup::find();
+        System.Security.Cryptography.Aes   aes;
+        System.Byte[]                       keyBytes, ivBytes, cipherBytes, plainBytes, allBytes;
+        System.Security.Cryptography.ICryptoTransform  decryptor;
+        System.IO.MemoryStream              memStream;
+        System.Security.Cryptography.CryptoStream       cryptoStream;
+        System.IO.MemoryStream              outStream;
+        System.Text.Encoding                utf8;
+        str                                  cipherB64;
+        int                                  ivLen;
+
+        if (!setup.AzureFunctionKey || subStr(setup.AzureFunctionKey, 1, 5) != 'ENC1:')
+        {
+            return '';
+        }
+
+        cipherB64 = subStr(setup.AzureFunctionKey, 6, strLen(setup.AzureFunctionKey) - 5);
+
+        try
+        {
+            allBytes = System.Convert::FromBase64String(cipherB64);
+            aes      = System.Security.Cryptography.Aes::Create();
+            keyBytes = System.Convert::FromBase64String(HSMobileOpsLicenseSetup::fieldEncryptionKeyBase64());
+            aes.set_Key(keyBytes);
+
+            ivLen   = aes.get_IV().get_Length();
+            ivBytes = System.Array::CreateInstance(System.Type::GetType('System.Byte'), ivLen);
+            System.Array::Copy(allBytes, 0, ivBytes, 0, ivLen);
+            cipherBytes = System.Array::CreateInstance(System.Type::GetType('System.Byte'), System.Array::get_Length(allBytes) - ivLen);
+            System.Array::Copy(allBytes, ivLen, cipherBytes, 0, System.Array::get_Length(allBytes) - ivLen);
+
+            aes.set_IV(ivBytes);
+            decryptor    = aes.CreateDecryptor();
+            memStream    = new System.IO.MemoryStream(cipherBytes);
+            cryptoStream = new System.Security.Cryptography.CryptoStream(
+                memStream, decryptor, System.Security.Cryptography.CryptoStreamMode::Read);
+            outStream    = new System.IO.MemoryStream();
+            cryptoStream.CopyTo(outStream);
+            plainBytes   = outStream.ToArray();
+
+            utf8 = System.Text.Encoding::get_UTF8();
+            return utf8.GetString(plainBytes);
+        }
+        catch (Exception::CLRError)
+        {
+            return '';
+        }
+    }
+]]></Source>
+			</Method>
 		</Methods>
 	</SourceCode>
 	<Label>Mobile app license</Label>
@@ -226,6 +383,20 @@ public class HSMobileOpsLicenseSetup extends common
 			<Label>License key</Label>
 			<HelpText>The WMSLIC1... signed license string provided by the vendor - pasted together with a matching certificate above. Encodes its own expiry date and device limit; nothing here can change what it grants without a new signed key. A pair that does not verify together is refused on save, not silently accepted.</HelpText>
 			<StringSize>1500</StringSize>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>AzureFunctionUrl</Name>
+			<Label>License status check URL</Label>
+			<HelpText>The vendor CheckLicense Azure Function endpoint - see azure-license-function/README.md. Not sensitive on its own (it is just a URL), kept in the open alongside the key below.</HelpText>
+			<StringSize>300</StringSize>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>AzureFunctionKey</Name>
+			<Label>License status check key</Label>
+			<HelpText>The Function own access key. Stored encrypted at rest - see encryptFunctionKeyIfNeeded()/decryptFunctionKey() below - so a browse of this table shows ciphertext, not a usable key: this key is vendor infrastructure a customer own admin should never be able to extract and call directly.</HelpText>
+			<StringSize>500</StringSize>
 		</AxTableField>
 	</Fields>
 	<FullTextIndexes />

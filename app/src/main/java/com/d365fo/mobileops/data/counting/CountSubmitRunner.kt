@@ -53,6 +53,12 @@ interface CountTransport {
     suspend fun startDmfImport(journalId: String, audit: SubmissionAudit, claimToken: String?): TransportResult<String>
     suspend fun pollDmfImport(executionId: String): TransportResult<ImportJobStatus>
     suspend fun submitDirect(journalId: String, audit: SubmissionAudit, claimToken: String?): TransportResult<DirectSubmitResult>
+
+    /**
+     * The counts to the Stock count control center instead of into the journal - only at a store
+     * that reviews journal counts there. Null means the store does not: submit as usual.
+     */
+    suspend fun submitStaged(journalId: String, audit: SubmissionAudit): TransportResult<StagedCount>? = null
     suspend fun submitExceptions(
         journalId: String,
         audit: SubmissionAudit,
@@ -151,9 +157,14 @@ class CountSubmitRunner @Inject constructor(
 
         var countsWarning = submission.countsWarning
         if (!submission.countsDone && !submission.exceptionsOnly) {
-            val counts = when (submission.transferMode) {
-                TransferMode.DMF -> runDmf(submission, claim?.claimToken)
-                TransferMode.DIRECT -> runDirect(submission, claim?.claimToken)
+            val staged = transport.submitStaged(journalId, submission.audit())
+            val counts = if (staged != null) {
+                stagedStage(journalId, staged)
+            } else {
+                when (submission.transferMode) {
+                    TransferMode.DMF -> runDmf(submission, claim?.claimToken)
+                    TransferMode.DIRECT -> runDirect(submission, claim?.claimToken)
+                }
             }
             when (counts) {
                 is Stage.Stop -> return counts.result
@@ -257,16 +268,38 @@ class CountSubmitRunner @Inject constructor(
         return Stage.Stop(RunResult.RETRY)
     }
 
+    /** The store reviews journal counts: they went to the supervisor, who transfers them into the journal. */
+    private suspend fun stagedStage(journalId: String, result: TransportResult<StagedCount>): Stage = when (result) {
+        is TransportResult.Ok -> {
+            val count = result.value
+            store.recordPassResult(
+                journalId,
+                "Sent to the supervisor for review in ${count.masterId} - they move it into the journal." +
+                    if (count.duplicates > 0) " ${count.duplicates} item(s) in this stock count were counted more than once." else "",
+                false,
+            )
+            Stage.Continue(warning = null)
+        }
+        is TransportResult.Retry -> {
+            store.update(journalId, CountSubmissionState.QUEUED, message = "Waiting to retry: ${result.reason}")
+            Stage.Stop(RunResult.RETRY)
+        }
+        is TransportResult.Fail -> Stage.Stop(fail(journalId, result.error, result.message))
+    }
+
     private suspend fun runDirect(submission: CountSubmissionEntity, claimToken: String?): Stage {
         val journalId = submission.journalId
         store.update(journalId, CountSubmissionState.UPLOADING)
         return when (val result = transport.submitDirect(journalId, submission.audit(), claimToken)) {
             is TransportResult.Ok -> {
                 val pass = result.value
-                if (pass.thirdCountNeeded || pass.passResult != null) {
+                // A plain "ACCEPTED" is what "Counts submitted to D365FO." already says - shown
+                // under it, it was a raw code. Only a result that adds something is kept.
+                val note = pass.passResult?.takeUnless { it.equals("ACCEPTED", ignoreCase = true) }
+                if (pass.thirdCountNeeded || note != null) {
                     store.recordPassResult(
                         journalId,
-                        pass.passResult ?: "D365FO needs a third count for this journal.",
+                        note ?: "D365FO needs a third count for this journal.",
                         pass.thirdCountNeeded,
                     )
                 }
@@ -303,6 +336,12 @@ class CountSubmitRunner @Inject constructor(
     private suspend fun fail(journalId: String, error: CountSubmissionError, message: String): RunResult {
         store.update(journalId, CountSubmissionState.FAILED, error = error, message = message)
         store.markJournalFailed(journalId, message)
+        // D365FO refused the claim at submit (another device holds the journal): the list then
+        // offers Claim again instead of a submit that can only be refused once more.
+        if (error == CountSubmissionError.CLAIM_LOST) {
+            // The banner adds its own "counts are kept / claim again" - only the reason goes in.
+            claims.markLost(journalId, message.substringBefore(" Your counts are kept").substringBefore(" Claim it again"))
+        }
         return RunResult.DONE
     }
 
@@ -323,9 +362,12 @@ fun AppFailure.toTransport(): TransportResult<Nothing> = when (this) {
             CountSubmissionError.JOURNAL_NOT_FOUND,
             "This journal is closed or no longer exists in D365FO.",
         )
+        // D365FO names who holds the journal ("... is being counted by Asha (001) on another
+        // device") when it can; otherwise the generic line.
         "CLAIM_LOST", "CLAIM_EXPIRED" -> TransportResult.Fail(
             CountSubmissionError.CLAIM_LOST,
-            "Your claim on this journal is no longer valid. Claim it again to submit.",
+            message.takeIf { it.contains("being counted by") }?.let { "$it. Your counts are kept on this device." }
+                ?: "Your claim on this journal is no longer valid. Claim it again to submit.",
         )
         "NOTHING_COUNTED" -> TransportResult.Fail(CountSubmissionError.NOTHING_COUNTED, message)
         "RECOUNT_SAME_USER" -> TransportResult.Fail(

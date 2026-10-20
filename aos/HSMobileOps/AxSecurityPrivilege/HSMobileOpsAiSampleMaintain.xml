@@ -1,23 +1,32 @@
 <?xml version="1.0" encoding="utf-8"?>
 <AxSecurityPrivilege xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
 	<Name>HSMobileOpsAiSampleMaintain</Name>
+	<Description>See and remove the AI count training samples uploaded by the handhelds.</Description>
 	<Label>Review mobile AI count samples</Label>
-	<HelpText>See and remove the AI count training samples uploaded by the handhelds.</HelpText>
+	<DirectAccessPermissions>
+		<AxSecurityDataEntityReference>
+			<Grant>
+				<Delete>Allow</Delete>
+				<Read>Allow</Read>
+			</Grant>
+			<Name>HSMobileOpsAiSample</Name>
+			<Fields />
+		</AxSecurityDataEntityReference>
+	</DirectAccessPermissions>
 	<EntryPoints>
 		<AxSecurityEntryPointReference>
 			<Name>HSMobileOpsAiSample</Name>
+			<Grant>
+				<Correct>Allow</Correct>
+				<Create>Allow</Create>
+				<Delete>Allow</Delete>
+				<Read>Allow</Read>
+				<Update>Allow</Update>
+			</Grant>
 			<ObjectName>HSMobileOpsAiSample</ObjectName>
 			<ObjectType>MenuItemDisplay</ObjectType>
-			<AccessLevel>Delete</AccessLevel>
+			<Forms />
 		</AxSecurityEntryPointReference>
 	</EntryPoints>
-	<Tables>
-		<AxSecurityPrivilegeTablePermission>
-			<Name>HSMobileOpsAiSample</Name>
-			<Delete>Allow</Delete>
-			<Insert>NoAccess</Insert>
-			<Read>Allow</Read>
-			<Update>NoAccess</Update>
-		</AxSecurityPrivilegeTablePermission>
-	</Tables>
+	<FormControlOverrides />
 </AxSecurityPrivilege>

@@ -42,50 +42,13 @@ interface JournalDao {
 
     @Transaction
     @Query("SELECT * FROM invent_journal WHERE journalId = :journalId")
-    fun observeJournal(journalId: String): Flow<JournalWithLines?>
-
-    @Transaction
-    @Query("SELECT * FROM invent_journal WHERE journalId = :journalId")
     suspend fun getJournal(journalId: String): JournalWithLines?
-
-    @Transaction
-    @Query(
-        """
-        SELECT * FROM invent_journal
-        WHERE type = :type AND workerId = :workerId AND status = 'DRAFT'
-        ORDER BY local_modified_at DESC
-        """,
-    )
-    fun observeDrafts(type: JournalType, workerId: String): Flow<List<JournalWithLines>>
-
-    /**
-     * Lines are paged rather than loaded whole: a counting journal for a large aisle can
-     * exceed a thousand rows, and the screen only ever shows a window of them.
-     */
-    @Query(
-        """
-        SELECT * FROM invent_journal_line
-        WHERE journalId = :journalId
-        ORDER BY lineNumber ASC
-        LIMIT :limit OFFSET :offset
-        """,
-    )
-    fun observeLinesPaged(journalId: String, limit: Int, offset: Int): Flow<List<JournalLineEntity>>
-
-    @Query("SELECT COUNT(*) FROM invent_journal_line WHERE journalId = :journalId")
-    fun observeLineCount(journalId: String): Flow<Int>
-
-    @Query("SELECT COALESCE(MAX(lineNumber), 0) FROM invent_journal_line WHERE journalId = :journalId")
-    suspend fun maxLineNumber(journalId: String): Int
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertJournal(journal: JournalEntity)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertLines(lines: List<JournalLineEntity>)
-
-    @Update
-    suspend fun updateJournal(journal: JournalEntity)
 
     @Transaction
     suspend fun upsertLinesChunked(lines: List<JournalLineEntity>) =
@@ -94,16 +57,6 @@ interface JournalDao {
     @Query("DELETE FROM invent_journal_line WHERE journalLineId = :journalLineId")
     suspend fun deleteLine(journalLineId: String)
 
-    /** Persisted as soon as the worker types it, not held only in view state - counting a
-     *  200+ line journal is easily interrupted by a shift change or a dropped app. */
-    @Query(
-        "UPDATE invent_journal_line SET countedQuantity = :countedQuantity WHERE journalLineId = :journalLineId",
-    )
-    suspend fun setCountedQuantity(journalLineId: String, countedQuantity: String?)
-
-    @Query("SELECT COUNT(*) FROM invent_journal_line WHERE journalId = :journalId AND countedQuantity IS NOT NULL")
-    fun observeCountedLineCount(journalId: String): Flow<Int>
-
     // -- Counting workflow -----------------------------------------------------------------
 
     /** Every counting journal that has data on this device - the journal list's "has data" and
@@ -111,6 +64,13 @@ interface JournalDao {
      *  download tracker). */
     @Query("SELECT * FROM invent_journal WHERE type = 'COUNTING'")
     fun observeCountingJournals(): Flow<List<JournalEntity>>
+
+    /** Counting journals started on this device and not yet in D365FO (counting, failed, sending). */
+    @Query(
+        "SELECT COUNT(*) FROM invent_journal WHERE type = 'COUNTING' AND countStartedAt IS NOT NULL " +
+            "AND status IN ('DRAFT', 'PENDING_POST', 'FAILED')",
+    )
+    suspend fun countUnsubmittedCounts(): Int
 
     /** Total / with-a-quantity / marked-only line counts per counting journal. */
     @Query(
@@ -125,11 +85,6 @@ interface JournalDao {
         """,
     )
     fun observeCountingProgress(): Flow<List<CountingProgressRow>>
-
-    /** All of a journal's lines, for the lines screen's own search/filter - a counting journal
-     *  is a few hundred lines, and filtering in memory keeps search instant and offline. */
-    @Query("SELECT * FROM invent_journal_line WHERE journalId = :journalId ORDER BY lineNumber ASC")
-    fun observeAllLines(journalId: String): Flow<List<JournalLineEntity>>
 
     @Query("SELECT * FROM invent_journal_line WHERE journalId = :journalId")
     suspend fun getLinesOnce(journalId: String): List<JournalLineEntity>
@@ -181,9 +136,6 @@ interface JournalDao {
             removed = removable.size,
         )
     }
-
-    @Query("UPDATE invent_journal_line SET markedCounted = :marked WHERE journalLineId = :journalLineId")
-    suspend fun setMarkedCounted(journalLineId: String, marked: Boolean)
 
     /** Only the first press counts - re-pressing Start counting must not reset the time. */
     @Query("UPDATE invent_journal SET countStartedAt = :at WHERE journalId = :journalId AND countStartedAt IS NULL")
@@ -259,45 +211,12 @@ interface JournalDao {
         snapshotAt: Long?,
     )
 
-    @Query("DELETE FROM invent_journal WHERE status = 'POSTED' AND postedAt < :olderThan")
-    suspend fun purgePosted(olderThan: Long): Int
-
     @Query("DELETE FROM invent_journal")
     suspend fun clear()
 }
 
 @Dao
 interface TransferOrderDao {
-
-    @Transaction
-    @Query(
-        """
-        SELECT * FROM transfer_order
-        WHERE fromWarehouseId = :warehouseId AND status = 'CREATED'
-        ORDER BY shipDate ASC
-        LIMIT :limit OFFSET :offset
-        """,
-    )
-    fun observeShippable(
-        warehouseId: String,
-        limit: Int = Constants.ORDER_PAGE_SIZE,
-        offset: Int = 0,
-    ): Flow<List<TransferOrderWithLines>>
-
-    @Transaction
-    @Query(
-        """
-        SELECT * FROM transfer_order
-        WHERE toWarehouseId = :warehouseId AND status = 'SHIPPED'
-        ORDER BY receiveDate ASC
-        LIMIT :limit OFFSET :offset
-        """,
-    )
-    fun observeReceivable(
-        warehouseId: String,
-        limit: Int = Constants.ORDER_PAGE_SIZE,
-        offset: Int = 0,
-    ): Flow<List<TransferOrderWithLines>>
 
     @Transaction
     @Query("SELECT * FROM transfer_order WHERE transferId = :transferId")
@@ -318,21 +237,6 @@ interface TransferOrderDao {
 
 @Dao
 interface SalesOrderDao {
-
-    @Transaction
-    @Query(
-        """
-        SELECT * FROM sales_order
-        WHERE warehouseId = :warehouseId AND status = 'BACKORDER' AND confirmed = 1
-        ORDER BY deliveryDate ASC
-        LIMIT :limit OFFSET :offset
-        """,
-    )
-    fun observePickable(
-        warehouseId: String,
-        limit: Int = Constants.ORDER_PAGE_SIZE,
-        offset: Int = 0,
-    ): Flow<List<SalesOrderWithLines>>
 
     @Transaction
     @Query("SELECT * FROM sales_order WHERE salesId = :salesId")

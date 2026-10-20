@@ -190,7 +190,12 @@ data class PurchaseOrderSummary(
     val siteId: String?,
     val warehouseId: String?,
     val deliveryDate: Long?,
-)
+    /** Something is still left to receive - D365FO's own reading, see HSMobileOpsPurchListService. */
+    val hasOpenLines: Boolean = true,
+) {
+    /** Worth offering for receiving: an open status and a line still to receive. */
+    val receivable: Boolean get() = status.isOpen && hasOpenLines
+}
 
 /** One selectable warehouse. */
 data class WarehouseOption(

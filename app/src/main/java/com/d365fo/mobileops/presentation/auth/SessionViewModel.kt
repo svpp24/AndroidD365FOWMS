@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.d365fo.mobileops.data.repository.WorkerContextRepositoryImpl
 import com.d365fo.mobileops.data.security.ConnectionSettings
 import com.d365fo.mobileops.data.security.TokenProvider
+import com.d365fo.mobileops.util.AppFailure
 import com.d365fo.mobileops.util.NetworkResult
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.withContext
@@ -21,13 +22,11 @@ import javax.inject.Inject
  * Whether the *device* may talk to D365FO at all.
  *
  * This gate is about the handheld, not the person. Every call to D365FO needs an AAD bearer
- * token, and the device gets one as itself, either silently from a configured client secret
- * (`AuthType.CLIENT_CREDENTIALS`) or from a one-time interactive device-code sign-in done during
- * commissioning (`AuthType.DEVICE_CODE` - see [DeviceCodeTokenProvider]). Only the *field*
- * completeness of the connection settings used to gate [SessionState.Ready] - confirmed live as
- * a real gap once device-code became the compiled default: a device whose fields are filled in
- * but that has never actually completed the interactive step (or whose refresh token has since
- * been revoked) still read as Ready, so the failure only ever surfaced later, confusingly, at a
+ * token, and the device gets one as itself, from the client credentials the connection QR code
+ * set (device-code sign-in was removed). Only the *field* completeness of the connection
+ * settings used to gate [SessionState.Ready] - confirmed live as a real gap: a device whose
+ * fields are filled in but whose secret is wrong or revoked still read as Ready, so the failure
+ * only ever surfaced later, confusingly, at a
  * worker's own sign-in attempt. [refresh] now also waits on the token check itself before
  * confirming Ready, precisely so a device that cannot actually get a token lands on
  * [NotConfiguredScreen]'s "Ask a supervisor..." message instead.
@@ -81,7 +80,7 @@ class SessionViewModel @Inject constructor(
      *
      * Firing it here instead overlaps that 9 s with however long the worker spends typing a
      * user name and password — which is normally longer than 9 s on its own. By the time they
-     * tap Sign in, [DeviceCodeTokenProvider] usually already holds a cached token, and
+     * tap Sign in, the token provider usually already holds a cached token, and
      * [AuthInterceptor] finds it instantly instead of blocking the request on a fresh fetch.
      * Launched on its own coroutine, not awaited by the [SessionState.Ready] decision above it -
      * a slow token fetch must not delay the sign-in screen appearing, and the overwhelmingly
@@ -126,9 +125,15 @@ class SessionViewModel @Inject constructor(
         if (connectionSettings.canGoLive()) {
             viewModelScope.launch(handler) {
                 when (val result = tokenProvider.acquireSilent()) {
-                    is NetworkResult.Error -> {
-                        Timber.w("device session: token check failed - %s", result.failure.message)
-                        _state.value = SessionState.SignedOut(result.failure.message)
+                    is NetworkResult.Error -> when (result.failure) {
+                        // No connection is not a broken setup: stay on the sign-in screen, where
+                        // offline sign-in works. The token is fetched again on the next call.
+                        is AppFailure.Offline, is AppFailure.Transient ->
+                            Timber.w("device session: offline, token not checked - %s", result.failure.message)
+                        else -> {
+                            Timber.w("device session: token check failed - %s", result.failure.message)
+                            _state.value = SessionState.SignedOut(result.failure.message)
+                        }
                     }
                     NetworkResult.Loading, is NetworkResult.Success -> Unit
                 }

@@ -55,7 +55,10 @@ class WorkerSessionViewModel @Inject constructor(
      * out 30 minutes after a stray touch on the login screen.
      */
     fun notifyActivity() {
-        if (sessions.session.value != null) armIdleTimer()
+        if (sessions.session.value != null) {
+            armIdleTimer()
+            sessions.noteActivity()
+        }
     }
 
     private fun armIdleTimer() {
@@ -65,7 +68,7 @@ class WorkerSessionViewModel @Inject constructor(
         val timeoutMillis = idlePreferences.timeout.value.minutes * 60 * 1000L
         idleJob = viewModelScope.launch {
             delay(timeoutMillis)
-            sessions.signOut()
+            sessions.signOut(reason = "Timed out")
         }
     }
 }

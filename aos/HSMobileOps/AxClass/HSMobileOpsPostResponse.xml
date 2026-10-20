@@ -11,6 +11,8 @@ class HSMobileOpsPostResponse
     str     message;
     str     documentNumber;
     boolean alreadyPosted;
+    str     queueStatus;
+    str     queueMessage;
 
 }
 ]]></Declaration>
@@ -89,6 +91,36 @@ class HSMobileOpsPostResponse
     {
         alreadyPosted = _value;
         return alreadyPosted;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmQueueStatus</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// With ProcessNow: what the queue row became - Registered or Failed (Pending when it could not be worked).
+    /// </summary>
+    [DataMemberAttribute('QueueStatus')]
+    public str parmQueueStatus(str _value = queueStatus)
+    {
+        queueStatus = _value;
+        return queueStatus;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmQueueMessage</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// With ProcessNow: D365FO's reason when it failed.
+    /// </summary>
+    [DataMemberAttribute('QueueMessage')]
+    public str parmQueueMessage(str _value = queueMessage)
+    {
+        queueMessage = _value;
+        return queueMessage;
     }
 ]]></Source>
 			</Method>

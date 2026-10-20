@@ -109,14 +109,14 @@ public class HSMobileOpsCountTolerance extends common
 		<AxTableField xmlns=""
 			i:type="AxTableFieldReal">
 			<Name>TolerancePct</Name>
-			<Label>Tolerance %</Label>
 			<HelpText>Largest variance, as a percentage of the system quantity, accepted without approval.</HelpText>
+			<Label>Tolerance %</Label>
 		</AxTableField>
 		<AxTableField xmlns=""
 			i:type="AxTableFieldReal">
 			<Name>ToleranceQty</Name>
-			<Label>Tolerance quantity</Label>
 			<HelpText>Largest variance in units accepted without approval.</HelpText>
+			<Label>Tolerance quantity</Label>
 		</AxTableField>
 	</Fields>
 	<FullTextIndexes />

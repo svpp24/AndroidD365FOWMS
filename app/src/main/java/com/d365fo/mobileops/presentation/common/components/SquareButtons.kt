@@ -5,15 +5,29 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.defaultMinSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import android.os.SystemClock
+import android.view.HapticFeedbackConstants
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ButtonColors
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ButtonElevation
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ProvideTextStyle
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.d365fo.mobileops.presentation.common.theme.WarehouseDimens
 import com.d365fo.mobileops.presentation.common.theme.WarehouseStatusColors
@@ -22,6 +36,52 @@ import androidx.compose.material3.OutlinedButton as MaterialOutlinedButton
 import androidx.compose.material3.TextButton as MaterialTextButton
 /** * A subtly darker version of the same colour, alpha unchanged - the bottom stop of * [SquareButton]'s fill gradient. Multiplies channels rather than blending toward black, so it * stays the same hue rather than muddying toward grey. */private fun Color.darken(amount: Float): Color =    copy(red = red * (1 - amount), green = green * (1 - amount), blue = blue * (1 - amount))
 
+
+/**
+ * Every button here is built for a warehouse worker: often gloved, often moving, in a noisy and
+ * sometimes poorly lit aisle, glancing at the screen rather than reading it.
+ *
+ * - **At least [WarehouseDimens.MinTouchTarget] tall** (56dp, more at a larger display scale),
+ *   not Material's 40dp - a gloved fingertip is wider than a bare one.
+ * - **A bold 16sp label**, centred, never truncated - readable at arm's length.
+ * - **A firm tap** (the keyboard-key haptic), so a gloved worker who can't feel the glass, in a
+ *   space too loud to hear a click, still knows the press registered.
+ * - **One tap per press**: a second tap within [DOUBLE_TAP_GUARD_MS] is ignored. Gloves and
+ *   rugged screens often register one press as two, which would otherwise submit a receipt or
+ *   confirm a count twice. The keypad and +/- steppers are their own controls and stay fast.
+ */
+private const val DOUBLE_TAP_GUARD_MS = 600L
+
+@Composable
+private fun workerClick(onClick: () -> Unit): () -> Unit {
+    val view = LocalView.current
+    val latest by rememberUpdatedState(onClick)
+    var lastTap by remember { mutableLongStateOf(0L) }
+    return remember(view) {
+        {
+            val now = SystemClock.uptimeMillis()
+            if (now - lastTap >= DOUBLE_TAP_GUARD_MS) {
+                lastTap = now
+                view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+                latest()
+            }
+        }
+    }
+}
+
+@Composable
+private fun workerLabel(content: @Composable RowScope.() -> Unit): @Composable RowScope.() -> Unit {
+    val base = MaterialTheme.typography.labelLarge
+    val style = base.copy(
+        // labelLarge is 14sp; scaled from it so the worker's display-size setting still applies.
+        fontSize = base.fontSize * (16f / 14f),
+        fontWeight = FontWeight.SemiBold,
+        textAlign = TextAlign.Center,
+    )
+    return { ProvideTextStyle(style) { content() } }
+}
+
+private val WorkerContentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp)
 
 /**
  * Square drop-ins for Material3's `Button`/`OutlinedButton`/`TextButton`.
@@ -66,20 +126,20 @@ fun SquareButton(
     colors: ButtonColors = ButtonDefaults.buttonColors(),
     elevation: ButtonElevation? = ButtonDefaults.buttonElevation(),
     border: BorderStroke? = null,
-    contentPadding: PaddingValues = ButtonDefaults.ContentPadding,
+    contentPadding: PaddingValues = WorkerContentPadding,
     interactionSource: MutableInteractionSource? = null,
     content: @Composable RowScope.() -> Unit,
 ) = MaterialButton(
-    onClick = onClick,
+    onClick = workerClick(onClick),
     modifier = if (enabled) {
-        modifier.background(
+        modifier.defaultMinSize(minHeight = WarehouseDimens.MinTouchTarget).background(
             brush = Brush.verticalGradient(
                 listOf(colors.containerColor, colors.containerColor.darken(0.16f)),
             ),
             shape = shape,
         )
     } else {
-        modifier
+        modifier.defaultMinSize(minHeight = WarehouseDimens.MinTouchTarget)
     },
     enabled = enabled,
     shape = shape,
@@ -88,7 +148,7 @@ fun SquareButton(
     border = border,
     contentPadding = contentPadding,
     interactionSource = interactionSource,
-    content = content,
+    content = workerLabel(content),
 )
 
 @Composable
@@ -99,13 +159,18 @@ fun SquareOutlinedButton(
     shape: Shape = RoundedCornerShape(WarehouseDimens.CardCorner),
     colors: ButtonColors = ButtonDefaults.outlinedButtonColors(),
     elevation: ButtonElevation? = null,
-    border: BorderStroke? = ButtonDefaults.outlinedButtonBorder(enabled),
-    contentPadding: PaddingValues = ButtonDefaults.ContentPadding,
+    // 2dp in the accent, not Material's 1dp grey - an outline must still read as a button
+    // under poor warehouse lighting.
+    border: BorderStroke? = BorderStroke(
+        2.dp,
+        if (enabled) WarehouseStatusColors.accent else WarehouseStatusColors.accent.copy(alpha = 0.38f),
+    ),
+    contentPadding: PaddingValues = WorkerContentPadding,
     interactionSource: MutableInteractionSource? = null,
     content: @Composable RowScope.() -> Unit,
 ) = MaterialOutlinedButton(
-    onClick = onClick,
-    modifier = modifier,
+    onClick = workerClick(onClick),
+    modifier = modifier.defaultMinSize(minHeight = WarehouseDimens.MinTouchTarget),
     enabled = enabled,
     shape = shape,
     colors = colors,
@@ -113,7 +178,7 @@ fun SquareOutlinedButton(
     border = border,
     contentPadding = contentPadding,
     interactionSource = interactionSource,
-    content = content,
+    content = workerLabel(content),
 )
 
 @Composable
@@ -125,12 +190,12 @@ fun SquareTextButton(
     colors: ButtonColors = ButtonDefaults.textButtonColors(),
     elevation: ButtonElevation? = null,
     border: BorderStroke? = null,
-    contentPadding: PaddingValues = ButtonDefaults.TextButtonContentPadding,
+    contentPadding: PaddingValues = WorkerContentPadding,
     interactionSource: MutableInteractionSource? = null,
     content: @Composable RowScope.() -> Unit,
 ) = MaterialTextButton(
-    onClick = onClick,
-    modifier = modifier,
+    onClick = workerClick(onClick),
+    modifier = modifier.defaultMinSize(minHeight = WarehouseDimens.MinTouchTarget),
     enabled = enabled,
     shape = shape,
     colors = colors,
@@ -138,7 +203,7 @@ fun SquareTextButton(
     border = border,
     contentPadding = contentPadding,
     interactionSource = interactionSource,
-    content = content,
+    content = workerLabel(content),
 )
 
 /**
@@ -177,7 +242,7 @@ fun CancelOutlinedButton(
     modifier = modifier,
     enabled = enabled,
     colors = ButtonDefaults.outlinedButtonColors(contentColor = WarehouseStatusColors.red),
-    border = BorderStroke(1.dp, WarehouseStatusColors.red),
+    border = BorderStroke(2.dp, WarehouseStatusColors.red),
     content = content,
 )
 
@@ -197,19 +262,23 @@ fun ConfirmButton(
     content = content,
 )
 
-/** Outline-style [ConfirmButton] - see [CancelOutlinedButton]'s doc for when the outline style
- *  fits (paired with another filled button so only one reads as primary). */
+
+/**
+ * A dialog's actions as two equal, full-width buttons - the action left, Cancel right - in an
+ * AlertDialog's confirmButton slot (leave dismissButton empty). The default slot buttons sit small
+ * at the right edge, easy to miss with a glove; the counting quantity dialog already used this.
+ */
 @Composable
-fun ConfirmOutlinedButton(
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-    enabled: Boolean = true,
-    content: @Composable RowScope.() -> Unit,
-) = SquareOutlinedButton(
-    onClick = onClick,
-    modifier = modifier,
-    enabled = enabled,
-    colors = ButtonDefaults.outlinedButtonColors(contentColor = WarehouseStatusColors.green),
-    border = BorderStroke(1.dp, WarehouseStatusColors.green),
-    content = content,
-)
+fun DialogButtonRow(
+    dismiss: (@Composable androidx.compose.foundation.layout.RowScope.() -> Unit)?,
+    confirm: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit,
+) {
+    androidx.compose.foundation.layout.Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(12.dp),
+    ) {
+        // The action first, Cancel on the right (feedback, 10 Oct).
+        confirm()
+        dismiss?.invoke(this)
+    }
+}

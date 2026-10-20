@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsMenuLineRow</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// One menu line. LineType MODULE carries Module (an HSMobileOpsModule symbol); MENU carries
+/// SubMenuId.
+/// </summary>
+[DataContractAttribute]
+class HSMobileOpsMenuLineRow
+{
+    str      lineType;
+    str      module;
+    str      subMenuId;
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmLineType</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('LineType')]
+    public str parmLineType(str _value = lineType)
+    {
+        lineType = _value;
+        return lineType;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmModule</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Module')]
+    public str parmModule(str _value = module)
+    {
+        module = _value;
+        return module;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmSubMenuId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('SubMenuId')]
+    public str parmSubMenuId(str _value = subMenuId)
+    {
+        subMenuId = _value;
+        return subMenuId;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

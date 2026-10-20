@@ -12,12 +12,18 @@ import com.d365fo.mobileops.data.remote.dto.SignInRequestBody
 import com.d365fo.mobileops.data.remote.dto.SignInServiceRequest
 import com.d365fo.mobileops.data.remote.error.D365ErrorMapper
 import com.d365fo.mobileops.data.security.CompanyProvider
+import com.d365fo.mobileops.data.security.OfflineSignIn
+import com.d365fo.mobileops.data.security.OfflineSignInResult
+import com.d365fo.mobileops.data.security.PlayIntegrityTokenProvider
 import com.d365fo.mobileops.data.security.SecureStore
 import com.d365fo.mobileops.domain.model.WarehouseWorkflow
 import com.d365fo.mobileops.util.AppFailure
 import com.d365fo.mobileops.util.NetworkResult
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -39,6 +45,10 @@ import javax.inject.Singleton
  *
  * The session is in memory only, for the same reason. Restarting the app signs the worker out,
  * which is the correct behaviour when the next person to pick the device up is a different person.
+ *
+ * Offline sign-in: when D365FO can't be reached, a worker who signed in online here in the last
+ * week can still sign in. That check uses a salted one-way verifier kept by [OfflineSignIn], not
+ * the password. See that class for when the verifier is replaced or deleted.
  */
 @Singleton
 class WorkerSessionRepository @Inject constructor(
@@ -49,8 +59,15 @@ class WorkerSessionRepository @Inject constructor(
     private val secureStore: SecureStore,
     private val json: Json,
     private val permissionDao: PermissionDao,
+    private val integrityTokenProvider: PlayIntegrityTokenProvider,
+    private val offlineSignIn: OfflineSignIn,
+    private val reachability: com.d365fo.mobileops.data.sync.AosReachabilityMonitor,
+    private val signInLog: com.d365fo.mobileops.data.sync.SignInLogRecorder,
     @ApplicationContext private val context: Context,
 ) {
+
+    /** Writes the offline verifier after a sign-in, so its PBKDF2 rounds don't slow the sign-in. */
+    private val background = CoroutineScope(SupervisorJob() + ioDispatcher)
 
     private val _session = MutableStateFlow<WorkerSession?>(
         // Debug builds only - see the doc on SecureStore.KEY_DEBUG_WORKER_SESSION. Every
@@ -61,6 +78,24 @@ class WorkerSessionRepository @Inject constructor(
         if (BuildConfig.DEBUG) restoreDebugSession() else null,
     )
     val session: StateFlow<WorkerSession?> = _session.asStateFlow()
+
+    /**
+     * Each successful sign-in (online or offline), by user name - not a session restored at
+     * start-up. [com.d365fo.mobileops.data.sync.ActiveSessionGuard] makes this device the
+     * worker's active one in D365FO on it.
+     */
+    private val _signIns = kotlinx.coroutines.flow.MutableSharedFlow<String>(extraBufferCapacity = 4)
+    val signIns: kotlinx.coroutines.flow.SharedFlow<String> = _signIns
+
+    /** Why the worker was signed out without asking - shown on the sign-in screen until the next sign-in. */
+    private val _signOutNotice = MutableStateFlow<String?>(null)
+    val signOutNotice: StateFlow<String?> = _signOutNotice.asStateFlow()
+
+    /** The worker signed in on another device: sign out here and say so on the sign-in screen. */
+    fun signOutElsewhere(message: String) {
+        signOut(reason = "Signed in on another device")
+        _signOutNotice.value = message
+    }
 
     // Not part of WorkerSession itself - that's the session's identity/warehouses, cached
     // verbatim across a debug rebuild (see restoreDebugSession); a license-expiry notice is a
@@ -152,6 +187,15 @@ class WorkerSessionRepository @Inject constructor(
     private fun company(): String =
         companyProvider()?.takeIf { it.isNotBlank() }?.lowercase().orEmpty()
 
+    /** The user name the sign-in screen fills in next time (WorkerLoginViewModel). Never the PIN. */
+    fun lastUserName(): String = runCatching { secureStore.getString(KEY_LAST_USER) }.getOrNull().orEmpty()
+
+    // Before the session is set: setting it leaves the sign-in screen at once, which cancelled
+    // the screen's own save - the name was never kept (seen 10 Oct, 1.0.80).
+    private fun rememberLastUser(name: String) {
+        runCatching { secureStore.putString(KEY_LAST_USER, name.trim()) }
+    }
+
     suspend fun signIn(
         userName: String,
         password: String,
@@ -165,9 +209,21 @@ class WorkerSessionRepository @Inject constructor(
         val name = userName.trim()
         if (name.isEmpty() || password.isEmpty()) {
             return@withContext NetworkResult.Error(
-                AppFailure.Validation("Enter your user name and password"),
+                AppFailure.Validation("Enter your user name and PIN"),
             )
         }
+
+        // D365FO already known to be down (the cloud at the top is not green): offline at once,
+        // rather than first sitting out the 15 s connect timeout of a sign-in that cannot work.
+        // Recovery is the background probe's to notice - see AosReachabilityInterceptor.
+        if (!reachability.reachable.value && offlineSignIn.hasAny()) {
+            return@withContext signInOffline(name, password)
+        }
+
+        // Best-effort - see PlayIntegrityTokenProvider's own "never throws" doc comment. A null
+        // token still signs in; AOS just sees an UNVERIFIED integrity verdict instead of a reason
+        // to refuse the call.
+        val integrityToken = integrityTokenProvider.requestToken()
 
         val result = errorMapper.safeCall {
             service.signIn(
@@ -182,13 +238,18 @@ class WorkerSessionRepository @Inject constructor(
                         platform = platform,
                         platformVersion = platformVersion,
                         appVersionName = appVersionName,
+                        integrityToken = integrityToken,
                     ),
                 ),
             )
         }
 
         when (result) {
-            is NetworkResult.Error -> result
+            is NetworkResult.Error -> when (result.failure) {
+                // D365FO can't be reached: offline sign-in, if this worker has one here.
+                is AppFailure.Offline, is AppFailure.Transient -> signInOffline(name, password)
+                else -> result
+            }
             NetworkResult.Loading -> NetworkResult.Error(AppFailure.Fatal("unexpected Loading"))
             is NetworkResult.Success -> {
                 val body = result.data
@@ -196,6 +257,9 @@ class WorkerSessionRepository @Inject constructor(
                     // Logged by errorCode, never the password - see the comment two lines down
                     // on why INVALID_CREDENTIALS itself is already deliberately ambiguous.
                     Timber.w("sign-in refused for '%s': %s", name, body.errorCode)
+                    // D365FO refused, so no offline sign-in may outlive that answer. A license
+                    // refusal is about the device, not this worker, so it clears every worker's.
+                    if (body.errorCode in LICENSE_REFUSALS) offlineSignIn.forgetAll() else offlineSignIn.forget(name)
                     // The wording follows the server's code, never guesses beyond it. In
                     // particular a wrong user name and a wrong password are one message, because
                     // telling them apart tells an attacker which accounts exist.
@@ -203,7 +267,7 @@ class WorkerSessionRepository @Inject constructor(
                         AppFailure.BusinessRule(
                             when (body.errorCode) {
                                 "INVALID_CREDENTIALS" ->
-                                    "That user name and password do not match"
+                                    "That user name and PIN do not match"
                                 "INACTIVE" -> "This account has been deactivated"
                                 "LOCKED_OUT" -> body.message
                                     ?: "Too many failed attempts. Try again shortly."
@@ -260,8 +324,16 @@ class WorkerSessionRepository @Inject constructor(
                 )
                 Timber.i("signed in: '%s', %d warehouse(s)%s", body.userName, warehouses.size,
                     body.licenseWarning?.takeIf { it.isNotBlank() }?.let { " - license warning: $it" }.orEmpty())
+                rememberLastUser(userName)
                 _session.value = session
+                _signOutNotice.value = null
+                _signIns.tryEmit(session.userName)
+                signInLog.started(company(), session.userName, session.selected?.warehouseId, signedInOffline = false)
                 _licenseWarning.value = body.licenseWarning?.takeIf { it.isNotBlank() }
+                background.launch {
+                    runCatching { offlineSignIn.remember(name, password, session) }
+                        .onFailure { Timber.w(it, "could not keep offline sign-in for '%s'", name) }
+                }
                 // Down-sync: replaces this worker's whole permission set with whatever the
                 // server just sent, every sign-in - see PermissionDao.replaceFor and
                 // ModulePermissionDto's own doc on why an empty/missing list means "nothing
@@ -310,6 +382,7 @@ class WorkerSessionRepository @Inject constructor(
             val match = current?.warehouses?.firstOrNull { it.warehouseId == warehouseId }
             if (match == null) current else current.copy(selected = match)
         }
+        signInLog.warehouseChosen(warehouseId)
         // Debug builds keep the session across a rebuild (see restoreDebugSession); keep the
         // chosen warehouse with it, so a reinstall does not ask for the warehouse again.
         if (BuildConfig.DEBUG && secureStore.getString(SecureStore.KEY_DEBUG_WORKER_SESSION) != null) {
@@ -317,8 +390,10 @@ class WorkerSessionRepository @Inject constructor(
         }
     }
 
-    fun signOut() {
+    /** [reason] goes into the sign-in history: "Signed out", or "Timed out" for the idle sign-out. */
+    fun signOut(reason: String = "Signed out") {
         Timber.i("signed out: '%s'", _session.value?.userName ?: "unknown")
+        if (_session.value != null) signInLog.ended(reason)
         _session.value = null
         _licenseWarning.value = null
         if (BuildConfig.DEBUG) {
@@ -351,7 +426,61 @@ class WorkerSessionRepository @Inject constructor(
         result.toUnit {
             // The forced-change flag is cleared server-side, so the local copy follows.
             _session.update { it?.copy(mustChangePassword = false) }
+            // The old password must stop working offline too.
+            _session.value?.let { session ->
+                background.launch { runCatching { offlineSignIn.remember(userName, newPassword, session) } }
+            }
         }
+    }
+
+    /** Sign-in while D365FO can't be reached, checked against this worker's last online sign-in here. */
+    /** A touch in the signed-in app - see SignInLogRecorder.touched. */
+    fun noteActivity() = signInLog.touched()
+
+    private fun signInOffline(name: String, password: String): NetworkResult<WorkerSession> {
+        val noConnection = "Can't reach D365FO"
+        val offline = offlineSignIn.verify(name, password)
+        Timber.i("offline sign-in for '%s': %s", name, offline::class.simpleName)
+        return when (offline) {
+            is OfflineSignInResult.SignedIn -> {
+                Timber.i("signed in offline: '%s'", offline.session.userName)
+                rememberLastUser(name)
+                _session.value = offline.session
+                _signOutNotice.value = null
+                _signIns.tryEmit(offline.session.userName)
+                signInLog.started(company(), offline.session.userName, offline.session.selected?.warehouseId, signedInOffline = true)
+                NetworkResult.Success(offline.session)
+            }
+            OfflineSignInResult.NotAvailable -> NetworkResult.Error(
+                AppFailure.Offline(
+                    "$noConnection. Offline sign-in works only after you have signed in on this device while connected.",
+                ),
+            )
+            is OfflineSignInResult.Expired -> NetworkResult.Error(
+                AppFailure.Offline(
+                    "$noConnection. Your last online sign-in here was more than ${offline.days} days ago. " +
+                        "Sign in once while connected.",
+                ),
+            )
+            is OfflineSignInResult.WrongPassword -> NetworkResult.Error(
+                AppFailure.Validation(
+                    "That user name and PIN do not match. ${offline.attemptsRemaining} " +
+                        (if (offline.attemptsRemaining == 1) "try" else "tries") +
+                        " left before offline sign-in is turned off for you.",
+                ),
+            )
+            OfflineSignInResult.Cleared -> NetworkResult.Error(
+                AppFailure.Offline("Too many wrong PINs. Sign in while connected to D365FO."),
+            )
+            OfflineSignInResult.ClockBehind -> NetworkResult.Error(
+                AppFailure.Offline("$noConnection, and this device's clock is behind. Check the date and time."),
+            )
+        }
+    }
+
+    private companion object {
+        private const val KEY_LAST_USER = "last_worker_user_name"
+        val LICENSE_REFUSALS = setOf("NO_LICENSE", "LICENSE_INVALID", "LICENSE_EXPIRED", "DEVICE_LIMIT_REACHED")
     }
 
     private inline fun NetworkResult<com.d365fo.mobileops.data.remote.dto.ChangePasswordServiceResponse>
@@ -407,6 +536,8 @@ data class WorkerSession(
     val maxOverPercent: String? = null,
     val maxOverQty: String? = null,
     val mustChangePassword: Boolean,
+    /** Signed in with [com.d365fo.mobileops.data.security.OfflineSignIn] while D365FO couldn't be reached. */
+    val signedInOffline: Boolean = false,
     val warehouses: List<AssignedWarehouse>,
     /** Null when several warehouses are assigned and none is flagged default. */
     val selected: AssignedWarehouse?,

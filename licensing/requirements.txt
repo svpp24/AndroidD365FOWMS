@@ -1,3 +1,7 @@
 cryptography>=42.0
 qrcode[pil]>=7.4
 Pillow>=10.0
+
+# Only needed for `azure-register` - revoking/reactivating a customer in the CheckLicense
+# Azure Table. See ../azure-license-function/README.md.
+azure-data-tables>=12.5.0

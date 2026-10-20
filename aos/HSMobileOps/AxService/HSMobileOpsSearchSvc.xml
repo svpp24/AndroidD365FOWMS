@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxService xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsSearchSvc</Name>
+	<Class>HSMobileOpsSearchService</Class>
+	<ExternalName>SearchService</ExternalName>
+	<Namespace>http://schemas.hs.com/mobileops</Namespace>
+	<ServiceOperations>
+		<AxServiceOperation>
+			<Name>search</Name>
+			<Method>search</Method>
+		</AxServiceOperation>
+	</ServiceOperations>
+</AxService>

@@ -4,10 +4,10 @@ import android.content.Context
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
-import android.net.NetworkRequest
 import com.d365fo.mobileops.data.local.dao.SyncWatermarkDao
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
@@ -39,20 +40,13 @@ data class SyncStatus(
     val failedCount: Int,
     val lastSyncAt: Long?,
     val oldestQueuedAt: Long?,
+    /** Settings > Data posting. Off holds every capture on the device - see TransactionPushWorker. */
+    val postingEnabled: Boolean = true,
 ) {
-    /**
-     * A backlog that is not merely large but *old* means sync has been failing quietly.
-     * Surfacing it lets a supervisor intervene before the shift ends and the device goes
-     * back on the charger with unposted work on it.
-     */
-    val isStale: Boolean
-        get() = oldestQueuedAt?.let { System.currentTimeMillis() - it > STALE_BACKLOG_MS } ?: false
-
     /** Nothing about reaching D365FO is degraded right now - device internet and the tenant both answer. */
     val fullyOnline: Boolean get() = online && d365Reachable
 
     companion object {
-        private const val STALE_BACKLOG_MS = 30 * 60 * 1000L
         val UNKNOWN = SyncStatus(
             online = false,
             // Optimistic, same as AosReachabilityMonitor's own default - nothing has yet
@@ -80,8 +74,19 @@ class ConnectivityMonitor @Inject constructor(context: Context) {
      * every posting against it times out. Treating that as offline keeps the queue intact
      * instead of burning retries.
      */
+    // Follows the *default* network only. It used to listen to every network with internet,
+    // so a second one (mobile data, a VPN, a Wi-Fi being dropped while another takes over)
+    // being lost, or changing without validation, reported the whole device offline while
+    // the network actually in use worked - and nothing re-checked until the next event.
+    // Confirmed live: the sign-in screen said "Can't reach D365FO" for hours with D365FO up,
+    // until the app was restarted. Every event now re-reads the default network's real state,
+    // and [recheck] (called when the app comes to the front) does the same.
     val isOnline: Flow<Boolean> = callbackFlow {
         val callback = object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: Network) {
+                trySend(currentlyOnline())
+            }
+
             override fun onCapabilitiesChanged(
                 network: Network,
                 capabilities: NetworkCapabilities,
@@ -93,23 +98,27 @@ class ConnectivityMonitor @Inject constructor(context: Context) {
             }
 
             override fun onLost(network: Network) {
-                trySend(false)
-            }
-
-            override fun onUnavailable() {
-                trySend(false)
+                // The default network went; another may already have taken over.
+                trySend(currentlyOnline())
             }
         }
 
-        val request = NetworkRequest.Builder()
-            .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
-            .build()
-        connectivityManager.registerNetworkCallback(request, callback)
-
+        connectivityManager.registerDefaultNetworkCallback(callback)
         trySend(currentlyOnline())
+        val rechecking = launch { rechecks.collect { trySend(currentlyOnline()) } }
 
-        awaitClose { connectivityManager.unregisterNetworkCallback(callback) }
+        awaitClose {
+            rechecking.cancel()
+            connectivityManager.unregisterNetworkCallback(callback)
+        }
     }.distinctUntilChanged()
+
+    private val rechecks = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+
+    /** Re-reads the default network's state now, rather than waiting for its next event. */
+    fun recheck() {
+        rechecks.tryEmit(Unit)
+    }
 
     fun currentlyOnline(): Boolean {
         val active = connectivityManager.activeNetwork ?: return false
@@ -164,15 +173,54 @@ private data class QueueSignals(
 
 @Singleton
 class SyncStatusProvider @Inject constructor(
-    connectivityMonitor: ConnectivityMonitor,
+    private val connectivityMonitor: ConnectivityMonitor,
     aosReachabilityMonitor: AosReachabilityMonitor,
-    prober: AosReachabilityProber,
+    private val prober: AosReachabilityProber,
     syncQueueRepository: SyncQueueRepository,
     watermarkDao: SyncWatermarkDao,
     private val scheduler: SyncScheduler,
-    scope: CoroutineScope,
+    private val countSubmissions: dagger.Lazy<com.d365fo.mobileops.data.counting.CountSubmissions>,
+    private val connectionSettings: com.d365fo.mobileops.data.security.ConnectionSettings,
+    private val scope: CoroutineScope,
 ) {
+    /**
+     * The app came to the front: re-read the network and ask D365FO again, instead of showing
+     * whatever was last known before the handheld slept. Cheap - one unauthenticated request.
+     */
+    fun refresh() {
+        connectivityMonitor.recheck()
+        scope.launch { prober.probe() }
+    }
+
     init {
+        // Posting switched on: send what was held while it was off, now rather than at the next
+        // scheduled push.
+        scope.launch {
+            connectionSettings.postingEnabled.drop(1).distinctUntilChanged().collect { enabled ->
+                if (enabled) {
+                    syncQueueRepository.retryAllNow()
+                    scheduler.requestImmediatePush()
+                    runCatching { countSubmissions.get().resumeWaiting() }
+                }
+            }
+        }
+
+        // Back online and D365FO reachable again: drain the queue now, not after the backoff the
+        // offline failures put each entry on (see SyncQueueRepository.retryAllNow). Only on the
+        // change to reachable, so a tenant that stays down is not hammered.
+        scope.launch {
+            combine(connectivityMonitor.isOnline, aosReachabilityMonitor.reachable) { online, up -> online && up }
+                .distinctUntilChanged()
+                .collect { reachable ->
+                    if (reachable) {
+                        syncQueueRepository.retryAllNow()
+                        scheduler.requestImmediatePush()
+                        // End count runs on its own WorkManager job, with its own backoff.
+                        runCatching { countSubmissions.get().nudgeWaiting() }
+                    }
+                }
+        }
+
         // Answers "immediately after opening the app" - AosReachabilityMonitor is otherwise
         // purely reactive to real calls (see its class doc), which leaves a cold start over a
         // tenant that is actually down reading as fully online until the first scan finds out
@@ -194,9 +242,14 @@ class SyncStatusProvider @Inject constructor(
         scope.launch {
             aosReachabilityMonitor.reachable.collect { reachable ->
                 if (!reachable) {
+                    // Lookups fail fast while down (AosReachabilityInterceptor), so this probe is
+                    // what brings them back: first soon after the drop - one timeout is often a
+                    // blip - then at a steady interval.
+                    var wait = FIRST_RECOVERY_PROBE_MS
                     while (!aosReachabilityMonitor.reachable.value) {
-                        delay(RECOVERY_PROBE_INTERVAL_MS)
+                        delay(wait)
                         prober.probe()
+                        wait = RECOVERY_PROBE_INTERVAL_MS
                     }
                 }
             }
@@ -214,13 +267,14 @@ class SyncStatusProvider @Inject constructor(
         connectivityMonitor.isOnline,
         aosReachabilityMonitor.reachable,
         queueSignals,
-    ) { online, d365Reachable, queue ->
+        connectionSettings.postingEnabled,
+    ) { online, d365Reachable, queue, postingEnabled ->
         // Connectivity coming back is the cue to drain the queue. Doing it here rather than
         // in a separate observer means there is exactly one place that reacts to it. Gated on
         // d365Reachable too - retrying into a tenant that is still down is exactly the doomed
         // attempt the reachability signal exists to avoid, not just to report.
         if (online && d365Reachable && queue.pending > 0) scheduler.requestImmediatePush()
-        SyncStatus(online, d365Reachable, queue.pending, queue.failed, queue.lastSyncAt, queue.oldestQueuedAt)
+        SyncStatus(online, d365Reachable, queue.pending, queue.failed, queue.lastSyncAt, queue.oldestQueuedAt, postingEnabled)
     }.stateIn(scope, SharingStarted.WhileSubscribed(5_000), SyncStatus.UNKNOWN)
 
     private companion object {
@@ -230,6 +284,7 @@ class SyncStatusProvider @Inject constructor(
          * idle; long enough not to hammer a tenant that is genuinely down with a probe every few
          * seconds from every idle handheld in the fleet.
          */
-        const val RECOVERY_PROBE_INTERVAL_MS = 30_000L
+        const val FIRST_RECOVERY_PROBE_MS = 3_000L
+        const val RECOVERY_PROBE_INTERVAL_MS = 15_000L
     }
 }

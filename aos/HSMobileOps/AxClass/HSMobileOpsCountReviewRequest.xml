@@ -16,6 +16,7 @@ class HSMobileOpsCountReviewRequest
     str             action;
     str             assignTo;
     str             note;
+    str             lineNumbersJson;
     List            lineNumbers;
 
     str     reasonCode;
@@ -98,12 +99,58 @@ class HSMobileOpsCountReviewRequest
 				<Name>parmLineNumbers</Name>
 				<Source><![CDATA[
 
-    [DataMemberAttribute('LineNumbers'),
-     DataCollectionAttribute(Types::Real)]
+    /// <summary>
+    /// The journal line numbers (reals), read from LineNumbersJson. Not a data member itself: an
+    /// inbound List binds, but its elements are not X++ reals, so using one fails with a CLR
+    /// ArgumentNullException ("meth") - the same platform gap as HSMobileOpsPostRequest.parmLinesJson.
+    /// </summary>
     public List parmLineNumbers(List _value = lineNumbers)
     {
+        System.Object               parsed;
+        Newtonsoft.Json.Linq.JArray jArray;
+        str                         value;
+        int                         lineCount;
+        int                         i;
+
         lineNumbers = _value;
+        if (!lineNumbers && lineNumbersJson)
+        {
+            lineNumbers = new List(Types::Real);
+            try
+            {
+                parsed = Newtonsoft.Json.Linq.JArray::Parse(lineNumbersJson);
+            }
+            catch (Exception::CLRError)
+            {
+                return lineNumbers;
+            }
+            jArray = parsed;
+            lineCount = jArray == null ? 0 : jArray.get_Count();
+            for (i = 0; i < lineCount; i++)
+            {
+                value = jArray.get_Item(i).ToString();
+                if (value)
+                {
+                    lineNumbers.addEnd(str2num(value));
+                }
+            }
+        }
         return lineNumbers;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmLineNumbersJson</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The journal line numbers as a JSON array of numbers.
+    /// </summary>
+    [DataMemberAttribute('LineNumbersJson')]
+    public str parmLineNumbersJson(str _value = lineNumbersJson)
+    {
+        lineNumbersJson = _value;
+        return lineNumbersJson;
     }
 ]]></Source>
 			</Method>

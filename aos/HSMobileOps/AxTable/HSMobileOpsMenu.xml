@@ -1,0 +1,221 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxTable xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsMenu</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// A handheld menu: a named, ordered list of app modules and sub-menus (HSMobileOpsMenuLine),
+/// like a mobile device menu in Warehouse management. The default menu is the handheld's Home
+/// for every worker without a menu of their own (HSMobileOpsUser.MenuId). With no menus at all
+/// the app keeps its plain list of modules.
+/// </summary>
+public class HSMobileOpsMenu extends common
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>find</Name>
+				<Source><![CDATA[
+
+    public static HSMobileOpsMenu find(str _menuId, boolean _forUpdate = false)
+    {
+        HSMobileOpsMenu menu;
+
+        if (_menuId)
+        {
+            menu.selectForUpdate(_forUpdate);
+            select firstOnly menu
+                where menu.MenuId == _menuId;
+        }
+        return menu;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>findRecId</Name>
+				<Source><![CDATA[
+
+    public static HSMobileOpsMenu findRecId(RefRecId _recId)
+    {
+        HSMobileOpsMenu menu;
+
+        if (_recId)
+        {
+            select firstOnly menu
+                where menu.RecId == _recId;
+        }
+        return menu;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>findDefault</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The menu a worker without a menu of their own sees.
+    /// </summary>
+    public static HSMobileOpsMenu findDefault()
+    {
+        HSMobileOpsMenu menu;
+
+        select firstOnly menu
+            where menu.IsDefault == NoYes::Yes;
+        return menu;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>insert</Name>
+				<Source><![CDATA[
+
+    public void insert()
+    {
+        ttsbegin;
+        super();
+        if (this.IsDefault)
+        {
+            HSMobileOpsMenu::clearOtherDefaults(this.RecId);
+        }
+        ttscommit;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>update</Name>
+				<Source><![CDATA[
+
+    public void update()
+    {
+        ttsbegin;
+        super();
+        if (this.IsDefault)
+        {
+            HSMobileOpsMenu::clearOtherDefaults(this.RecId);
+        }
+        ttscommit;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>clearOtherDefaults</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Only one menu is the default: setting it on one clears it from the rest.
+    /// </summary>
+    private static void clearOtherDefaults(RefRecId _keepRecId)
+    {
+        HSMobileOpsMenu menu;
+
+        menu.skipDataMethods(true);
+        update_recordset menu
+            setting IsDefault = NoYes::No
+            where menu.IsDefault == NoYes::Yes
+               && menu.RecId     != _keepRecId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>validateDelete</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// A menu still opened from another menu, or assigned to a worker, can't be deleted - the
+    /// handheld would lose that branch without anyone noticing.
+    /// </summary>
+    public boolean validateDelete()
+    {
+        HSMobileOpsMenuLine line;
+        HSMobileOpsUser     user;
+        boolean             ok = super();
+
+        if (ok)
+        {
+            select firstOnly RecId from line
+                where line.LineType  == HSMobileOpsMenuLineType::SubMenu
+                   && line.SubMenuId == this.MenuId;
+            if (line.RecId)
+            {
+                ok = checkFailed(strFmt('Menu %1 is a sub-menu of another menu. Remove it from that menu first.', this.MenuId));
+            }
+            select firstOnly RecId from user
+                where user.MenuId == this.MenuId;
+            if (user.RecId)
+            {
+                ok = checkFailed(strFmt('Menu %1 is assigned to mobile device users. Change their menu first.', this.MenuId));
+            }
+        }
+        return ok;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>delete</Name>
+				<Source><![CDATA[
+
+    public void delete()
+    {
+        HSMobileOpsMenuLine line;
+
+        ttsbegin;
+        delete_from line
+            where line.MenuRecId == this.RecId;
+        super();
+        ttscommit;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+	<Label>Mobile device menu</Label>
+	<TitleField1>MenuId</TitleField1>
+	<TitleField2>Name</TitleField2>
+	<CacheLookup>Found</CacheLookup>
+	<ClusteredIndex>MenuIdIdx</ClusteredIndex>
+	<PrimaryIndex>MenuIdIdx</PrimaryIndex>
+	<ReplacementKey>MenuIdIdx</ReplacementKey>
+	<Fields>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>MenuId</Name>
+			<AllowEdit>No</AllowEdit>
+			<HelpText>The menu's ID, used to open it from another menu and to assign it to a worker.</HelpText>
+			<Label>Menu</Label>
+			<Mandatory>Yes</Mandatory>
+			<StringSize>20</StringSize>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>Name</Name>
+			<HelpText>The title the handheld shows for this menu, on its tile and at the top of the screen.</HelpText>
+			<Label>Name</Label>
+			<Mandatory>Yes</Mandatory>
+			<StringSize>60</StringSize>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldEnum">
+			<Name>IsDefault</Name>
+			<HelpText>The handheld's Home menu for every worker who has no menu of their own. Only one menu can be the default.</HelpText>
+			<Label>Default</Label>
+			<EnumType>NoYes</EnumType>
+		</AxTableField>
+	</Fields>
+	<FullTextIndexes />
+	<Indexes>
+		<AxTableIndex>
+			<Name>MenuIdIdx</Name>
+			<AllowDuplicates>No</AllowDuplicates>
+			<AlternateKey>Yes</AlternateKey>
+			<Fields>
+				<AxTableIndexField>
+					<DataField>MenuId</DataField>
+				</AxTableIndexField>
+			</Fields>
+		</AxTableIndex>
+	</Indexes>
+	<Mappings />
+	<Relations />
+	<StateMachines />
+</AxTable>

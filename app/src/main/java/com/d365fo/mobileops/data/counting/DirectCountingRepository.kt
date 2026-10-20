@@ -14,6 +14,7 @@ import com.d365fo.mobileops.data.remote.dto.DirectLinesRequestBody
 import com.d365fo.mobileops.data.remote.dto.DirectLinesServiceRequest
 import com.d365fo.mobileops.data.remote.dto.DirectSubmitRequestBody
 import com.d365fo.mobileops.data.remote.dto.DirectSubmitServiceRequest
+import com.d365fo.mobileops.data.remote.dto.rowsJson
 import com.d365fo.mobileops.data.remote.error.D365ErrorMapper
 import com.d365fo.mobileops.data.repository.ImportSummary
 import com.d365fo.mobileops.data.security.CompanyProvider
@@ -163,7 +164,7 @@ class DirectCountingRepository @Inject constructor(
                             submittedAtUtc = Formatters.isoUtc(audit.submittedAt),
                             passNumber = audit.passNumber,
                             originType = audit.originType,
-                            lines = counted.map { line ->
+                            linesJson = rowsJson(DirectCountRowDto.serializer(), counted.map { line ->
                                 DirectCountRowDto(
                                     lineNumber = line.lineNumber.toDouble(),
                                     countedQuantity = line.countedQuantity?.toDoubleOrNull() ?: 0.0,
@@ -172,7 +173,7 @@ class DirectCountingRepository @Inject constructor(
                                     countedAtUtc = line.countedAt?.let { Formatters.isoUtc(it) },
                                     countStartedAtUtc = startedByLine[line.journalLineId]?.let { Formatters.isoUtc(it) },
                                 )
-                            },
+                            }),
                         ),
                     ),
                 )
@@ -218,10 +219,14 @@ class DirectCountingRepository @Inject constructor(
                         submissionId = audit.submissionId,
                         userId = audit.userId,
                         deviceId = audit.deviceId,
-                        exceptions = exceptions.map {
+                        exceptionsJson = rowsJson(com.d365fo.mobileops.data.remote.dto.CountExceptionRowDto.serializer(), exceptions.map {
                             com.d365fo.mobileops.data.remote.dto.CountExceptionRowDto(
                                 clientId = it.clientId,
                                 itemNumber = it.itemId,
+                                configId = it.configId,
+                                sizeId = it.sizeId,
+                                colorId = it.colorId,
+                                styleId = it.styleId,
                                 locationId = it.locationId,
                                 quantity = it.quantity.toDoubleOrNull() ?: 0.0,
                                 batchId = it.batchId,
@@ -230,21 +235,21 @@ class DirectCountingRepository @Inject constructor(
                                 capturedBy = it.capturedBy,
                                 capturedAtUtc = Formatters.isoUtc(it.capturedAt),
                             )
-                        },
-                        emptyLocations = emptyLocations.map {
+                        }),
+                        emptyLocationsJson = rowsJson(com.d365fo.mobileops.data.remote.dto.CountEmptyLocationRowDto.serializer(), emptyLocations.map {
                             com.d365fo.mobileops.data.remote.dto.CountEmptyLocationRowDto(
                                 locationId = it.locationId,
                                 verifiedBy = it.verifiedBy,
                                 verifiedAtUtc = Formatters.isoUtc(it.verifiedAt),
                             )
-                        },
-                        confirmations = confirmations.map {
+                        }),
+                        confirmationsJson = rowsJson(com.d365fo.mobileops.data.remote.dto.CountConfirmationRowDto.serializer(), confirmations.map {
                             com.d365fo.mobileops.data.remote.dto.CountConfirmationRowDto(
                                 lineNumber = it.lineNumber.toDouble(),
                                 confirmedBy = it.confirmedBy,
                                 confirmedAtUtc = Formatters.isoUtc(it.confirmedAt ?: 0L),
                             )
-                        },
+                        }),
                     ),
                 ),
             )

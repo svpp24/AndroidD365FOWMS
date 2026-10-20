@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxSecurityPrivilege xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsFeedbackMaintain</Name>
+	<Description>Review feedback sent from the handheld app and reply to it.</Description>
+	<Label>Maintain mobile feedback</Label>
+	<DirectAccessPermissions>
+		<AxSecurityDataEntityReference>
+			<Grant>
+				<Delete>Allow</Delete>
+				<Read>Allow</Read>
+				<Update>Allow</Update>
+			</Grant>
+			<Name>HSMobileOpsFeedback</Name>
+			<Fields />
+		</AxSecurityDataEntityReference>
+	</DirectAccessPermissions>
+	<EntryPoints>
+		<AxSecurityEntryPointReference>
+			<Name>HSMobileOpsFeedback</Name>
+			<Grant>
+				<Delete>Allow</Delete>
+				<Read>Allow</Read>
+				<Update>Allow</Update>
+			</Grant>
+			<ObjectName>HSMobileOpsFeedback</ObjectName>
+			<ObjectType>MenuItemDisplay</ObjectType>
+			<Forms />
+		</AxSecurityEntryPointReference>
+		<AxSecurityEntryPointReference>
+			<Name>HSMobileOpsFeedbackExport</Name>
+			<Grant>
+				<Read>Allow</Read>
+			</Grant>
+			<ObjectName>HSMobileOpsFeedbackExport</ObjectName>
+			<ObjectType>MenuItemAction</ObjectType>
+			<Forms />
+		</AxSecurityEntryPointReference>
+	</EntryPoints>
+	<FormControlOverrides />
+</AxSecurityPrivilege>

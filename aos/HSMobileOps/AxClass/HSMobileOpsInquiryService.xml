@@ -316,6 +316,13 @@ class HSMobileOpsInquiryService
                     where inventDim.InventDimId == inventSum.InventDimId
                        && (!warehouseId || inventDim.InventLocationId == warehouseId)
             {
+                // Warehouses that once held the item and now hold nothing, with nothing on
+                // order - all-zero cards buried the ones with stock under "All warehouses".
+                if (!inventSum.PhysicalInvent && !inventSum.AvailPhysical && !inventSum.ReservPhysical
+                 && !inventSum.Ordered && !inventSum.AvailOrdered)
+                {
+                    continue;
+                }
                 row = new HSMobileOpsOnHandRow();
 
                 row.parmItemId(itemId);
@@ -325,7 +332,9 @@ class HSMobileOpsInquiryService
                 row.parmAvailable(inventSum.AvailPhysical);
                 row.parmReserved(inventSum.ReservPhysical);
                 row.parmOrdered(inventSum.Ordered);
-                row.parmTotalAvailable(inventSum.AvailPhysical + inventSum.AvailOrdered);
+                // AvailOrdered is D365FO's own "Total available" and already includes the
+                // physical available - adding AvailPhysical showed 46 for 23 on hand.
+                row.parmTotalAvailable(inventSum.AvailOrdered);
 
                 rows.addEnd(row);
 

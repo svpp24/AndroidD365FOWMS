@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsSessionRequest</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// The session service's request: the company, the signed-in worker, this device, and the worker's unfinished
+/// work on this device (jobs not yet registered, counts not yet submitted) - reported with every check.
+/// </summary>
+[DataContractAttribute]
+class HSMobileOpsSessionRequest
+{
+    str         dataAreaId;
+    str         userName;
+    str         deviceId;
+    int         pendingJobs;
+    int         pendingCounts;
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmDataAreaId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('DataAreaId')]
+    public str parmDataAreaId(str _value = dataAreaId)
+    {
+        dataAreaId = _value;
+        return dataAreaId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmUserName</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('UserName')]
+    public str parmUserName(str _value = userName)
+    {
+        userName = _value;
+        return userName;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmDeviceId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('DeviceId')]
+    public str parmDeviceId(str _value = deviceId)
+    {
+        deviceId = _value;
+        return deviceId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmPendingJobs</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('PendingJobs')]
+    public int parmPendingJobs(int _value = pendingJobs)
+    {
+        pendingJobs = _value;
+        return pendingJobs;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmPendingCounts</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('PendingCounts')]
+    public int parmPendingCounts(int _value = pendingCounts)
+    {
+        pendingCounts = _value;
+        return pendingCounts;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

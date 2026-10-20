@@ -69,7 +69,8 @@ data class ReviewRequestBody(
     @SerialName("AssignTo") val assignTo: String? = null,
     @SerialName("Note") val note: String? = null,
     @SerialName("ReasonCode") val reasonCode: String? = null,
-    @SerialName("LineNumbers") val lineNumbers: List<Double>,
+    /** [rowsJson] of the line numbers - a List of reals binds on the way in, but cannot be used. */
+    @SerialName("LineNumbersJson") val lineNumbersJson: String,
 )
 
 @Serializable

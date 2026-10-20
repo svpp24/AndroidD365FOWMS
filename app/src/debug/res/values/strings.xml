@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Debug builds only: tells the debug app apart from release on a handheld that has both. -->
+    <string name="app_name_launcher">Hub (debug)</string>
+</resources>

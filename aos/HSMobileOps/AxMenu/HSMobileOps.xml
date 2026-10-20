@@ -1,53 +1,79 @@
 <?xml version="1.0" encoding="utf-8"?>
-<AxMenu xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+<AxMenu xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns="Microsoft.Dynamics.AX.Metadata.V1">
 	<Name>HSMobileOps</Name>
-	<Label>Mobile operations</Label>
-	<MenuItems>
+	<Label>Inventory hub</Label>
+	<SetCompany>Yes</SetCompany>
+	<Elements>
 		<AxMenuElement xmlns=""
-			i:type="AxMenuElementMenu">
+			i:type="AxMenuElementSubMenu">
+			<Name>Counting</Name>
+			<Label>Counting</Label>
+			<Elements>
+				<AxMenuElement xmlns=""
+					i:type="AxMenuElementMenuItem">
+					<Name>HSMobileOpsCountControlCenter</Name>
+					<MenuItemName>HSMobileOpsCountControlCenter</MenuItemName>
+				</AxMenuElement>
+			</Elements>
+		</AxMenuElement>
+		<AxMenuElement xmlns=""
+			i:type="AxMenuElementSubMenu">
+			<Name>Inquiries</Name>
+			<Label>Inquiries</Label>
+			<Elements>
+				<AxMenuElement xmlns=""
+					i:type="AxMenuElementMenuItem">
+					<Name>HSMobileOpsFeedback</Name>
+					<MenuItemName>HSMobileOpsFeedback</MenuItemName>
+				</AxMenuElement>
+				<AxMenuElement xmlns=""
+					i:type="AxMenuElementMenuItem">
+					<Name>HSMobileOpsSignInLog</Name>
+					<MenuItemName>HSMobileOpsSignInLog</MenuItemName>
+				</AxMenuElement>
+			</Elements>
+		</AxMenuElement>
+		<AxMenuElement xmlns=""
+			i:type="AxMenuElementSubMenu">
 			<Name>Setup</Name>
 			<Label>Setup</Label>
-			<MenuItems>
+			<Elements>
 				<AxMenuElement xmlns=""
-					i:type="AxMenuElementReference">
+					i:type="AxMenuElementMenuItem">
 					<Name>HSMobileOpsUser</Name>
 					<MenuItemName>HSMobileOpsUser</MenuItemName>
-					<ObjectType>Display</ObjectType>
-				</AxMenuElement>
-				<!-- These three menu items already existed but were never referenced anywhere in
-				     this menu - confirmed unreachable from the app's own menu tree. Fixed here
-				     rather than left as-is. -->
-				<AxMenuElement xmlns=""
-					i:type="AxMenuElementReference">
-					<Name>HSMobileOpsLicenseSetup</Name>
-					<MenuItemName>HSMobileOpsLicenseSetup</MenuItemName>
-					<ObjectType>Display</ObjectType>
 				</AxMenuElement>
 				<AxMenuElement xmlns=""
-					i:type="AxMenuElementReference">
+					i:type="AxMenuElementMenuItem">
+					<Name>HSMobileOpsMenu</Name>
+					<MenuItemName>HSMobileOpsMenu</MenuItemName>
+				</AxMenuElement>
+				<AxMenuElement xmlns=""
+					i:type="AxMenuElementMenuItem">
 					<Name>HSMobileOpsDevice</Name>
 					<MenuItemName>HSMobileOpsDevice</MenuItemName>
-					<ObjectType>Display</ObjectType>
 				</AxMenuElement>
 				<AxMenuElement xmlns=""
-					i:type="AxMenuElementReference">
+					i:type="AxMenuElementMenuItem">
+					<Name>HSMobileOpsLicenseSetup</Name>
+					<MenuItemName>HSMobileOpsLicenseSetup</MenuItemName>
+				</AxMenuElement>
+				<AxMenuElement xmlns=""
+					i:type="AxMenuElementMenuItem">
 					<Name>HSMobileOpsSkuSyncSetup</Name>
 					<MenuItemName>HSMobileOpsSkuSyncSetup</MenuItemName>
-					<ObjectType>Display</ObjectType>
 				</AxMenuElement>
 				<AxMenuElement xmlns=""
-					i:type="AxMenuElementReference">
+					i:type="AxMenuElementMenuItem">
 					<Name>HSMobileOpsCountTolerance</Name>
 					<MenuItemName>HSMobileOpsCountTolerance</MenuItemName>
-					<ObjectType>Display</ObjectType>
 				</AxMenuElement>
 				<AxMenuElement xmlns=""
-					i:type="AxMenuElementReference">
-					<Name>HSMobileOpsAiSample</Name>
-					<MenuItemName>HSMobileOpsAiSample</MenuItemName>
-					<ObjectType>Display</ObjectType>
+					i:type="AxMenuElementMenuItem">
+					<Name>HSMobileOpsCountStore</Name>
+					<MenuItemName>HSMobileOpsCountStore</MenuItemName>
 				</AxMenuElement>
-			</MenuItems>
+			</Elements>
 		</AxMenuElement>
-	</MenuItems>
+	</Elements>
 </AxMenu>

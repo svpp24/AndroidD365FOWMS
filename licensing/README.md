@@ -123,6 +123,24 @@ Runs the exact same chain AOS and the Android app will run - root verifies certi
 certificate's own key verifies license, tenant/customer IDs match, nothing has expired -
 entirely locally, before anything touches a real customer's environment or device.
 
+## Revoking (or reactivating) a customer instantly
+
+The certificate/license chain above answers "was this ever legitimately issued" - it says
+nothing about whether the vendor has since revoked a customer, and a compromised root key is
+the only way to invalidate it, which breaks every customer at once (see "Key rotation" below).
+For a single customer, use the live Azure-backed layer instead - see
+`../azure-license-function/README.md` and `HSMobileOpsLicense::verifyWithAttestation`:
+
+```
+python wms_license_tool.py azure-register --client "Contoso Warehousing" --status Revoked \
+    --notes "Non-payment, 2027-02-01"
+```
+
+Takes effect on the next sign-in or license check for that customer - no app rebuild, no
+certificate/license reissue, no device reactivation. Set `--status Active` again to restore
+access. Needs `AZURE_TABLE_CONNECTION_STRING` set (or pass `--connection-string`) - this writes
+to the vendor's own Azure subscription, not anything in a customer's environment.
+
 ## Key rotation
 
 If a customer's private key is ever suspected exposed: `generate-customer-keypair --client

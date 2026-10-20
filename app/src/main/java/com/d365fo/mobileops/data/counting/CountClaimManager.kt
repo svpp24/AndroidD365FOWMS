@@ -105,6 +105,11 @@ class CountClaimManager @Inject constructor(
         }
     }
 
+    /** Marks this device's claim lost after D365FO refused a submit for it. No claim, no change. */
+    suspend fun markLost(journalId: String, reason: String) {
+        if (store.get(journalId)?.lost == false) store.markLost(journalId, reason)
+    }
+
     /** Gives the claim back and forgets it locally, whatever the server answers. */
     suspend fun release(journalId: String) {
         val claim = store.get(journalId) ?: return
@@ -123,8 +128,13 @@ class CountClaimManager @Inject constructor(
     }
 
     companion object {
-        /** Used only when the server does not say. TODO: confirm against the X++ claim TTL. */
-        const val DEFAULT_HEARTBEAT_SECONDS = 60
+        /**
+         * Used only when the server does not say. Two minutes, not one: with a fleet of
+         * hundreds of handhelds sharing D365FO's per-registration request allowance, every
+         * counting device checking in each minute is the steadiest load the app puts on it.
+         * The server's claim TTL must allow for it (several missed check-ins before expiry).
+         */
+        const val DEFAULT_HEARTBEAT_SECONDS = 120
         const val MIN_HEARTBEAT_SECONDS = 15
     }
 }

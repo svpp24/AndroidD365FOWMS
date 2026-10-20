@@ -8,6 +8,7 @@ import com.d365fo.mobileops.data.remote.dto.ReviewServiceRequest
 import com.d365fo.mobileops.data.remote.dto.SupervisorServiceResponse
 import com.d365fo.mobileops.data.remote.dto.VarianceRequestBody
 import com.d365fo.mobileops.data.remote.dto.VarianceServiceRequest
+import com.d365fo.mobileops.data.remote.dto.rowsJson
 import com.d365fo.mobileops.data.remote.error.D365ErrorMapper
 import com.d365fo.mobileops.data.repository.WorkerSessionRepository
 import com.d365fo.mobileops.data.security.CompanyProvider
@@ -20,6 +21,7 @@ import com.d365fo.mobileops.domain.counting.supervisor.SupervisorResult
 import com.d365fo.mobileops.domain.counting.supervisor.VarianceLine
 import com.d365fo.mobileops.util.AppFailure
 import com.d365fo.mobileops.util.NetworkResult
+import kotlinx.serialization.builtins.serializer
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -103,7 +105,7 @@ class LiveSupervisorCountRepository @Inject constructor(
                     assignTo = assignTo?.trim()?.takeIf { it.isNotEmpty() },
                     note = note?.trim()?.takeIf { it.isNotEmpty() },
                     reasonCode = reasonCode?.takeIf { it.isNotBlank() },
-                    lineNumbers = lineNumbers,
+                    lineNumbersJson = rowsJson(Double.serializer(), lineNumbers),
                 ),
             ),
         )

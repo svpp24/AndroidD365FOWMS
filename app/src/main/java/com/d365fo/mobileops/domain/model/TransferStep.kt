@@ -32,10 +32,9 @@ enum class TransferStep {
     QUANTITY,
 
     /**
-     * Where the stock is being put away. **Receiving only.**
-     *
-     * Shipping does not ask: the goods are leaving, and the location they came from is already on
-     * the line. Prompting for one would be asking the operator to invent an answer.
+     * The bin. Shipping asks it first - the bin the worker picks from, before the item; receiving
+     * asks it last - where the stock was put away, after the batch (feedback 46890e91,
+     * 8 Oct 2026: pick is bin, item, qty, batch; receive is item, qty, batch, bin).
      */
     LOCATION,
 
@@ -66,6 +65,11 @@ data class TransferCapture(
     val requireLocationCaptureFallback: Boolean = true,
     /** Optional steps the operator skipped - see [canSkipTransferStep]. */
     val skipped: Set<TransferStep> = emptySet(),
+    /**
+     * The warehouse master's default bin for this direction - issue when shipping, receipt
+     * when receiving (feedback 88c029a1). It answers the bin step; scanning a bin overrides it.
+     */
+    val defaultLocationId: String? = null,
 ) {
     /** Serials needed: one per unit under serial number control, otherwise one for the line. */
     private val serialsNeeded: Int
@@ -92,25 +96,28 @@ fun canSkipTransferStep(step: TransferStep, capture: TransferCapture): Boolean {
 }
 
 /**
- * The step sequence for a transfer capture.
+ * The step sequence for a transfer capture, the way the work is done on the floor:
  *
- * Location appears only when receiving *and* the item tracks it. Both conditions matter: an
- * untracked item has no location to record, and a shipment has no destination bin to record it in.
+ * - shipping (picking): bin, item, quantity, batch - the worker stands at the bin first;
+ * - receiving: item, quantity, batch, bin - the carton is read in hand, the bin scanned once
+ *   it is put away.
+ *
+ * The bin is asked only for an item that tracks location. Shipping asks before the item is
+ * known, so it is asked unless the item turns out not to track one; receiving also honours the
+ * per-process fallback flag.
  */
 fun stepsForTransfer(capture: TransferCapture): List<TransferStep> = buildList {
+    val line = capture.line
+    val shipping = capture.mode == TransferMode.SHIP
     add(TransferStep.TRANSFER_ORDER)
+    if (shipping && (line == null || line.locationRequired)) add(TransferStep.LOCATION)
     add(TransferStep.ITEM)
     add(TransferStep.QUANTITY)
-
-    val line = capture.line
-    if (capture.mode == TransferMode.RECEIVE &&
-        (line == null || (line.locationRequired && capture.requireLocationCaptureFallback))
-    ) {
-        add(TransferStep.LOCATION)
-    }
     if (line?.batchRequired == true) add(TransferStep.BATCH)
     if (line?.serialRequired == true) add(TransferStep.SERIAL)
-
+    if (!shipping && (line == null || (line.locationRequired && capture.requireLocationCaptureFallback))) {
+        add(TransferStep.LOCATION)
+    }
     add(TransferStep.CONFIRM)
 }
 
@@ -160,8 +167,46 @@ data class TransferOrderLine(
     val rules: com.d365fo.mobileops.domain.model.DimensionRules = com.d365fo.mobileops.domain.model.DimensionRules(),
     /** Units the quantity can be entered in, from the item's conversion setup - see [ItemUnit]. */
     val units: List<com.d365fo.mobileops.domain.model.ItemUnit> = emptyList(),
+    /**
+     * Receive direction: the batches in transit on this line - shipped and not yet received -
+     * with their quantities. Empty when shipping, for an item without batches, or from a server
+     * that does not send them; then any registered batch is taken, as before.
+     */
+    val shippedBatches: List<ShippedBatch> = emptyList(),
+    /** The batch the line was created for, when one was chosen - a hint when shipping. */
+    val lineBatchId: String? = null,
 ) {
     val hasOutstanding: Boolean get() = remainingQuantity.signum() > 0
+}
+
+data class ShippedBatch(val batchId: String, val quantity: BigDecimal)
+
+/** Whether a batch scanned while receiving was shipped on the line, in that quantity. */
+sealed interface ShippedBatchCheck {
+    data object Ok : ShippedBatchCheck
+    data class NotShipped(val shipped: List<ShippedBatch>) : ShippedBatchCheck
+    data class TooMany(val shipped: BigDecimal, val alreadyScanned: BigDecimal) : ShippedBatchCheck
+}
+
+/**
+ * [batchId] against [TransferOrderLine.shippedBatches]: it must be one that was shipped, and
+ * [quantity] plus what this session already scanned of it ([alreadyScanned]) no more than was
+ * shipped of it. A line without shipped batches takes any batch.
+ */
+fun checkShippedBatch(
+    line: TransferOrderLine,
+    batchId: String,
+    quantity: BigDecimal,
+    alreadyScanned: BigDecimal,
+): ShippedBatchCheck {
+    if (line.shippedBatches.isEmpty()) return ShippedBatchCheck.Ok
+    val shipped = line.shippedBatches.firstOrNull { it.batchId.equals(batchId, ignoreCase = true) }
+        ?: return ShippedBatchCheck.NotShipped(line.shippedBatches)
+    return if (alreadyScanned + quantity > shipped.quantity) {
+        ShippedBatchCheck.TooMany(shipped.quantity, alreadyScanned)
+    } else {
+        ShippedBatchCheck.Ok
+    }
 }
 
 /** A transfer order with however many of its lines it was sensible to send. */
@@ -183,4 +228,7 @@ data class TransferOrderLookup(
      * identical field on OrderLookup for the full explanation.
      */
     val requireLocationCapture: Boolean = true,
+    /** The warehouses' default bins (feedback 88c029a1) - used unless another is scanned. */
+    val defaultIssueLocation: String? = null,
+    val defaultReceiptLocation: String? = null,
 )

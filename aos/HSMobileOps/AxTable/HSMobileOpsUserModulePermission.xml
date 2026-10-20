@@ -4,13 +4,13 @@
 	<SourceCode>
 		<Declaration><![CDATA[
 /// <summary>
-/// Per-worker, per-module allow/block for the four handheld warehouse workflows.
+/// Per-worker Menu access: which handheld modules a worker may use.
 ///
-/// **Absence means allowed.** No row for a (user, module) pair is not "blocked" - it is "never
-/// restricted", which is what every worker's account already means today, before this table
-/// existed. A row only ever appears once an admin has explicitly touched that module for that
-/// worker, in either direction - see HSMobileOpsUserService::appendModulePermissions and its own
-/// note on why the app-side cache mirrors this exactly rather than defaulting to deny-all.
+/// **An allow list once a worker has rows.** A worker with no rows at all keeps every normal
+/// module (so nobody loses access before an admin sets them up); once a worker has any row, only
+/// the modules ticked Allowed show in the app. The order modules (PO creation, TO creation, PO
+/// confirmation) always need an Allowed row. The app applies the same rule - see
+/// WarehouseWorkflow.kt, blockedWorkflows.
 ///
 /// Modeled directly on HSMobileOpsUserWarehouse - a small per-user child table, one row per
 /// thing being assigned - rather than a new mechanism.
@@ -25,23 +25,30 @@ public class HSMobileOpsUserModulePermission extends common
 				<Source><![CDATA[
 
     /// <summary>
-    /// Whether a worker may use a module, applying the absence-means-allowed rule: no row for
-    /// this (user, module) pair returns true, exactly like a worker an admin has never touched.
+    /// Whether a worker may use a module under the allow-list rule (see the class doc): with no
+    /// rows at all, every module but the order modules; with rows, only those ticked Allowed.
     /// </summary>
     public static boolean isAllowed(RefRecId _userRecId, HSMobileOpsModule _module)
     {
         HSMobileOpsUserModulePermission permission;
+        HSMobileOpsUserModulePermission anyRow;
 
         select firstOnly IsAllowed from permission
             where permission.UserRecId == _userRecId
                && permission.Module    == _module;
 
-        if (!permission.RecId)
+        if (permission.RecId)
         {
-            return true;
+            return permission.IsAllowed == NoYes::Yes;
         }
 
-        return permission.IsAllowed == NoYes::Yes;
+        select firstOnly RecId from anyRow
+            where anyRow.UserRecId == _userRecId;
+
+        return !anyRow.RecId
+            && _module != HSMobileOpsModule::PO_CREATE
+            && _module != HSMobileOpsModule::TO_CREATE
+            && _module != HSMobileOpsModule::PO_CONFIRM;
     }
 ]]></Source>
 			</Method>
@@ -56,8 +63,8 @@ public class HSMobileOpsUserModulePermission extends common
 		<AxTableField xmlns=""
 			i:type="AxTableFieldInt64">
 			<Name>UserRecId</Name>
-			<Label>Mobile user</Label>
 			<ExtendedDataType>RefRecId</ExtendedDataType>
+			<Label>Mobile user</Label>
 			<Mandatory>Yes</Mandatory>
 		</AxTableField>
 		<AxTableField xmlns=""
@@ -69,6 +76,7 @@ public class HSMobileOpsUserModulePermission extends common
 		<AxTableField xmlns=""
 			i:type="AxTableFieldEnum">
 			<Name>IsAllowed</Name>
+			<HelpText>Once a worker has any Menu access rows, the app shows only the modules ticked here. A worker with no rows sees every module except PO creation, TO creation and PO confirmation.</HelpText>
 			<Label>Allowed</Label>
 			<EnumType>NoYes</EnumType>
 		</AxTableField>

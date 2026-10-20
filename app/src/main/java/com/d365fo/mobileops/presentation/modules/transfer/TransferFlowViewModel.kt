@@ -19,7 +19,9 @@ import com.d365fo.mobileops.data.sync.payload.TransferLinePayload
 import com.d365fo.mobileops.data.sync.payload.TransferReceivePayload
 import com.d365fo.mobileops.data.sync.payload.TransferShipPayload
 import com.d365fo.mobileops.domain.model.TransferMode
+import com.d365fo.mobileops.domain.model.ShippedBatchCheck
 import com.d365fo.mobileops.domain.model.TransferOrderLine
+import com.d365fo.mobileops.domain.model.checkShippedBatch
 import com.d365fo.mobileops.domain.model.TransferStep
 import com.d365fo.mobileops.domain.model.TransferOrderLookup
 import com.d365fo.mobileops.domain.model.nextIncompleteTransferStep
@@ -71,6 +73,9 @@ class TransferFlowViewModel @Inject constructor(
     private val postingDispatcher: com.d365fo.mobileops.data.sync.PostingDispatcher,
     private val pendingFlowResume: PendingFlowResume,
     private val opportunityCounts: com.d365fo.mobileops.data.counting.OpportunityCounts,
+    private val networkPreferences: com.d365fo.mobileops.data.security.NetworkPreferences,
+    private val picker: com.d365fo.mobileops.data.sync.TransferPicker,
+    private val orderCreation: com.d365fo.mobileops.data.repository.OrderCreationRepository,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(TransferFlowState())
@@ -82,6 +87,8 @@ class TransferFlowViewModel @Inject constructor(
     // scanner bridge and the same one-in-flight-request pattern, so it is exposed to the
     // same repeated-broadcast hardware quirk.
     private var lastRaw: String? = null
+    /** A batch other than the line's own, scanned once and warned about - see onBatch. */
+    private var otherBatchWarned: String? = null
     private var lastRawAtMs: Long = 0L
 
     init {
@@ -107,6 +114,24 @@ class TransferFlowViewModel @Inject constructor(
     }
 
     fun onManualEntry(value: String) = submit(value)
+
+    /**
+     * The line picked in the item search, so the "which line?" step takes it rather than asking
+     * again - the search already showed each line's variant and the worker chose one. Only for
+     * that item, and only briefly: a later scan of the same item still asks.
+     */
+    private var searchedLine: Pair<Double, Long>? = null
+
+    fun pickSearchedLine(itemId: String, lineNumber: Double) {
+        searchedLine = lineNumber to System.currentTimeMillis()
+        submit(itemId)
+    }
+
+    private fun takeSearchedLine(): Double? {
+        val picked = searchedLine ?: return null
+        searchedLine = null
+        return picked.first.takeIf { System.currentTimeMillis() - picked.second < SEARCHED_LINE_VALID_MS }
+    }
 
     /** Skips the current batch/serial/location step when D365FO allows it blank for this direction. */
     fun skipStep() {
@@ -139,9 +164,9 @@ class TransferFlowViewModel @Inject constructor(
             _state.update { it.copy(busy = true, error = null) }
             when (_state.value.step) {
                 TransferStep.TRANSFER_ORDER -> onTransferOrder(value)
-                TransferStep.ITEM -> onItem(value)
-                TransferStep.QUANTITY -> onQuantity(value)
-                TransferStep.LOCATION -> onLocation(value)
+                TransferStep.ITEM -> if (!switchedOrder(value)) onItem(value)
+                TransferStep.QUANTITY -> if (!switchedOrder(value) && !isScanOfLineBatch(value) && !isScanOfCurrentItem(value)) onQuantity(value)
+                TransferStep.LOCATION -> if (!switchedOrder(value)) onLocation(value)
                 TransferStep.BATCH -> onBatch(value)
                 TransferStep.SERIAL -> onSerial(value)
                 TransferStep.CONFIRM -> Unit
@@ -149,6 +174,8 @@ class TransferFlowViewModel @Inject constructor(
             _state.update { it.copy(busy = false) }
         }
     }
+
+    fun clearLineNotice() = _state.update { it.copy(lineNotice = null) }
 
     fun back() {
         pending?.cancel()
@@ -158,8 +185,17 @@ class TransferFlowViewModel @Inject constructor(
         if (index <= 0) return
 
         val previous = sequence[index - 1]
+        // Back to the order prompt starts over - see ReceivingFlowViewModel.back. The banked
+        // lines are saved per order and come back when it is scanned again.
+        val toOrder = previous == TransferStep.TRANSFER_ORDER
         _state.update {
-            it.copy(capture = it.capture.cleared(previous), step = previous, error = null, busy = false)
+            it.copy(
+                capture = it.capture.cleared(previous),
+                step = previous,
+                captured = if (toOrder) emptyList() else it.captured,
+                error = null,
+                busy = false,
+            )
         }
     }
 
@@ -177,21 +213,28 @@ class TransferFlowViewModel @Inject constructor(
         // Pick (ship) or putaway (receive) confirmed here: maybe an opportunity count.
         opportunityCounts.afterMovement(capture.locationId, line.itemId)
 
+        val banked = CapturedTransferLine(
+            lineNumber = line.lineNumber,
+            itemId = line.itemId,
+            itemName = line.itemName,
+            quantity = quantity,
+            unitSymbol = capture.unitSymbol.orEmpty(),
+            locationId = capture.locationId,
+            batchId = capture.batchId,
+            serialIds = capture.serialIds,
+            variantLabel = line.variant.label,
+            // What was outstanding on the line when this was banked - the ceiling for
+            // adjustCapturedQuantity, so nudging a line up in the list can never book
+            // more than the order actually has left.
+            maxQuantity = line.remainingQuantity,
+        )
         _state.update {
             it.copy(
-                captured = it.captured + CapturedTransferLine(
-                    lineNumber = line.lineNumber,
-                    itemId = line.itemId,
-                    itemName = line.itemName,
-                    quantity = quantity,
-                    unitSymbol = capture.unitSymbol.orEmpty(),
-                    locationId = capture.locationId,
-                    batchId = capture.batchId,
-                    serialIds = capture.serialIds,
-                    // What was outstanding on the line when this was banked - the ceiling for
-                    // adjustCapturedQuantity, so nudging a line up in the list can never book
-                    // more than the order actually has left.
-                    maxQuantity = line.remainingQuantity,
+                captured = it.captured + banked,
+                lineNotice = com.d365fo.mobileops.presentation.common.components.QuickNoticeMessage(
+                    id = System.nanoTime(),
+                    text = (if (capture.mode == TransferMode.SHIP) "Picked " else "Received ") +
+                        "${plain(quantity)} × ${line.itemName.ifBlank { line.itemId }}",
                 ),
                 capture = TransferCapture(
                     transferId = capture.transferId,
@@ -201,22 +244,103 @@ class TransferFlowViewModel @Inject constructor(
                     // Kept across lines on the same order - see the identical note in
                     // ReceivingFlowViewModel.bankCurrentLine.
                     requireLocationCaptureFallback = capture.requireLocationCaptureFallback,
+                    defaultLocationId = capture.defaultLocationId,
+                    locationId = capture.defaultLocationId,
                 ),
                 error = null,
             )
         }
+        // Every scan is picked - a second batch of a line is a second pick of that line; the
+        // line itself is never changed (user, 8 Oct 2026).
+        if (capture.mode == TransferMode.SHIP) pickLive(banked)
         return true
     }
 
-    fun removeCaptured(index: Int) {
-        _state.update { current ->
-            if (index !in current.captured.indices) {
-                current
-            } else {
-                current.copy(captured = current.captured.filterIndexed { i, _ -> i != index })
+    /**
+     * Picks a just-banked shipment line in D365FO (feedback 8b3daea2). Offline it stays unpicked
+     * and the posting picks it; a refusal (not that much in the bin, say) is shown, and posting
+     * would refuse the same.
+     */
+    private fun pickLive(line: CapturedTransferLine) {
+        val transferId = _state.value.capture.transferId ?: return
+        viewModelScope.launch {
+            when (val result = pickCall(transferId, line, line.quantity)) {
+                is NetworkResult.Success -> {
+                    _state.update { s -> s.copy(captured = s.captured.map { if (it.id == line.id) it.copy(picked = true) else it }) }
+                    persist()
+                }
+                is NetworkResult.Error -> if (result.failure is AppFailure.BusinessRule) {
+                    if ((result.failure as AppFailure.BusinessRule).d365ErrorCode == "ALREADY_PICKED") {
+                        // Picked in D365FO before (a session lost on the device, say): it ships
+                        // as it is when picking is confirmed.
+                        _state.update { s ->
+                            s.copy(
+                                captured = s.captured.map { if (it.id == line.id) it.copy(picked = true, pickedEarlier = true) else it },
+                                // Two devices on one line (TO-40, 10 Oct): both read "Picked in D365FO"
+                                // and the second only learnt otherwise when confirming.
+                                lineNotice = com.d365fo.mobileops.presentation.common.components.QuickNoticeMessage(
+                                    id = System.nanoTime(),
+                                    text = "Already picked in D365FO - another device may be shipping it",
+                                    hint = true,
+                                ),
+                            )
+                        }
+                        persist()
+                    } else {
+                        _state.update { it.copy(error = "Not picked in D365FO: ${result.failure.message}") }
+                    }
+                }
+                NetworkResult.Loading -> Unit
             }
         }
-        persist()
+    }
+
+    private suspend fun pickCall(transferId: String, line: CapturedTransferLine, quantity: BigDecimal) =
+        picker.pick(
+            dataAreaId = companyProvider().orEmpty(),
+            userName = sessions.session.value?.userName.orEmpty(),
+            deviceId = secureStore.deviceId(),
+            transferId = transferId,
+            lineNumber = line.lineNumber,
+            itemId = line.itemId,
+            unitId = line.unitSymbol,
+            quantity = quantity,
+            batchId = line.batchId,
+            serialIds = line.serialIds,
+            locationId = line.locationId,
+        )
+
+    /**
+     * Changes a picked line in D365FO first - unpicking or picking [delta] - and only then on the
+     * device, so the two never disagree. Lines not picked change on the device only.
+     */
+    private fun changePicked(line: CapturedTransferLine, delta: BigDecimal, apply: () -> Unit) {
+        val transferId = _state.value.capture.transferId
+        if (!line.picked || transferId == null || delta.signum() == 0) return apply()
+        viewModelScope.launch {
+            _state.update { it.copy(busy = true) }
+            val result = pickCall(transferId, line, delta)
+            _state.update { it.copy(busy = false) }
+            when (result) {
+                is NetworkResult.Success -> apply()
+                is NetworkResult.Error -> _state.update {
+                    it.copy(
+                        error = (if (delta.signum() < 0) "Could not undo the pick in D365FO" else "Could not pick more in D365FO") +
+                            ": ${result.failure.message}",
+                    )
+                }
+                NetworkResult.Loading -> Unit
+            }
+        }
+    }
+
+    fun removeCaptured(index: Int) {
+        val line = _state.value.captured.getOrNull(index) ?: return
+        changePicked(line, line.quantity.negate()) {
+            _state.update { current -> current.copy(captured = current.captured.filterNot { it.id == line.id }) }
+            refreshSuggested()
+            persist()
+        }
     }
 
     /**
@@ -228,26 +352,54 @@ class TransferFlowViewModel @Inject constructor(
      * serial list wrong, not just the count.
      */
     fun adjustCapturedQuantity(index: Int, delta: Int) {
-        _state.update { current ->
-            if (index !in current.captured.indices) return@update current
-            val line = current.captured[index]
-            var next = line.quantity + BigDecimal(delta)
-            if (next < BigDecimal.ONE) next = BigDecimal.ONE
-            line.maxQuantity?.let { max -> if (next > max) next = max }
-            if (next == line.quantity) return@update current
-            current.copy(
-                captured = current.captured.toMutableList().apply {
-                    this[index] = line.copy(quantity = next)
-                },
-            )
+        val line = _state.value.captured.getOrNull(index) ?: return
+        var next = line.quantity + BigDecimal(delta)
+        if (next < BigDecimal.ONE) next = BigDecimal.ONE
+        line.maxQuantity?.let { max -> if (next > max) next = max }
+        if (next == line.quantity) return
+        changePicked(line, next - line.quantity) {
+            _state.update { current ->
+                current.copy(captured = current.captured.map { if (it.id == line.id) it.copy(quantity = next) else it })
+            }
+            refreshSuggested()
+            persist()
         }
-        persist()
     }
 
     fun showCaptured(show: Boolean) = _state.update { it.copy(showingCaptured = show) }
 
     fun reset() {
         pending?.cancel()
+        val picked = _state.value.captured.filter { it.picked }
+        val transferId = _state.value.capture.transferId
+        if (picked.isNotEmpty() && transferId != null) {
+            // Undone in D365FO first; a line that cannot be unpicked keeps the session open.
+            viewModelScope.launch {
+                _state.update { it.copy(busy = true) }
+                var failed: Pair<CapturedTransferLine, String>? = null
+                for (line in picked) {
+                    val result = pickCall(transferId, line, line.quantity.negate())
+                    if (result is NetworkResult.Error) {
+                        failed = line to result.failure.message
+                        break
+                    }
+                    // Undone in D365FO: no longer picked, whatever happens to the rest.
+                    _state.update { st -> st.copy(captured = st.captured.map { if (it.id == line.id) it.copy(picked = false) else it }) }
+                    persist()
+                }
+                _state.update { it.copy(busy = false) }
+                if (failed != null) {
+                    _state.update { it.copy(error = "Could not undo the pick of ${failed.first.itemId} in D365FO: ${failed.second}") }
+                } else {
+                    resetNow()
+                }
+            }
+            return
+        }
+        resetNow()
+    }
+
+    private fun resetNow() {
         val capture = _state.value.capture
         _state.value = TransferFlowState(capture = TransferCapture(mode = capture.mode))
 
@@ -298,6 +450,7 @@ class TransferFlowViewModel @Inject constructor(
                     batchNumber = line.batchId,
                     serialNumbers = line.serialIds,
                     locationId = line.locationId,
+                    picked = line.picked,
                 )
             }
 
@@ -351,14 +504,21 @@ class TransferFlowViewModel @Inject constructor(
             // unleased entry directly raced a worker run that SyncStatusProvider's own reactive
             // push request can trigger the instant enqueue() above changes the pending count;
             // see the full account of that live-confirmed race on postReceipt.
-            val postedLive = syncQueue.leaseOne(entry.queueId)?.let { leased ->
+            // Set when D365FO answered and refused it - see the identical note on
+            // ReceivingFlowViewModel.postReceipt.
+            var rejectedReason: String? = null
+            // Posting switched off in Settings: queued and held, no live attempt.
+            val held = !postingDispatcher.postingAllowed()
+            val postedLive = if (held) false else syncQueue.leaseOne(entry.queueId)?.let { leased ->
                 when (val result = postingDispatcher.dispatch(leased)) {
                     is NetworkResult.Success -> {
                         syncQueue.onSuccess(leased)
                         true
                     }
                     is NetworkResult.Error -> {
-                        syncQueue.onFailure(leased, result.failure)
+                        if (syncQueue.onFailure(leased, result.failure)) {
+                            rejectedReason = result.failure.message
+                        }
                         false
                     }
                     NetworkResult.Loading -> false
@@ -368,9 +528,52 @@ class TransferFlowViewModel @Inject constructor(
 
             scanFeedback.success()
             notifier.notifyWorkCompleted(transferId, postedLive)
-            _state.value = TransferFlowState(capture = TransferCapture(mode = capture.mode))
+            // Back to a fresh order prompt, saying what just happened - the screen used to
+            // reset with no word on whether the transfer went anywhere.
+            val lineCount = state.captured.size
+            val lineWord = "$lineCount " + if (lineCount == 1) "line" else "lines"
+            _state.value = TransferFlowState(
+                capture = TransferCapture(mode = capture.mode),
+                postNotice = when {
+                    rejectedReason != null -> PostNotice(
+                        PostNoticeKind.REFUSED,
+                        "D365FO refused $transferId: $rejectedReason. It is under Failed postings " +
+                            "on the Activity screen, to correct and resubmit.",
+                    )
+                    held -> PostNotice(
+                        PostNoticeKind.QUEUED,
+                        "$transferId · $lineWord saved on this device. Posting to D365FO is switched off in " +
+                            "Settings; they are sent once it is switched on (see Activity).",
+                    )
+                    postedLive && networkPreferences.postImmediately.value -> PostNotice(
+                        PostNoticeKind.SENT,
+                        if (capture.mode == TransferMode.SHIP) {
+                            "$transferId · picking confirmed - $lineWord shipped in D365FO."
+                        } else {
+                            "$transferId · $lineWord posted in D365FO."
+                        },
+                    )
+                    postedLive -> PostNotice(
+                        PostNoticeKind.SENT,
+                        if (capture.mode == TransferMode.SHIP) {
+                            "$transferId · picking confirmed. The shipment of $lineWord posts in D365FO within a few minutes - " +
+                                "or at once with Process pending on the Activity screen."
+                        } else {
+                            "$transferId · $lineWord sent to D365FO. They post within a few minutes - " +
+                                "or at once with Process pending on the Activity screen."
+                        },
+                    )
+                    else -> PostNotice(
+                        PostNoticeKind.QUEUED,
+                        "$transferId · $lineWord saved on this device. D365FO can't be reached right now; " +
+                            "they are sent automatically when it can (see Activity).",
+                    )
+                },
+            )
         }
     }
+
+    fun dismissPostNotice() = _state.update { it.copy(postNotice = null) }
 
     /** See ReceivingFlowViewModel.persist: fire-and-forget, never blocking a scan. */
     private fun persist() {
@@ -385,8 +588,12 @@ class TransferFlowViewModel @Inject constructor(
         }
         val user = sessions.session.value?.userName
 
-        viewModelScope.launch {
-            flowSessions.save(flowTypeFor(capture.mode), transferId, warehouse, user, lines)
+        // ATOMIC + NonCancellable: the save runs to the end even when the screen closes right
+        // after the scan - a cancelled write is a scanned line that silently isn't there later.
+        viewModelScope.launch(start = kotlinx.coroutines.CoroutineStart.ATOMIC) {
+            kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) {
+                flowSessions.save(flowTypeFor(capture.mode), transferId, warehouse, user, lines)
+            }
         }
     }
 
@@ -395,6 +602,7 @@ class TransferFlowViewModel @Inject constructor(
     // -- steps ---------------------------------------------------------------------------
 
     private suspend fun onTransferOrder(value: String) {
+        _state.update { it.copy(postNotice = null) }
         val mode = _state.value.capture.mode
         val atWarehouse = sessions.session.value?.selected?.warehouseId
 
@@ -418,8 +626,13 @@ class TransferFlowViewModel @Inject constructor(
                             }
                             "NOT_SHIPPABLE" ->
                                 "${order.transferId} cannot be shipped — it is ${order.transferStatus}"
-                            "NOT_RECEIVABLE" ->
-                                "${order.transferId} has nothing in transit yet"
+                            // "Received" when D365FO says so; otherwise not shipped yet. "Nothing in
+                            // transit yet" read wrong for an order already received in full.
+                            "NOT_RECEIVABLE" -> if (order.transferStatus.equals("Received", ignoreCase = true)) {
+                                "${order.transferId} is already received in full - nothing left to receive"
+                            } else {
+                                "${order.transferId} has nothing in transit to receive - what is left on it has not been shipped yet"
+                            }
                             else -> "${order.transferId} cannot be worked right now"
                         },
                     )
@@ -445,13 +658,18 @@ class TransferFlowViewModel @Inject constructor(
                     it.copy(
                         order = order,
                         openLines = open,
-                        capture = TransferCapture(
-                            transferId = order.transferId,
-                            mode = mode,
-                            fromWarehouseId = order.fromWarehouseId,
-                            toWarehouseId = order.toWarehouseId,
-                            requireLocationCaptureFallback = order.requireLocationCapture,
-                        ),
+                        capture = (if (mode == TransferMode.SHIP) order.defaultIssueLocation else order.defaultReceiptLocation)
+                            .let { default ->
+                                TransferCapture(
+                                    transferId = order.transferId,
+                                    mode = mode,
+                                    fromWarehouseId = order.fromWarehouseId,
+                                    toWarehouseId = order.toWarehouseId,
+                                    requireLocationCaptureFallback = order.requireLocationCapture,
+                                    defaultLocationId = default,
+                                    locationId = default,
+                                )
+                            },
                         captured = resumed,
                         error = null,
                     )
@@ -558,6 +776,12 @@ class TransferFlowViewModel @Inject constructor(
      * banking a line's only unit and returning to the item step still offers that same item with
      * its original quantity, letting one worker in one sitting bank the same line twice.
      */
+    /** Recomputes the open line's outstanding quantity after the banked list changed. */
+    private fun refreshSuggested() {
+        val line = _state.value.capture.line ?: return
+        _state.update { it.copy(suggestedQuantity = sessionRemaining(line)) }
+    }
+
     private fun sessionRemaining(line: TransferOrderLine): BigDecimal =
         (line.remainingQuantity - capturedThisSessionFor(line)).coerceAtLeast(BigDecimal.ZERO)
 
@@ -566,7 +790,18 @@ class TransferFlowViewModel @Inject constructor(
             .filter { it.lineNumber == line.lineNumber }
             .fold(BigDecimal.ZERO) { total, entry -> total + entry.quantity }
 
+    /** What this session already banked of [batchId] on [line]. */
+    private fun scannedOfBatch(line: TransferOrderLine, batchId: String): BigDecimal =
+        _state.value.captured
+            .filter { it.lineNumber == line.lineNumber && it.batchId.equals(batchId, ignoreCase = true) }
+            .fold(BigDecimal.ZERO) { total, entry -> total + entry.quantity }
+
     private fun chooseAmong(lines: List<TransferOrderLine>) {
+        val searched = takeSearchedLine()?.let { number -> lines.firstOrNull { it.lineNumber == number } }
+        if (searched != null) {
+            selectLine(searched)
+            return
+        }
         if (lines.size > 1) {
             _state.update { it.copy(lineChoices = lines) }
         } else {
@@ -585,9 +820,15 @@ class TransferFlowViewModel @Inject constructor(
                 capture = it.capture.copy(
                     line = line,
                     unitSymbol = line.unitId,
-                    // Not pre-answered when receiving: where the pallet actually goes is what the
-                    // operator scans, and the line's location is the *source* bin anyway.
-                    locationId = null,
+                    // Shipping: the bin scanned before the item (or the warehouse's default issue
+                    // bin) stays, unless the item tracks none. Receiving: the warehouse's default
+                    // receipt bin when it has one (feedback 88c029a1) - the line's own location is
+                    // the *source* bin, never where it goes - else the operator scans it.
+                    locationId = if (it.capture.mode == TransferMode.SHIP) {
+                        it.capture.locationId.takeIf { _ -> line.locationRequired }
+                    } else {
+                        it.capture.defaultLocationId?.takeIf { _ -> line.locationRequired }
+                    },
                 ),
                 suggestedQuantity = sessionRemaining(line),
                 entryUnit = null,
@@ -597,17 +838,90 @@ class TransferFlowViewModel @Inject constructor(
         advance()
     }
 
+    /**
+     * Another transfer order (same number series, "BSP-TO-...") scanned mid-order - see
+     * ReceivingFlowViewModel.switchedOrder. It was read as a bin or an item; opens that order
+     * instead, in the same direction, unless lines are already scanned on this one.
+     */
+    private suspend fun switchedOrder(value: String): Boolean {
+        val current = _state.value.capture.transferId ?: return false
+        val prefix = current.substringBeforeLast('-', missingDelimiterValue = "").takeIf { it.isNotBlank() } ?: return false
+        if (!value.startsWith("$prefix-", ignoreCase = true) || value.equals(current, ignoreCase = true)) return false
+        if (_state.value.captured.isNotEmpty()) {
+            fail("${if (_state.value.capture.mode == TransferMode.SHIP) "Ship" else "Receive"} or remove the lines scanned on $current before opening ${value.uppercase()}")
+            return true
+        }
+        _state.value = TransferFlowState(capture = TransferCapture(mode = _state.value.capture.mode))
+        onTransferOrder(value)
+        return true
+    }
+
+    /**
+     * The line's batch label scanned at the quantity step - read as a quantity ('"AN9U" is not a
+     * number', TO-36). Known batches only: the one shipped on the line, or the one it was made for.
+     */
+    private fun isScanOfLineBatch(value: String): Boolean {
+        val line = _state.value.capture.line ?: return false
+        val known = line.shippedBatches.map { it.batchId } + listOfNotNull(line.lineBatchId)
+        if (known.none { it.equals(value, ignoreCase = true) }) return false
+        _state.update {
+            it.copy(
+                lineNotice = com.d365fo.mobileops.presentation.common.components.QuickNoticeMessage(
+                    id = System.nanoTime(),
+                    text = "${value.uppercase()} is the batch - enter the quantity first, then scan it",
+                    hint = true,
+                ),
+            )
+        }
+        return true
+    }
+
+    /** See ReceivingFlowViewModel.isScanOfCurrentItem - the same single-line case on a transfer. */
+    private suspend fun isScanOfCurrentItem(value: String): Boolean {
+        val line = _state.value.capture.line ?: return false
+        if (value.length < 8 && value.all { it.isDigit() || it == '.' }) return false
+        val same = value.equals(line.itemId, ignoreCase = true) ||
+            ((lookups.lookupBarcode(value) as? NetworkResult.Success)?.data?.itemNumber?.equals(line.itemId, ignoreCase = true) == true)
+        if (same) {
+            _state.update {
+                it.copy(
+                    lineNotice = com.d365fo.mobileops.presentation.common.components.QuickNoticeMessage(
+                        id = System.nanoTime(),
+                        text = "${line.itemId} is already selected - enter the quantity",
+                        hint = true,
+                    ),
+                )
+            }
+        }
+        return same
+    }
+
     private fun onQuantity(value: String) {
-        val line = _state.value.capture.line ?: return fail("Pick a line first")
+        val entered = checkQuantity(value).getOrElse { return fail(it.message ?: "\"$value\" is not a number") }
+        _state.update { it.copy(capture = it.capture.copy(quantity = entered), error = null) }
+        advance()
+    }
+
+    /**
+     * Why [value] cannot be the current line's quantity, or null when it can. The keypad screen
+     * asks this before it closes, so a refused quantity is said there, under the number, and the
+     * pad stays open - closing it first put the error on the step screen, whose buttons then
+     * moved when the notice was dismissed.
+     */
+    fun quantityError(value: String): String? =
+        if (_state.value.step != TransferStep.QUANTITY) null else checkQuantity(value.trim()).exceptionOrNull()?.message
+
+    private fun checkQuantity(value: String): Result<BigDecimal> {
+        val line = _state.value.capture.line ?: return Result.failure(IllegalStateException("Pick a line first"))
         // "3", or "3 BOX" / a unit chip: converted to the line's unit per the item's conversions.
         val entered = com.d365fo.mobileops.domain.model.UnitConversion
             .parse(value, line.units, _state.value.entryUnit, line.unitId)
-            .getOrElse { return fail(it.message ?: "\"$value\" is not a number") }
+            .getOrElse { return Result.failure(IllegalArgumentException(it.message ?: "\"$value\" is not a number")) }
             .quantity
-        if (entered.signum() <= 0) return fail("Quantity must be more than zero")
+        if (entered.signum() <= 0) return Result.failure(IllegalArgumentException("Quantity must be more than zero"))
 
         if (line.serialRequired && entered.stripTrailingZeros().scale() > 0) {
-            return fail("${line.itemId} is serial tracked, so it moves in whole units")
+            return Result.failure(IllegalArgumentException("${line.itemId} is serial tracked, so it moves in whole units"))
         }
 
         // The ceiling is what is outstanding in this direction, which the server decided - minus
@@ -616,17 +930,17 @@ class TransferFlowViewModel @Inject constructor(
         val maximum = sessionRemaining(line)
         if (entered > maximum) {
             val mode = _state.value.capture.mode
-            return fail(
-                if (mode == TransferMode.SHIP) {
-                    "Only ${plain(maximum)} left to ship on this line"
-                } else {
-                    "Only ${plain(maximum)} was shipped and is still to receive"
-                },
+            return Result.failure(
+                IllegalArgumentException(
+                    if (mode == TransferMode.SHIP) {
+                        "Only ${plain(maximum)} left to ship on this line"
+                    } else {
+                        "Only ${plain(maximum)} was shipped and is still to receive"
+                    },
+                ),
             )
         }
-
-        _state.update { it.copy(capture = it.capture.copy(quantity = entered), error = null) }
-        advance()
+        return Result.success(entered)
     }
 
     /** Picks the unit the quantity step reads its number in; the line's own unit clears it. */
@@ -636,16 +950,25 @@ class TransferFlowViewModel @Inject constructor(
     }
 
     private suspend fun onLocation(value: String) {
-        val warehouse = _state.value.capture.toWarehouseId
-            ?: return fail("This transfer has no destination warehouse")
+        // Shipping picks from a bin of the From warehouse; receiving puts away into the To one.
+        val shipping = _state.value.capture.mode == TransferMode.SHIP
+        val warehouse = (if (shipping) _state.value.capture.fromWarehouseId else _state.value.capture.toWarehouseId)
+            ?: return fail(if (shipping) "This transfer has no From warehouse" else "This transfer has no destination warehouse")
 
         when (val result = lookups.lookupLocation(warehouse, value)) {
-            is NetworkResult.Error -> fail(result.failure.message)
+            // No connection: taken as scanned and left to D365FO, which checks it again when the
+            // posting arrives - a wrong one comes back in Activity rather than stopping work here.
+            is NetworkResult.Error -> if (result.failure.retryable) {
+                _state.update { it.copy(capture = it.capture.copy(locationId = value), error = null) }
+                advance()
+            } else {
+                fail(result.failure.message)
+            }
             NetworkResult.Loading -> Unit
             is NetworkResult.Success -> {
                 val location = result.data
                     ?: return fail("No location $value in warehouse $warehouse")
-                if (!location.canReceiveInto) {
+                if (!shipping && !location.canReceiveInto) {
                     return fail("$value is not available for put-away")
                 }
                 _state.update {
@@ -666,10 +989,56 @@ class TransferFlowViewModel @Inject constructor(
      * caught it, after the operator had moved on to the next item.
      */
     private suspend fun onBatch(value: String) {
-        val line = _state.value.capture.line ?: return fail("Pick a line first")
+        var line = _state.value.capture.line ?: return fail("Pick a line first")
+
+        // Receiving: the batch must be one shipped on this line, in no more than was shipped of
+        // it. A batch shipped on another line of the same item - a line D365FO split by batch
+        // when it was shipped - switches to that line.
+        if (_state.value.capture.mode == TransferMode.RECEIVE && line.shippedBatches.isNotEmpty()) {
+            val quantity = _state.value.capture.quantity ?: BigDecimal.ZERO
+            if (line.shippedBatches.none { it.batchId.equals(value, ignoreCase = true) }) {
+                _state.value.openLines.firstOrNull { other ->
+                    other.lineNumber != line.lineNumber &&
+                        other.itemId.equals(line.itemId, ignoreCase = true) &&
+                        other.variant == line.variant &&
+                        other.shippedBatches.any { it.batchId.equals(value, ignoreCase = true) } &&
+                        sessionRemaining(other) >= quantity
+                }?.let { other ->
+                    line = other
+                    _state.update { it.copy(capture = it.capture.copy(line = other, unitSymbol = other.unitId)) }
+                }
+            }
+            when (val check = checkShippedBatch(line, value, quantity, scannedOfBatch(line, value))) {
+                ShippedBatchCheck.Ok -> Unit
+                is ShippedBatchCheck.NotShipped -> return fail(
+                    "Batch $value was not shipped on ${_state.value.capture.transferId} for ${line.itemId}. " +
+                        "Shipped: " + check.shipped.joinToString { "${it.batchId} (${plain(it.quantity)})" },
+                )
+                is ShippedBatchCheck.TooMany -> return fail(
+                    "Only ${plain(check.shipped)} of batch $value was shipped on this line" +
+                        (if (check.alreadyScanned.signum() > 0) ", and ${plain(check.alreadyScanned)} is already scanned" else ""),
+                )
+            }
+            _state.update { it.copy(capture = it.capture.copy(batchId = value), error = null) }
+            return advance()
+        }
+
+        // Shipping a line created for a chosen batch (TO creation's "which stock?"): another
+        // batch was picked without a word (AN9U on TO-35, ordered from HSB-PAN-001). Warned
+        // once; the same batch scanned again is taken - stock does get picked from another lot.
+        val ordered = line.lineBatchId
+        if (_state.value.capture.mode == TransferMode.SHIP && ordered != null && !ordered.equals(value, ignoreCase = true)) {
+            if (!value.equals(otherBatchWarned, ignoreCase = true)) {
+                otherBatchWarned = value
+                return fail("This line is for batch $ordered. Scan $ordered - or scan $value again to pick it instead")
+            }
+        }
+        otherBatchWarned = null
 
         when (val result = lookups.isBatchRegistered(line.itemId, value)) {
-            is NetworkResult.Error -> return fail(result.failure.message)
+            // No connection: taken as scanned and left to D365FO, which checks it again when the
+            // posting arrives - a wrong one comes back in Activity rather than stopping work here.
+            is NetworkResult.Error -> if (!result.failure.retryable) return fail(result.failure.message)
             NetworkResult.Loading -> return
             is NetworkResult.Success -> if (!result.data) {
                 return fail("Batch $value is not known for ${line.itemId} - check the batch label")
@@ -692,9 +1061,28 @@ class TransferFlowViewModel @Inject constructor(
         // definition — it is the stock leaving — so uniqueness would refuse every valid scan.
         if (capture.mode == TransferMode.RECEIVE) {
             when (val result = lookups.isSerialRegistered(line.itemId, value)) {
-                is NetworkResult.Error -> return fail(result.failure.message)
+                // No connection: taken as scanned - D365FO refuses a duplicate when the posting arrives.
+                is NetworkResult.Error -> if (!result.failure.retryable) return fail(result.failure.message)
                 NetworkResult.Loading -> return
                 is NetworkResult.Success -> Unit
+            }
+        }
+
+        // Shipping: the serial must be in stock at the From warehouse. It was not checked at all,
+        // and D365FO picked a serial that does not exist there (ZZSER1 on TO-39, 10 Oct) - the
+        // item allows negative stock. Offline it is taken as scanned, as before.
+        if (capture.mode == TransferMode.SHIP) {
+            val from = capture.fromWarehouseId
+            if (from != null) {
+                val v = line.variant
+                val stock = orderCreation.stock(
+                    line.itemId,
+                    com.d365fo.mobileops.data.repository.OrderVariant(v.configId.orEmpty(), v.sizeId.orEmpty(), v.colorId.orEmpty(), v.styleId.orEmpty()),
+                    from,
+                )
+                if (stock is NetworkResult.Success && stock.data.none { it.serialId.equals(value, ignoreCase = true) && it.available > 0 }) {
+                    return fail("Serial $value is not in stock at $from")
+                }
             }
         }
 
@@ -755,7 +1143,37 @@ data class TransferFlowState(
     val showingCaptured: Boolean = false,
     val busy: Boolean = false,
     val error: String? = null,
-)
+    /** "Received 2 × …" for a second after a line is banked - see QuickNotice. */
+    val lineNotice: com.d365fo.mobileops.presentation.common.components.QuickNoticeMessage? = null,
+    /** What the last post did, shown on the fresh order prompt until dismissed or the next order. */
+    val postNotice: PostNotice? = null,
+) {
+    /**
+     * Lines still to scan: the server's count, less the lines this session has scanned in full.
+     * The server's count alone still said "1 line outstanding" with both units of a 2-unit line
+     * scanned (as 1 + 1, from two batches).
+     */
+    val outstandingLineCount: Int?
+        get() {
+            val order = order ?: return null
+            val scannedByLine = captured.groupBy { it.lineNumber }
+                .mapValues { (_, lines) -> lines.fold(BigDecimal.ZERO) { total, line -> total + line.quantity } }
+            if (order.linesInline && openLines.isNotEmpty()) {
+                return openLines.count { line ->
+                    (line.remainingQuantity - (scannedByLine[line.lineNumber] ?: BigDecimal.ZERO)).signum() > 0
+                }
+            }
+            val fullyScanned = captured.groupBy { it.lineNumber }.count { (lineNumber, lines) ->
+                val ceiling = lines.firstNotNullOfOrNull { it.maxQuantity }
+                ceiling != null && scannedByLine.getValue(lineNumber) >= ceiling
+            }
+            return (order.outstandingLineCount - fullyScanned).coerceAtLeast(0)
+        }
+}
+
+enum class PostNoticeKind { SENT, QUEUED, REFUSED }
+
+data class PostNotice(val kind: PostNoticeKind, val message: String)
 
 /** A line banked in this session. In memory only, as with receiving, while posting does not exist. */
 data class CapturedTransferLine(
@@ -767,23 +1185,41 @@ data class CapturedTransferLine(
     val locationId: String? = null,
     val batchId: String? = null,
     val serialIds: List<String> = emptyList(),
+    /** "Config C1 · Size L" - which variant of a product master; blank for a plain item. */
+    val variantLabel: String = "",
     /** See adjustCapturedQuantity. Null for a line resumed from a saved session - unbounded. */
     val maxQuantity: BigDecimal? = null,
+    /** Shipping: picked in D365FO when it was scanned (TransferPicker). */
+    val picked: Boolean = false,
+    /** It was already picked before this scan - by an earlier session or another device. */
+    val pickedEarlier: Boolean = false,
+    /** Tells banked lines apart while a live pick for one is in flight. */
+    val id: String = java.util.UUID.randomUUID().toString(),
 )
 
-private fun TransferCapture.cleared(step: TransferStep): TransferCapture = when (step) {
-    TransferStep.TRANSFER_ORDER -> TransferCapture(mode = mode)
-    TransferStep.ITEM -> copy(
-        line = null, quantity = null, unitSymbol = null,
-        locationId = null, batchId = null, serialIds = emptyList(),
+/**
+ * Going back to [step]: its answer and every later one are cleared, in the order this direction
+ * asks them (stepsForTransfer) - shipping asks the bin before the item, so going back to the
+ * item keeps the bin; receiving asks it last. Serial, the step itself, drops only the last scan.
+ */
+private fun TransferCapture.cleared(step: TransferStep): TransferCapture {
+    if (step == TransferStep.TRANSFER_ORDER) return TransferCapture(mode = mode)
+    val sequence = stepsForTransfer(this)
+    val from = sequence.indexOf(step).takeIf { it >= 0 } ?: return this
+    val gone = sequence.drop(from).toSet()
+    return copy(
+        line = if (TransferStep.ITEM in gone) null else line,
+        unitSymbol = if (TransferStep.ITEM in gone) null else unitSymbol,
+        quantity = if (TransferStep.QUANTITY in gone) null else quantity,
+        locationId = if (TransferStep.LOCATION in gone) null else locationId,
+        batchId = if (TransferStep.BATCH in gone) null else batchId,
+        serialIds = when {
+            step == TransferStep.SERIAL -> serialIds.dropLast(1)
+            TransferStep.SERIAL in gone -> emptyList()
+            else -> serialIds
+        },
+        skipped = skipped - gone,
     )
-    TransferStep.QUANTITY -> copy(
-        quantity = null, locationId = null, batchId = null, serialIds = emptyList(),
-    )
-    TransferStep.LOCATION -> copy(locationId = null, batchId = null, serialIds = emptyList())
-    TransferStep.BATCH -> copy(batchId = null, serialIds = emptyList())
-    TransferStep.SERIAL -> copy(serialIds = serialIds.dropLast(1))
-    TransferStep.CONFIRM -> this
 }
 
 /** Storage shape of a banked transfer line. */
@@ -796,6 +1232,7 @@ private fun CapturedTransferLine.toStored() = StoredLine(
     locationId = locationId,
     batchId = batchId,
     serialIds = serialIds,
+    picked = picked,
 )
 
 private fun StoredLine.toCapturedTransfer() = CapturedTransferLine(
@@ -807,6 +1244,10 @@ private fun StoredLine.toCapturedTransfer() = CapturedTransferLine(
     locationId = locationId,
     batchId = batchId,
     serialIds = serialIds,
+    picked = picked,
 )
 
 private const val GS1_AUTOFILL_DELAY_MS = 150L
+
+/** How long a line picked in the item search stays the answer to "which line?". */
+private const val SEARCHED_LINE_VALID_MS = 10_000L

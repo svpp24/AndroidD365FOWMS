@@ -17,11 +17,18 @@ data class ProductVariant(
     /** "Config X · Size L · Colour Red · Style S", only the dimensions that are set. */
     val label: String
         get() = listOfNotNull(
-            configId?.takeIf { it.isNotBlank() }?.let { "Config $it" },
-            sizeId?.takeIf { it.isNotBlank() }?.let { "Size $it" },
-            colorId?.takeIf { it.isNotBlank() }?.let { "Colour $it" },
-            styleId?.takeIf { it.isNotBlank() }?.let { "Style $it" },
+            configId?.takeIf { it.isNotBlank() }?.let { "Configuration: $it" },
+            sizeId?.takeIf { it.isNotBlank() }?.let { "Size: $it" },
+            colorId?.takeIf { it.isNotBlank() }?.let { "Colour: $it" },
+            styleId?.takeIf { it.isNotBlank() }?.let { "Style: $it" },
         ).joinToString(" \u00B7 ")
+
+    /**
+     * Whether a typed search finds this variant: some dimension value starts with [needle] -
+     * "L" is size L, not the "l" in the "Colour" / "Style" words of [label].
+     */
+    fun matches(needle: String): Boolean =
+        listOfNotNull(configId, sizeId, colorId, styleId).any { it.isNotBlank() && it.startsWith(needle, ignoreCase = true) }
 
     /**
      * Whether a scan of [scanned] (e.g. a variant barcode) can be this variant. Every dimension

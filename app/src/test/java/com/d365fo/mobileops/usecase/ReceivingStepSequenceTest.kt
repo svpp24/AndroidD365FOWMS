@@ -180,4 +180,33 @@ class ReceivingStepSequenceTest {
 
         assertThat(nextIncompleteStep(complete)).isEqualTo(ReceivingStep.CONFIRM)
     }
+
+    @Test
+    fun `batch and a new batch's expiry come before the bin location`() {
+        val capture = ReceivingCapture(
+            purchId = "PO-1",
+            line = line(),
+            item = item(batch = true, location = true),
+            quantity = BigDecimal("5"),
+            batchIsNew = true,
+        )
+
+        val steps = stepsFor(capture)
+
+        assertThat(steps.indexOf(ReceivingStep.BATCH)).isLessThan(steps.indexOf(ReceivingStep.LOCATION))
+        assertThat(steps.indexOf(ReceivingStep.BATCH_EXPIRY_DATE)).isLessThan(steps.indexOf(ReceivingStep.LOCATION))
+        assertThat(nextIncompleteStep(capture)).isEqualTo(ReceivingStep.BATCH)
+    }
+
+    @Test
+    fun `a line that carries its bin is never asked for one`() {
+        val capture = ReceivingCapture(
+            purchId = "PO-1",
+            line = line().copy(locationId = "BIN-1"),
+            item = item(batch = true, location = true),
+            quantity = BigDecimal("5"),
+        )
+
+        assertThat(stepsFor(capture)).doesNotContain(ReceivingStep.LOCATION)
+    }
 }

@@ -1,0 +1,134 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsSerialHistoryRow</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// One serial number that left the warehouse - picked, shipped or sold - with what took it out.
+/// </summary>
+[DataContractAttribute]
+class HSMobileOpsSerialHistoryRow
+{
+    str        itemId;
+    str        itemName;
+    str        serialId;
+    str        batchId;
+    str        reference;
+    str        referenceType;
+    str        status;
+    str        transDate;
+    real       quantity;
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmItemId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ItemId')]
+    public str parmItemId(str _value = itemId)
+    {
+        itemId = _value;
+        return itemId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmItemName</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ItemName')]
+    public str parmItemName(str _value = itemName)
+    {
+        itemName = _value;
+        return itemName;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmSerialId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('SerialId')]
+    public str parmSerialId(str _value = serialId)
+    {
+        serialId = _value;
+        return serialId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmBatchId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('BatchId')]
+    public str parmBatchId(str _value = batchId)
+    {
+        batchId = _value;
+        return batchId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmReference</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Reference')]
+    public str parmReference(str _value = reference)
+    {
+        reference = _value;
+        return reference;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmReferenceType</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ReferenceType')]
+    public str parmReferenceType(str _value = referenceType)
+    {
+        referenceType = _value;
+        return referenceType;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmStatus</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Status')]
+    public str parmStatus(str _value = status)
+    {
+        status = _value;
+        return status;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmTransDate</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('TransDate')]
+    public str parmTransDate(str _value = transDate)
+    {
+        transDate = _value;
+        return transDate;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmQuantity</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Quantity')]
+    public real parmQuantity(real _value = quantity)
+    {
+        quantity = _value;
+        return quantity;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

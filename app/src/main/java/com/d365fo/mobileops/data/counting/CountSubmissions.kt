@@ -5,6 +5,7 @@ import androidx.work.BackoffPolicy
 import androidx.work.Constraints
 import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
+import androidx.work.WorkInfo
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.OutOfQuotaPolicy
 import androidx.work.WorkManager
@@ -47,6 +48,28 @@ class CountSubmitScheduler @Inject constructor(@ApplicationContext context: Cont
         )
     }
 
+    /**
+     * Runs a submission now that is only waiting out its retry backoff - D365FO answers again,
+     * so there is no reason to sit out a backoff that can have grown to minutes. A job that is
+     * running is left alone (REPLACE would cancel it mid-import), as is one already finished.
+     */
+    fun nudge(journalId: String) {
+        val waiting = runCatching {
+            workManager.getWorkInfosForUniqueWork(workName(journalId)).get()
+                .any { it.state == WorkInfo.State.ENQUEUED && it.runAttemptCount > 0 }
+        }.getOrDefault(false)
+        if (!waiting) return
+        workManager.enqueueUniqueWork(
+            workName(journalId),
+            ExistingWorkPolicy.REPLACE,
+            OneTimeWorkRequestBuilder<CountSubmitWorker>()
+                .setInputData(workDataOf(CountSubmitWorker.KEY_JOURNAL_ID to journalId))
+                .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
+                .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
+                .build(),
+        )
+    }
+
     private fun workName(journalId: String) = "count-submit-$journalId"
 }
 
@@ -71,6 +94,26 @@ class CountSubmissions @Inject constructor(
 ) {
     fun observe() = countingDao.observeSubmissions()
 
+    /**
+     * Posting switched back on: every End count held while it was off goes now. Its job may have
+     * finished doing nothing (see CountSubmitWorker), so it is enqueued again, not just nudged.
+     */
+    suspend fun resumeWaiting() {
+        countingDao.observeSubmissions().first()
+            .filter { it.state.inProgress }
+            .forEach {
+                scheduler.nudge(it.journalId)
+                scheduler.enqueue(it.journalId)
+            }
+    }
+
+    /** D365FO answers again: every End count still waiting goes now - see CountSubmitScheduler.nudge. */
+    suspend fun nudgeWaiting() {
+        countingDao.observeSubmissions().first()
+            .filter { it.state.inProgress }
+            .forEach { scheduler.nudge(it.journalId) }
+    }
+
     suspend fun endCount(journalId: String): EndCountResult {
         if (countingDao.getSubmission(journalId)?.state?.inProgress == true) {
             scheduler.enqueue(journalId)
@@ -86,7 +129,8 @@ class CountSubmissions @Inject constructor(
                 (lost.lostReason ?: "Your claim on this journal was lost.") + " Claim it again before ending the count.",
             )
         }
-        if (countingDao.getCountLines(journalId).none { it.isCounted }) {
+        // Items found that are not on the journal are a count too (14 Oct): they become its lines.
+        if (countingDao.getCountLines(journalId).none { it.isCounted } && countingDao.unsentExceptions(journalId).isEmpty()) {
             return EndCountResult.Refused("Nothing has been counted yet.")
         }
 

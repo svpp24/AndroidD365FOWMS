@@ -22,7 +22,6 @@ data class PurchaseOrder(
     val tolerance: DeliveryTolerance,
     val lines: List<PurchaseOrderLine>,
 ) {
-    val isReceivable: Boolean get() = status.isOpen && approved
     val openLines: List<PurchaseOrderLine> get() = lines.filter { it.hasOutstanding }
     val lineCount: Int get() = lines.size
 }
@@ -33,6 +32,8 @@ data class PurchaseOrderLine(
     val lineNumber: Double,
     val itemId: String,
     val itemName: String,
+    /** Released product > Warehouse mobile device description lines - shown when filled in. */
+    val mobileDescriptions: List<String> = emptyList(),
     val purchaseUnit: String,
     val inventoryUnit: String,
     /** Multiply a purchase-unit quantity by this to get inventory units. */
@@ -69,9 +70,6 @@ data class PurchaseOrderLine(
     /** Units the quantity can be entered in, from the item's conversion setup - see [ItemUnit]. */
     val units: List<com.d365fo.mobileops.domain.model.ItemUnit> = emptyList(),
 ) {
-    /** What D365FO still expects, ignoring anything queued locally. */
-    val serverRemaining: BigDecimal get() = orderedQuantity - receivedQuantity
-
     /**
      * What this worker may still receive. Subtracting the uncommitted quantity is what
      * stops two offline receiving sessions on the same order from jointly over-receiving.
@@ -81,7 +79,6 @@ data class PurchaseOrderLine(
 
     val hasOutstanding: Boolean get() = outstandingQuantity.signum() > 0
 
-    val isFullyReceived: Boolean get() = serverRemaining.signum() <= 0
 }
 
 /**
@@ -95,8 +92,6 @@ data class DeliveryTolerance(
     /** Largest quantity acceptable for an ordered quantity, including over-delivery. */
     fun maxAcceptable(ordered: BigDecimal): BigDecimal =
         overPercent?.let { ordered + ordered.multiply(it).divide(HUNDRED) } ?: ordered
-
-    fun allowsOverDelivery(): Boolean = overPercent?.signum() == 1
 
     companion object {
         val NONE = DeliveryTolerance(null, null)

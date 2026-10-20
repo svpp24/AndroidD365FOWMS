@@ -21,6 +21,7 @@ class HSMobileOpsCountDirectSubmitRequest
     str             submittedAtUtc;
     int             passNumber;
     str             originType;
+    str             linesJson;
     List            lines;
 
 }
@@ -150,12 +151,111 @@ class HSMobileOpsCountDirectSubmitRequest
 				<Name>parmLines</Name>
 				<Source><![CDATA[
 
-    [DataMemberAttribute('Lines'),
-     DataCollectionAttribute(Types::Class, classStr(HSMobileOpsCountDirectCountRow))]
+    /// <summary>
+    /// The counted lines. Read from LinesJson. Not a data member itself: a list of a custom class
+    /// does not bind on the way in (JObject cast failure - see
+    /// HSMobileOpsPostRequest.parmLinesJson).
+    /// </summary>
     public List parmLines(List _value = lines)
     {
+        Newtonsoft.Json.Linq.JArray    jArray;
+        Newtonsoft.Json.Linq.JObject   jRow;
+        HSMobileOpsCountDirectCountRow row;
+        int                            rowCount;
+        int                            i;
+
         lines = _value;
+        if (!lines && linesJson)
+        {
+            lines = new List(Types::Class);
+            jArray = HSMobileOpsCountDirectSubmitRequest::jsonArray(linesJson);
+            rowCount = jArray == null ? 0 : jArray.get_Count();
+            for (i = 0; i < rowCount; i++)
+            {
+                jRow = jArray.get_Item(i);
+                if (jRow == null)
+                {
+                    continue;
+                }
+                row = new HSMobileOpsCountDirectCountRow();
+                row.parmLineNumber(HSMobileOpsCountDirectSubmitRequest::jsonNum(jRow, 'LineNumber'));
+                row.parmCountedQuantity(HSMobileOpsCountDirectSubmitRequest::jsonNum(jRow, 'CountedQuantity'));
+                row.parmMarkedOnly(strLwr(HSMobileOpsCountDirectSubmitRequest::jsonStr(jRow, 'MarkedOnly')) == 'true');
+                row.parmCountedBy(HSMobileOpsCountDirectSubmitRequest::jsonStr(jRow, 'CountedBy'));
+                row.parmCountedAtUtc(HSMobileOpsCountDirectSubmitRequest::jsonStr(jRow, 'CountedAtUtc'));
+                row.parmCountStartedAtUtc(HSMobileOpsCountDirectSubmitRequest::jsonStr(jRow, 'CountStartedAtUtc'));
+                lines.addEnd(row);
+            }
+        }
         return lines;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmLinesJson</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The counted lines as a JSON array of HSMobileOpsCountDirectCountRow's members.
+    /// </summary>
+    [DataMemberAttribute('LinesJson')]
+    public str parmLinesJson(str _value = linesJson)
+    {
+        linesJson = _value;
+        return linesJson;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>jsonArray</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// A JSON array string parsed, or null when blank or unparseable.
+    /// </summary>
+    private static Newtonsoft.Json.Linq.JArray jsonArray(str _json)
+    {
+        System.Object               parsed;
+        Newtonsoft.Json.Linq.JArray jArray;
+
+        if (!_json)
+        {
+            return null;
+        }
+        try
+        {
+            parsed = Newtonsoft.Json.Linq.JArray::Parse(_json);
+        }
+        catch (Exception::CLRError)
+        {
+            return null;
+        }
+        jArray = parsed;
+        return jArray;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>jsonStr</Name>
+				<Source><![CDATA[
+
+    private static str jsonStr(Newtonsoft.Json.Linq.JObject _obj, str _property)
+    {
+        Newtonsoft.Json.Linq.JToken token = _obj ? _obj.get_Item(_property) : null;
+
+        return token == null ? '' : token.ToString();
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>jsonNum</Name>
+				<Source><![CDATA[
+
+    private static real jsonNum(Newtonsoft.Json.Linq.JObject _obj, str _property)
+    {
+        str value = HSMobileOpsCountDirectSubmitRequest::jsonStr(_obj, _property);
+
+        return value ? str2num(value) : 0;
     }
 ]]></Source>
 			</Method>

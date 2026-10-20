@@ -1,26 +1,33 @@
 <?xml version="1.0" encoding="utf-8"?>
 <AxSecurityRole xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
 	<Name>HSMobileOpsAdministrator</Name>
+	<Description>Sets up and maintains handheld users. Typically a warehouse manager or supervisor, not an IT administrator - the people who know which workers exist and which warehouses they cover.</Description>
 	<Label>Mobile operations administrator</Label>
-	<HelpText>Sets up and maintains handheld users. Typically a warehouse manager or supervisor, not an IT administrator - the people who know which workers exist and which warehouses they cover.</HelpText>
+	<DirectAccessPermissions />
 	<Duties>
-		<AxSecurityRoleDutyReference>
+		<AxSecurityDutyReference>
 			<Name>HSMobileOpsMaintainUsers</Name>
-		</AxSecurityRoleDutyReference>
-		<AxSecurityRoleDutyReference>
+		</AxSecurityDutyReference>
+		<AxSecurityDutyReference>
 			<Name>HSMobileOpsMaintainDevices</Name>
-		</AxSecurityRoleDutyReference>
-		<AxSecurityRoleDutyReference>
+		</AxSecurityDutyReference>
+		<AxSecurityDutyReference>
 			<Name>HSMobileOpsMaintainLicense</Name>
-		</AxSecurityRoleDutyReference>
+		</AxSecurityDutyReference>
 	</Duties>
 	<Privileges>
-		<AxSecurityRolePrivilegeReference>
+		<AxSecurityPrivilegeReference>
 			<Name>HSMobileOpsCountToleranceMaintain</Name>
-		</AxSecurityRolePrivilegeReference>
-		<AxSecurityRolePrivilegeReference>
+		</AxSecurityPrivilegeReference>
+		<AxSecurityPrivilegeReference>
+			<Name>HSMobileOpsCountControlCenterMaintain</Name>
+		</AxSecurityPrivilegeReference>
+		<AxSecurityPrivilegeReference>
+			<Name>HSMobileOpsFeedbackMaintain</Name>
+		</AxSecurityPrivilegeReference>
+		<AxSecurityPrivilegeReference>
 			<Name>HSMobileOpsAiSampleMaintain</Name>
-		</AxSecurityRolePrivilegeReference>
+		</AxSecurityPrivilegeReference>
 	</Privileges>
 	<SubRoles />
 </AxSecurityRole>

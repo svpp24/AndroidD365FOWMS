@@ -1,0 +1,323 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsCountStageService</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// HSMobileOpsCountStageSvc: the handheld's side of the Stock count control center. Counts are
+/// staged per counter (HSMobileOpsCountStage) inside the store's stock count
+/// (HSMobileOpsCountMaster) instead of going straight into a counting journal; the supervisor
+/// reviews them in the control center form and transfers them. Rules live in
+/// HSMobileOpsCountControl.
+///
+/// Registered as HSMobileOpsCountStageSvc in HSMobileOpsServiceGroup - needs a full service group
+/// build, not a class-only build (see aos/README.md, Installing).
+/// </summary>
+class HSMobileOpsCountStageService
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>openStage</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Starts (or rejoins) this counter's staging journal in the store's open stock count - a
+    /// free store count, or a count against SourceJournalId.
+    /// </summary>
+    [Wrappable(false), Hookable(false)]
+    public HSMobileOpsCountStageResponse openStage(HSMobileOpsCountStageRequest _request)
+    {
+        HSMobileOpsCountStageResponse response = HSMobileOpsCountStageService::validate(_request);
+        HSMobileOpsCountMaster        master;
+        HSMobileOpsCountStage         stage;
+        HSMobileOpsCountStore         countStore;
+
+        if (response.parmErrorCode())
+        {
+            return response;
+        }
+        changecompany (_request.parmDataAreaId())
+        {
+            if (!InventLocation::find(_request.parmWarehouseId()).RecId)
+            {
+                response.parmErrorCode('INVALID_REQUEST');
+                response.parmMessage(strFmt('No warehouse %1', _request.parmWarehouseId()));
+                return response;
+            }
+            // Counts nobody reviews would sit in the control center unseen (user, 13 Oct): a store
+            // needs a supervisor in Stock count stores before its counts are staged.
+            select firstonly RecId from countStore
+                where countStore.InventLocationId == _request.parmWarehouseId()
+                   && countStore.SupervisorUserId != '';
+            if (!countStore.RecId)
+            {
+                response.parmErrorCode('NO_SUPERVISOR');
+                response.parmMessage(strFmt('Store %1 has no stock count supervisor in D365FO - ask for one to be set up in Stock count stores before counting.',
+                    _request.parmWarehouseId()));
+                return response;
+            }
+            if (_request.parmSourceJournalId())
+            {
+                InventJournalTable journal = InventJournalTable::find(_request.parmSourceJournalId());
+                if (!journal.RecId || journal.Posted)
+                {
+                    response.parmErrorCode(journal.RecId ? 'JOURNAL_POSTED' : 'JOURNAL_NOT_FOUND');
+                    return response;
+                }
+            }
+            try
+            {
+                ttsbegin;
+                master = HSMobileOpsCountControl::openMaster(_request.parmWarehouseId(), _request.parmSourceJournalId(), _request.parmUserName());
+                stage  = HSMobileOpsCountControl::openStage(master, _request.parmUserName(), _request.parmDeviceId());
+                ttscommit;
+            }
+            catch (Exception::DuplicateKeyException)
+            {
+                response.parmErrorCode('RETRY');
+                response.parmMessage('Another counter started the same count at the same moment - try again.');
+                return response;
+            }
+            HSMobileOpsCountControl::refresh(master.RecId);
+            master = HSMobileOpsCountControl::masterOf(master.RecId);
+            response.parmSuccess(true);
+            response.parmMasterId(master.MasterId);
+            response.parmStageId(int642Str(stage.RecId));
+            response.parmDuplicates(master.DuplicateCount);
+        }
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>submitLines</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Stages counted lines in the counter's staging journal. A line is keyed by its ClientLineId,
+    /// so a resend replaces it rather than counting it twice; with EndCount the counter's journal
+    /// is Submitted. Refused once the stock count has been transferred or cancelled.
+    /// </summary>
+    [Wrappable(false), Hookable(false)]
+    public HSMobileOpsCountStageResponse submitLines(HSMobileOpsCountStageRequest _request)
+    {
+        HSMobileOpsCountStageResponse response = HSMobileOpsCountStageService::validate(_request);
+        HSMobileOpsCountStage         stage;
+        HSMobileOpsCountMaster        master;
+        HSMobileOpsCountStageLine     line;
+        System.Object                 parsedObj;
+        Newtonsoft.Json.Linq.JArray   jArray;
+        Newtonsoft.Json.Linq.JObject  jLine;
+        int                           i;
+        int                           accepted;
+        str                           clientLineId;
+
+        if (response.parmErrorCode())
+        {
+            return response;
+        }
+        changecompany (_request.parmDataAreaId())
+        {
+            select firstonly stage where stage.RecId == str2Int64(_request.parmStageId());
+            if (!stage.RecId || strUpr(stage.UserName) != strUpr(_request.parmUserName()))
+            {
+                response.parmErrorCode('STAGE_NOT_FOUND');
+                response.parmMessage('This count is not on D365FO any more - start it again.');
+                return response;
+            }
+            master = HSMobileOpsCountControl::masterOf(stage.MasterRecId);
+            if (master.Status != HSMobileOpsCountMasterStatus::Open)
+            {
+                response.parmErrorCode(master.Status == HSMobileOpsCountMasterStatus::Transferred ? 'COUNT_TRANSFERRED' : 'COUNT_CANCELLED');
+                response.parmMessage(strFmt('%1 has been %2 by the supervisor - these counts were not added.', master.MasterId,
+                    master.Status == HSMobileOpsCountMasterStatus::Transferred ? 'transferred' : 'cancelled'));
+                return response;
+            }
+
+            if (_request.parmLinesJson())
+            {
+                try
+                {
+                    parsedObj = Newtonsoft.Json.Linq.JArray::Parse(_request.parmLinesJson());
+                }
+                catch (Exception::CLRError)
+                {
+                    response.parmErrorCode('INVALID_REQUEST');
+                    response.parmMessage('The counted lines could not be read.');
+                    return response;
+                }
+                jArray = parsedObj;
+            }
+
+            ttsbegin;
+            for (i = 0; jArray != null && i < jArray.get_Count(); i++)
+            {
+                jLine = jArray.get_Item(i);
+                if (jLine == null)
+                {
+                    continue;
+                }
+                clientLineId = HSMobileOpsCountStageService::jsonStr(jLine, 'ClientLineId');
+                if (!clientLineId || !HSMobileOpsCountStageService::jsonStr(jLine, 'ItemId'))
+                {
+                    continue;
+                }
+                select forUpdate firstonly line
+                    where line.StageRecId   == stage.RecId
+                       && line.ClientLineId == clientLineId;
+                if (!line.RecId)
+                {
+                    line.clear();
+                    line.MasterRecId  = stage.MasterRecId;
+                    line.StageRecId   = stage.RecId;
+                    line.ClientLineId = clientLineId;
+                    line.UserName     = stage.UserName;
+                    line.Decision     = HSMobileOpsCountDuplicateDecision::None;
+                    line.Included     = NoYes::Yes;
+                }
+                line.ItemId         = HSMobileOpsCountStageService::jsonStr(jLine, 'ItemId');
+                line.ConfigId       = HSMobileOpsCountStageService::jsonStr(jLine, 'ConfigId');
+                line.InventSizeId   = HSMobileOpsCountStageService::jsonStr(jLine, 'SizeId');
+                line.InventColorId  = HSMobileOpsCountStageService::jsonStr(jLine, 'ColorId');
+                line.InventStyleId  = HSMobileOpsCountStageService::jsonStr(jLine, 'StyleId');
+                line.InventBatchId  = HSMobileOpsCountStageService::jsonStr(jLine, 'BatchId');
+                line.InventSerialId = HSMobileOpsCountStageService::jsonStr(jLine, 'SerialId');
+                line.WMSLocationId  = HSMobileOpsCountStageService::jsonStr(jLine, 'LocationId');
+                line.Qty            = HSMobileOpsCountStageService::jsonNum(jLine, 'Quantity');
+                line.UnitId         = HSMobileOpsCountStageService::jsonStr(jLine, 'UnitId');
+                line.SourceLineNum  = HSMobileOpsCountStageService::jsonNum(jLine, 'SourceLineNum');
+                line.CountedUtc     = DateTimeUtil::utcNow();
+                line.DuplicateKey   = HSMobileOpsCountControl::duplicateKey(line);
+                // A journal line's own item and dimensions win over the device's copy.
+                HSMobileOpsCountControl::applySourceLine(line, master.SourceJournalId);
+                if (line.RecId)
+                {
+                    line.update();
+                }
+                else
+                {
+                    line.insert();
+                }
+                accepted++;
+            }
+            if (_request.parmEndCount())
+            {
+                select forUpdate stage where stage.RecId == str2Int64(_request.parmStageId());
+                stage.Status       = HSMobileOpsCountStageStatus::Submitted;
+                stage.SubmittedUtc = DateTimeUtil::utcNow();
+                stage.update();
+            }
+            ttscommit;
+
+            HSMobileOpsCountControl::refresh(stage.MasterRecId);
+            master = HSMobileOpsCountControl::masterOf(stage.MasterRecId);
+            response.parmSuccess(true);
+            response.parmMasterId(master.MasterId);
+            response.parmStageId(_request.parmStageId());
+            response.parmAccepted(accepted);
+            response.parmDuplicates(master.DuplicateCount);
+            response.parmMessage(strFmt('%1 line(s) staged in %2 for the supervisor', accepted, master.MasterId));
+        }
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>getStageMode</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Whether counts against counting journals in this store go to the control center first
+    /// (HSMobileOpsCountStore.StageJournalCounts). Free store counts always do.
+    /// </summary>
+    [Wrappable(false), Hookable(false)]
+    public HSMobileOpsCountStageResponse getStageMode(HSMobileOpsCountStageRequest _request)
+    {
+        HSMobileOpsCountStageResponse response = new HSMobileOpsCountStageResponse();
+
+        response.parmSuccess(false);
+        if (!_request || !_request.parmDataAreaId() || !_request.parmWarehouseId()
+            || !CompanyInfo::findDataArea(_request.parmDataAreaId()).RecId)
+        {
+            response.parmErrorCode('INVALID_REQUEST');
+            return response;
+        }
+        changecompany (_request.parmDataAreaId())
+        {
+            response.parmStageJournalCounts(HSMobileOpsCountStore::stagesJournalCounts(_request.parmWarehouseId()));
+        }
+        response.parmSuccess(true);
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>validate</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// A response with INVALID_REQUEST or NOT_ALLOWED set when the request cannot be served.
+    /// </summary>
+    private static HSMobileOpsCountStageResponse validate(HSMobileOpsCountStageRequest _request)
+    {
+        HSMobileOpsCountStageResponse response = new HSMobileOpsCountStageResponse();
+        HSMobileOpsUser               user;
+
+        response.parmSuccess(false);
+        if (!_request || !_request.parmDataAreaId() || !_request.parmUserName() || !_request.parmDeviceId()
+            || !CompanyInfo::findDataArea(_request.parmDataAreaId()).RecId)
+        {
+            response.parmErrorCode('INVALID_REQUEST');
+            return response;
+        }
+        changecompany (_request.parmDataAreaId())
+        {
+            user = HSMobileOpsUser::find(_request.parmUserName());
+        }
+        if (!user.RecId || !user.IsActive)
+        {
+            response.parmErrorCode('NOT_ALLOWED');
+            response.parmMessage(strFmt('%1 is not an active mobile user', _request.parmUserName()));
+        }
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>jsonStr</Name>
+				<Source><![CDATA[
+
+    private static str jsonStr(Newtonsoft.Json.Linq.JObject _obj, str _property)
+    {
+        Newtonsoft.Json.Linq.JToken token;
+
+        if (_obj == null)
+        {
+            return '';
+        }
+        token = _obj.get_Item(_property);
+        if (token == null)
+        {
+            return '';
+        }
+        return token.ToString();
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>jsonNum</Name>
+				<Source><![CDATA[
+
+    private static real jsonNum(Newtonsoft.Json.Linq.JObject _obj, str _property)
+    {
+        str value = HSMobileOpsCountStageService::jsonStr(_obj, _property);
+
+        return value ? str2num(value) : 0;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

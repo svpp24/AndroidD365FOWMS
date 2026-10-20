@@ -1,5 +1,6 @@
 package com.d365fo.mobileops.presentation.modules.cyclecounting.spot
 
+import androidx.compose.runtime.setValue
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -62,8 +63,10 @@ data class SpotCountState(
 class SpotCountViewModel @Inject constructor(
     private val remote: CountTaskRepository,
     private val tracker: CountingDownloadTracker,
+    private val claims: com.d365fo.mobileops.data.counting.CountClaimManager,
+    private val flags: com.d365fo.mobileops.domain.FeatureFlags,
     workerSession: WorkerSessionRepository,
-    scannerBridge: HidScannerBridge,
+    private val scannerBridge: HidScannerBridge,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(SpotCountState(warehouseId = workerSession.session.value?.selected?.warehouseId))
@@ -78,6 +81,9 @@ class SpotCountViewModel @Inject constructor(
             }
         }
     }
+
+    /** The camera goes through the same bridge as the hardware scanner - item first, then location. */
+    fun onCameraDecoded(value: String) = scannerBridge.submitCameraScan(value)
 
     fun setItem(value: String) = _state.update { it.copy(itemId = value.trim(), error = null) }
     fun setLocation(value: String) = _state.update { it.copy(locationId = value.trim(), error = null) }
@@ -97,6 +103,15 @@ class SpotCountViewModel @Inject constructor(
         viewModelScope.launch {
             when (val result = remote.createSpotCount(warehouse, s.itemId, s.locationId)) {
                 is TaskResult.Ok -> {
+                    // Claimed like any journal from the list, so a second device cannot take the
+                    // new count (it showed unclaimed on the other device before). A refusal other
+                    // than "server has no claims" still downloads - it was created for this
+                    // worker - and the submit check on the server has the final word.
+                    val claimToken = if (flags.countClaims) {
+                        (claims.claim(result.value, null) as? com.d365fo.mobileops.domain.counting.ClaimOutcome.Granted)?.claimToken
+                    } else {
+                        null
+                    }
                     tracker.start(
                         CountingJournalSummary(
                             journalId = result.value,
@@ -112,6 +127,7 @@ class SpotCountViewModel @Inject constructor(
                             originType = "SPOT",
                         ),
                         warehouse,
+                        claimToken = claimToken,
                     )
                     _state.update { it.copy(busy = false, createdJournalId = result.value) }
                 }
@@ -127,6 +143,13 @@ class SpotCountViewModel @Inject constructor(
 fun SpotCountScreen(onBack: () -> Unit, onCreated: () -> Unit, viewModel: SpotCountViewModel = hiltViewModel()) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     LaunchedEffect(state.createdJournalId) { if (state.createdJournalId != null) onCreated() }
+    var showCamera by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+    if (showCamera) {
+        com.d365fo.mobileops.presentation.common.scan.CameraScannerSheet(
+            onDecoded = { viewModel.onCameraDecoded(it); showCamera = false },
+            onDismiss = { showCamera = false },
+        )
+    }
 
     Scaffold(
         topBar = {
@@ -143,12 +166,16 @@ fun SpotCountScreen(onBack: () -> Unit, onCreated: () -> Unit, viewModel: SpotCo
             modifier = Modifier.fillMaxSize().padding(padding).padding(WarehouseDimens.ScreenPadding),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Text(
-                "Count an item, a location, or one item in one location, in ${state.warehouseId ?: "your warehouse"}. " +
-                    "D365FO creates the count; it appears in your journal list.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = WarehouseStatusColors.text3,
-            )
+            // The shared scan card first, the same place as every other scan screen (feedback,
+            // 10 Oct) - this screen had only two plain fields. A scan fills the item, then the
+            // location; the fields below are for typing.
+            com.d365fo.mobileops.presentation.common.components.PromptHeroCard(
+                prompt = if (state.itemId.isBlank()) "Scan item" else "Scan location",
+                hint = if (state.itemId.isBlank()) "Or type an item or a location below"
+                else "Optional - or create the count for the item everywhere",
+            ) {
+                com.d365fo.mobileops.presentation.common.components.HeroCameraButton(onClick = { showCamera = true }, enabled = !state.busy)
+            }
             OutlinedTextField(
                 value = state.itemId,
                 onValueChange = viewModel::setItem,
@@ -163,10 +190,27 @@ fun SpotCountScreen(onBack: () -> Unit, onCreated: () -> Unit, viewModel: SpotCo
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
             )
+            Text(
+                "Count an item, a location, or one item in one location, in ${state.warehouseId ?: "your warehouse"}. " +
+                    "D365FO creates the count; it appears in your journal list.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = WarehouseStatusColors.text3,
+            )
             state.error?.let { ErrorBanner(message = it) }
+            // D365FO creates the count, so there is nothing to do here offline - unlike counting
+            // an existing journal, which works from the lines already on the device.
+            val online = com.d365fo.mobileops.presentation.common.components.LocalSyncStatus.current?.fullyOnline != false
+            if (!online) {
+                Text(
+                    text = "Creating a spot count needs a connection to D365FO. Journals already on this device " +
+                        "can still be counted offline.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
             Button(
                 onClick = viewModel::create,
-                enabled = !state.busy,
+                enabled = !state.busy && online,
                 modifier = Modifier.fillMaxWidth().heightIn(min = WarehouseDimens.MinTouchTarget),
             ) { Text(if (state.busy) "Creating…" else "Create spot count") }
         }

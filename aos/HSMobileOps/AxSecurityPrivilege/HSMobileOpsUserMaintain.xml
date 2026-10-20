@@ -1,61 +1,149 @@
 <?xml version="1.0" encoding="utf-8"?>
 <AxSecurityPrivilege xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
 	<Name>HSMobileOpsUserMaintain</Name>
+	<Description>Create handheld logins, assign warehouses, reset passwords and deactivate accounts.</Description>
 	<Label>Maintain mobile device users</Label>
-	<HelpText>Create handheld logins, assign warehouses, reset passwords and deactivate accounts.</HelpText>
+	<DirectAccessPermissions>
+		<AxSecurityDataEntityReference>
+			<Grant>
+				<Create>Allow</Create>
+				<Delete>Allow</Delete>
+				<Read>Allow</Read>
+				<Update>Allow</Update>
+			</Grant>
+			<Name>HSMobileOpsUser</Name>
+			<Fields />
+		</AxSecurityDataEntityReference>
+		<AxSecurityDataEntityReference>
+			<Grant>
+				<Create>Allow</Create>
+				<Delete>Allow</Delete>
+				<Read>Allow</Read>
+				<Update>Allow</Update>
+			</Grant>
+			<Name>HSMobileOpsUserWarehouse</Name>
+			<Fields />
+		</AxSecurityDataEntityReference>
+		<AxSecurityDataEntityReference>
+			<Grant>
+				<Read>Allow</Read>
+			</Grant>
+			<Name>HSMobileOpsPostLog</Name>
+			<Fields />
+		</AxSecurityDataEntityReference>
+		<AxSecurityDataEntityReference>
+			<Grant>
+				<Create>Allow</Create>
+				<Delete>Allow</Delete>
+				<Read>Allow</Read>
+				<Update>Allow</Update>
+			</Grant>
+			<Name>HSMobileOpsMenu</Name>
+			<Fields />
+		</AxSecurityDataEntityReference>
+		<AxSecurityDataEntityReference>
+			<Grant>
+				<Create>Allow</Create>
+				<Delete>Allow</Delete>
+				<Read>Allow</Read>
+				<Update>Allow</Update>
+			</Grant>
+			<Name>HSMobileOpsMenuLine</Name>
+			<Fields />
+		</AxSecurityDataEntityReference>
+	</DirectAccessPermissions>
 	<EntryPoints>
 		<AxSecurityEntryPointReference>
 			<Name>HSMobileOpsUser</Name>
+			<Grant>
+				<Correct>Allow</Correct>
+				<Create>Allow</Create>
+				<Delete>Allow</Delete>
+				<Read>Allow</Read>
+				<Update>Allow</Update>
+			</Grant>
 			<ObjectName>HSMobileOpsUser</ObjectName>
 			<ObjectType>MenuItemDisplay</ObjectType>
-			<AccessLevel>Delete</AccessLevel>
+			<Forms />
 		</AxSecurityEntryPointReference>
 		<AxSecurityEntryPointReference>
 			<Name>HSMobileOpsSetPassword</Name>
+			<Grant>
+				<Correct>Allow</Correct>
+				<Create>Allow</Create>
+				<Delete>Allow</Delete>
+				<Read>Allow</Read>
+				<Update>Allow</Update>
+			</Grant>
 			<ObjectName>HSMobileOpsSetPassword</ObjectName>
 			<ObjectType>MenuItemAction</ObjectType>
-			<AccessLevel>Delete</AccessLevel>
+			<Forms />
 		</AxSecurityEntryPointReference>
 		<AxSecurityEntryPointReference>
 			<Name>HSMobileOpsUnlockUser</Name>
+			<Grant>
+				<Correct>Allow</Correct>
+				<Create>Allow</Create>
+				<Delete>Allow</Delete>
+				<Read>Allow</Read>
+				<Update>Allow</Update>
+			</Grant>
 			<ObjectName>HSMobileOpsUnlockUser</ObjectName>
 			<ObjectType>MenuItemAction</ObjectType>
-			<AccessLevel>Delete</AccessLevel>
+			<Forms />
 		</AxSecurityEntryPointReference>
 		<AxSecurityEntryPointReference>
 			<Name>HSMobileOpsToggleUserActive</Name>
+			<Grant>
+				<Correct>Allow</Correct>
+				<Create>Allow</Create>
+				<Delete>Allow</Delete>
+				<Read>Allow</Read>
+				<Update>Allow</Update>
+			</Grant>
 			<ObjectName>HSMobileOpsToggleUserActive</ObjectName>
 			<ObjectType>MenuItemAction</ObjectType>
-			<AccessLevel>Delete</AccessLevel>
+			<Forms />
 		</AxSecurityEntryPointReference>
 		<AxSecurityEntryPointReference>
 			<Name>HSMobileOpsSetDefaultWarehouse</Name>
+			<Grant>
+				<Correct>Allow</Correct>
+				<Create>Allow</Create>
+				<Delete>Allow</Delete>
+				<Read>Allow</Read>
+				<Update>Allow</Update>
+			</Grant>
 			<ObjectName>HSMobileOpsSetDefaultWarehouse</ObjectName>
 			<ObjectType>MenuItemAction</ObjectType>
-			<AccessLevel>Delete</AccessLevel>
+			<Forms />
+		</AxSecurityEntryPointReference>
+		<AxSecurityEntryPointReference>
+			<Name>HSMobileOpsMenu</Name>
+			<Grant>
+				<Correct>Allow</Correct>
+				<Create>Allow</Create>
+				<Delete>Allow</Delete>
+				<Read>Allow</Read>
+				<Update>Allow</Update>
+			</Grant>
+			<ObjectName>HSMobileOpsMenu</ObjectName>
+			<ObjectType>MenuItemDisplay</ObjectType>
+			<Forms />
+		</AxSecurityEntryPointReference>
+		<AxSecurityEntryPointReference>
+			<Name>HSMobileOpsMenuSeed</Name>
+			<Grant>
+				<Correct>Allow</Correct>
+				<Create>Allow</Create>
+				<Delete>Allow</Delete>
+				<Read>Allow</Read>
+				<Update>Allow</Update>
+			</Grant>
+			<ObjectName>HSMobileOpsMenuSeed</ObjectName>
+			<ObjectType>MenuItemAction</ObjectType>
+			<Forms />
 		</AxSecurityEntryPointReference>
 	</EntryPoints>
-	<Tables>
-		<AxSecurityPrivilegeTablePermission>
-			<Name>HSMobileOpsUser</Name>
-			<Delete>Allow</Delete>
-			<Insert>Allow</Insert>
-			<Read>Allow</Read>
-			<Update>Allow</Update>
-		</AxSecurityPrivilegeTablePermission>
-		<AxSecurityPrivilegeTablePermission>
-			<Name>HSMobileOpsUserWarehouse</Name>
-			<Delete>Allow</Delete>
-			<Insert>Allow</Insert>
-			<Read>Allow</Read>
-			<Update>Allow</Update>
-		</AxSecurityPrivilegeTablePermission>
-		<AxSecurityPrivilegeTablePermission>
-			<Name>HSMobileOpsPostLog</Name>
-			<Delete>NoAccess</Delete>
-			<Insert>NoAccess</Insert>
-			<Read>Allow</Read>
-			<Update>NoAccess</Update>
-		</AxSecurityPrivilegeTablePermission>
-	</Tables>
+	<FormControlOverrides />
 </AxSecurityPrivilege>

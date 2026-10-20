@@ -28,38 +28,37 @@ class AosReachabilityInterceptor @Inject constructor(
     private val monitor: AosReachabilityMonitor,
 ) : Interceptor {
 
-    /** When the last real attempt went out while the tenant was marked unreachable. */
-    @Volatile private var lastAttemptWhileDownAt = 0L
-
     override fun intercept(chain: Interceptor.Chain): Response {
         // Fail fast while the tenant is known to be down: a read would otherwise sit out the
-        // full read timeout (up to a minute) only to end in "request timed out". One real
-        // attempt still goes through every PROBE_INTERVAL_MS, so recovery is noticed as soon
-        // as the tenant answers. Postings are never short-circuited here - the sync queue owns
-        // their retries and they are not what a worker is waiting on.
+        // connect or read timeout (15 s to a minute) with the worker watching a spinner, only to
+        // end in "request timed out" - and OfflineReadCacheInterceptor answers it from the saved
+        // copy at once instead. Recovery is noticed by SyncStatusProvider's background probe
+        // (AosReachabilityProber, every few seconds while down), never by a worker's lookup.
+        // Postings are never short-circuited here - the sync queue owns their retries.
         val request = chain.request()
         val isRead = request.method == "GET" || request.tag(IdempotentRead::class.java) != null
-        if (isRead && !monitor.reachable.value) {
-            val now = System.currentTimeMillis()
-            if (now - lastAttemptWhileDownAt < PROBE_INTERVAL_MS) {
-                throw AosUnreachableException()
-            }
-            lastAttemptWhileDownAt = now
-        }
+        val probe = request.tag(ReachabilityProbe::class.java) != null
+        if (isRead && !probe && !monitor.reachable.value) throw AosUnreachableException()
         val response = try {
-            chain.proceed(chain.request())
+            chain.proceed(request)
         } catch (e: IOException) {
-            monitor.markUnreachable()
+            // No connection at all marks D365FO down. A call that connected and then outlived
+            // its read timeout reached a slow AOS, not a missing one: a posting (creating and
+            // confirming an order on a cold AOS can take a minute) or the probe (10 s, while
+            // the AOS warms up after a restart) says nothing about reachability; a worker's
+            // lookup that hangs that long still counts, so the next ones use the saved copy.
+            // A call the app cancelled itself says nothing either.
+            val connected = e is java.net.SocketTimeoutException && e.message?.startsWith("failed to connect") != true
+            if (!chain.call().isCanceled() && (!connected || (isRead && !probe))) monitor.markUnreachable()
             throw e
         }
         monitor.markReachable()
         return response
     }
-
-    private companion object {
-        const val PROBE_INTERVAL_MS = 15_000L
-    }
 }
+
+/** Tags [AosReachabilityProber]'s request: the one call that still goes out while D365FO is marked down. */
+object ReachabilityProbe
 
 /** Thrown instead of waiting out a timeout while D365FO is already known to be unreachable. */
 class AosUnreachableException : java.io.IOException("D365FO unreachable")

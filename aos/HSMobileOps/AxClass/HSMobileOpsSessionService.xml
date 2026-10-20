@@ -1,0 +1,326 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsSessionService</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// One active device per worker (HSMobileOpsSessionSvc). Signing in on a device takes the
+/// worker's session over from any other device; that device learns it at its next
+/// checkSession (the app checks every couple of minutes) and signs itself out. Taking over
+/// rather than refusing, so a lost, broken or flat handheld never locks its worker out.
+///
+/// Every check also reports the worker's unfinished work on that device (jobs not registered,
+/// counts not submitted). Before taking over, the app asks peekSession and warns the worker
+/// when another device still holds their work - it stays on that device, it does not move.
+///
+/// Kept apart from HSMobileOpsUserService.signIn on purpose: the app calls these right after a
+/// successful sign-in. The session is one HSMobileOpsLineClaim row per worker (ProcessType
+/// SESSION, SourceId the user name, LineNumber 0) holding the device id; a row unrefreshed for
+/// sessionTtlSeconds no longer counts, so a device left signed in overnight is not signed out by
+/// a stale row.
+///
+/// Registered as HSMobileOpsSessionSvc in HSMobileOpsServiceGroup - needs a full service
+/// group build, not a class-only build (see aos/README.md, Installing).
+/// </summary>
+class HSMobileOpsSessionService
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>startSession</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Makes this device the worker's active one, whoever held it before. The app asks
+    /// peekSession first and warns the worker when another device still holds their work.
+    /// </summary>
+    [Wrappable(false), Hookable(false)]
+    public HSMobileOpsSessionResponse startSession(HSMobileOpsSessionRequest _request)
+    {
+        HSMobileOpsSessionResponse response = HSMobileOpsSessionService::validate(_request);
+
+        if (response.parmErrorCode())
+        {
+            return response;
+        }
+        changecompany (_request.parmDataAreaId())
+        {
+            HSMobileOpsSessionService::take(_request);
+        }
+        response.parmSuccess(true);
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>peekSession</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Before a takeover: the worker's unfinished work on the device that last held the session
+    /// (live or ended), when that is another device. Changes nothing.
+    /// </summary>
+    [Wrappable(false), Hookable(false)]
+    public HSMobileOpsSessionResponse peekSession(HSMobileOpsSessionRequest _request)
+    {
+        HSMobileOpsSessionResponse response = HSMobileOpsSessionService::validate(_request);
+        HSMobileOpsLineClaim       session;
+        container                  pending;
+
+        if (response.parmErrorCode())
+        {
+            return response;
+        }
+        changecompany (_request.parmDataAreaId())
+        {
+            select firstOnly session
+                where session.ProcessType == HSMobileOpsSessionService::sessionProcess()
+                   && session.SourceId    == _request.parmUserName()
+                   && session.LineNumber  == 0;
+            if (session.RecId && session.DeviceId != _request.parmDeviceId())
+            {
+                pending = HSMobileOpsSessionService::readPending(session);
+                response.parmOtherDevicePendingJobs(conPeek(pending, 1));
+                response.parmOtherDevicePendingCounts(conPeek(pending, 2));
+                response.parmOtherDeviceReportedUtc(session.ClaimedAtUtc);
+            }
+        }
+        response.parmSuccess(true);
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>checkSession</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Whether this device is still the worker's active one. SignedInElsewhere when another
+    /// device has signed in since; otherwise the session - and the unfinished work this device
+    /// reports - is refreshed (and taken back when the row is missing or stale).
+    /// </summary>
+    [Wrappable(false), Hookable(false)]
+    public HSMobileOpsSessionResponse checkSession(HSMobileOpsSessionRequest _request)
+    {
+        HSMobileOpsSessionResponse response = HSMobileOpsSessionService::validate(_request);
+        HSMobileOpsLineClaim       session;
+
+        if (response.parmErrorCode())
+        {
+            return response;
+        }
+        changecompany (_request.parmDataAreaId())
+        {
+            session = HSMobileOpsLineClaim::findActive(
+                HSMobileOpsSessionService::sessionProcess(), _request.parmUserName(), 0);
+
+            if (session.RecId && session.DeviceId != _request.parmDeviceId())
+            {
+                response.parmSuccess(true);
+                response.parmSignedInElsewhere(true);
+                response.parmMessage(strFmt('%1 signed in on another device at %2 (UTC)',
+                    _request.parmUserName(), session.ClaimedAtUtc));
+                return response;
+            }
+            HSMobileOpsSessionService::take(_request);
+        }
+        response.parmSuccess(true);
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>endSession</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Sign-out, this device's own session only. With unfinished work left on the device the row
+    /// is kept, ended (expired now), so the next sign-in elsewhere can still be told about it;
+    /// with none it is removed.
+    /// </summary>
+    [Wrappable(false), Hookable(false)]
+    public HSMobileOpsSessionResponse endSession(HSMobileOpsSessionRequest _request)
+    {
+        HSMobileOpsSessionResponse response = HSMobileOpsSessionService::validate(_request);
+        HSMobileOpsLineClaim       session;
+
+        if (response.parmErrorCode())
+        {
+            return response;
+        }
+        changecompany (_request.parmDataAreaId())
+        {
+            ttsbegin;
+            select forUpdate firstOnly session
+                where session.ProcessType == HSMobileOpsSessionService::sessionProcess()
+                   && session.SourceId    == _request.parmUserName()
+                   && session.LineNumber  == 0;
+            if (session.RecId && session.DeviceId == _request.parmDeviceId())
+            {
+                if (_request.parmPendingJobs() > 0 || _request.parmPendingCounts() > 0)
+                {
+                    session.ClaimedByDisplayName = HSMobileOpsSessionService::pendingText(_request);
+                    session.ClaimedAtUtc         = DateTimeUtil::utcNow();
+                    session.ClaimExpiresUtc      = DateTimeUtil::utcNow();
+                    session.update();
+                }
+                else
+                {
+                    session.delete();
+                }
+            }
+            ttscommit;
+        }
+        response.parmSuccess(true);
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>validate</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// A response with INVALID_REQUEST set when the request is incomplete, else a blank one.
+    /// </summary>
+    private static HSMobileOpsSessionResponse validate(HSMobileOpsSessionRequest _request)
+    {
+        HSMobileOpsSessionResponse response = new HSMobileOpsSessionResponse();
+
+        response.parmSuccess(false);
+        response.parmSignedInElsewhere(false);
+        response.parmOtherDevicePendingJobs(0);
+        response.parmOtherDevicePendingCounts(0);
+        if (!_request || !_request.parmDataAreaId() || !_request.parmUserName() || !_request.parmDeviceId()
+            || !CompanyInfo::findDataArea(_request.parmDataAreaId()).RecId)
+        {
+            response.parmErrorCode('INVALID_REQUEST');
+        }
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>take</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Writes the worker's session for this device, with the unfinished work it reports.
+    /// Called inside changecompany.
+    /// </summary>
+    private static void take(HSMobileOpsSessionRequest _request)
+    {
+        HSMobileOpsLineClaim session;
+        utcdatetime          now = DateTimeUtil::utcNow();
+
+        try
+        {
+            ttsbegin;
+            select forUpdate firstOnly session
+                where session.ProcessType == HSMobileOpsSessionService::sessionProcess()
+                   && session.SourceId    == _request.parmUserName()
+                   && session.LineNumber  == 0;
+            if (!session.RecId)
+            {
+                session.clear();
+                session.ProcessType = HSMobileOpsSessionService::sessionProcess();
+                session.SourceId    = _request.parmUserName();
+                session.LineNumber  = 0;
+            }
+            session.ClaimedByUserName    = _request.parmUserName();
+            session.DeviceId             = _request.parmDeviceId();
+            session.ClaimedByDisplayName = HSMobileOpsSessionService::pendingText(_request);
+            // ClaimedAtUtc: when this device last reported - what peekSession tells a new device.
+            session.ClaimedAtUtc         = now;
+            session.ClaimExpiresUtc      = DateTimeUtil::addSeconds(now, HSMobileOpsSessionService::sessionTtlSeconds());
+            if (session.RecId)
+            {
+                session.update();
+            }
+            else
+            {
+                session.insert();
+            }
+            ttscommit;
+        }
+        catch (Exception::DuplicateKeyException)
+        {
+            // Two sign-ins at the same moment - the other one's row stands; the next check settles it.
+        }
+        catch (Exception::UpdateConflict)
+        {
+        }
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>pendingText</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The device's unfinished work as stored on the session row: "jobs;counts". A SESSION row
+    /// keeps it in ClaimedByDisplayName - that field names the holder only on line claims.
+    /// </summary>
+    private static str pendingText(HSMobileOpsSessionRequest _request)
+    {
+        return strFmt('%1;%2', max(0, _request.parmPendingJobs()), max(0, _request.parmPendingCounts()));
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>readPending</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// [jobs, counts] from a session row's pendingText; [0, 0] when it holds none.
+    /// </summary>
+    private static container readPending(HSMobileOpsLineClaim _session)
+    {
+        List  parts = strSplit(_session.ClaimedByDisplayName, ';');
+        int   jobs;
+        int   counts;
+        ListEnumerator e;
+
+        if (parts && parts.elements() == 2)
+        {
+            e = parts.getEnumerator();
+            e.moveNext();
+            jobs = str2int(e.current());
+            e.moveNext();
+            counts = str2int(e.current());
+        }
+        return [jobs, counts];
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>sessionProcess</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// HSMobileOpsLineClaim.ProcessType of a worker's session.
+    /// </summary>
+    public static str sessionProcess()
+    {
+        return 'SESSION';
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>sessionTtlSeconds</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// How long a session counts without a check - a shift. A device left signed in longer is
+    /// no longer the active one, and the next device to sign in or check takes over quietly.
+    /// </summary>
+    public static int sessionTtlSeconds()
+    {
+        return 12 * 60 * 60;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

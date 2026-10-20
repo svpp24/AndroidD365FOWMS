@@ -59,10 +59,10 @@ data class LogEntry(
  * choice, not an oversight - the exposure that matters is data leaving the device without a
  * person deciding to send it, not a person choosing to read their own device's own log.
  *
- * Size-based, not time- or count-based: oldest entries drop once [MaxBytes] of (approximate)
- * combined content is held, regardless of how long that took to accumulate or how many entries
- * it is - a quiet device keeps hours of history, a chatty one keeps less time but never more
- * memory. [LogFilePersistence] mirrors the same 2 MB budget on disk, independently.
+ * The last [RetentionMillis] (5 minutes, feedback 11 Oct: "maintain only last 5min log") - older
+ * entries drop as new ones arrive, and older ones read back from disk at start are skipped.
+ * [MaxBytes] still caps a burst inside those 5 minutes. [LogFilePersistence] keeps its own 2 MB
+ * budget on disk; what it holds beyond 5 minutes is never shown.
  *
  * A hard crash still loses whatever hadn't reached disk yet, but not everything - see
  * [LogFilePersistence]'s own doc on how "even the errors" (this class's opening line) actually
@@ -87,7 +87,8 @@ class LogStore @Inject constructor(
         // individually chronological, so this only has to interleave them correctly, not
         // re-derive order from nothing.
         applicationScope.launch(Dispatchers.IO) {
-            val loaded = persistence.loadRecent().map { p ->
+            val cutoff = System.currentTimeMillis() - RetentionMillis
+            val loaded = persistence.loadRecent().filter { it.epochMillis >= cutoff }.map { p ->
                 LogEntry(nextId.getAndIncrement(), Instant.ofEpochMilli(p.epochMillis), p.level, p.tag, p.message, p.throwable)
             }
             if (loaded.isNotEmpty()) {
@@ -102,7 +103,10 @@ class LogStore @Inject constructor(
         _entries.update { current ->
             val next = current + entry
             var totalBytes = next.sumOf { it.approxSizeBytes }
-            var dropFrom = 0
+            // Older than 5 minutes first - next is chronological, so that is a prefix too.
+            val cutoff = timestamp.minusMillis(RetentionMillis)
+            var dropFrom = next.indexOfFirst { !it.timestamp.isBefore(cutoff) }.coerceAtLeast(0)
+            for (i in 0 until dropFrom) totalBytes -= next[i].approxSizeBytes
             // Drop oldest-first until back under budget - next is chronological, so the entries
             // to evict are always a prefix, never a scan of the whole list.
             while (totalBytes > MaxBytes && dropFrom < next.size) {
@@ -125,5 +129,6 @@ class LogStore @Inject constructor(
 
     companion object {
         const val MaxBytes = 2 * 1024 * 1024
+        const val RetentionMillis = 5 * 60 * 1000L
     }
 }

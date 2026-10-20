@@ -1,0 +1,260 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsOrderResponse</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// One response shape for every operation of HSMobileOpsOrderCreateService.
+/// </summary>
+[DataContractAttribute]
+class HSMobileOpsOrderResponse
+{
+    boolean success;
+    str errorCode;
+    str message;
+    str documentNumber;
+    boolean alreadyCreated;
+    str transitWarehouseId;
+    str currencyCode;
+    real orderTotal;
+    boolean hasMore;
+    str confirmationNumber;
+    str packingSlipId;
+    List reasons;
+    List actions;
+    List orders;
+    HSMobileOpsOrderItem item;
+    List vendors;
+    List lines;
+    List permissions;
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmSuccess</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Success')]
+    public boolean parmSuccess(boolean _value = success)
+    {
+        success = _value;
+        return success;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmErrorCode</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ErrorCode')]
+    public str parmErrorCode(str _value = errorCode)
+    {
+        errorCode = _value;
+        return errorCode;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmMessage</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Message')]
+    public str parmMessage(str _value = message)
+    {
+        message = _value;
+        return message;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmDocumentNumber</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('DocumentNumber')]
+    public str parmDocumentNumber(str _value = documentNumber)
+    {
+        documentNumber = _value;
+        return documentNumber;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmAlreadyCreated</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('AlreadyCreated')]
+    public boolean parmAlreadyCreated(boolean _value = alreadyCreated)
+    {
+        alreadyCreated = _value;
+        return alreadyCreated;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmTransitWarehouseId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('TransitWarehouseId')]
+    public str parmTransitWarehouseId(str _value = transitWarehouseId)
+    {
+        transitWarehouseId = _value;
+        return transitWarehouseId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmCurrencyCode</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('CurrencyCode')]
+    public str parmCurrencyCode(str _value = currencyCode)
+    {
+        currencyCode = _value;
+        return currencyCode;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmOrderTotal</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('OrderTotal')]
+    public real parmOrderTotal(real _value = orderTotal)
+    {
+        orderTotal = _value;
+        return orderTotal;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmHasMore</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('HasMore')]
+    public boolean parmHasMore(boolean _value = hasMore)
+    {
+        hasMore = _value;
+        return hasMore;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmItem</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Item')]
+    public HSMobileOpsOrderItem parmItem(HSMobileOpsOrderItem _value = item)
+    {
+        item = _value;
+        return item;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmVendors</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Vendors'),
+     DataCollectionAttribute(Types::Class, classStr(HSMobileOpsOrderVendor))]
+    public List parmVendors(List _value = vendors)
+    {
+        vendors = _value;
+        return vendors;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmLines</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Lines'),
+     DataCollectionAttribute(Types::Class, classStr(HSMobileOpsOrderLine))]
+    public List parmLines(List _value = lines)
+    {
+        lines = _value;
+        return lines;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmPermissions</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Permissions'),
+     DataCollectionAttribute(Types::Class, classStr(HSMobileOpsModulePermission))]
+    public List parmPermissions(List _value = permissions)
+    {
+        permissions = _value;
+        return permissions;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmConfirmationNumber</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ConfirmationNumber')]
+    public str parmConfirmationNumber(str _value = confirmationNumber)
+    {
+        confirmationNumber = _value;
+        return confirmationNumber;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmOrders</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Orders'),
+     DataCollectionAttribute(Types::Class, classStr(HSMobileOpsOrderSummary))]
+    public List parmOrders(List _value = orders)
+    {
+        orders = _value;
+        return orders;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmPackingSlipId</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Purchase return: the packing slip posted for it (stock has left).
+    /// </summary>
+    [DataMemberAttribute('PackingSlipId')]
+    public str parmPackingSlipId(str _value = packingSlipId)
+    {
+        packingSlipId = _value;
+        return packingSlipId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmReasons</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Reasons'),
+     DataCollectionAttribute(Types::Class, classStr(HSMobileOpsReturnReason))]
+    public List parmReasons(List _value = reasons)
+    {
+        reasons = _value;
+        return reasons;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmActions</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Actions'),
+     DataCollectionAttribute(Types::Class, classStr(HSMobileOpsReturnReason))]
+    public List parmActions(List _value = actions)
+    {
+        actions = _value;
+        return actions;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

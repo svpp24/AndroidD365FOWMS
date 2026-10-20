@@ -1,0 +1,186 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsFeedbackRequest</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// One request shape for HSMobileOpsFeedbackService. ScreenshotBase64 is a JPEG.
+/// </summary>
+[DataContractAttribute]
+class HSMobileOpsFeedbackRequest
+{
+    str dataAreaId;
+    str userName;
+    str deviceId;
+    str feedbackId;
+    str warehouseId;
+    str appVersion;
+    str deviceModel;
+    str screen;
+    str feedbackType;
+    str message;
+    str logs;
+    str screenshotBase64;
+    int take;
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmDataAreaId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('DataAreaId')]
+    public str parmDataAreaId(str _value = dataAreaId)
+    {
+        dataAreaId = _value;
+        return dataAreaId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmUserName</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('UserName')]
+    public str parmUserName(str _value = userName)
+    {
+        userName = _value;
+        return userName;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmDeviceId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('DeviceId')]
+    public str parmDeviceId(str _value = deviceId)
+    {
+        deviceId = _value;
+        return deviceId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmFeedbackId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('FeedbackId')]
+    public str parmFeedbackId(str _value = feedbackId)
+    {
+        feedbackId = _value;
+        return feedbackId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmWarehouseId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('WarehouseId')]
+    public str parmWarehouseId(str _value = warehouseId)
+    {
+        warehouseId = _value;
+        return warehouseId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmAppVersion</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('AppVersion')]
+    public str parmAppVersion(str _value = appVersion)
+    {
+        appVersion = _value;
+        return appVersion;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmDeviceModel</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('DeviceModel')]
+    public str parmDeviceModel(str _value = deviceModel)
+    {
+        deviceModel = _value;
+        return deviceModel;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmScreen</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Screen')]
+    public str parmScreen(str _value = screen)
+    {
+        screen = _value;
+        return screen;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmFeedbackType</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('FeedbackType')]
+    public str parmFeedbackType(str _value = feedbackType)
+    {
+        feedbackType = _value;
+        return feedbackType;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmMessage</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Message')]
+    public str parmMessage(str _value = message)
+    {
+        message = _value;
+        return message;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmLogs</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Logs')]
+    public str parmLogs(str _value = logs)
+    {
+        logs = _value;
+        return logs;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmScreenshotBase64</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ScreenshotBase64')]
+    public str parmScreenshotBase64(str _value = screenshotBase64)
+    {
+        screenshotBase64 = _value;
+        return screenshotBase64;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmTake</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Take')]
+    public int parmTake(int _value = take)
+    {
+        take = _value;
+        return take;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

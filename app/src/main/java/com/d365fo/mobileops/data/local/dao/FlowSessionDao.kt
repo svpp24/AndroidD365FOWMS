@@ -23,6 +23,10 @@ interface FlowSessionDao {
     @Query("SELECT * FROM flow_session ORDER BY updatedAt DESC")
     fun observeAll(): Flow<List<FlowSessionEntity>>
 
+    /** Unfinished jobs of [userName] on this device (a job saved with no user counts as theirs). */
+    @Query("SELECT COUNT(*) FROM flow_session WHERE userName IS NULL OR userName = :userName COLLATE NOCASE")
+    suspend fun countFor(userName: String): Int
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(session: FlowSessionEntity)
 

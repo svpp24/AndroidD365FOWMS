@@ -1,5 +1,6 @@
 package com.d365fo.mobileops.presentation.modules.cyclecounting
 
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -14,11 +15,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.TextButton
+import com.d365fo.mobileops.presentation.common.components.SquareTextButton as TextButton
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Insights
+import androidx.compose.material.icons.filled.Inventory
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -77,12 +79,40 @@ fun CountingJournalListScreen(
     onStartCounting: (String) -> Unit,
     onReviewVariance: (String) -> Unit = {},
     onNewSpotCount: () -> Unit = {},
+    /** A free count of the whole store, reviewed by the supervisor (Stock count control center). */
+    onStoreCount: () -> Unit = {},
     onAccuracy: () -> Unit = {},
     viewModel: CountingJournalListViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     var confirmEndFor by remember { mutableStateOf<String?>(null) }
     var confirmReopenFor by remember { mutableStateOf<String?>(null) }
+
+    // Export as CSV (feedback, 12 Oct): the worker picks where - Downloads, a shared drive - in
+    // Android's own save dialog, and Excel opens the file.
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    var exportFor by remember { mutableStateOf<String?>(null) }
+    val saveCsv = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.CreateDocument("text/csv"),
+    ) { uri ->
+        val journalId = exportFor ?: return@rememberLauncherForActivityResult
+        exportFor = null
+        if (uri == null) return@rememberLauncherForActivityResult
+        scope.launch {
+            val csv = viewModel.csvFor(journalId)
+            val written = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                runCatching {
+                    context.contentResolver.openOutputStream(uri)?.use { out ->
+                        // A byte-order mark, so Excel reads item names in UTF-8.
+                        out.write(byteArrayOf(0xEF.toByte(), 0xBB.toByte(), 0xBF.toByte()))
+                        out.write(csv.toByteArray(Charsets.UTF_8))
+                    } != null
+                }.getOrDefault(false)
+            }
+            viewModel.exported(if (written) "$journalId saved as CSV." else "$journalId could not be saved.")
+        }
+    }
 
     confirmReopenFor?.let { journalId ->
         AlertDialog(
@@ -95,15 +125,13 @@ fun CountingJournalListScreen(
                 )
             },
             confirmButton = {
-                ConfirmButton(
-                    onClick = {
+                com.d365fo.mobileops.presentation.common.components.DialogButtonRow(
+                    dismiss = { com.d365fo.mobileops.presentation.common.components.CancelOutlinedButton(onClick = { confirmReopenFor = null }, modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget)) { Text("Cancel") } },
+                    confirm = { com.d365fo.mobileops.presentation.common.components.ConfirmButton(onClick = {
                         confirmReopenFor = null
                         viewModel.reopenCounting(journalId)
-                    },
-                ) { Text("Reopen") }
-            },
-            dismissButton = {
-                CancelOutlinedButton(onClick = { confirmReopenFor = null }) { Text("Cancel") }
+                    }, modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget)) { Text("Reopen") } },
+                )
             },
         )
     }
@@ -122,7 +150,12 @@ fun CountingJournalListScreen(
         AlertDialog(
             onDismissRequest = viewModel::dismissMessage,
             text = { Text(message) },
-            confirmButton = { ConfirmButton(onClick = viewModel::dismissMessage) { Text("OK") } },
+            confirmButton = {
+                com.d365fo.mobileops.presentation.common.components.DialogButtonRow(
+                    dismiss = null,
+                    confirm = { com.d365fo.mobileops.presentation.common.components.ConfirmButton(onClick = viewModel::dismissMessage, modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget)) { Text("OK") } },
+                )
+            },
         )
     }
 
@@ -150,15 +183,27 @@ fun CountingJournalListScreen(
                     }
                 },
                 actions = {
-                    if (state.canViewAccuracy) {
-                        IconButton(onClick = onAccuracy) {
-                            Icon(Icons.Default.Insights, contentDescription = "Count accuracy")
-                        }
-                    }
                     if (state.canCreateSpot) {
                         IconButton(onClick = onNewSpotCount) {
                             Icon(Icons.Default.Add, contentDescription = "New spot count")
                         }
+                    }
+                },
+                // Store count and Count accuracy in the ⋮ menu: four icons beside the title broke
+                // "Inventory count" mid-word (20 Oct restyle).
+                menuItems = { close ->
+                    // Every counter may count the store; the supervisor reviews it in D365FO.
+                    androidx.compose.material3.DropdownMenuItem(
+                        text = { Text("Store count") },
+                        leadingIcon = { Icon(Icons.Default.Inventory, contentDescription = null) },
+                        onClick = { close(); onStoreCount() },
+                    )
+                    if (state.canViewAccuracy) {
+                        androidx.compose.material3.DropdownMenuItem(
+                            text = { Text("Count accuracy") },
+                            leadingIcon = { Icon(Icons.Default.Insights, contentDescription = null) },
+                            onClick = { close(); onAccuracy() },
+                        )
                     }
                 },
             )
@@ -236,6 +281,10 @@ fun CountingJournalListScreen(
                                 onResendExceptions = { viewModel.resendExceptions(journal.journalId) },
                                 onReviewVariance = { onReviewVariance(journal.journalId) }.takeIf { state.canReviewVariance },
                                 onReopen = { confirmReopenFor = journal.journalId },
+                                onExportCsv = {
+                                    exportFor = journal.journalId
+                                    saveCsv.launch("${journal.journalId}.csv")
+                                }.takeIf { state.countStates[journal.journalId] != null },
                             )
                         }
                     }
@@ -262,6 +311,7 @@ private fun CountingJournalRow(
     onResendExceptions: () -> Unit,
     onReviewVariance: (() -> Unit)?,
     onReopen: () -> Unit,
+    onExportCsv: (() -> Unit)? = null,
 ) {
     val refreshing = exportStatus != null && exportStatus !is ExportJobStatus.Failed
     var menuOpen by remember { mutableStateOf(false) }
@@ -306,7 +356,7 @@ private fun CountingJournalRow(
                         maxLines = 2,
                     )
                 }
-                if (canRefresh || canReopen || onReviewVariance != null) {
+                if (canRefresh || canReopen || onReviewVariance != null || onExportCsv != null) {
                     Box {
                         IconButton(onClick = { menuOpen = true }) {
                             Icon(Icons.Default.MoreVert, contentDescription = "More actions")
@@ -328,6 +378,12 @@ private fun CountingJournalRow(
                                 DropdownMenuItem(
                                     text = { Text("Review variance") },
                                     onClick = { menuOpen = false; onReviewVariance() },
+                                )
+                            }
+                            if (onExportCsv != null) {
+                                DropdownMenuItem(
+                                    text = { Text("Export as CSV") },
+                                    onClick = { menuOpen = false; onExportCsv() },
                                 )
                             }
                         }
@@ -419,6 +475,18 @@ private fun CountControls(
 
         // Status - only what needs saying.
         when {
+            submitting && com.d365fo.mobileops.presentation.common.components.LocalSyncStatus.current?.postingEnabled == false ->
+                Text(
+                    text = "Counts are held on this device - posting to D365FO is switched off in Settings.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = WarehouseStatusColors.text3,
+                )
+            submitting && com.d365fo.mobileops.presentation.common.components.LocalSyncStatus.current?.fullyOnline == false ->
+                Text(
+                    text = "Counts are waiting for the connection - they are sent when D365FO answers.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = WarehouseStatusColors.text3,
+                )
             submitting -> ProgressRow(countState.error ?: "Submitting counts… (see Activity)", null)
             phase == CountPhase.POSTED -> Text(
                 text = "Posted in D365FO. This journal is closed and can't be reopened.",
@@ -426,8 +494,11 @@ private fun CountControls(
                 color = WarehouseStatusColors.text3,
             )
             finished -> {
+                // At a store that reviews journal counts, End count sends them to the supervisor,
+                // not into the journal - saying "submitted" there was wrong (13 Oct).
+                val sentForReview = countState.passNote?.startsWith(SENT_FOR_REVIEW_PREFIX) == true
                 Text(
-                    text = "Counts submitted to D365FO.",
+                    text = if (sentForReview) "Sent for review - the supervisor moves the counts into the journal." else "Counts submitted to D365FO.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = WarehouseStatusColors.green,
                 )
@@ -438,7 +509,8 @@ private fun CountControls(
                         color = WarehouseStatusColors.amber,
                     )
                 }
-                countState.passNote?.let {
+                // Journals submitted before the runner dropped it still hold a bare "ACCEPTED".
+                countState.passNote?.takeUnless { it.equals("ACCEPTED", ignoreCase = true) }?.let {
                     Text(
                         text = it,
                         style = MaterialTheme.typography.bodySmall,
@@ -538,20 +610,23 @@ private fun EndCountDialog(
                 if (countState.exceptions > 0) {
                     Text(
                         "${countState.exceptions} item${if (countState.exceptions == 1) "" else "s"} recorded as " +
-                            "not on this journal - sent with the counts for a planner to resolve.",
+                            "not on this journal - sent with the counts and added to the journal as new lines.",
                     )
                 }
                 Text(
-                    if (countState.counted > 0) "Only the counted lines are sent. Submit now?"
-                    else "Nothing has been counted yet - there is nothing to submit.",
+                    when {
+                        countState.counted > 0 -> "Only the counted lines are sent. Submit now?"
+                        countState.exceptions > 0 -> "Only the items not on this journal are sent. Submit now?"
+                        else -> "Nothing has been counted yet - there is nothing to submit."
+                    },
                 )
             }
         },
         confirmButton = {
-            ConfirmButton(onClick = onConfirm, enabled = countState.counted > 0) { Text("Submit counts") }
-        },
-        dismissButton = {
-            CancelOutlinedButton(onClick = onDismiss) { Text("Keep counting") }
+            com.d365fo.mobileops.presentation.common.components.DialogButtonRow(
+                dismiss = { com.d365fo.mobileops.presentation.common.components.CancelOutlinedButton(onClick = onDismiss, modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget)) { Text("Keep counting") } },
+                confirm = { com.d365fo.mobileops.presentation.common.components.ConfirmButton(onClick = onConfirm, enabled = countState.counted > 0 || countState.exceptions > 0, modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget)) { Text("Submit counts") } },
+            )
         },
     )
 }
@@ -626,11 +701,11 @@ private fun ClaimLine(journal: CountingJournalSummary, myClaim: CountClaimEntity
     val text = when {
         myClaim != null && !myClaim.lost -> buildString {
             append("Claimed by you")
-            myClaim.rangeId?.let { append(" · range $it") }
+            myClaim.rangeId?.takeIf { it.isNotBlank() }?.let { append(" · range $it") }
             myClaim.expiresAt?.let { append(" · until ${Formatters.clockTime(it)}") }
         }
         journal.claims.isNotEmpty() -> journal.claims.joinToString("\n") { claim ->
-            val range = listOfNotNull(claim.locationFrom, claim.locationTo).joinToString(" - ")
+            val range = listOfNotNull(claim.locationFrom, claim.locationTo).filter { it.isNotBlank() }.joinToString(" - ")
             "Claimed by ${claim.claimedBy}" + if (range.isNotBlank()) " ($range)" else ""
         }
         journal.ranges.isNotEmpty() -> "${journal.ranges.size} ranges to claim"
@@ -671,8 +746,12 @@ private fun RangePickerDialog(
                 }
             }
         },
-        confirmButton = {},
-        dismissButton = { CancelOutlinedButton(onClick = onDismiss) { Text("Cancel") } },
+        confirmButton = {
+            com.d365fo.mobileops.presentation.common.components.DialogButtonRow(
+                dismiss = null,
+                confirm = { com.d365fo.mobileops.presentation.common.components.CancelOutlinedButton(onClick = onDismiss, modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget)) { Text("Cancel") } },
+            )
+        },
     )
 }
 
@@ -680,7 +759,10 @@ private fun RangePickerDialog(
 @Composable
 private fun PassBadges(journal: CountingJournalSummary) {
     val badges = listOfNotNull(
-        originLabel(journal.originType)?.takeIf { journal.recountOf == null || journal.originType != "RECOUNT" },
+        originLabel(journal.originType)
+            ?.takeIf { journal.recountOf == null || journal.originType != "RECOUNT" }
+            // Not twice: a spot count's description already starts "Spot count · ...".
+            ?.takeIf { label -> journal.description?.startsWith(label, ignoreCase = true) != true },
         journal.recountOf?.let { "Recount of $it" },
         "Pass ${journal.passNumber}".takeIf { journal.passNumber > 1 && journal.recountOf == null },
         "Double-blind".takeIf { journal.doubleBlind },
@@ -699,3 +781,6 @@ private fun PassBadges(journal: CountingJournalSummary) {
         Text(text = it.joinToString(" · "), style = MaterialTheme.typography.bodySmall, color = WarehouseStatusColors.text3)
     }
 }
+
+/** How [com.d365fo.mobileops.data.counting.CountSubmitRunner] starts the note for counts sent for review. */
+internal const val SENT_FOR_REVIEW_PREFIX = "Sent to the supervisor for review"

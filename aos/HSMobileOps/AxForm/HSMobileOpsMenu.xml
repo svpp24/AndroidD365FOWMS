@@ -1,0 +1,522 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxForm xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns="Microsoft.Dynamics.AX.Metadata.V6">
+	<Name>HSMobileOpsMenu</Name>
+	<SourceCode>
+		<Methods xmlns="">
+			<Method>
+				<Name>classDeclaration</Name>
+				<Source><![CDATA[
+/// <summary>
+/// Mobile device menus: the handheld's Home organised into menus and sub-menus, like the
+/// mobile device menus of Warehouse management. Each line opens an app module or another menu,
+/// in Sequence order. The default menu is Home for every worker without a menu of their own
+/// (Mobile device users, Handheld menu). Menu access still hides the modules a worker may not use.
+/// </summary>
+[Form]
+public class HSMobileOpsMenu extends FormRun
+{
+}
+]]></Source>
+			</Method>
+		</Methods>
+		<DataSources xmlns="">
+			<DataSource>
+				<Name>HSMobileOpsMenu</Name>
+				<Methods>
+					<Method>
+						<Name>active</Name>
+						<Source><![CDATA[
+        /// <summary>
+        /// Shows the selected menu's lines (see HSMobileOpsMenuLine.init).
+        /// </summary>
+        public int active()
+        {
+            int ret = super();
+
+            HSMobileOpsMenuLine_ds.executeQuery();
+            return ret;
+        }
+
+]]></Source>
+					</Method>
+				</Methods>
+			</DataSource>
+			<DataSource>
+				<Name>HSMobileOpsMenuLine</Name>
+				<Methods>
+					<Method>
+						<Name>init</Name>
+						<Source><![CDATA[
+        /// <summary>
+        /// Links the lines to the selected menu explicitly: the relation alone did not filter the
+        /// grid, which showed every menu's lines.
+        /// </summary>
+        public void init()
+        {
+            super();
+            this.queryBuildDataSource().clearDynalinks();
+            this.queryBuildDataSource().addDynalink(fieldNum(HSMobileOpsMenuLine, MenuRecId), HSMobileOpsMenu, fieldNum(HSMobileOpsMenu, RecId));
+        }
+
+]]></Source>
+					</Method>
+					<Method>
+						<Name>active</Name>
+						<Source><![CDATA[
+        /// <summary>
+        /// Below the grid, a menu item line shows Menu item and a sub-menu line shows Sub-menu -
+        /// only the one that applies.
+        /// </summary>
+        public int active()
+        {
+            int     ret = super();
+            boolean isSubMenu = HSMobileOpsMenuLine.LineType == HSMobileOpsMenuLineType::SubMenu;
+
+            Line_Module.visible(!isSubMenu);
+            Line_SubMenuId.visible(isSubMenu);
+            return ret;
+        }
+
+]]></Source>
+					</Method>
+					<Method>
+						<Name>initValue</Name>
+						<Source><![CDATA[
+        public void initValue()
+        {
+            super();
+            HSMobileOpsMenuLine.MenuRecId = HSMobileOpsMenu.RecId;
+        }
+
+]]></Source>
+					</Method>
+				</Methods>
+				<Fields>
+					<Field>
+						<DataField>LineType</DataField>
+						<Methods>
+							<Method>
+								<Name>modified</Name>
+								<Source><![CDATA[
+            public void modified()
+            {
+                super();
+                HSMobileOpsMenuLine.setOpens();
+                HSMobileOpsMenuLine_ds.active();
+            }
+
+]]></Source>
+							</Method>
+						</Methods>
+					</Field>
+					<Field>
+						<DataField>Module</DataField>
+						<Methods>
+							<Method>
+								<Name>modified</Name>
+								<Source><![CDATA[
+            public void modified()
+            {
+                super();
+                HSMobileOpsMenuLine.setOpens();
+            }
+
+]]></Source>
+							</Method>
+						</Methods>
+					</Field>
+					<Field>
+						<DataField>SubMenuId</DataField>
+						<Methods>
+							<Method>
+								<Name>modified</Name>
+								<Source><![CDATA[
+            public void modified()
+            {
+                super();
+                HSMobileOpsMenuLine.setOpens();
+            }
+
+]]></Source>
+							</Method>
+						</Methods>
+					</Field>
+				</Fields>
+			</DataSource>
+		</DataSources>
+		<DataControls xmlns="">
+			<Control>
+				<Name>Line_SubMenuId</Name>
+				<Type>String</Type>
+				<Methods>
+					<Method>
+						<Name>lookup</Name>
+						<Source><![CDATA[
+        /// <summary>
+        /// The other menus, by ID and name.
+        /// </summary>
+        public void lookup()
+        {
+            SysTableLookup       menuLookup = SysTableLookup::newParameters(tableNum(HSMobileOpsMenu), this);
+            Query                query = new Query();
+            QueryBuildDataSource menuDataSource = query.addDataSource(tableNum(HSMobileOpsMenu));
+
+            if (HSMobileOpsMenu.MenuId)
+            {
+                menuDataSource.addRange(fieldNum(HSMobileOpsMenu, MenuId)).value(SysQuery::valueNot(HSMobileOpsMenu.MenuId));
+            }
+            menuLookup.addLookupfield(fieldNum(HSMobileOpsMenu, MenuId), true);
+            menuLookup.addLookupfield(fieldNum(HSMobileOpsMenu, Name));
+            menuLookup.parmQuery(query);
+            menuLookup.performFormLookup();
+        }
+
+]]></Source>
+					</Method>
+				</Methods>
+			</Control>
+		</DataControls>
+		<Members xmlns="" />
+	</SourceCode>
+	<DataSources>
+		<AxFormDataSource xmlns="">
+			<Name>HSMobileOpsMenu</Name>
+			<Table>HSMobileOpsMenu</Table>
+			<Fields />
+			<ReferencedDataSources />
+			<Index>MenuIdIdx</Index>
+			<InsertIfEmpty>No</InsertIfEmpty>
+			<DataSourceLinks />
+			<DerivedDataSources />
+		</AxFormDataSource>
+		<AxFormDataSource xmlns="">
+			<Name>HSMobileOpsMenuLine</Name>
+			<Table>HSMobileOpsMenuLine</Table>
+			<Fields>
+				<AxFormDataSourceField>
+					<DataField>LineType</DataField>
+				</AxFormDataSourceField>
+				<AxFormDataSourceField>
+					<DataField>Module</DataField>
+				</AxFormDataSourceField>
+				<AxFormDataSourceField>
+					<DataField>SubMenuId</DataField>
+				</AxFormDataSourceField>
+			</Fields>
+			<ReferencedDataSources />
+			<Index>MenuLineIdx</Index>
+			<JoinSource>HSMobileOpsMenu</JoinSource>
+			<InsertIfEmpty>No</InsertIfEmpty>
+			<DataSourceLinks />
+			<DerivedDataSources />
+		</AxFormDataSource>
+	</DataSources>
+	<Design>
+		<Caption xmlns="">Mobile device menus</Caption>
+		<DataSource xmlns="">HSMobileOpsMenu</DataSource>
+		<Pattern xmlns="">SimpleListDetails</Pattern>
+		<PatternVersion xmlns="">1.3</PatternVersion>
+		<Style xmlns="">SimpleListDetails</Style>
+		<TitleDataSource xmlns="">HSMobileOpsMenu</TitleDataSource>
+		<Controls xmlns="">
+			<AxFormControl xmlns=""
+				i:type="AxFormActionPaneControl">
+				<Name>ActionPane</Name>
+				<Type>ActionPane</Type>
+				<FormControlExtension
+					i:nil="true" />
+				<Controls>
+					<AxFormControl xmlns=""
+						i:type="AxFormButtonGroupControl">
+						<Name>MenuGroup</Name>
+						<Type>ButtonGroup</Type>
+						<FormControlExtension
+							i:nil="true" />
+						<Controls>
+							<AxFormControl xmlns=""
+								i:type="AxFormMenuFunctionButtonControl">
+								<Name>CreateDefaultMenusButton</Name>
+								<HelpText>Create a Main menu with Inbound, Outbound, Inventory management and Inquiries sub-menus. Existing menus are not changed.</HelpText>
+								<Type>MenuFunctionButton</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<ButtonDisplay>TextOnly</ButtonDisplay>
+								<MenuItemName>HSMobileOpsMenuSeed</MenuItemName>
+								<MenuItemType>Action</MenuItemType>
+								<Text>Create default menus</Text>
+							</AxFormControl>
+						</Controls>
+						<ArrangeMethod>Vertical</ArrangeMethod>
+						<Caption>Menus</Caption>
+					</AxFormControl>
+				</Controls>
+				<AlignChild>No</AlignChild>
+				<AlignChildren>No</AlignChildren>
+				<ArrangeMethod>Vertical</ArrangeMethod>
+			</AxFormControl>
+			<AxFormControl xmlns=""
+				i:type="AxFormGroupControl">
+				<Name>GridContainer1</Name>
+				<HeightMode>SizeToAvailable</HeightMode>
+				<Type>Group</Type>
+				<FormControlExtension
+					i:nil="true" />
+				<Controls>
+					<AxFormControl>
+						<Name>QuickFilterControl1</Name>
+						<WidthMode>SizeToAvailable</WidthMode>
+						<FormControlExtension>
+							<Name>QuickFilterControl</Name>
+							<ExtensionComponents />
+							<ExtensionProperties>
+								<AxFormControlExtensionProperty>
+									<Name>targetControlName</Name>
+									<Type>String</Type>
+								</AxFormControlExtensionProperty>
+								<AxFormControlExtensionProperty>
+									<Name>placeholderText</Name>
+									<Type>String</Type>
+								</AxFormControlExtensionProperty>
+								<AxFormControlExtensionProperty>
+									<Name>defaultColumnName</Name>
+									<Type>String</Type>
+								</AxFormControlExtensionProperty>
+							</ExtensionProperties>
+						</FormControlExtension>
+					</AxFormControl>
+					<AxFormControl xmlns=""
+						i:type="AxFormGridControl">
+						<Name>FormGridControl1</Name>
+						<AllowEdit>No</AllowEdit>
+						<Type>Grid</Type>
+						<WidthMode>SizeToContent</WidthMode>
+						<FormControlExtension
+							i:nil="true" />
+						<Controls>
+							<AxFormControl xmlns=""
+								i:type="AxFormStringControl">
+								<Name>Grid_MenuId</Name>
+								<Type>String</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<DataField>MenuId</DataField>
+								<DataSource>HSMobileOpsMenu</DataSource>
+							</AxFormControl>
+							<AxFormControl xmlns=""
+								i:type="AxFormStringControl">
+								<Name>Grid_Name</Name>
+								<Type>String</Type>
+								<WidthMode>SizeToAvailable</WidthMode>
+								<FormControlExtension
+									i:nil="true" />
+								<DataField>Name</DataField>
+								<DataSource>HSMobileOpsMenu</DataSource>
+							</AxFormControl>
+							<AxFormControl xmlns=""
+								i:type="AxFormCheckBoxControl">
+								<Name>Grid_IsDefault</Name>
+								<Type>CheckBox</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<DataField>IsDefault</DataField>
+								<DataSource>HSMobileOpsMenu</DataSource>
+							</AxFormControl>
+						</Controls>
+						<DataSource>HSMobileOpsMenu</DataSource>
+						<MultiSelect>No</MultiSelect>
+						<ShowRowLabels>No</ShowRowLabels>
+						<Style>List</Style>
+					</AxFormControl>
+				</Controls>
+				<FrameType>None</FrameType>
+				<Style>SidePanel</Style>
+			</AxFormControl>
+			<AxFormControl xmlns=""
+				i:type="AxFormGroupControl">
+				<Name>DetailsHeader</Name>
+				<Type>Group</Type>
+				<WidthMode>SizeToAvailable</WidthMode>
+				<FormControlExtension
+					i:nil="true" />
+				<Controls>
+					<AxFormControl xmlns=""
+						i:type="AxFormStringControl">
+						<Name>MenuId</Name>
+						<Type>String</Type>
+						<FormControlExtension
+							i:nil="true" />
+						<DataField>MenuId</DataField>
+						<DataSource>HSMobileOpsMenu</DataSource>
+					</AxFormControl>
+					<AxFormControl xmlns=""
+						i:type="AxFormStringControl">
+						<Name>Name</Name>
+						<Type>String</Type>
+						<FormControlExtension
+							i:nil="true" />
+						<DataField>Name</DataField>
+						<DataSource>HSMobileOpsMenu</DataSource>
+					</AxFormControl>
+					<AxFormControl xmlns=""
+						i:type="AxFormCheckBoxControl">
+						<Name>IsDefault</Name>
+						<Type>CheckBox</Type>
+						<FormControlExtension
+							i:nil="true" />
+						<DataField>IsDefault</DataField>
+						<DataSource>HSMobileOpsMenu</DataSource>
+					</AxFormControl>
+				</Controls>
+				<ColumnsMode>Fill</ColumnsMode>
+				<FrameType>None</FrameType>
+			</AxFormControl>
+			<AxFormControl xmlns=""
+				i:type="AxFormTabControl">
+				<Name>Tab</Name>
+				<AlignControl>No</AlignControl>
+				<Type>Tab</Type>
+				<FormControlExtension
+					i:nil="true" />
+				<Controls>
+					<AxFormControl xmlns=""
+						i:type="AxFormTabPageControl">
+						<Name>LinesPage</Name>
+						<HelpText>What this menu shows on the handheld, lowest Sequence first: app modules (Menu item) and other menus (Sub-menu).</HelpText>
+						<Type>TabPage</Type>
+						<FormControlExtension
+							i:nil="true" />
+						<Controls>
+							<AxFormControl xmlns=""
+								i:type="AxFormActionPaneControl">
+								<Name>LineActions</Name>
+								<Type>ActionPane</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<Controls>
+									<AxFormControl xmlns=""
+										i:type="AxFormButtonGroupControl">
+										<Name>LineButtonGroup</Name>
+										<Type>ButtonGroup</Type>
+										<FormControlExtension
+											i:nil="true" />
+										<Controls>
+											<AxFormControl xmlns=""
+												i:type="AxFormCommandButtonControl">
+												<Name>NewLineButton</Name>
+												<HelpText>Add a menu item or a sub-menu. Left without a Sequence, it goes last.</HelpText>
+												<Type>CommandButton</Type>
+												<FormControlExtension
+													i:nil="true" />
+												<ButtonDisplay>TextOnly</ButtonDisplay>
+												<Command>New</Command>
+												<Text>Add</Text>
+											</AxFormControl>
+											<AxFormControl xmlns=""
+												i:type="AxFormCommandButtonControl">
+												<Name>DeleteLineButton</Name>
+												<HelpText>Remove the line from this menu.</HelpText>
+												<Type>CommandButton</Type>
+												<FormControlExtension
+													i:nil="true" />
+												<ButtonDisplay>TextOnly</ButtonDisplay>
+												<Command>DeleteRecord</Command>
+												<Text>Remove</Text>
+											</AxFormControl>
+										</Controls>
+										<ArrangeMethod>Vertical</ArrangeMethod>
+										<DataSource>HSMobileOpsMenuLine</DataSource>
+									</AxFormControl>
+								</Controls>
+								<AlignChild>No</AlignChild>
+								<AlignChildren>No</AlignChildren>
+								<ArrangeMethod>Vertical</ArrangeMethod>
+								<Style>Strip</Style>
+							</AxFormControl>
+							<AxFormControl xmlns=""
+								i:type="AxFormGridControl">
+								<Name>LineGrid</Name>
+								<Type>Grid</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<Controls>
+									<AxFormControl xmlns=""
+										i:type="AxFormIntegerControl">
+										<Name>Line_Sequence</Name>
+										<Type>Integer</Type>
+										<FormControlExtension
+											i:nil="true" />
+										<DataField>Sequence</DataField>
+										<DataSource>HSMobileOpsMenuLine</DataSource>
+									</AxFormControl>
+									<AxFormControl xmlns=""
+										i:type="AxFormComboBoxControl">
+										<Name>Line_LineType</Name>
+										<Type>ComboBox</Type>
+										<FormControlExtension
+											i:nil="true" />
+										<DataField>LineType</DataField>
+										<DataSource>HSMobileOpsMenuLine</DataSource>
+										<Items />
+									</AxFormControl>
+									<AxFormControl xmlns=""
+										i:type="AxFormStringControl">
+										<Name>Line_Opens</Name>
+										<AllowEdit>No</AllowEdit>
+										<HelpText>The module this line opens, or the sub-menu's ID and name. Set it below the grid.</HelpText>
+										<Type>String</Type>
+										<WidthMode>SizeToAvailable</WidthMode>
+										<FormControlExtension
+											i:nil="true" />
+										<DataField>Opens</DataField>
+										<DataSource>HSMobileOpsMenuLine</DataSource>
+									</AxFormControl>
+								</Controls>
+								<DataSource>HSMobileOpsMenuLine</DataSource>
+							</AxFormControl>
+							<AxFormControl xmlns=""
+								i:type="AxFormGroupControl">
+								<Name>LineDetails</Name>
+								<Type>Group</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<Controls>
+									<AxFormControl xmlns=""
+										i:type="AxFormComboBoxControl">
+										<Name>Line_Module</Name>
+										<AutoDeclaration>Yes</AutoDeclaration>
+										<HelpText>The app module the selected line opens.</HelpText>
+										<Type>ComboBox</Type>
+										<FormControlExtension
+											i:nil="true" />
+										<DataField>Module</DataField>
+										<DataSource>HSMobileOpsMenuLine</DataSource>
+										<Items />
+									</AxFormControl>
+									<AxFormControl xmlns=""
+										i:type="AxFormStringControl">
+										<Name>Line_SubMenuId</Name>
+										<AutoDeclaration>Yes</AutoDeclaration>
+										<HelpText>The menu the selected line opens.</HelpText>
+										<Type>String</Type>
+										<FormControlExtension
+											i:nil="true" />
+										<DataField>SubMenuId</DataField>
+										<DataSource>HSMobileOpsMenuLine</DataSource>
+									</AxFormControl>
+								</Controls>
+								<Caption>Selected line</Caption>
+								<DataSource>HSMobileOpsMenuLine</DataSource>
+							</AxFormControl>
+						</Controls>
+						<Caption>Menu items</Caption>
+					</AxFormControl>
+				</Controls>
+				<AlignChild>No</AlignChild>
+				<ArrangeMethod>Vertical</ArrangeMethod>
+				<DataSource>HSMobileOpsMenu</DataSource>
+				<Style>FastTabs</Style>
+			</AxFormControl>
+		</Controls>
+	</Design>
+	<Parts />
+</AxForm>

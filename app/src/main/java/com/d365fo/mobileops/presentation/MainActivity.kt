@@ -94,6 +94,9 @@ class MainActivity : ComponentActivity() {
      * suppression lives in each step-flow screen's BackHandler instead - see
      * ReceivingFlowScreen/TransferFlowScreen.
      */
+    // Activity.dispatchKeyEvent is public API; lint flags the override only because androidx
+    // annotates ComponentActivity's own override @RestrictTo.
+    @android.annotation.SuppressLint("RestrictedApi")
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         sessionGuard.touch()
         if (scannerBridge.onKeyEvent(event)) return true
@@ -124,6 +127,8 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         sessionGuard.evaluateOnResume()
+        // Back from sleep or another app: the connection status is re-read, not left stale.
+        syncStatusProvider.refresh()
         // Held only while the app is in the foreground. A picker working through a pallet
         // should not have the screen time out between scans, but the wake lock is released
         // the moment the app is backgrounded so a handheld in a pocket does not cook itself.
@@ -156,6 +161,17 @@ class MainActivity : ComponentActivity() {
             hide(WindowInsetsCompat.Type.systemBars())
             systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         }
+    }
+
+    /**
+     * A dialog or sheet (the camera scanner, a system prompt) is its own window:
+     * while it has focus the system shows both bars, and closing it hands focus back without a
+     * resume - so the bars stayed for the rest of the session (10 Oct). Re-hidden on regaining
+     * focus as well.
+     */
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) hideSystemBars()
     }
 
     override fun onPause() {

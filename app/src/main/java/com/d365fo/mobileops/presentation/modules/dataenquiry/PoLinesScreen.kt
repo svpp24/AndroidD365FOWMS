@@ -6,12 +6,15 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.PhotoCamera
@@ -92,7 +95,8 @@ fun PoLinesScreen(
                 .padding(horizontal = WarehouseDimens.ScreenPadding),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            if (state.busy) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+            // A fixed slot, so the bar never moves the scan card below it.
+            androidx.compose.foundation.layout.Box(Modifier.fillMaxWidth().height(4.dp)) { if (state.busy) LinearProgressIndicator(modifier = Modifier.fillMaxWidth()) }
 
             // Read-only tap target - overlaid Box, not clickable() on the field itself. See the
             // identical note on OnHandInquiryScreen: a read-only field's own pointer input
@@ -120,17 +124,10 @@ fun PoLinesScreen(
                         .clickable(onClick = onManualEntryRequested),
                 )
             }
+            // Inside the card, as on the creation screens and Counting.
+            com.d365fo.mobileops.presentation.common.components.HeroCameraButton(onClick = { showCamera = true })
             }
 
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(
-                    onClick = { showCamera = true },
-                    modifier = Modifier.weight(1f).heightIn(min = 56.dp),
-                ) {
-                    Icon(Icons.Default.PhotoCamera, contentDescription = null)
-                    Text("Scan with camera", modifier = Modifier.padding(start = 8.dp))
-                }
-            }
 
             state.error?.let { message ->
                 ErrorBanner(message = message)
@@ -146,9 +143,41 @@ fun PoLinesScreen(
                 )
             }
 
-            if (state.lines.isEmpty() && state.purchId != null && !state.busy) {
+            state.blockNotice?.takeIf { state.purchId != null }?.let { notice ->
                 Text(
-                    text = "This order has no lines.",
+                    text = notice,
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(
+                            WarehouseStatusColors.amberDim,
+                            RoundedCornerShape(WarehouseDimens.CardCorner),
+                        )
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                )
+            }
+
+            if (state.purchId != null && !state.linesInline && state.outstandingLineCount > 0) {
+                Text(
+                    text = when {
+                        state.itemFilter != null ->
+                            "Lines for ${state.itemFilter}. Scan another item, or another PO."
+                        // Not necessarily a large order: an older AOS withholds a blocked order's
+                        // lines whatever its size (see PoLinesState.linesInline).
+                        state.blockNotice != null ->
+                            "${state.outstandingLineCount} open lines. Scan an item to see its lines."
+                        else ->
+                            "${state.outstandingLineCount} open lines - too many to list. Scan an item to see its lines."
+                    },
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else if (state.lines.isEmpty() && state.purchId != null && !state.busy) {
+                Text(
+                    // "Open": a received or cancelled order (NOT_OPEN) has lines, just none left.
+                    text = "This order has no open lines.",
                     style = MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

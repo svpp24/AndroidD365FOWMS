@@ -1,0 +1,169 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsFeedbackExport</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Export feedback (Mobile feedback form): downloads mobile-feedback-[date].zip with
+/// feedback.md - every record the form shows, with its filters, as one Markdown document meant
+/// to be handed to an AI assistant or a developer - and screenshots/[FeedbackId].jpg for the
+/// records that have one. Read-only: nothing is marked or changed.
+/// </summary>
+internal final class HSMobileOpsFeedbackExport
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>main</Name>
+				<Source><![CDATA[
+
+    public static void main(Args _args)
+    {
+        HSMobileOpsFeedback                      feedback;
+        FormDataSource                           callerDs;
+        Query                                    query;
+        QueryRun                                 queryRun;
+        System.IO.MemoryStream                   zipStream = new System.IO.MemoryStream();
+        System.IO.Compression.ZipArchive         archive;
+        System.IO.MemoryStream                   shot;
+        str                                      markdown;
+        int                                      exported;
+        int                                      withShot;
+
+        // The records ticked Export (feedback, 12 Oct: "give a select option"), else the records
+        // the form shows - its filters included - or everything not finished yet.
+        select firstonly RecId from feedback where feedback.SelectedForExport == NoYes::Yes;
+        if (feedback.RecId)
+        {
+            query = new Query();
+            query.addDataSource(tableNum(HSMobileOpsFeedback));
+            query.dataSourceTable(tableNum(HSMobileOpsFeedback)).addRange(fieldNum(HSMobileOpsFeedback, SelectedForExport))
+                .value(queryValue(NoYes::Yes));
+        }
+        else if (_args && _args.record() && _args.record().isFormDataSource())
+        {
+            callerDs = FormDataUtil::getFormDataSource(_args.record());
+            query    = new Query(callerDs.queryRun().query());
+        }
+        else
+        {
+            query = new Query();
+            query.addDataSource(tableNum(HSMobileOpsFeedback));
+            query.dataSourceTable(tableNum(HSMobileOpsFeedback)).addRange(fieldNum(HSMobileOpsFeedback, Status))
+                .value(strFmt('%1,%2', queryValue(HSMobileOpsFeedbackStatus::New), queryValue(HSMobileOpsFeedbackStatus::InProgress)));
+        }
+        query.dataSourceTable(tableNum(HSMobileOpsFeedback)).sortClear();
+        query.dataSourceTable(tableNum(HSMobileOpsFeedback)).addSortField(fieldNum(HSMobileOpsFeedback, SubmittedUtc), SortOrder::Descending);
+
+        archive = new System.IO.Compression.ZipArchive(zipStream, System.IO.Compression.ZipArchiveMode::Create, true);
+
+        queryRun = new QueryRun(query);
+        while (queryRun.next())
+        {
+            feedback = queryRun.get(tableNum(HSMobileOpsFeedback));
+            exported++;
+            markdown += HSMobileOpsFeedbackExport::item(feedback, exported);
+
+            if (feedback.HasScreenshot == NoYes::Yes && conLen(feedback.Screenshot))
+            {
+                shot = Binary::constructFromContainer(feedback.Screenshot).getMemoryStream();
+                HSMobileOpsFeedbackExport::addEntry(archive, strFmt('screenshots/%1.jpg', feedback.FeedbackId), shot);
+                withShot++;
+            }
+        }
+
+        if (!exported)
+        {
+            archive.Dispose();
+            throw error('No feedback to export - clear the filter or check the Status filter.');
+        }
+
+        markdown = HSMobileOpsFeedbackExport::header(exported, withShot) + markdown;
+        HSMobileOpsFeedbackExport::addEntry(archive, 'feedback.md',
+            new System.IO.MemoryStream(System.Text.Encoding::get_UTF8().GetBytes(markdown)));
+        archive.Dispose();
+
+        zipStream.Seek(0, System.IO.SeekOrigin::Begin);
+        File::SendFileToUser(zipStream, strFmt('mobile-feedback-%1.zip',
+            date2Str(DateTimeUtil::getSystemDate(DateTimeUtil::getUserPreferredTimeZone()), 321,
+                DateDay::Digits2, DateSeparator::Hyphen, DateMonth::Digits2, DateSeparator::Hyphen, DateYear::Digits4)));
+        info(strFmt('Exported %1 feedback, %2 with a screenshot.', exported, withShot));
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>header</Name>
+				<Source><![CDATA[
+
+    private static str header(int _count, int _withShot)
+    {
+        return strFmt('# Inventory hub - feedback from the handheld app\n\n'
+            + 'Exported %1 from D365FO (Inventory hub > Inquiries > Mobile feedback): %2 item(s), %3 with a screenshot.\n\n'
+            + 'Inventory hub is an Android warehouse app for Dynamics 365 Finance & Operations. Each item below was sent '
+            + 'by a warehouse worker from the feedback button in the app, on the screen named under Screen. It carries the '
+            + 'app version, device and warehouse, the words of the worker, the status and reply of the team so far, and the '
+            + 'last lines of the app log at the time. A screenshot of that screen, when there is one, is in '
+            + 'screenshots/ in this zip under the file name given.\n\n'
+            + 'Suggested use: group the items by screen, say which are bugs, which are changes and which are '
+            + 'questions, and propose a fix or answer for each.\n\n',
+            DateTimeUtil::toStr(DateTimeUtil::utcNow()), _count, _withShot);
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>item</Name>
+				<Source><![CDATA[
+
+    private static str item(HSMobileOpsFeedback _f, int _n)
+    {
+        str text = strFmt('---\n\n## %1. %2 - %3\n\n', _n, enum2Str(_f.FeedbackType), _f.Screen ? _f.Screen : 'General');
+
+        text += strFmt('- **Status:** %1\n', enum2Str(_f.Status));
+        text += strFmt('- **Sent:** %1 UTC by %2, warehouse %3\n', DateTimeUtil::toStr(_f.SubmittedUtc), _f.UserName, _f.WarehouseId);
+        text += strFmt('- **App:** %1 on %2\n', _f.AppVersion, _f.DeviceModel);
+        text += strFmt('- **Feedback ID:** %1\n', _f.FeedbackId);
+        text += strFmt('- **Screenshot:** %1\n\n',
+            _f.HasScreenshot == NoYes::Yes && conLen(_f.Screenshot) ? strFmt('screenshots/%1.jpg', _f.FeedbackId) : 'none');
+        text += strFmt('**Message:**\n\n%1\n\n', HSMobileOpsFeedbackExport::quote(_f.Message));
+        if (_f.Response)
+        {
+            text += strFmt('**Reply so far:**\n\n%1\n\n', HSMobileOpsFeedbackExport::quote(_f.Response));
+        }
+        if (_f.Logs)
+        {
+            text += strFmt('<details><summary>App log</summary>\n\n```\n%1\n```\n\n</details>\n\n', _f.Logs);
+        }
+        return text;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>quote</Name>
+				<Source><![CDATA[
+
+    /// <summary>The text as a Markdown block quote, line by line.</summary>
+    private static str quote(str _text)
+    {
+        return '> ' + strReplace(strReplace(_text, '\r\n', '\n'), '\n', '\n> ');
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>addEntry</Name>
+				<Source><![CDATA[
+
+    private static void addEntry(System.IO.Compression.ZipArchive _archive, str _name, System.IO.MemoryStream _content)
+    {
+        System.IO.Compression.ZipArchiveEntry entry = _archive.CreateEntry(_name);
+        System.IO.Stream                      target = entry.Open();
+
+        _content.Seek(0, System.IO.SeekOrigin::Begin);
+        _content.CopyTo(target);
+        target.Dispose();
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

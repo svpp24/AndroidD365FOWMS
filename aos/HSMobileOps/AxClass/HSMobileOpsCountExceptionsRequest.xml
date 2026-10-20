@@ -16,6 +16,9 @@ class HSMobileOpsCountExceptionsRequest
     str             submissionId;
     str             userId;
     str             deviceId;
+    str             exceptionsJson;
+    str             emptyLocationsJson;
+    str             confirmationsJson;
     List            exceptions;
     List            emptyLocations;
     List            confirmations;
@@ -99,12 +102,61 @@ class HSMobileOpsCountExceptionsRequest
 				<Name>parmExceptions</Name>
 				<Source><![CDATA[
 
-    [DataMemberAttribute('Exceptions'),
-     DataCollectionAttribute(Types::Class, classStr(HSMobileOpsCountExceptionRow))]
+    /// <summary>
+    /// Unexpected items. Read from ExceptionsJson. Not a data member itself: a list of a custom
+    /// class does not bind on the way in (JObject cast failure - see
+    /// HSMobileOpsPostRequest.parmLinesJson).
+    /// </summary>
     public List parmExceptions(List _value = exceptions)
     {
+        Newtonsoft.Json.Linq.JArray  jArray;
+        Newtonsoft.Json.Linq.JObject jRow;
+        HSMobileOpsCountExceptionRow row;
+        int                          rowCount;
+        int                          i;
+
         exceptions = _value;
+        if (!exceptions && exceptionsJson)
+        {
+            exceptions = new List(Types::Class);
+            jArray = HSMobileOpsCountExceptionsRequest::jsonArray(exceptionsJson);
+            rowCount = jArray == null ? 0 : jArray.get_Count();
+            for (i = 0; i < rowCount; i++)
+            {
+                jRow = jArray.get_Item(i);
+                if (jRow == null)
+                {
+                    continue;
+                }
+                row = new HSMobileOpsCountExceptionRow();
+                row.parmClientId(HSMobileOpsCountExceptionsRequest::jsonStr(jRow, 'ClientId'));
+                row.parmItemNumber(HSMobileOpsCountExceptionsRequest::jsonStr(jRow, 'ItemNumber'));
+                row.parmLocationId(HSMobileOpsCountExceptionsRequest::jsonStr(jRow, 'LocationId'));
+                row.parmQuantity(HSMobileOpsCountExceptionsRequest::jsonNum(jRow, 'Quantity'));
+                row.parmBatchId(HSMobileOpsCountExceptionsRequest::jsonStr(jRow, 'BatchId'));
+                row.parmSerialId(HSMobileOpsCountExceptionsRequest::jsonStr(jRow, 'SerialId'));
+                row.parmNote(HSMobileOpsCountExceptionsRequest::jsonStr(jRow, 'Note'));
+                row.parmCapturedBy(HSMobileOpsCountExceptionsRequest::jsonStr(jRow, 'CapturedBy'));
+                row.parmCapturedAtUtc(HSMobileOpsCountExceptionsRequest::jsonStr(jRow, 'CapturedAtUtc'));
+                exceptions.addEnd(row);
+            }
+        }
         return exceptions;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmExceptionsJson</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Unexpected items as a JSON array of HSMobileOpsCountExceptionRow's members.
+    /// </summary>
+    [DataMemberAttribute('ExceptionsJson')]
+    public str parmExceptionsJson(str _value = exceptionsJson)
+    {
+        exceptionsJson = _value;
+        return exceptionsJson;
     }
 ]]></Source>
 			</Method>
@@ -112,12 +164,55 @@ class HSMobileOpsCountExceptionsRequest
 				<Name>parmEmptyLocations</Name>
 				<Source><![CDATA[
 
-    [DataMemberAttribute('EmptyLocations'),
-     DataCollectionAttribute(Types::Class, classStr(HSMobileOpsCountEmptyLocationRow))]
+    /// <summary>
+    /// Verified-empty locations. Read from EmptyLocationsJson. Not a data member itself: a list of
+    /// a custom class does not bind on the way in (JObject cast failure - see
+    /// HSMobileOpsPostRequest.parmLinesJson).
+    /// </summary>
     public List parmEmptyLocations(List _value = emptyLocations)
     {
+        Newtonsoft.Json.Linq.JArray      jArray;
+        Newtonsoft.Json.Linq.JObject     jRow;
+        HSMobileOpsCountEmptyLocationRow row;
+        int                              rowCount;
+        int                              i;
+
         emptyLocations = _value;
+        if (!emptyLocations && emptyLocationsJson)
+        {
+            emptyLocations = new List(Types::Class);
+            jArray = HSMobileOpsCountExceptionsRequest::jsonArray(emptyLocationsJson);
+            rowCount = jArray == null ? 0 : jArray.get_Count();
+            for (i = 0; i < rowCount; i++)
+            {
+                jRow = jArray.get_Item(i);
+                if (jRow == null)
+                {
+                    continue;
+                }
+                row = new HSMobileOpsCountEmptyLocationRow();
+                row.parmLocationId(HSMobileOpsCountExceptionsRequest::jsonStr(jRow, 'LocationId'));
+                row.parmVerifiedBy(HSMobileOpsCountExceptionsRequest::jsonStr(jRow, 'VerifiedBy'));
+                row.parmVerifiedAtUtc(HSMobileOpsCountExceptionsRequest::jsonStr(jRow, 'VerifiedAtUtc'));
+                emptyLocations.addEnd(row);
+            }
+        }
         return emptyLocations;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmEmptyLocationsJson</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Verified-empty locations as a JSON array of HSMobileOpsCountEmptyLocationRow's members.
+    /// </summary>
+    [DataMemberAttribute('EmptyLocationsJson')]
+    public str parmEmptyLocationsJson(str _value = emptyLocationsJson)
+    {
+        emptyLocationsJson = _value;
+        return emptyLocationsJson;
     }
 ]]></Source>
 			</Method>
@@ -126,14 +221,107 @@ class HSMobileOpsCountExceptionsRequest
 				<Source><![CDATA[
 
     /// <summary>
-    /// Verify-only lines (e.g. in transit) the counter confirmed instead of counting.
+    /// Verify-only lines (e.g. in transit) the counter confirmed instead of counting. Read from
+    /// ConfirmationsJson. Not a data member itself: a list of a custom class does not bind on the
+    /// way in (JObject cast failure - see HSMobileOpsPostRequest.parmLinesJson).
     /// </summary>
-    [DataMemberAttribute('Confirmations'),
-     DataCollectionAttribute(Types::Class, classStr(HSMobileOpsCountConfirmationRow))]
     public List parmConfirmations(List _value = confirmations)
     {
+        Newtonsoft.Json.Linq.JArray     jArray;
+        Newtonsoft.Json.Linq.JObject    jRow;
+        HSMobileOpsCountConfirmationRow row;
+        int                             rowCount;
+        int                             i;
+
         confirmations = _value;
+        if (!confirmations && confirmationsJson)
+        {
+            confirmations = new List(Types::Class);
+            jArray = HSMobileOpsCountExceptionsRequest::jsonArray(confirmationsJson);
+            rowCount = jArray == null ? 0 : jArray.get_Count();
+            for (i = 0; i < rowCount; i++)
+            {
+                jRow = jArray.get_Item(i);
+                if (jRow == null)
+                {
+                    continue;
+                }
+                row = new HSMobileOpsCountConfirmationRow();
+                row.parmLineNumber(HSMobileOpsCountExceptionsRequest::jsonNum(jRow, 'LineNumber'));
+                row.parmConfirmedBy(HSMobileOpsCountExceptionsRequest::jsonStr(jRow, 'ConfirmedBy'));
+                row.parmConfirmedAtUtc(HSMobileOpsCountExceptionsRequest::jsonStr(jRow, 'ConfirmedAtUtc'));
+                confirmations.addEnd(row);
+            }
+        }
         return confirmations;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmConfirmationsJson</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Confirmations as a JSON array of HSMobileOpsCountConfirmationRow's members.
+    /// </summary>
+    [DataMemberAttribute('ConfirmationsJson')]
+    public str parmConfirmationsJson(str _value = confirmationsJson)
+    {
+        confirmationsJson = _value;
+        return confirmationsJson;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>jsonArray</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// A JSON array string parsed, or null when blank or unparseable.
+    /// </summary>
+    private static Newtonsoft.Json.Linq.JArray jsonArray(str _json)
+    {
+        System.Object               parsed;
+        Newtonsoft.Json.Linq.JArray jArray;
+
+        if (!_json)
+        {
+            return null;
+        }
+        try
+        {
+            parsed = Newtonsoft.Json.Linq.JArray::Parse(_json);
+        }
+        catch (Exception::CLRError)
+        {
+            return null;
+        }
+        jArray = parsed;
+        return jArray;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>jsonStr</Name>
+				<Source><![CDATA[
+
+    private static str jsonStr(Newtonsoft.Json.Linq.JObject _obj, str _property)
+    {
+        Newtonsoft.Json.Linq.JToken token = _obj ? _obj.get_Item(_property) : null;
+
+        return token == null ? '' : token.ToString();
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>jsonNum</Name>
+				<Source><![CDATA[
+
+    private static real jsonNum(Newtonsoft.Json.Linq.JObject _obj, str _property)
+    {
+        str value = HSMobileOpsCountExceptionsRequest::jsonStr(_obj, _property);
+
+        return value ? str2num(value) : 0;
     }
 ]]></Source>
 			</Method>

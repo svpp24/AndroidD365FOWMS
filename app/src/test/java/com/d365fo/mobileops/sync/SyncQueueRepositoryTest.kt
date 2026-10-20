@@ -154,12 +154,26 @@ class SyncQueueRepositoryTest {
     fun `dead-letters a retryable failure once attempts are exhausted`() = runTest {
         val dropped = repository.onFailure(
             entry(retryCount = Constants.MAX_RETRY_COUNT - 1),
-            AppFailure.Transient("timeout"),
+            AppFailure.Transient("D365FO unavailable", httpCode = 503),
             now = 10_000L,
         )
 
         assertThat(dropped).isTrue()
         coVerify { dao.deadLetter(eq("q1"), any()) }
+    }
+
+    @Test
+    fun `an outage never exhausts the retries - no answer keeps it queued`() = runTest {
+        for (failure in listOf(AppFailure.Offline("no connection"), AppFailure.Transient("timeout"))) {
+            val dropped = repository.onFailure(
+                entry(retryCount = Constants.MAX_RETRY_COUNT + 20),
+                failure,
+                now = 10_000L,
+            )
+            assertThat(dropped).isFalse()
+        }
+        coVerify(exactly = 0) { dao.deadLetter(any(), any()) }
+        coVerify(exactly = 2) { dao.scheduleRetry(eq("q1"), any(), any(), any()) }
     }
 
     @Test

@@ -120,7 +120,7 @@ public class HSMobileOpsUser extends FormRun
 							<AxFormControl xmlns=""
 								i:type="AxFormMenuFunctionButtonControl">
 								<Name>SetPasswordButton</Name>
-								<HelpText>Set or reset the handheld password for this user. They must change it at their next sign-in.</HelpText>
+								<HelpText>Set or reset the handheld PIN for this user. They must change it at their next sign-in.</HelpText>
 								<Type>MenuFunctionButton</Type>
 								<FormControlExtension
 									i:nil="true" />
@@ -129,12 +129,12 @@ public class HSMobileOpsUser extends FormRun
 								<MenuItemName>HSMobileOpsSetPassword</MenuItemName>
 								<MenuItemType>Action</MenuItemType>
 								<NeedsRecord>Yes</NeedsRecord>
-								<Text>Set password</Text>
+								<Text>Set PIN</Text>
 							</AxFormControl>
 							<AxFormControl xmlns=""
 								i:type="AxFormMenuFunctionButtonControl">
 								<Name>UnlockButton</Name>
-								<HelpText>Clear a lockout caused by failed sign-in attempts, without changing the password.</HelpText>
+								<HelpText>Clear a lockout caused by failed sign-in attempts, without changing the PIN.</HelpText>
 								<Type>MenuFunctionButton</Type>
 								<FormControlExtension
 									i:nil="true" />
@@ -319,6 +319,16 @@ public class HSMobileOpsUser extends FormRun
 						<DataField>CounterTeam</DataField>
 						<DataSource>HSMobileOpsUser</DataSource>
 					</AxFormControl>
+					<AxFormControl xmlns=""
+						i:type="AxFormStringControl">
+						<Name>MenuId</Name>
+						<HelpText>The handheld menu this worker sees as Home. Blank uses the default menu (Mobile device menus).</HelpText>
+						<Type>String</Type>
+						<FormControlExtension
+							i:nil="true" />
+						<DataField>MenuId</DataField>
+						<DataSource>HSMobileOpsUser</DataSource>
+					</AxFormControl>
 				</Controls>
 				<ColumnsMode>Fill</ColumnsMode>
 				<FrameType>None</FrameType>
@@ -454,7 +464,7 @@ public class HSMobileOpsUser extends FormRun
 												<FormControlExtension
 													i:nil="true" />
 												<ButtonDisplay>TextOnly</ButtonDisplay>
-												<Command>Delete</Command>
+												<Command>DeleteRecord</Command>
 												<Text>Remove</Text>
 											</AxFormControl>
 											<AxFormControl xmlns=""
@@ -548,7 +558,7 @@ public class HSMobileOpsUser extends FormRun
 											<AxFormControl xmlns=""
 												i:type="AxFormCommandButtonControl">
 												<Name>NewMenuAccessButton</Name>
-												<HelpText>Add a menu to allow or block for this worker.</HelpText>
+												<HelpText>Add a module for this worker. Once a worker has any rows, the app shows only the modules ticked Allowed.</HelpText>
 												<Type>CommandButton</Type>
 												<FormControlExtension
 													i:nil="true" />
@@ -559,12 +569,12 @@ public class HSMobileOpsUser extends FormRun
 											<AxFormControl xmlns=""
 												i:type="AxFormCommandButtonControl">
 												<Name>DeleteMenuAccessButton</Name>
-												<HelpText>Remove the row - the menu is then allowed again.</HelpText>
+												<HelpText>Remove the row. With no rows left the worker sees every module except the order modules; otherwise the removed module no longer shows.</HelpText>
 												<Type>CommandButton</Type>
 												<FormControlExtension
 													i:nil="true" />
 												<ButtonDisplay>TextOnly</ButtonDisplay>
-												<Command>Delete</Command>
+												<Command>DeleteRecord</Command>
 												<Text>Remove</Text>
 											</AxFormControl>
 										</Controls>

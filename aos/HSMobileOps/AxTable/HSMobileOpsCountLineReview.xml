@@ -59,8 +59,8 @@ public class HSMobileOpsCountLineReview extends common
 		<AxTableField xmlns=""
 			i:type="AxTableFieldString">
 			<Name>Decision</Name>
-			<Label>Decision</Label>
 			<HelpText>Blank (none yet), APPROVED, RECOUNT, INVESTIGATE or REJECTED.</HelpText>
+			<Label>Decision</Label>
 			<StringSize>20</StringSize>
 		</AxTableField>
 		<AxTableField xmlns=""
@@ -76,14 +76,14 @@ public class HSMobileOpsCountLineReview extends common
 		<AxTableField xmlns=""
 			i:type="AxTableFieldEnum">
 			<Name>Recounted</Name>
-			<Label>Recounted</Label>
 			<EnumType>NoYes</EnumType>
+			<Label>Recounted</Label>
 		</AxTableField>
 		<AxTableField xmlns=""
 			i:type="AxTableFieldReal">
 			<Name>DecisionCountedQty</Name>
-			<Label>Counted at decision</Label>
 			<HelpText>The line's counted quantity when the decision was made; a different count since then is a recount.</HelpText>
+			<Label>Counted at decision</Label>
 		</AxTableField>
 		<AxTableField xmlns=""
 			i:type="AxTableFieldString">
@@ -100,8 +100,8 @@ public class HSMobileOpsCountLineReview extends common
 		<AxTableField xmlns=""
 			i:type="AxTableFieldString">
 			<Name>ReviewedBy</Name>
-			<Label>Reviewed by</Label>
 			<ExtendedDataType>HSMobileOpsUserName</ExtendedDataType>
+			<Label>Reviewed by</Label>
 		</AxTableField>
 		<AxTableField xmlns=""
 			i:type="AxTableFieldUtcDateTime">

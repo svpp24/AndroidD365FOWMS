@@ -1,0 +1,123 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsCountStageResponse</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// HSMobileOpsCountStageSvc's answer: the stock count and the counter's staging journal, how many lines were
+/// accepted, how many items in the stock count are counted more than once and not yet decided, and
+/// (getStageMode) whether counts against counting journals in the store go to the control center.
+/// </summary>
+[DataContractAttribute]
+class HSMobileOpsCountStageResponse
+{
+    boolean     success;
+    str         errorCode;
+    str         message;
+    str         masterId;
+    str         stageId;
+    int         accepted;
+    int         duplicates;
+    boolean     stageJournalCounts;
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmSuccess</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Success')]
+    public boolean parmSuccess(boolean _value = success)
+    {
+        success = _value;
+        return success;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmErrorCode</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ErrorCode')]
+    public str parmErrorCode(str _value = errorCode)
+    {
+        errorCode = _value;
+        return errorCode;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmMessage</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Message')]
+    public str parmMessage(str _value = message)
+    {
+        message = _value;
+        return message;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmMasterId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('MasterId')]
+    public str parmMasterId(str _value = masterId)
+    {
+        masterId = _value;
+        return masterId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmStageId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('StageId')]
+    public str parmStageId(str _value = stageId)
+    {
+        stageId = _value;
+        return stageId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmAccepted</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Accepted')]
+    public int parmAccepted(int _value = accepted)
+    {
+        accepted = _value;
+        return accepted;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmDuplicates</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Duplicates')]
+    public int parmDuplicates(int _value = duplicates)
+    {
+        duplicates = _value;
+        return duplicates;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmStageJournalCounts</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('StageJournalCounts')]
+    public boolean parmStageJournalCounts(boolean _value = stageJournalCounts)
+    {
+        stageJournalCounts = _value;
+        return stageJournalCounts;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

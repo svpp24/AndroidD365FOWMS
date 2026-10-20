@@ -24,6 +24,8 @@ class HSMobileOpsTransferResponse
     // identical field on HSMobileOpsPurchOrderResponse. Shipping never asks for a location at
     // all, regardless of this flag - the source location is already on the line.
     boolean          requireLocationCapture;
+    WMSLocationId    defaultIssueLocation;
+    WMSLocationId    defaultReceiptLocation;
 
 }
 ]]></Declaration>
@@ -210,6 +212,32 @@ class HSMobileOpsTransferResponse
     {
         requireLocationCapture = _value;
         return requireLocationCapture;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmDefaultIssueLocation</Name>
+				<Source><![CDATA[
+
+    /// <summary>The warehouse master's default issue location - the bin the app uses unless another is scanned.</summary>
+    [DataMemberAttribute('DefaultIssueLocation')]
+    public WMSLocationId parmDefaultIssueLocation(WMSLocationId _value = defaultIssueLocation)
+    {
+        defaultIssueLocation = _value;
+        return defaultIssueLocation;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmDefaultReceiptLocation</Name>
+				<Source><![CDATA[
+
+    /// <summary>The warehouse master's default receipt location - the bin the app uses unless another is scanned.</summary>
+    [DataMemberAttribute('DefaultReceiptLocation')]
+    public WMSLocationId parmDefaultReceiptLocation(WMSLocationId _value = defaultReceiptLocation)
+    {
+        defaultReceiptLocation = _value;
+        return defaultReceiptLocation;
     }
 ]]></Source>
 			</Method>

@@ -174,29 +174,29 @@ public class HSMobileOpsLineClaim extends common
 			i:type="AxTableFieldString">
 			<Name>ProcessType</Name>
 			<Label>Process</Label>
-			<StringSize>30</StringSize>
 			<Mandatory>Yes</Mandatory>
+			<StringSize>30</StringSize>
 		</AxTableField>
 		<AxTableField xmlns=""
 			i:type="AxTableFieldString">
 			<Name>SourceId</Name>
-			<Label>Order</Label>
 			<HelpText>Purchase order or transfer order number.</HelpText>
-			<StringSize>40</StringSize>
+			<Label>Order</Label>
 			<Mandatory>Yes</Mandatory>
+			<StringSize>40</StringSize>
 		</AxTableField>
 		<AxTableField xmlns=""
 			i:type="AxTableFieldReal">
 			<Name>LineNumber</Name>
-			<Label>Line</Label>
 			<ExtendedDataType>LineNum</ExtendedDataType>
+			<Label>Line</Label>
 			<Mandatory>Yes</Mandatory>
 		</AxTableField>
 		<AxTableField xmlns=""
 			i:type="AxTableFieldString">
 			<Name>ClaimedByUserName</Name>
-			<Label>Claimed by</Label>
 			<ExtendedDataType>HSMobileOpsUserName</ExtendedDataType>
+			<Label>Claimed by</Label>
 		</AxTableField>
 		<AxTableField xmlns=""
 			i:type="AxTableFieldString">
@@ -240,6 +240,7 @@ public class HSMobileOpsLineClaim extends common
 		</AxTableIndex>
 		<AxTableIndex>
 			<Name>ExpiryIdx</Name>
+			<AllowDuplicates>Yes</AllowDuplicates>
 			<Fields>
 				<AxTableIndexField>
 					<DataField>ClaimExpiresUtc</DataField>

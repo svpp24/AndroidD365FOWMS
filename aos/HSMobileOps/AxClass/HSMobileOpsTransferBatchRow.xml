@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsTransferBatchRow</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// A batch and its quantity on a transfer line - see HSMobileOpsTransferLineContract.parmShippedBatches.
+/// </summary>
+[DataContractAttribute]
+class HSMobileOpsTransferBatchRow
+{
+    InventBatchId batchId;
+    InventQty     qty;
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmBatchId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('BatchId')]
+    public InventBatchId parmBatchId(InventBatchId _value = batchId)
+    {
+        batchId = _value;
+        return batchId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmQty</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Qty')]
+    public InventQty parmQty(InventQty _value = qty)
+    {
+        qty = _value;
+        return qty;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

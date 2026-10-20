@@ -1,0 +1,121 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsTransferSummaryRow</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// One open transfer order. Direction is OUT when it ships from the requested warehouse, IN when it is bound for it.
+/// </summary>
+[DataContractAttribute]
+class HSMobileOpsTransferSummaryRow
+{
+    str        transferId;
+    str        fromWarehouseId;
+    str        toWarehouseId;
+    str        status;
+    str        shipDate;
+    str        receiveDate;
+    int        lineCount;
+    str        direction;
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmTransferId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('TransferId')]
+    public str parmTransferId(str _value = transferId)
+    {
+        transferId = _value;
+        return transferId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmFromWarehouseId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('FromWarehouseId')]
+    public str parmFromWarehouseId(str _value = fromWarehouseId)
+    {
+        fromWarehouseId = _value;
+        return fromWarehouseId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmToWarehouseId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ToWarehouseId')]
+    public str parmToWarehouseId(str _value = toWarehouseId)
+    {
+        toWarehouseId = _value;
+        return toWarehouseId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmStatus</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Status')]
+    public str parmStatus(str _value = status)
+    {
+        status = _value;
+        return status;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmShipDate</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ShipDate')]
+    public str parmShipDate(str _value = shipDate)
+    {
+        shipDate = _value;
+        return shipDate;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmReceiveDate</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ReceiveDate')]
+    public str parmReceiveDate(str _value = receiveDate)
+    {
+        receiveDate = _value;
+        return receiveDate;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmLineCount</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('LineCount')]
+    public int parmLineCount(int _value = lineCount)
+    {
+        lineCount = _value;
+        return lineCount;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmDirection</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Direction')]
+    public str parmDirection(str _value = direction)
+    {
+        direction = _value;
+        return direction;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

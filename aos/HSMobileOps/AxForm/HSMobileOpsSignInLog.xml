@@ -1,0 +1,298 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxForm xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns="Microsoft.Dynamics.AX.Metadata.V6">
+	<Name>HSMobileOpsSignInLog</Name>
+	<SourceCode>
+		<Methods xmlns="">
+			<Method>
+				<Name>classDeclaration</Name>
+				<Source><![CDATA[
+/// <summary>
+/// Worker sign-in history - see HSMobileOpsSignInLog. Read-only: every row comes from a handheld.
+/// Newest first.
+/// </summary>
+[Form]
+public class HSMobileOpsSignInLog extends FormRun
+{
+}
+]]></Source>
+			</Method>
+			<Method>
+				<Name>init</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Newest sessions first.
+    /// </summary>
+    public void init()
+    {
+        super();
+        HSMobileOpsSignInLog_ds.queryBuildDataSource().addSortField(fieldNum(HSMobileOpsSignInLog, SignInUtc), SortOrder::Descending);
+    }
+]]></Source>
+			</Method>
+		</Methods>
+		<DataSources xmlns="" />
+		<DataControls xmlns="" />
+		<Members xmlns="" />
+	</SourceCode>
+	<DataSources>
+		<AxFormDataSource xmlns="">
+			<Name>HSMobileOpsSignInLog</Name>
+			<Table>HSMobileOpsSignInLog</Table>
+			<Fields>
+				<AxFormDataSourceField>
+					<AllowAdd>No</AllowAdd>
+					<AllowEdit>No</AllowEdit>
+					<DataField>UserName</DataField>
+				</AxFormDataSourceField>
+				<AxFormDataSourceField>
+					<AllowAdd>No</AllowAdd>
+					<AllowEdit>No</AllowEdit>
+					<DataField>SignInUtc</DataField>
+				</AxFormDataSourceField>
+				<AxFormDataSourceField>
+					<AllowAdd>No</AllowAdd>
+					<AllowEdit>No</AllowEdit>
+					<DataField>SignOutUtc</DataField>
+				</AxFormDataSourceField>
+				<AxFormDataSourceField>
+					<AllowAdd>No</AllowAdd>
+					<AllowEdit>No</AllowEdit>
+					<DataField>DurationText</DataField>
+				</AxFormDataSourceField>
+				<AxFormDataSourceField>
+					<AllowAdd>No</AllowAdd>
+					<AllowEdit>No</AllowEdit>
+					<DataField>DurationMinutes</DataField>
+				</AxFormDataSourceField>
+				<AxFormDataSourceField>
+					<AllowAdd>No</AllowAdd>
+					<AllowEdit>No</AllowEdit>
+					<DataField>EndReason</DataField>
+				</AxFormDataSourceField>
+				<AxFormDataSourceField>
+					<AllowAdd>No</AllowAdd>
+					<AllowEdit>No</AllowEdit>
+					<DataField>SignedInOffline</DataField>
+				</AxFormDataSourceField>
+				<AxFormDataSourceField>
+					<AllowAdd>No</AllowAdd>
+					<AllowEdit>No</AllowEdit>
+					<DataField>WarehouseId</DataField>
+				</AxFormDataSourceField>
+				<AxFormDataSourceField>
+					<AllowAdd>No</AllowAdd>
+					<AllowEdit>No</AllowEdit>
+					<DataField>CompanyId</DataField>
+				</AxFormDataSourceField>
+				<AxFormDataSourceField>
+					<AllowAdd>No</AllowAdd>
+					<AllowEdit>No</AllowEdit>
+					<DataField>DeviceName</DataField>
+				</AxFormDataSourceField>
+				<AxFormDataSourceField>
+					<AllowAdd>No</AllowAdd>
+					<AllowEdit>No</AllowEdit>
+					<DataField>DeviceId</DataField>
+				</AxFormDataSourceField>
+				<AxFormDataSourceField>
+					<AllowAdd>No</AllowAdd>
+					<AllowEdit>No</AllowEdit>
+					<DataField>AppVersionName</DataField>
+				</AxFormDataSourceField>
+				<AxFormDataSourceField>
+					<AllowAdd>No</AllowAdd>
+					<AllowEdit>No</AllowEdit>
+					<DataField>SessionId</DataField>
+				</AxFormDataSourceField>
+			</Fields>
+			<ReferencedDataSources />
+			<AllowCreate>No</AllowCreate>
+			<AllowDelete>No</AllowDelete>
+			<AllowEdit>No</AllowEdit>
+			<InsertIfEmpty>No</InsertIfEmpty>
+			<DataSourceLinks />
+			<DerivedDataSources />
+		</AxFormDataSource>
+	</DataSources>
+	<Design>
+		<Caption xmlns="">Worker sign-in history</Caption>
+		<DataSource xmlns="">HSMobileOpsSignInLog</DataSource>
+		<Pattern xmlns="">SimpleList</Pattern>
+		<PatternVersion xmlns="">1.1</PatternVersion>
+		<Style xmlns="">SimpleList</Style>
+		<Controls xmlns="">
+			<AxFormControl xmlns=""
+				i:type="AxFormActionPaneControl">
+				<Name>ActionPane</Name>
+				<Type>ActionPane</Type>
+				<FormControlExtension
+					i:nil="true" />
+				<Controls />
+				<AlignChild>No</AlignChild>
+				<AlignChildren>No</AlignChildren>
+				<ArrangeMethod>Vertical</ArrangeMethod>
+			</AxFormControl>
+			<AxFormControl xmlns=""
+				i:type="AxFormGroupControl">
+				<Name>CustomFilterGroup</Name>
+				<Pattern>CustomAndQuickFilters</Pattern>
+				<PatternVersion>1.1</PatternVersion>
+				<Type>Group</Type>
+				<WidthMode>SizeToAvailable</WidthMode>
+				<FormControlExtension
+					i:nil="true" />
+				<Controls>
+					<AxFormControl>
+						<Name>QuickFilterControl</Name>
+						<FormControlExtension>
+							<Name>QuickFilterControl</Name>
+							<ExtensionComponents />
+							<ExtensionProperties>
+								<AxFormControlExtensionProperty>
+									<Name>targetControlName</Name>
+									<Type>String</Type>
+									<Value>Grid</Value>
+								</AxFormControlExtensionProperty>
+								<AxFormControlExtensionProperty>
+									<Name>placeholderText</Name>
+									<Type>String</Type>
+								</AxFormControlExtensionProperty>
+								<AxFormControlExtensionProperty>
+									<Name>defaultColumnName</Name>
+									<Type>String</Type>
+									<Value>Grid_UserName</Value>
+								</AxFormControlExtensionProperty>
+							</ExtensionProperties>
+						</FormControlExtension>
+					</AxFormControl>
+				</Controls>
+				<ArrangeMethod>HorizontalLeft</ArrangeMethod>
+				<FrameType>None</FrameType>
+				<Style>CustomFilter</Style>
+				<ViewEditMode>Edit</ViewEditMode>
+			</AxFormControl>
+			<AxFormControl xmlns=""
+				i:type="AxFormGridControl">
+				<Name>Grid</Name>
+				<AllowEdit>No</AllowEdit>
+				<Type>Grid</Type>
+				<FormControlExtension
+					i:nil="true" />
+				<Controls>
+							<AxFormControl xmlns=""
+								i:type="AxFormStringControl">
+								<Name>Grid_UserName</Name>
+								<Type>String</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<DataField>UserName</DataField>
+								<DataSource>HSMobileOpsSignInLog</DataSource>
+							</AxFormControl>
+							<AxFormControl xmlns=""
+								i:type="AxFormDateTimeControl">
+								<Name>Grid_SignInUtc</Name>
+								<Type>DateTime</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<DataField>SignInUtc</DataField>
+								<DataSource>HSMobileOpsSignInLog</DataSource>
+							</AxFormControl>
+							<AxFormControl xmlns=""
+								i:type="AxFormDateTimeControl">
+								<Name>Grid_SignOutUtc</Name>
+								<Type>DateTime</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<DataField>SignOutUtc</DataField>
+								<DataSource>HSMobileOpsSignInLog</DataSource>
+							</AxFormControl>
+							<AxFormControl xmlns=""
+								i:type="AxFormStringControl">
+								<Name>Grid_DurationText</Name>
+								<Type>String</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<DataField>DurationText</DataField>
+								<DataSource>HSMobileOpsSignInLog</DataSource>
+							</AxFormControl>
+							<AxFormControl xmlns=""
+								i:type="AxFormRealControl">
+								<Name>Grid_DurationMinutes</Name>
+								<Type>Real</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<DataField>DurationMinutes</DataField>
+								<DataSource>HSMobileOpsSignInLog</DataSource>
+							</AxFormControl>
+							<AxFormControl xmlns=""
+								i:type="AxFormStringControl">
+								<Name>Grid_EndReason</Name>
+								<Type>String</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<DataField>EndReason</DataField>
+								<DataSource>HSMobileOpsSignInLog</DataSource>
+							</AxFormControl>
+							<AxFormControl xmlns=""
+								i:type="AxFormCheckBoxControl">
+								<Name>Grid_SignedInOffline</Name>
+								<Type>CheckBox</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<DataField>SignedInOffline</DataField>
+								<DataSource>HSMobileOpsSignInLog</DataSource>
+							</AxFormControl>
+							<AxFormControl xmlns=""
+								i:type="AxFormStringControl">
+								<Name>Grid_WarehouseId</Name>
+								<Type>String</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<DataField>WarehouseId</DataField>
+								<DataSource>HSMobileOpsSignInLog</DataSource>
+							</AxFormControl>
+							<AxFormControl xmlns=""
+								i:type="AxFormStringControl">
+								<Name>Grid_CompanyId</Name>
+								<Type>String</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<DataField>CompanyId</DataField>
+								<DataSource>HSMobileOpsSignInLog</DataSource>
+							</AxFormControl>
+							<AxFormControl xmlns=""
+								i:type="AxFormStringControl">
+								<Name>Grid_DeviceName</Name>
+								<Type>String</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<DataField>DeviceName</DataField>
+								<DataSource>HSMobileOpsSignInLog</DataSource>
+							</AxFormControl>
+							<AxFormControl xmlns=""
+								i:type="AxFormStringControl">
+								<Name>Grid_DeviceId</Name>
+								<Type>String</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<DataField>DeviceId</DataField>
+								<DataSource>HSMobileOpsSignInLog</DataSource>
+							</AxFormControl>
+							<AxFormControl xmlns=""
+								i:type="AxFormStringControl">
+								<Name>Grid_AppVersionName</Name>
+								<Type>String</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<DataField>AppVersionName</DataField>
+								<DataSource>HSMobileOpsSignInLog</DataSource>
+							</AxFormControl>
+				</Controls>
+				<DataSource>HSMobileOpsSignInLog</DataSource>
+				<Style>Tabular</Style>
+			</AxFormControl>
+		</Controls>
+	</Design>
+	<Parts />
+</AxForm>

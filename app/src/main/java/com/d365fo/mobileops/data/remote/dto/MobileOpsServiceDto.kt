@@ -68,6 +68,9 @@ data class PurchLineServiceDto(
     @SerialName("LineNumber") val lineNumber: Double = 0.0,
     @SerialName("ItemId") val itemId: String = "",
     @SerialName("ItemName") val itemName: String = "",
+    /** The item's warehouse mobile device description lines (WHSInventTable.RFDescription1/2). */
+    @SerialName("MobileDescription1") val mobileDescription1: String = "",
+    @SerialName("MobileDescription2") val mobileDescription2: String = "",
     @SerialName("PurchUnit") val purchUnit: String = "",
     @SerialName("InventUnit") val inventUnit: String = "",
     @SerialName("OrderedQty") val orderedQty: Double = 0.0,

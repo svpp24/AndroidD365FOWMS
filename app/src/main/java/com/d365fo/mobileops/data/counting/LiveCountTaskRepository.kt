@@ -59,8 +59,13 @@ class LiveCountTaskRepository @Inject constructor(
         return result.toClaimOutcome(fallbackRange = range)
     }
 
-    override suspend fun heartbeat(journalId: String, claimToken: String): ClaimOutcome =
-        errorMapper.safeCall { api.heartbeatClaim(tokenRequest(journalId, claimToken)) }.toClaimOutcome(null)
+    override suspend fun heartbeat(journalId: String, claimToken: String): ClaimOutcome {
+        // The claim is this user's on this device: with nobody signed in (after an update, before
+        // sign-in) D365FO would not recognise the holder and the claim would read as lost.
+        // Not sent - the claim only lapses if nobody signs in before it expires.
+        if (userId().isBlank()) return ClaimOutcome.Unreachable("no worker signed in")
+        return errorMapper.safeCall { api.heartbeatClaim(tokenRequest(journalId, claimToken)) }.toClaimOutcome(null)
+    }
 
     override suspend fun release(journalId: String, claimToken: String): Boolean {
         val result = errorMapper.safeCall { api.releaseJournal(tokenRequest(journalId, claimToken)) }
@@ -265,9 +270,9 @@ class LiveCountTaskRepository @Inject constructor(
                     ClaimOutcome.Granted(
                         claimToken = token,
                         claimedBy = body.claimedBy?.takeIf { it.isNotBlank() } ?: userId(),
-                        rangeId = body.rangeId ?: fallbackRange?.rangeId,
-                        locationFrom = body.locationFrom ?: fallbackRange?.locationFrom,
-                        locationTo = body.locationTo ?: fallbackRange?.locationTo,
+                        rangeId = body.rangeId?.takeIf { it.isNotBlank() } ?: fallbackRange?.rangeId,
+                        locationFrom = body.locationFrom?.takeIf { it.isNotBlank() } ?: fallbackRange?.locationFrom,
+                        locationTo = body.locationTo?.takeIf { it.isNotBlank() } ?: fallbackRange?.locationTo,
                         expiresAt = Formatters.serviceDateTimeToEpochMillis(body.expiresUtc),
                         heartbeatSeconds = body.heartbeatSeconds,
                     )

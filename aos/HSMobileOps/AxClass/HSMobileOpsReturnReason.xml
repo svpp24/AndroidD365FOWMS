@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsReturnReason</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// One return reason code (ReturnReasonCode) for purchase returns on the handheld.
+/// </summary>
+[DataContractAttribute]
+class HSMobileOpsReturnReason
+{
+    str code;
+    str description;
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmCode</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Code')]
+    public str parmCode(str _value = code)
+    {
+        code = _value;
+        return code;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmDescription</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Description')]
+    public str parmDescription(str _value = description)
+    {
+        description = _value;
+        return description;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

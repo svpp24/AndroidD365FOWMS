@@ -46,12 +46,19 @@ data class RegisterDeviceRequestBody(
     @SerialName("Platform") val platform: String = "",
     @SerialName("PlatformVersion") val platformVersion: String = "",
     @SerialName("AppVersionName") val appVersionName: String = "",
+    /** A Play Integrity Standard API token from [PlayIntegrityTokenProvider], or null if one
+     *  could not be obtained - AOS treats a missing token as an UNVERIFIED integrity verdict,
+     *  not a hard failure, see `HSMobileOpsLicense::verifyWithAttestation`. */
+    @SerialName("IntegrityToken") val integrityToken: String? = null,
 )
 
 @Serializable
 data class RegisterDeviceServiceResponse(
     @SerialName("Success") val success: Boolean = false,
-    /** NO_LICENSE, LICENSE_INVALID, LICENSE_EXPIRED or DEVICE_LIMIT_REACHED. */
+    /** NO_LICENSE, LICENSE_INVALID, LICENSE_EXPIRED, DEVICE_LIMIT_REACHED, LICENSE_REVOKED or
+     *  INTEGRITY_FAILED - the last two only ever come from the cloud/attestation check layered
+     *  on top of the local certificate/license chain, see `HSMobileOpsLicense::
+     *  verifyWithAttestation`. */
     @SerialName("ErrorCode") val errorCode: String? = null,
     @SerialName("Message") val message: String? = null,
 )

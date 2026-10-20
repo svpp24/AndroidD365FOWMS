@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsSearchResponse</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// search result. ItemId / ItemName are set when the query is an item (number or barcode); Hits are the orders and journals found.
+/// </summary>
+[DataContractAttribute]
+class HSMobileOpsSearchResponse
+{
+    boolean    success;
+    str        errorCode;
+    str        itemId;
+    str        itemName;
+    str        unitId;
+    List       hits;
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmSuccess</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Success')]
+    public boolean parmSuccess(boolean _value = success)
+    {
+        success = _value;
+        return success;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmErrorCode</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ErrorCode')]
+    public str parmErrorCode(str _value = errorCode)
+    {
+        errorCode = _value;
+        return errorCode;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmItemId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ItemId')]
+    public str parmItemId(str _value = itemId)
+    {
+        itemId = _value;
+        return itemId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmItemName</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ItemName')]
+    public str parmItemName(str _value = itemName)
+    {
+        itemName = _value;
+        return itemName;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmUnitId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('UnitId')]
+    public str parmUnitId(str _value = unitId)
+    {
+        unitId = _value;
+        return unitId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmHits</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Hits'),
+     ['DataCollectionAttribute(Types::Class, classStr(HSMobileOpsSearchHitRow))']]
+    public List parmHits(List _value = hits)
+    {
+        hits = _value;
+        return hits;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

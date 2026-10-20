@@ -57,10 +57,26 @@ fun TextEntryScreen(
     initialValue: String = "",
     keyboardType: KeyboardType = KeyboardType.Text,
     showNumericKeypad: Boolean = false,
+    /** A one-tap answer under the keypad, e.g. "Receive all outstanding (2)" to "2". */
+    quickFillLabel: String? = null,
+    quickFillValue: String? = null,
+    /**
+     * Why a value cannot be submitted, or null when it can. A refusal is shown under the field
+     * and the screen stays open - the worker corrects the number where they typed it.
+     */
+    validate: ((String) -> String?)? = null,
+    /** Shown under the keypad - the unit choices of the quantity step (1 Pack = 48 InsUnit). */
+    keypadExtras: (@Composable () -> Unit)? = null,
     onBack: () -> Unit,
     onSubmit: (String) -> Unit,
 ) {
     var entry by remember { mutableStateOf(initialValue) }
+    var problem by remember { mutableStateOf<String?>(null) }
+    val accept: (String) -> Unit = { value ->
+        val refused = validate?.invoke(value)
+        problem = refused
+        if (refused == null) onSubmit(value)
+    }
     val focusRequester = remember { FocusRequester() }
     val keyboardController = LocalSoftwareKeyboardController.current
 
@@ -73,7 +89,7 @@ fun TextEntryScreen(
     }
 
     val submit = {
-        if (entry.isNotBlank()) onSubmit(entry.trim())
+        if (entry.isNotBlank()) accept(entry.trim())
     }
 
     Scaffold(
@@ -106,7 +122,7 @@ fun TextEntryScreen(
 
             OutlinedTextField(
                 value = entry,
-                onValueChange = { entry = it },
+                onValueChange = { entry = it; problem = null },
                 readOnly = showNumericKeypad,
                 singleLine = true,
                 textStyle = if (keyboardType == KeyboardType.Decimal) {
@@ -121,6 +137,13 @@ fun TextEntryScreen(
                     .heightIn(min = 64.dp)
                     .focusRequester(focusRequester),
             )
+            problem?.let {
+                Text(
+                    text = it,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
 
             // The keyboard's own Done/OK action submits - see keyboardActions above - so there
             // is no separate Confirm button for plain typing, matching the reference app's own
@@ -130,16 +153,25 @@ fun TextEntryScreen(
             if (showNumericKeypad) {
                 NumericKeypad(
                     enabled = true,
-                    onDigit = { d -> entry += d },
-                    onDecimal = { if (!entry.contains('.')) entry = if (entry.isEmpty()) "0." else "$entry." },
-                    onBackspace = { if (entry.isNotEmpty()) entry = entry.dropLast(1) },
+                    onDigit = { d -> entry += d; problem = null },
+                    onDecimal = { if (!entry.contains('.')) entry = if (entry.isEmpty()) "0." else "$entry."; problem = null },
+                    onBackspace = { if (entry.isNotEmpty()) entry = entry.dropLast(1); problem = null },
                 )
                 Button(
                     onClick = submit,
                     enabled = entry.isNotBlank(),
-                    modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
+                    modifier = Modifier.fillMaxWidth().heightIn(min = WarehouseDimens.MinTouchTarget),
                 ) {
                     Text("Confirm")
+                }
+                keypadExtras?.invoke()
+                if (quickFillLabel != null && quickFillValue != null) {
+                    SquareOutlinedButton(
+                        onClick = { accept(quickFillValue) },
+                        modifier = Modifier.fillMaxWidth().heightIn(min = WarehouseDimens.MinTouchTarget),
+                    ) {
+                        Text(quickFillLabel)
+                    }
                 }
             }
         }

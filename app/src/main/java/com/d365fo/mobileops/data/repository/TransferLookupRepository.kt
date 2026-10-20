@@ -90,6 +90,8 @@ class TransferLookupRepository @Inject constructor(
                         linesInline = body.linesIncluded,
                         lines = body.lines.map { it.toDomain() },
                         requireLocationCapture = body.requireLocationCapture,
+                        defaultIssueLocation = body.defaultIssueLocation.ifBlank { null },
+                        defaultReceiptLocation = body.defaultReceiptLocation.ifBlank { null },
                     ),
                 )
             }
@@ -154,4 +156,8 @@ private fun TransferLineDto.toDomain(): TransferOrderLine = TransferOrderLine(
     locationRequired = locationRequired,
     rules = com.d365fo.mobileops.domain.model.DimensionRules(batchMandatory, serialMandatory, locationMandatory, serialPerUnit),
     units = units.toItemUnits(),
+    shippedBatches = shippedBatches
+        .filter { it.batchId.isNotBlank() }
+        .map { com.d365fo.mobileops.domain.model.ShippedBatch(it.batchId, BigDecimal.valueOf(it.qty)) },
+    lineBatchId = lineBatchId?.takeIf { it.isNotBlank() },
 )

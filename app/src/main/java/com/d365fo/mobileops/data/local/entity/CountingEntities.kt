@@ -197,6 +197,11 @@ data class CountExceptionEntity(
     val capturedAt: Long,
     val sentAt: Long? = null,
     val sendError: String? = null,
+    /** The variant found, for an item with product dimensions (14 Oct). */
+    val configId: String? = null,
+    val sizeId: String? = null,
+    val colorId: String? = null,
+    val styleId: String? = null,
 )
 
 /** A location the counter confirmed empty: every line there counted as zero, and who said so. */

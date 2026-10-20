@@ -140,9 +140,9 @@ class CountingJournalRepository @Inject constructor(
                                 CountClaimInfo(
                                     claimedBy = claim.claimedBy.orEmpty(),
                                     deviceId = claim.deviceId,
-                                    rangeId = claim.rangeId,
-                                    locationFrom = claim.locationFrom,
-                                    locationTo = claim.locationTo,
+                                    rangeId = claim.rangeId?.takeIf { it.isNotBlank() },
+                                    locationFrom = claim.locationFrom?.takeIf { it.isNotBlank() },
+                                    locationTo = claim.locationTo?.takeIf { it.isNotBlank() },
                                     expiresAt = Formatters.serviceDateTimeToEpochMillis(claim.expiresUtc),
                                 )
                             },

@@ -9,6 +9,7 @@ import com.d365fo.mobileops.data.remote.dto.RegisterDeviceRequestBody
 import com.d365fo.mobileops.data.remote.dto.RegisterDeviceServiceRequest
 import com.d365fo.mobileops.data.remote.error.D365ErrorMapper
 import com.d365fo.mobileops.data.security.CompanyProvider
+import com.d365fo.mobileops.data.security.PlayIntegrityTokenProvider
 import com.d365fo.mobileops.data.security.SecureStore
 import com.d365fo.mobileops.data.security.license.CertificatePayload
 import com.d365fo.mobileops.data.security.license.LicenseCrypto
@@ -52,7 +53,11 @@ sealed interface LicenseState {
  * 4. Check the license's customerId/tenantId match the certificate's, and that it hasn't expired.
  * 5. Check neither this device's own clock nor the server's returned clock is earlier than the
  *    last trusted time this device has ever seen - a rollback in either direction is rejected.
- * 6. Call `HSMobileOpsLicenseSvc/registerDevice` - the server-enforced device-limit gate.
+ * 6. Call `HSMobileOpsLicenseSvc/registerDevice` - the server-enforced device-limit gate. AOS
+ *    now also runs a live revocation + [PlayIntegrityTokenProvider] attestation check behind this
+ *    same call (`HSMobileOpsLicense::verifyWithAttestation`) - this repository does not need to
+ *    know that happened, it just reads whatever ErrorCode/Message comes back, same as any other
+ *    failure here.
  * 7. On full success, cache the validation for the offline grace period.
  *
  * **Only a genuine connectivity failure (steps 2 or 6 not reachable at all) falls back to the
@@ -66,6 +71,7 @@ class LicenseRepository @Inject constructor(
     private val errorMapper: D365ErrorMapper,
     private val companyProvider: CompanyProvider,
     private val secureStore: SecureStore,
+    private val integrityTokenProvider: PlayIntegrityTokenProvider,
 ) {
 
     private val _state = MutableStateFlow<LicenseState>(LicenseState.Checking)
@@ -89,6 +95,12 @@ class LicenseRepository @Inject constructor(
 
     /** The full per-launch chain described in the class doc. Updates [state] and returns it. */
     suspend fun validate(): LicenseState {
+        if (!com.d365fo.mobileops.BuildConfig.LICENSE_CHECK) {
+            // Built with LICENSE_CHECK=false - see app/build.gradle.kts. Never for the fleet.
+            Timber.w("license check skipped: this build has LICENSE_CHECK=false")
+            _state.value = LicenseState.Ok
+            return LicenseState.Ok
+        }
         _state.value = LicenseState.Checking
         val result = runCatching { validateInternal() }
             .getOrElse {
@@ -170,7 +182,10 @@ class LicenseRepository @Inject constructor(
             return LicenseState.Blocked("This app's license expired on ${licensePayload.expiryUtc}. Contact your administrator.")
         }
 
-        // Step 6.
+        // Step 6. The Play Integrity token is best-effort - a null here still calls registerDevice,
+        // AOS just sees it as an UNVERIFIED integrity verdict rather than a reason to fail this
+        // whole call. See PlayIntegrityTokenProvider's own "never throws" doc comment.
+        val integrityToken = integrityTokenProvider.requestToken()
         val registerResponse = when (
             val result = errorMapper.safeCall {
                 service.registerDevice(
@@ -183,6 +198,7 @@ class LicenseRepository @Inject constructor(
                             platform = "Android",
                             platformVersion = Build.VERSION.RELEASE.orEmpty(),
                             appVersionName = BuildConfig.VERSION_NAME,
+                            integrityToken = integrityToken,
                         ),
                     ),
                 )

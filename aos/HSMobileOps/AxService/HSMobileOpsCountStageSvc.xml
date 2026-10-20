@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxService xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsCountStageSvc</Name>
+	<Class>HSMobileOpsCountStageService</Class>
+	<ExternalName>CountStageService</ExternalName>
+	<Namespace>http://schemas.hs.com/mobileops</Namespace>
+	<ServiceOperations>
+		<AxServiceOperation>
+			<Name>openStage</Name>
+			<Method>openStage</Method>
+		</AxServiceOperation>
+		<AxServiceOperation>
+			<Name>submitLines</Name>
+			<Method>submitLines</Method>
+		</AxServiceOperation>
+		<AxServiceOperation>
+			<Name>getStageMode</Name>
+			<Method>getStageMode</Method>
+		</AxServiceOperation>
+	</ServiceOperations>
+</AxService>

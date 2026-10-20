@@ -14,6 +14,7 @@ class HSMobileOpsPostRequest
     HcmPersonnelNumberId personnelNumber;
     str        deviceId;
     str        linesJson;
+    boolean    processNow;
 
 }
 ]]></Declaration>
@@ -157,6 +158,21 @@ class HSMobileOpsPostRequest
     {
         linesJson = _value;
         return linesJson;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmProcessNow</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Process the posting now, in this call, instead of leaving it Pending for the batch job (the app's Settings > Posting).
+    /// </summary>
+    [DataMemberAttribute('ProcessNow')]
+    public boolean parmProcessNow(boolean _value = processNow)
+    {
+        processNow = _value;
+        return processNow;
     }
 ]]></Source>
 			</Method>

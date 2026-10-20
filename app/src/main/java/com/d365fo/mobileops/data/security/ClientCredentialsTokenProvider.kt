@@ -21,32 +21,38 @@ import javax.inject.Singleton
  * [AccessToken.userPrincipalName] are always null for a token this class issues. Worker
  * identity in this app comes entirely from HSMobileOpsUser sign-in, never from this token.
  *
- * Restored (see [AuthTokenProviderRouter]) after device-code-only auth proved too much
- * operational friction to run with day to day - admin consent, the "Allow public client flows"
- * toggle, and slow AAD polling all had to be worked through live before a single API call could
- * be made. A fleet-wide secret has its own real cost (see the doc this class had before it was
- * briefly deleted: a rooted or backed-up handheld yields it), but that tradeoff is now the
- * device owner's explicit, informed choice rather than this app's only option.
+ * The app's only device credential - device-code sign-in was removed. The connection (and the
+ * secrets) arrive by scanning the connection QR code (see [ConnectionQr]).
+ *
+ * With several app registrations configured, [CredentialRouter] says which one this device uses
+ * right now, and a token is cached per registration, so moving off a throttled one and back
+ * needs no extra token requests.
  */
 @Singleton
 class ClientCredentialsTokenProvider @Inject constructor(
     private val api: AadTokenApi,
     private val connectionSettings: ConnectionSettings,
     private val json: Json,
+    private val router: CredentialRouter,
+    private val secureStore: SecureStore,
 ) : TokenProvider {
 
     private val refreshMutex = Mutex()
 
-    @Volatile
-    private var cached: AccessToken? = null
+    /** One token per client ID - see the class doc. */
+    private val cached = java.util.concurrent.ConcurrentHashMap<String, AccessToken>()
 
-    override fun cachedTokenOrNull(): AccessToken? = cached
+    private fun credential(): AppCredential =
+        router.current(connectionSettings.tenant.value.credentials, secureStore.deviceId())
+
+    override fun cachedTokenOrNull(): AccessToken? = cached[credential().clientId]
 
     override suspend fun acquireSilent(): NetworkResult<AccessToken> {
-        cached?.takeIf { !it.isExpiring() }?.let { return NetworkResult.Success(it) }
+        val app = credential()
+        cached[app.clientId]?.takeIf { !it.isExpiring() }?.let { return NetworkResult.Success(it) }
 
         return refreshMutex.withLock {
-            cached?.takeIf { !it.isExpiring() }?.let { return@withLock NetworkResult.Success(it) }
+            cached[app.clientId]?.takeIf { !it.isExpiring() }?.let { return@withLock NetworkResult.Success(it) }
 
             val config = connectionSettings.tenant.value
             val problem = config.credentialsError()
@@ -55,9 +61,20 @@ class ClientCredentialsTokenProvider @Inject constructor(
             val response = try {
                 api.clientCredentials(
                     tenantId = config.tenantId,
-                    clientId = config.clientId,
-                    clientSecret = config.clientSecret,
+                    clientId = app.clientId,
+                    clientSecret = app.clientSecret,
                     scope = "${config.resourceUrl.trimEnd('/')}/.default",
+                )
+            } catch (e: java.io.IOException) {
+                // No answer from Azure AD at all is a connection problem, not a credential one -
+                // the device may still work offline (offline sign-in, saved lookups).
+                Timber.w(e, "client-credentials token request: no connection")
+                return@withLock NetworkResult.Error(
+                    if (e is java.net.UnknownHostException || e is java.net.ConnectException) {
+                        AppFailure.Offline(e.message ?: "no connection")
+                    } else {
+                        AppFailure.Transient(e.message ?: "token request failed")
+                    },
                 )
             } catch (e: Throwable) {
                 Timber.e(e, "client-credentials token request threw")
@@ -80,17 +97,17 @@ class ClientCredentialsTokenProvider @Inject constructor(
                 userObjectId = null,
                 userPrincipalName = null,
             )
-            cached = token
+            cached[app.clientId] = token
             NetworkResult.Success(token)
         }
     }
 
     override suspend fun signOut() {
-        cached = null
+        cached.clear()
     }
 
     override fun invalidateCache() {
-        cached = null
+        cached.clear()
     }
 
     /** Reads and parses the error body exactly once - a second read on the same response fails. */

@@ -4,6 +4,26 @@
 	<AutoDeploy>Yes</AutoDeploy>
 	<Services>
 		<AxServiceGroupService>
+			<Name>HSMobileOpsSkuPageSvc</Name>
+			<Service>HSMobileOpsSkuPageSvc</Service>
+		</AxServiceGroupService>
+		<AxServiceGroupService>
+			<Name>HSMobileOpsSignInLogSvc</Name>
+			<Service>HSMobileOpsSignInLogSvc</Service>
+		</AxServiceGroupService>
+		<AxServiceGroupService>
+			<Name>HSMobileOpsMenuSvc</Name>
+			<Service>HSMobileOpsMenuSvc</Service>
+		</AxServiceGroupService>
+		<AxServiceGroupService>
+			<Name>HSMobileOpsSessionSvc</Name>
+			<Service>HSMobileOpsSessionSvc</Service>
+		</AxServiceGroupService>
+		<AxServiceGroupService>
+			<Name>HSMobileOpsCountStageSvc</Name>
+			<Service>HSMobileOpsCountStageSvc</Service>
+		</AxServiceGroupService>
+		<AxServiceGroupService>
 			<Name>HSMobileOpsReceivingSvc</Name>
 			<Service>HSMobileOpsReceivingSvc</Service>
 		</AxServiceGroupService>
@@ -36,10 +56,6 @@
 			<Service>HSMobileOpsCountSupervisorSvc</Service>
 		</AxServiceGroupService>
 		<AxServiceGroupService>
-			<Name>HSMobileOpsSkuSvc</Name>
-			<Service>HSMobileOpsSkuSvc</Service>
-		</AxServiceGroupService>
-		<AxServiceGroupService>
 			<Name>HSMobileOpsLicenseSvc</Name>
 			<Service>HSMobileOpsLicenseSvc</Service>
 		</AxServiceGroupService>
@@ -52,8 +68,24 @@
 			<Service>HSMobileOpsPurchListSvc</Service>
 		</AxServiceGroupService>
 		<AxServiceGroupService>
+			<Name>HSMobileOpsSearchSvc</Name>
+			<Service>HSMobileOpsSearchSvc</Service>
+		</AxServiceGroupService>
+		<AxServiceGroupService>
+			<Name>HSMobileOpsTransferListSvc</Name>
+			<Service>HSMobileOpsTransferListSvc</Service>
+		</AxServiceGroupService>
+		<AxServiceGroupService>
 			<Name>HSMobileOpsUserWarehouseSvc</Name>
 			<Service>HSMobileOpsUserWarehouseSvc</Service>
+		</AxServiceGroupService>
+		<AxServiceGroupService>
+			<Name>HSMobileOpsOrderCreateSvc</Name>
+			<Service>HSMobileOpsOrderCreateSvc</Service>
+		</AxServiceGroupService>
+		<AxServiceGroupService>
+			<Name>HSMobileOpsFeedbackSvc</Name>
+			<Service>HSMobileOpsFeedbackSvc</Service>
 		</AxServiceGroupService>
 		<AxServiceGroupService>
 			<Name>HSMobileOpsUnitSvc</Name>

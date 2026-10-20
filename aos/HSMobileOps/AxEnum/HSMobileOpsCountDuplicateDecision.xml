@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxEnum xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsCountDuplicateDecision</Name>
+	<Label>Duplicate decision</Label>
+	<HelpText>How the supervisor settled an item counted more than once: keep one count, add the counts together, or reject them for a recount.</HelpText>
+	<EnumValues>
+		<AxEnumValue>
+			<Name>None</Name>
+			<Label>Not decided</Label>
+			<Value>0</Value>
+		</AxEnumValue>
+		<AxEnumValue>
+			<Name>KeepThis</Name>
+			<Label>Keep one count</Label>
+			<Value>1</Value>
+		</AxEnumValue>
+		<AxEnumValue>
+			<Name>Sum</Name>
+			<Label>Add together</Label>
+			<Value>2</Value>
+		</AxEnumValue>
+		<AxEnumValue>
+			<Name>Reject</Name>
+			<Label>Rejected - recount</Label>
+			<Value>3</Value>
+		</AxEnumValue>
+	</EnumValues>
+</AxEnum>

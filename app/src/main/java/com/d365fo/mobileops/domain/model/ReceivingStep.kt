@@ -170,6 +170,12 @@ fun stepsFor(capture: ReceivingCapture): List<ReceivingStep> = buildList {
     add(ReceivingStep.ITEM)
     add(ReceivingStep.QUANTITY)
     val item = capture.item
+    // Batch (and a new batch's expiry) before the bin: it is read off the carton in hand, the
+    // bin only once the worker walks to put it away (feedback, 6 Oct 2026).
+    if (item?.batchRequired == true) {
+        add(ReceivingStep.BATCH)
+        if (capture.batchIsNew == true) add(ReceivingStep.BATCH_EXPIRY_DATE)
+    }
     // A line that already carries a location is always used as-is - see the class doc on
     // LOCATION. Only when it does not does the item's own tracking, combined with the
     // per-process fallback flag, decide whether to ask.
@@ -177,10 +183,6 @@ fun stepsFor(capture: ReceivingCapture): List<ReceivingStep> = buildList {
         (item == null || (item.locationRequired && capture.requireLocationCaptureFallback))
     ) {
         add(ReceivingStep.LOCATION)
-    }
-    if (item?.batchRequired == true) {
-        add(ReceivingStep.BATCH)
-        if (capture.batchIsNew == true) add(ReceivingStep.BATCH_EXPIRY_DATE)
     }
     if (item?.serialRequired == true) add(ReceivingStep.SERIAL)
     add(ReceivingStep.CONFIRM)

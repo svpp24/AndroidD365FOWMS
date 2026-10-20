@@ -71,4 +71,35 @@ class CountCaptureActionsTest {
             .isInstanceOf(UnexpectedItemResult.Invalid::class.java)
         assertThat(store.exceptions).isEmpty()
     }
+
+    @Test
+    fun `a scan of an item not on the journal adds a row of 1, and one more on the next scan`() = runTest {
+        val variant = com.d365fo.mobileops.domain.model.ProductVariant(configId = "C4")
+
+        assertThat(actions.addOneNotOnJournal("CNT-1", "Dm001", "AAC", variant, "001")).isEqualTo("1")
+        assertThat(actions.addOneNotOnJournal("CNT-1", "Dm001", "AAC", variant, "001")).isEqualTo("2")
+
+        val row = store.exceptions.single()
+        assertThat(row.quantity).isEqualTo("2")
+        assertThat(row.configId).isEqualTo("C4")
+        assertThat(row.locationId).isEqualTo("AAC")
+    }
+
+    @Test
+    fun `another variant or location of the same item is a row of its own`() = runTest {
+        actions.addOneNotOnJournal("CNT-1", "Dm001", "AAC", com.d365fo.mobileops.domain.model.ProductVariant(configId = "C4"), null)
+        actions.addOneNotOnJournal("CNT-1", "Dm001", "AAC", com.d365fo.mobileops.domain.model.ProductVariant(configId = "C5"), null)
+        actions.addOneNotOnJournal("CNT-1", "Dm001", "B-02", com.d365fo.mobileops.domain.model.ProductVariant(configId = "C4"), null)
+
+        assertThat(store.exceptions).hasSize(3)
+        assertThat(store.exceptions.map { it.quantity }.distinct()).containsExactly("1")
+    }
+
+    @Test
+    fun `an item that comes in variants is refused without the variant found`() = runTest {
+        val result = actions.addUnexpectedItem("CNT-1", "Dm001", "AAC", "1", null, null, null, null, variantRequired = true)
+
+        assertThat(result).isInstanceOf(UnexpectedItemResult.Invalid::class.java)
+        assertThat(store.exceptions).isEmpty()
+    }
 }

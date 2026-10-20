@@ -5,7 +5,7 @@ import androidx.hilt.work.HiltWorker
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import com.d365fo.mobileops.data.repository.SkuSyncRepository
-import com.d365fo.mobileops.util.NetworkResult
+import com.d365fo.mobileops.data.repository.SkuSyncStep
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 import timber.log.Timber
@@ -28,32 +28,36 @@ class SkuSyncWorker @AssistedInject constructor(
     @Assisted context: Context,
     @Assisted params: WorkerParameters,
     private val repository: SkuSyncRepository,
+    private val scheduler: com.d365fo.mobileops.data.sync.SyncScheduler,
 ) : CoroutineWorker(context, params) {
 
-    override suspend fun doWork(): Result {
-        return when (val result = repository.downloadAndImport()) {
-            is NetworkResult.Success -> {
-                Timber.i(
-                    "SKU sync complete: %d items, %d barcodes",
-                    result.data.itemCount,
-                    result.data.barcodeCount,
-                )
+    override suspend fun doWork(): Result =
+        // A step, not the whole sync: an export still running in D365FO is picked up again by a
+        // continuation a few minutes later - see SkuSyncRepository.runStep. Kept well inside
+        // WorkManager's ten-minute limit for one run.
+        when (val step = repository.runStep(RUN_BUDGET_MS)) {
+            is SkuSyncStep.Done -> {
+                step.summary?.let {
+                    Timber.i(
+                        "SKU sync complete (%s): %d items, %d barcodes, %d variants in %d s",
+                        if (it.full) "full" else "delta", it.itemCount, it.barcodeCount, it.variantCount, it.seconds,
+                    )
+                }
                 Result.success()
             }
-
-            is NetworkResult.Error -> {
-                Timber.w(
-                    "SKU sync failed: %s (retryable=%s)",
-                    result.failure.message,
-                    result.failure.retryable,
-                )
-                // Always retry on WorkManager's own backoff, never dead-letter - unlike a
-                // posting, there is no user-facing queue entry to abandon here, and a failed
-                // sync just means the cache stays exactly as fresh as it was before this run.
+            SkuSyncStep.Pending -> {
+                Timber.i("SKU sync: out of time part way - continuing shortly")
+                scheduler.scheduleSkuContinuation()
+                Result.success()
+            }
+            is SkuSyncStep.Failed -> {
+                Timber.w("SKU sync failed: %s", step.message)
+                // WorkManager's own backoff; the cache stays as fresh as it was.
                 Result.retry()
             }
-
-            NetworkResult.Loading -> Result.retry()
         }
+
+    private companion object {
+        const val RUN_BUDGET_MS = 7 * 60 * 1000L
     }
 }

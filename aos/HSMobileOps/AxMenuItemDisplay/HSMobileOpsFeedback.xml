@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxMenuItemDisplay xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsFeedback</Name>
+	<Label>Mobile feedback</Label>
+	<HelpText>Problems, ideas and questions sent from the handheld app, with a screenshot. Set a status and reply - the worker sees both in the app.</HelpText>
+	<Object>HSMobileOpsFeedback</Object>
+	<ObjectType>Form</ObjectType>
+</AxMenuItemDisplay>

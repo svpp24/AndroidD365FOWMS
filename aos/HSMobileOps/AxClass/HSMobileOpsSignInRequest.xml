@@ -15,6 +15,7 @@ class HSMobileOpsSignInRequest
     str        platform;
     str        platformVersion;
     str        appVersionName;
+    str        integrityToken;
 
 }
 ]]></Declaration>
@@ -152,6 +153,25 @@ class HSMobileOpsSignInRequest
     {
         appVersionName = _value;
         return appVersionName;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmIntegrityToken</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// A Play Integrity Standard API token from the calling device, or blank on an app build that
+    /// predates this field / a device that could not obtain one. See
+    /// HSMobileOpsLicense::verifyWithAttestation - a blank token comes back as an UNVERIFIED
+    /// integrity verdict, not a hard sign-in failure, exactly so older app builds keep working
+    /// during the rollout of this field.
+    /// </summary>
+    [DataMemberAttribute('IntegrityToken')]
+    public str parmIntegrityToken(str _value = integrityToken)
+    {
+        integrityToken = _value;
+        return integrityToken;
     }
 ]]></Source>
 			</Method>

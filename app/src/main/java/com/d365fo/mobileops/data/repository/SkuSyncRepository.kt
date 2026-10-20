@@ -1,273 +1,327 @@
 package com.d365fo.mobileops.data.repository
 
+import android.content.Context
 import com.d365fo.mobileops.data.local.dao.ItemDao
-import com.d365fo.mobileops.data.local.entity.BarcodeEntity
-import com.d365fo.mobileops.data.local.entity.ItemEntity
-import com.d365fo.mobileops.data.local.entity.TrackingRequirement
-import com.d365fo.mobileops.data.remote.api.BlobTransferService
-import com.d365fo.mobileops.data.remote.api.DmfGateway
 import com.d365fo.mobileops.data.remote.api.MobileOpsServiceApi
-import com.d365fo.mobileops.data.remote.dto.DmfExecutionStatus
-import com.d365fo.mobileops.data.remote.dto.ExecutionIdRequest
-import com.d365fo.mobileops.data.remote.dto.ExportToPackageRequest
-import com.d365fo.mobileops.data.remote.dto.SkuExportRequestBody
-import com.d365fo.mobileops.data.remote.dto.SkuExportServiceRequest
-import com.d365fo.mobileops.data.remote.dto.stringValue
+import com.d365fo.mobileops.data.remote.dto.SkuPageRequestBody
+import com.d365fo.mobileops.data.remote.dto.SkuPageServiceRequest
 import com.d365fo.mobileops.data.remote.error.D365ErrorMapper
 import com.d365fo.mobileops.data.security.CompanyProvider
-import com.d365fo.mobileops.util.AppFailure
-import com.d365fo.mobileops.util.Constants
-import com.d365fo.mobileops.util.DmfCsv
-import com.d365fo.mobileops.util.DmfPackage
 import com.d365fo.mobileops.util.NetworkResult
-import com.d365fo.mobileops.util.getCI
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import java.math.BigDecimal
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
-import java.util.UUID
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonArray
+import timber.log.Timber
 import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * Bulk item + barcode master data, for the offline SKU cache `ItemDao.resolveBarcode` reads —
- * the 1M+ SKU side of the offline-scaling plan. Called only from [SkuSyncWorker][com.d365fo.mobileops.data.sync.worker.SkuSyncWorker],
- * Wi-Fi+charging gated (see `SyncScheduler`).
+ * The offline item, barcode and variant cache - what a scan resolves against with no connection
+ * (`ItemDao.resolveBarcode`, the variant choice in order creation).
  *
- * **Same division of labour as [CountingJournalRepository]'s export path.**
- * `HSMobileOpsSkuSvc/exportSkuMaster` only creates the two DMF projects (item master, barcodes)
- * and returns their names; this repository drives the actual export itself via the public
- * `ExportToPackage`/`GetExecutionSummaryStatus`/`GetExportedPackageUrl` OData actions — the same
- * flow `CountingJournalRepository.startExport`/`pollExport` already use, just polled to
- * completion in one suspend call rather than exposed step-by-step, since there is no UI here to
- * show incremental progress to.
+ * Read from `HSMobileOpsSkuSvc/getSkuPage`, a page of [PAGE_SIZE] rows at a time, in key order
+ * from indexed tables, only the columns the handheld uses. It replaced a DMF export of the
+ * standard released-product entity, which took 6-7 minutes in D365FO for 18,495 items and
+ * redid all of it every day.
  *
- * **CSV mapping mirrors [Mappers.kt]'s live on-demand mapping exactly** (`ReleasedProductDto.toEntity`/
- * `ProductBarcodeDto.toEntity`), field for field, just reading the same fields out of a CSV row
- * instead of a JSON DTO — [getCI] handles the header-casing uncertainty every DMF CSV in this app
- * already carries (see `DmfPackage.kt`'s own doc comment).
+ * - **Delta, daily.** Only items and barcodes D365FO changed since the last sync (by its own
+ *   clock, with an overlap), and variants added since (by RecId - the variant table has no
+ *   modified date).
+ * - **Full, weekly** (and the first time): everything, then whatever the refresh did not see is
+ *   removed - deleted items, barcodes and variants, which a delta cannot see.
+ * - **Resumable.** The position (feed and last key) is kept after every page, so a sync stopped
+ *   by Android's time limit, a lost connection or the device being unplugged carries on where
+ *   it was - see [runStep].
+ * - **Gentle on both systems.** One page at a time with a pause between, each page written to
+ *   the database in one short transaction, never more than a page in memory.
  */
 @Singleton
 class SkuSyncRepository @Inject constructor(
     private val service: MobileOpsServiceApi,
-    private val dmf: DmfGateway,
-    private val blob: BlobTransferService,
     private val errorMapper: D365ErrorMapper,
     private val companyProvider: CompanyProvider,
     private val itemDao: ItemDao,
     private val ioDispatcher: CoroutineDispatcher,
+    @ApplicationContext private val context: Context,
 ) {
+    private val prefs = context.getSharedPreferences("sku_sync", Context.MODE_PRIVATE)
+
+    /** The app's memory in use now (Java heap + native), in bytes - sampled after each page. */
+    private fun memoryInUse(): Long {
+        val rt = Runtime.getRuntime()
+        return (rt.totalMemory() - rt.freeMemory()) + android.os.Debug.getNativeHeapAllocatedSize()
+    }
+
+    private fun notePeakMemory() {
+        val now = memoryInUse()
+        if (now > prefs.getLong(KEY_PEAK_MEMORY, 0L)) prefs.edit().putLong(KEY_PEAK_MEMORY, now).apply()
+    }
+
+    /** The last finished sync, kept for Settings and support - null before the first one. */
+    fun lastSummary(): SkuSyncSummary? {
+        val at = prefs.getLong(KEY_LAST_SUCCESS, 0L).takeIf { it > 0 } ?: return null
+        if (!prefs.contains(KEY_SUM_ITEMS)) return null
+        return SkuSyncSummary(
+            itemCount = prefs.getInt(KEY_SUM_ITEMS, 0),
+            barcodeCount = prefs.getInt(KEY_SUM_BARCODES, 0),
+            variantCount = prefs.getInt(KEY_SUM_VARIANTS, 0),
+            full = prefs.getBoolean(KEY_SUM_FULL, true),
+            seconds = prefs.getInt(KEY_SUM_SECONDS, 0),
+            activeSeconds = prefs.getInt(KEY_SUM_ACTIVE, 0),
+            peakMemoryBytes = prefs.getLong(KEY_SUM_PEAK, 0L),
+            storedBytes = prefs.getLong(KEY_SUM_STORED, 0L),
+            finishedAt = at,
+        )
+    }
+
+    /** One step at a time - the periodic run and a continuation must not both page. */
+    private val lock = Mutex()
 
     private fun company(): String =
         companyProvider()?.takeIf { it.isNotBlank() }?.lowercase().orEmpty()
 
-    /** DMF's legalEntityId, not lowercased like the AOS dataAreaId — see CountingJournalRepository's own note. */
-    private fun legalEntity(): String = companyProvider()?.takeIf { it.isNotBlank() }.orEmpty()
-
-    suspend fun downloadAndImport(): NetworkResult<SkuSyncSummary> = withContext(ioDispatcher) {
-        val scoped = errorMapper.safeCall {
-            service.exportSkuMaster(SkuExportServiceRequest(SkuExportRequestBody(company())))
-        }
-        val (itemGroup, barcodeGroup) = when (scoped) {
-            is NetworkResult.Error -> return@withContext scoped
-            NetworkResult.Loading -> return@withContext NetworkResult.Error(AppFailure.Fatal("unexpected Loading"))
-            is NetworkResult.Success -> {
-                val body = scoped.data
-                if (!body.success) {
-                    return@withContext NetworkResult.Error(
-                        AppFailure.BusinessRule(com.d365fo.mobileops.util.plainError(body.errorCode, "Couldn't prepare the item list"), body.errorCode),
-                    )
-                }
-                val items = body.itemDefinitionGroupName?.takeIf { it.isNotBlank() }
-                    ?: return@withContext NetworkResult.Error(
-                        AppFailure.Fatal("SKU export set up with no item project name"),
-                    )
-                val barcodes = body.barcodeDefinitionGroupName?.takeIf { it.isNotBlank() }
-                    ?: return@withContext NetworkResult.Error(
-                        AppFailure.Fatal("SKU export set up with no barcode project name"),
-                    )
-                items to barcodes
-            }
-        }
-
-        val itemBytes = when (val r = exportAndDownload(itemGroup)) {
-            is NetworkResult.Error -> return@withContext r
-            NetworkResult.Loading -> return@withContext NetworkResult.Error(AppFailure.Fatal("unexpected Loading"))
-            is NetworkResult.Success -> r.data
-        }
-        val barcodeBytes = when (val r = exportAndDownload(barcodeGroup)) {
-            is NetworkResult.Error -> return@withContext r
-            NetworkResult.Loading -> return@withContext NetworkResult.Error(AppFailure.Fatal("unexpected Loading"))
-            is NetworkResult.Success -> r.data
-        }
-
-        val itemTable = DmfCsv.parse(DmfPackage.unzip(itemBytes).dataFileBytes)
-        val barcodeTable = DmfCsv.parse(DmfPackage.unzip(barcodeBytes).dataFileBytes)
-
-        val items = itemTable.rows.mapNotNull { it.toItemEntity() }
-        val barcodes = barcodeTable.rows.mapNotNull { it.toBarcodeEntity() }
-
-        itemDao.upsertItemsChunked(items, Constants.SKU_SYNC_BATCH_SIZE)
-        itemDao.upsertBarcodesChunked(barcodes, Constants.SKU_SYNC_BATCH_SIZE)
-
-        NetworkResult.Success(SkuSyncSummary(itemCount = items.size, barcodeCount = barcodes.size))
-    }
-
     /**
-     * Triggers [definitionGroupId]'s export with a fresh execution id (RIS's own format, same as
-     * [CountingJournalRepository.startExport]) and polls it to a terminal state, returning the
-     * downloaded package bytes on success. Bounded to [MAX_POLL_ATTEMPTS] * [POLL_INTERVAL_MS] —
-     * about ten minutes per project — so a stuck export cannot pin [SkuSyncWorker] past
-     * WorkManager's own execution window; a run that times out here simply retries on the next
-     * scheduled tick rather than blocking forever.
+     * Pages through the feeds until done or [budgetMs] is spent. [SkuSyncStep.Pending] means
+     * stopped part way - the position is kept and the worker comes back for the rest.
      */
-    private suspend fun exportAndDownload(definitionGroupId: String): NetworkResult<ByteArray> {
-        val executionId = "$definitionGroupId-${EXECUTION_STAMP.format(Date())}-${UUID.randomUUID()}"
-        val started = errorMapper.safeCall {
-            dmf.exportToPackage(
-                ExportToPackageRequest(
-                    definitionGroupId = definitionGroupId,
-                    packageName = executionId,
-                    executionId = executionId,
-                    reExecute = false,
-                    legalEntityId = legalEntity(),
-                ),
-            )
-        }
-        when (started) {
-            is NetworkResult.Error -> return started
-            NetworkResult.Loading -> return NetworkResult.Error(AppFailure.Fatal("unexpected Loading"))
-            is NetworkResult.Success -> Unit
-        }
+    suspend fun runStep(budgetMs: Long): SkuSyncStep = withContext(ioDispatcher) {
+        lock.withLock {
+            val stepStarted = System.currentTimeMillis()
+            val deadline = stepStarted + budgetMs
+            fun addActive() = prefs.edit().putLong(KEY_ACTIVE_MS, prefs.getLong(KEY_ACTIVE_MS, 0L) + System.currentTimeMillis() - stepStarted).apply()
+            if (prefs.getLong(KEY_CYCLE_STARTED, 0L) == 0L) {
+                // Not again within the day - unless a feed gained a column (SCHEMA), which needs a
+                // full sync now: the guard used to come first and kept the variant names away.
+                if (prefs.getInt(KEY_SCHEMA, 0) >= SCHEMA &&
+                    System.currentTimeMillis() - prefs.getLong(KEY_LAST_SUCCESS, 0L) < MIN_CYCLE_INTERVAL_MS
+                ) {
+                    return@withLock SkuSyncStep.Done(null)
+                }
+                startCycle()
+            }
+            val full = prefs.getString(KEY_MODE, MODE_FULL) == MODE_FULL
 
-        repeat(MAX_POLL_ATTEMPTS) {
-            delay(POLL_INTERVAL_MS)
-
-            val status = errorMapper.safeCall { dmf.getExecutionSummaryStatus(ExecutionIdRequest(executionId)) }
-            when (status) {
-                is NetworkResult.Error -> return status
-                NetworkResult.Loading -> return NetworkResult.Error(AppFailure.Fatal("unexpected Loading"))
-                is NetworkResult.Success -> when (status.data.stringValue()) {
-                    DmfExecutionStatus.SUCCEEDED, DmfExecutionStatus.PARTIALLY_SUCCEEDED -> {
-                        val urlResult =
-                            errorMapper.safeCall { dmf.getExportedPackageUrl(ExecutionIdRequest(executionId)) }
-                        val url = when (urlResult) {
-                            is NetworkResult.Error -> return urlResult
-                            NetworkResult.Loading ->
-                                return NetworkResult.Error(AppFailure.Fatal("unexpected Loading"))
-                            is NetworkResult.Success -> urlResult.data.stringValue()?.takeIf { it.isNotBlank() }
-                                ?: return NetworkResult.Error(
-                                    AppFailure.Fatal("GetExportedPackageUrl returned no value"),
-                                )
-                        }
-                        return try {
-                            NetworkResult.Success(blob.download(url))
-                        } catch (e: Exception) {
-                            NetworkResult.Error(AppFailure.Transient(e.message ?: "package download failed"))
-                        }
+            while (true) {
+                val feedIndex = prefs.getInt(KEY_FEED, 0)
+                if (feedIndex >= FEEDS.size) break
+                val feed = FEEDS[feedIndex]
+                when (val r = pageThrough(feed, full, deadline)) {
+                    FeedResult.Finished -> {
+                        if (feed == FEED_VARIANTS) prefs.edit().putString(KEY_VARIANT_MAX, prefs.getString(KEY_AFTER, "0")).apply()
+                        val next = feedIndex + 1
+                        prefs.edit().putInt(KEY_FEED, next)
+                            .putString(KEY_AFTER, FEEDS.getOrNull(next)?.let { initialKey(it, full) }.orEmpty()).apply()
                     }
-
-                    DmfExecutionStatus.FAILED, DmfExecutionStatus.CANCELED ->
-                        return NetworkResult.Error(
-                            AppFailure.BusinessRule("SKU export failed for $definitionGroupId"),
-                        )
-
-                    // NotRun / Executing / Unknown / anything unrecognised - keep polling.
-                    else -> Unit
+                    FeedResult.OutOfTime -> { addActive(); return@withLock SkuSyncStep.Pending }
+                    // The position is kept either way; a failure waits out WorkManager's backoff
+                    // rather than knocking on an AOS that is down every couple of minutes.
+                    is FeedResult.Failed -> { addActive(); return@withLock SkuSyncStep.Failed(r.message) }
                 }
             }
+
+            val cycleStarted = prefs.getLong(KEY_CYCLE_STARTED, 0L)
+            if (full) {
+                // Everything D365FO has was just written with a newer stamp; older rows are gone there.
+                val items = itemDao.deleteItemsNotSeenSince(cycleStarted)
+                val barcodes = itemDao.deleteBarcodesNotSeenSince(cycleStarted)
+                val variants = itemDao.deleteVariantsNotSeenSince(cycleStarted)
+                Timber.i("SKU sync: removed %d items, %d barcodes, %d variants no longer in D365FO", items, barcodes, variants)
+            }
+            notePeakMemory()
+            val summary = SkuSyncSummary(
+                itemCount = prefs.getInt(countKey(FEED_ITEMS), 0),
+                barcodeCount = prefs.getInt(countKey(FEED_BARCODES), 0),
+                variantCount = prefs.getInt(countKey(FEED_VARIANTS), 0),
+                full = full,
+                seconds = ((System.currentTimeMillis() - cycleStarted) / 1000L).toInt(),
+                // Time actually spent syncing - a big sync runs in 7-minute steps with gaps.
+                activeSeconds = ((prefs.getLong(KEY_ACTIVE_MS, 0L) + System.currentTimeMillis() - stepStarted) / 1000L).toInt(),
+                peakMemoryBytes = prefs.getLong(KEY_PEAK_MEMORY, 0L),
+                storedBytes = context.getDatabasePath(com.d365fo.mobileops.util.Constants.DATABASE_NAME).length(),
+                finishedAt = System.currentTimeMillis(),
+            )
+            // At warning level so it is in the release log (Settings > Logs, feedback) too.
+            Timber.w(
+                "SKU sync done (%s): %d items, %d barcodes, %d variants in %d s (%d s active), peak memory %d MB, database %d MB",
+                if (full) "full" else "delta", summary.itemCount, summary.barcodeCount, summary.variantCount,
+                summary.seconds, summary.activeSeconds, summary.peakMemoryBytes / MB, summary.storedBytes / MB,
+            )
+            val watermark = prefs.getString(KEY_CYCLE_SERVER_UTC, null)
+            val variantMax = prefs.getString(KEY_VARIANT_MAX, "0")
+            val lastFull = if (full) System.currentTimeMillis() else prefs.getLong(KEY_LAST_FULL, 0L)
+            prefs.edit().clear()
+                .putLong(KEY_LAST_SUCCESS, System.currentTimeMillis())
+                .putLong(KEY_LAST_FULL, lastFull)
+                .putString(KEY_WATERMARK, watermark)
+                .putString(KEY_VARIANT_MAX, variantMax)
+                .putInt(KEY_SCHEMA, if (full) SCHEMA else prefs.getInt(KEY_SCHEMA, 0))
+                .putInt(KEY_SUM_ITEMS, summary.itemCount)
+                .putInt(KEY_SUM_BARCODES, summary.barcodeCount)
+                .putInt(KEY_SUM_VARIANTS, summary.variantCount)
+                .putBoolean(KEY_SUM_FULL, full)
+                .putInt(KEY_SUM_SECONDS, summary.seconds)
+                .putInt(KEY_SUM_ACTIVE, summary.activeSeconds)
+                .putLong(KEY_SUM_PEAK, summary.peakMemoryBytes)
+                .putLong(KEY_SUM_STORED, summary.storedBytes)
+                .apply()
+            SkuSyncStep.Done(summary)
         }
-
-        return NetworkResult.Error(
-            AppFailure.Transient("SKU export for $definitionGroupId did not finish in time"),
-        )
     }
 
-    // -- CSV mapping ----------------------------------------------------------------------
+    /** Never synced, or stopped part way: worth a run soon after start rather than the daily one. */
+    fun needsCatchUp(): Boolean =
+        prefs.getLong(KEY_LAST_SUCCESS, 0L) == 0L || prefs.getLong(KEY_CYCLE_STARTED, 0L) != 0L ||
+            prefs.getInt(KEY_SCHEMA, 0) < SCHEMA
 
-    /**
-     * Mirrors [Mappers.kt]'s `ReleasedProductDto.toEntity` field for field. `IsBatchNumberActive`/
-     * `IsSerialNumberActive` are read straight off the row, same as the on-demand path — no join
-     * needed, since (confirmed live for the on-demand path) the entity publishes them directly.
-     *
-     * Null on a missing `ItemNumber` - a row this malformed cannot be upserted against anything.
-     */
-    private fun Map<String, String>.toItemEntity(): ItemEntity? {
-        val itemNumber = getCI("ItemNumber")?.trim()?.takeIf { it.isNotEmpty() } ?: return null
-        val batchActive = getCI("IsBatchNumberActive").toDmfBoolean()
-        val serialActive = getCI("IsSerialNumberActive").toDmfBoolean()
-        val storageDimensionGroup = getCI("StorageDimensionGroupName")
-        val lifecycleState = getCI("ProductLifecycleStateId")
-
-        return ItemEntity(
-            itemId = itemNumber,
-            // ReleasedProductsV2 has no ProductName; SearchName is the only name it publishes -
-            // same note as Mappers.kt's live mapping.
-            itemName = getCI("SearchName").orEmpty(),
-            searchName = getCI("SearchName"),
-            inventoryUnit = getCI("InventoryUnitSymbol").orEmpty(),
-            purchaseUnit = getCI("PurchaseUnitSymbol"),
-            salesUnit = getCI("SalesUnitSymbol"),
-            trackingRequirement = when {
-                batchActive && serialActive -> TrackingRequirement.BATCH_AND_SERIAL
-                batchActive -> TrackingRequirement.BATCH
-                serialActive -> TrackingRequirement.SERIAL
-                else -> TrackingRequirement.NONE
-            },
-            // Same "defaulting to required is the safe direction" heuristic as the on-demand
-            // path (OnDemandLookupRepositoryImpl.lookupItem) - no StorageDimensionGroups entity
-            // exists on this tenant, so this is inferred from the group's name.
-            locationMandatory = storageDimensionGroup?.contains("Loc", ignoreCase = true) ?: true,
-            active = lifecycleState.isNullOrBlank() || lifecycleState.equals("Active", true),
-            modifiedAt = System.currentTimeMillis(),
-        )
+    private fun startCycle() {
+        val now = System.currentTimeMillis()
+        val watermark = prefs.getString(KEY_WATERMARK, null)
+        // A new column on a feed (variant names, SCHEMA 2) needs every row again, not a delta.
+        val full = watermark.isNullOrBlank() || now - prefs.getLong(KEY_LAST_FULL, 0L) >= FULL_REFRESH_INTERVAL_MS ||
+            prefs.getInt(KEY_SCHEMA, 0) < SCHEMA
+        prefs.edit()
+            .putLong(KEY_CYCLE_STARTED, now)
+            .putString(KEY_MODE, if (full) MODE_FULL else MODE_DELTA)
+            .putString(KEY_CHANGED_SINCE, if (full) "" else withOverlap(watermark.orEmpty()))
+            .putInt(KEY_FEED, 0)
+            .putString(KEY_AFTER, initialKey(FEEDS[0], full))
+            .remove(KEY_CYCLE_SERVER_UTC)
+            .putLong(KEY_ACTIVE_MS, 0L)
+            .putLong(KEY_PEAK_MEMORY, 0L)
+            .apply()
+        Timber.i("SKU sync: %s cycle started", if (full) "full" else "delta")
     }
 
-    /** Mirrors [Mappers.kt]'s `ProductBarcodeDto.toEntity` field for field. */
-    private fun Map<String, String>.toBarcodeEntity(): BarcodeEntity? {
-        val barcode = getCI("Barcode")?.trim()?.takeIf { it.isNotEmpty() } ?: return null
-        val itemNumber = getCI("ItemNumber")?.trim().orEmpty()
-        val quantity = getCI("ProductQuantity")?.toBigDecimalOrNull()
-
-        return BarcodeEntity(
-            // Scanner output is normalised to upper case, so the stored key must match - same
-            // as the live mapping.
-            barcode = barcode.uppercase(),
-            itemId = itemNumber,
-            quantityPerScan = (quantity?.takeIf { it.signum() > 0 } ?: BigDecimal.ONE).toPlainString(),
-            unitId = getCI("ProductQuantityUnitSymbol"),
-            // ProductBarcodesV3 has no active flag - a retired barcode is deleted rather than
-            // deactivated, so anything the export returns is by definition in use.
-            active = true,
-            modifiedAt = System.currentTimeMillis(),
-            // A variant barcode names its product dimensions; an item-level one leaves them blank.
-            configId = getCI("ProductConfigurationId")?.takeIf { it.isNotBlank() },
-            sizeId = getCI("ProductSizeId")?.takeIf { it.isNotBlank() },
-            colorId = getCI("ProductColorId")?.takeIf { it.isNotBlank() },
-            styleId = getCI("ProductStyleId")?.takeIf { it.isNotBlank() },
-        )
+    private fun initialKey(feed: String, full: Boolean): String = when (feed) {
+        FEED_ITEMS -> ""
+        // Variants have no modified date: a delta is everything after the highest RecId seen.
+        FEED_VARIANTS -> if (full) "0" else prefs.getString(KEY_VARIANT_MAX, "0") ?: "0"
+        else -> "0"
     }
+
+    private sealed interface FeedResult {
+        data object Finished : FeedResult
+        data object OutOfTime : FeedResult
+        data class Failed(val message: String, val retryable: Boolean) : FeedResult
+    }
+
+    private suspend fun pageThrough(feed: String, full: Boolean, deadline: Long): FeedResult {
+        // Variants ignore the date - see initialKey.
+        val since = if (full || feed == FEED_VARIANTS) "" else prefs.getString(KEY_CHANGED_SINCE, "").orEmpty()
+        while (true) {
+            if (System.currentTimeMillis() >= deadline) return FeedResult.OutOfTime
+            val after = prefs.getString(KEY_AFTER, initialKey(feed, full)).orEmpty()
+            val started = System.currentTimeMillis()
+            val result = errorMapper.safeCall {
+                service.getSkuPage(
+                    SkuPageServiceRequest(
+                        SkuPageRequestBody(dataAreaId = company(), feed = feed, afterKey = after, changedSinceUtc = since, pageSize = PAGE_SIZE),
+                    ),
+                )
+            }
+            val page = when (result) {
+                is NetworkResult.Success -> result.data
+                is NetworkResult.Error -> return FeedResult.Failed(result.failure.message, result.failure.retryable)
+                NetworkResult.Loading -> return FeedResult.Failed("unexpected Loading", true)
+            }
+            if (!page.success) {
+                return FeedResult.Failed(page.message.ifBlank { "D365FO refused the $feed page (${page.errorCode})" }, retryable = false)
+            }
+            if (prefs.getString(KEY_CYCLE_SERVER_UTC, null) == null && page.serverUtc.isNotBlank()) {
+                prefs.edit().putString(KEY_CYCLE_SERVER_UTC, page.serverUtc).apply()
+            }
+
+            val rows = Json.parseToJsonElement(page.rowsJson).jsonArray.map { it.jsonArray }
+            val now = System.currentTimeMillis()
+            when (feed) {
+                FEED_ITEMS -> itemDao.upsertItems(rows.mapNotNull { SkuRows.item(it, now) })
+                FEED_BARCODES -> itemDao.upsertBarcodes(rows.mapNotNull { SkuRows.barcode(it, now) })
+                FEED_VARIANTS -> itemDao.upsertVariants(rows.mapNotNull { SkuRows.variant(it, now) })
+            }
+            prefs.edit()
+                .putString(KEY_AFTER, page.nextKey.ifBlank { after })
+                .putInt(countKey(feed), prefs.getInt(countKey(feed), 0) + rows.size)
+                .apply()
+            Timber.d("SKU sync: %s page after '%s' - %d rows in %d ms", feed, after, rows.size, System.currentTimeMillis() - started)
+            notePeakMemory()
+
+            if (!page.hasMore) return FeedResult.Finished
+            delay(PAGE_PAUSE_MS)
+        }
+    }
+
+    private fun countKey(feed: String) = "count_$feed"
+
+    private fun withOverlap(serverUtc: String): String = SkuRows.withOverlap(serverUtc, OVERLAP_MINUTES)
 
     private companion object {
-        /** ~5 minutes per project before giving up and letting the next scheduled run retry. */
-        const val POLL_INTERVAL_MS = 5_000L
-        const val MAX_POLL_ATTEMPTS = 60
-        val EXECUTION_STAMP: SimpleDateFormat get() = SimpleDateFormat("yyyy-MM-dd_HH-mm-ss", Locale.US)
+        const val FEED_ITEMS = "ITEMS"
+        const val FEED_BARCODES = "BARCODES"
+        const val FEED_VARIANTS = "VARIANTS"
+        val FEEDS = listOf(FEED_ITEMS, FEED_BARCODES, FEED_VARIANTS)
+
+        // The server's maximum. 50k items + 65k barcodes is ~24 pages instead of ~60 - fewer round
+        // trips; a page in memory is a few MB more, which a handheld does not notice.
+        const val PAGE_SIZE = 5000
+        const val PAGE_PAUSE_MS = 250L
+        const val OVERLAP_MINUTES = 10L
+        const val MIN_CYCLE_INTERVAL_MS = 20 * 60 * 60 * 1000L
+        const val FULL_REFRESH_INTERVAL_MS = 7 * 24 * 60 * 60 * 1000L
+
+        const val MODE_FULL = "FULL"
+        const val MODE_DELTA = "DELTA"
+        const val KEY_CYCLE_STARTED = "cycle_started"
+        const val KEY_CYCLE_SERVER_UTC = "cycle_server_utc"
+        const val KEY_MODE = "mode"
+        const val KEY_CHANGED_SINCE = "changed_since"
+        const val KEY_FEED = "feed"
+        const val KEY_AFTER = "after"
+        const val KEY_LAST_SUCCESS = "last_success"
+        const val KEY_LAST_FULL = "last_full"
+        const val KEY_WATERMARK = "watermark"
+        const val KEY_VARIANT_MAX = "variant_max"
+        const val KEY_SCHEMA = "schema"
+        const val KEY_ACTIVE_MS = "active_ms"
+        const val KEY_PEAK_MEMORY = "peak_memory"
+        const val KEY_SUM_ITEMS = "sum_items"
+        const val KEY_SUM_BARCODES = "sum_barcodes"
+        const val KEY_SUM_VARIANTS = "sum_variants"
+        const val KEY_SUM_FULL = "sum_full"
+        const val KEY_SUM_SECONDS = "sum_seconds"
+        const val KEY_SUM_ACTIVE = "sum_active"
+        const val KEY_SUM_PEAK = "sum_peak"
+        const val KEY_SUM_STORED = "sum_stored"
+        const val MB = 1024L * 1024L
+        /** Bumped when a feed gains a column; 2 = variant names. */
+        const val SCHEMA = 2
     }
 }
 
-data class SkuSyncSummary(val itemCount: Int, val barcodeCount: Int)
+data class SkuSyncSummary(
+    val itemCount: Int,
+    val barcodeCount: Int,
+    val variantCount: Int = 0,
+    val full: Boolean = true,
+    val seconds: Int = 0,
+    /** Syncing time without the gaps between steps. */
+    val activeSeconds: Int = 0,
+    /** Highest app memory in use (Java heap + native) seen during the sync. */
+    val peakMemoryBytes: Long = 0L,
+    /** The device database's size on disk after the sync. */
+    val storedBytes: Long = 0L,
+    val finishedAt: Long = 0L,
+)
 
-/**
- * D365's own NoYes export convention is unconfirmed for these two entities (the live on-demand
- * path decodes it via [com.d365fo.mobileops.data.remote.dto.NoYesSerializer] against JSON, not
- * CSV) - this accepts every spelling that convention plausibly uses (`Yes`/`1`/`true`) rather
- * than matching one exact string and silently under-counting tracked items.
- */
-private fun String?.toDmfBoolean(): Boolean {
-    val v = this?.trim()?.lowercase() ?: return false
-    return v == "yes" || v == "1" || v == "true"
+/** What one [SkuSyncRepository.runStep] got to. */
+sealed interface SkuSyncStep {
+    /** Finished - or nothing to do yet ([summary] null: synced less than a day ago). */
+    data class Done(val summary: SkuSyncSummary?) : SkuSyncStep
+    /** Out of time part way through; the next step carries on from the same page. */
+    data object Pending : SkuSyncStep
+    data class Failed(val message: String) : SkuSyncStep
 }

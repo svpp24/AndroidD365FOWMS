@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsCountRejectLines</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Stock count control center: Reject - recount - the supervisor's decision on the selected duplicate.
+/// </summary>
+class HSMobileOpsCountRejectLines
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>main</Name>
+				<Source><![CDATA[
+    public static void main(Args _args)
+    {
+        HSMobileOpsCountStageLine line = _args ? _args.record() : null;
+
+        if (!line || !line.RecId)
+        {
+            throw error('Select a counted line first.');
+        }
+        HSMobileOpsCountControl::decide(line, HSMobileOpsCountDuplicateDecision::Reject);
+        if (_args && _args.caller() is FormRun)
+        {
+            FormRun callerForm = _args.caller() as FormRun;
+            int     i;
+            for (i = 1; i <= callerForm.dataSourceCount(); i++)
+            {
+                callerForm.dataSource(i).research(true);
+            }
+        }
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

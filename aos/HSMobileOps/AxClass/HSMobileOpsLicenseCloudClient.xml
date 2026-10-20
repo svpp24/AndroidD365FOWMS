@@ -1,0 +1,261 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsLicenseCloudClient</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// The one outbound call in this entire model to something that isn't D365FO itself - the
+/// vendor's own CheckLicense Azure Function (see ../../../azure-license-function/README.md).
+/// Confirmed via a full grep of this model before writing this class: no other class here makes
+/// any outbound HTTP call of any kind, so `System.Net.Http.HttpClient` CLR interop below is a
+/// genuinely new capability for this codebase and must be verified against a real AOS build and
+/// a real deployed Function before HSMobileOpsLicense::verifyWithAttestation is trusted for
+/// anything live - see the Function's own README "Verify it's actually callable" section, and
+/// do that curl check first.
+///
+/// **Why this call exists at all.** The certificate/license chain in HSMobileOpsLicense proves
+/// who signed what; it says nothing about whether the vendor has since revoked this customer, and
+/// nothing about whether the calling Android build is a genuine, unmodified, Play-installed
+/// binary. Both of those need a live answer from somewhere a customer's own admin cannot reach or
+/// edit - this Function, in the vendor's own Azure subscription, is that somewhere.
+///
+/// **Never throws.** Every branch - unconfigured, unreachable, a non-200 response, malformed
+/// JSON - comes back as HSMobileOpsCloudLicenseResult with reachable = false, exactly so
+/// verifyWithAttestation can apply its grace-period cache uniformly rather than special-casing
+/// each kind of failure. `reachable = true` with licenseStatus "Unknown" is a different case (a
+/// real answer, not a reachability failure) - see HSMobileOpsCloudLicenseResult's own doc.
+///
+/// `internal final`, `[Wrappable(false)]` - same reasoning as HSMobileOpsLicense itself; only
+/// that class (same package) needs to call this.
+/// </summary>
+[Wrappable(false)]
+internal final class HSMobileOpsLicenseCloudClient
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>checkStatus</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Calls CheckLicense with this customer/device/attestation and returns what it found. A
+    /// blank configured URL (nothing pasted into HSMobileOpsLicenseSetup's two new fields yet)
+    /// short-circuits to reachable = false without attempting a call - indistinguishable from any
+    /// other unreachable case to the caller, which is correct: an unconfigured Function is not
+    /// yet a "this customer is revoked" answer, it is "this check cannot run yet."
+    /// </summary>
+    internal static HSMobileOpsCloudLicenseResult checkStatus(str _customerId, str _deviceId, str _integrityToken)
+    {
+        HSMobileOpsCloudLicenseResult  result = new HSMobileOpsCloudLicenseResult();
+        HSMobileOpsLicenseSetup        setup  = HSMobileOpsLicenseSetup::find();
+        str                             functionKey;
+        str                             responseText;
+
+        result.parmReachable(false);
+
+        if (!setup.AzureFunctionUrl)
+        {
+            return result;
+        }
+
+        functionKey = HSMobileOpsLicenseSetup::decryptFunctionKey();
+
+        try
+        {
+            responseText = HSMobileOpsLicenseCloudClient::postJson(
+                setup.AzureFunctionUrl, functionKey,
+                HSMobileOpsLicenseCloudClient::buildRequestJson(_customerId, _deviceId, _integrityToken));
+        }
+        catch (Exception::CLRError)
+        {
+            return result;
+        }
+
+        if (!responseText)
+        {
+            return result;
+        }
+
+        return HSMobileOpsLicenseCloudClient::parseResponse(responseText);
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>buildRequestJson</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// {"customerId": ..., "deviceId": ..., "integrityToken": ...}, built through
+    /// Newtonsoft.Json.Linq rather than string concatenation - _integrityToken is an opaque
+    /// Google-issued value this class does not control the shape of, and a hand-built JSON string
+    /// would need to escape it correctly; a real JSON writer already does that. Never throws -
+    /// this only builds a request, any CLR failure here is treated as "could not build the
+    /// request," which checkStatus's own try/catch already turns into reachable = false.
+    /// </summary>
+    private static str buildRequestJson(str _customerId, str _deviceId, str _integrityToken)
+    {
+        Newtonsoft.Json.Linq.JObject body = new Newtonsoft.Json.Linq.JObject();
+
+        body.Add('customerId', new Newtonsoft.Json.Linq.JValue(_customerId));
+        body.Add('deviceId', new Newtonsoft.Json.Linq.JValue(_deviceId));
+        body.Add('integrityToken', new Newtonsoft.Json.Linq.JValue(_integrityToken));
+
+        return body.ToString(Newtonsoft.Json.Formatting::None);
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>postJson</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The raw HttpClient interop - POSTs _bodyJson to _url with the Function key on the standard
+    /// Azure Functions 'x-functions-key' header, blocks synchronously on the async .NET calls via
+    /// .get_Result() (X++ has no await), and returns the response body text regardless of status
+    /// code (a non-200 still has a body worth reading/logging). 10 second timeout - this is a
+    /// server-to-server call between two cloud services, not a device on a warehouse wifi
+    /// network; if it has not answered in 10 seconds something is genuinely wrong and the caller
+    /// should fall back to the grace-period cache rather than hold up a worker's sign-in.
+    ///
+    /// Deliberately no try/catch here - checkStatus's own try/catch wraps this call, so any CLR
+    /// failure (DNS, TLS, timeout, connection refused) propagates up to exactly one place that
+    /// already turns it into reachable = false, rather than duplicating that handling here too.
+    /// </summary>
+    private static str postJson(str _url, str _functionKey, str _bodyJson)
+    {
+        System.Net.Http.HttpClient           client = new System.Net.Http.HttpClient();
+        System.Net.Http.StringContent        content;
+        System.Threading.Tasks.Task          responseTask;
+        System.Net.Http.HttpResponseMessage  response;
+        System.Threading.Tasks.Task          bodyTask;
+
+        client.set_Timeout(System.TimeSpan::FromSeconds(10));
+        if (_functionKey)
+        {
+            client.DefaultRequestHeaders.Add('x-functions-key', _functionKey);
+        }
+
+        content = new System.Net.Http.StringContent(
+            _bodyJson, System.Text.Encoding::get_UTF8(), 'application/json');
+
+        responseTask = client.PostAsync(_url, content);
+        response     = responseTask.get_Result();
+
+        bodyTask = response.Content.ReadAsStringAsync();
+        return bodyTask.get_Result();
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parseResponse</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Parses CheckLicense's {"licenseStatus": ..., "integrityVerdict": ..., "reasons": [...]}
+    /// response. Malformed JSON here is a Function-side bug or an unexpected intermediary (a
+    /// proxy error page, for instance) rather than a normal "revoked" answer - treated as
+    /// reachable = false, same as a network failure, rather than surfaced as a license verdict.
+    /// </summary>
+    private static HSMobileOpsCloudLicenseResult parseResponse(str _responseText)
+    {
+        HSMobileOpsCloudLicenseResult  result = new HSMobileOpsCloudLicenseResult();
+        System.Object                  parsed;
+        Newtonsoft.Json.Linq.JObject   json;
+
+        try
+        {
+            parsed = Newtonsoft.Json.Linq.JObject::Parse(_responseText);
+        }
+        catch (Exception::CLRError)
+        {
+            result.parmReachable(false);
+            return result;
+        }
+
+        json = parsed;
+        if (json == null)
+        {
+            result.parmReachable(false);
+            return result;
+        }
+
+        result.parmReachable(true);
+        result.parmLicenseStatus(HSMobileOpsLicenseCloudClient::jsonStr(json, 'licenseStatus'));
+        result.parmIntegrityVerdict(HSMobileOpsLicenseCloudClient::jsonStr(json, 'integrityVerdict'));
+        result.parmReasonsText(HSMobileOpsLicenseCloudClient::jsonReasonsJoined(json));
+
+        return result;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>jsonStr</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// One property of a parsed JSON object, as a string - '' when absent. Duplicated locally
+    /// rather than shared with HSMobileOpsLicense::jsonStr - same reasoning that method's own doc
+    /// comment already gives for not sharing it further.
+    /// </summary>
+    private static str jsonStr(Newtonsoft.Json.Linq.JObject _obj, str _property)
+    {
+        Newtonsoft.Json.Linq.JToken token;
+
+        if (_obj == null)
+        {
+            return '';
+        }
+
+        token = _obj.get_Item(_property);
+        if (token == null)
+        {
+            return '';
+        }
+
+        return token.ToString();
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>jsonReasonsJoined</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The "reasons" array, joined with '; ' into one display string - HSMobileOpsLicenseStatus
+    /// carries a single message field, not a list, so this is where that collapsing happens.
+    /// '' when the property is absent or not an array.
+    /// </summary>
+    private static str jsonReasonsJoined(Newtonsoft.Json.Linq.JObject _obj)
+    {
+        Newtonsoft.Json.Linq.JToken  token;
+        Newtonsoft.Json.Linq.JArray  reasons;
+        str                           joined;
+        int                           i, count;
+
+        token = _obj.get_Item('reasons');
+        if (token == null)
+        {
+            return '';
+        }
+
+        reasons = token;
+        count   = reasons.get_Count();
+        joined  = '';
+
+        for (i = 0; i < count; i++)
+        {
+            if (joined)
+            {
+                joined += '; ';
+            }
+            joined += reasons.get_Item(i).ToString();
+        }
+
+        return joined;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

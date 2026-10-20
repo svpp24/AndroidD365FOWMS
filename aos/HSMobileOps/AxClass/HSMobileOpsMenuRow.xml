@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsMenuRow</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// One handheld menu and its lines, in order.
+/// </summary>
+[DataContractAttribute]
+class HSMobileOpsMenuRow
+{
+    str      menuId;
+    str      name;
+    List     lines;
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmMenuId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('MenuId')]
+    public str parmMenuId(str _value = menuId)
+    {
+        menuId = _value;
+        return menuId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmName</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Name')]
+    public str parmName(str _value = name)
+    {
+        name = _value;
+        return name;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmLines</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Lines'),
+     DataCollectionAttribute(Types::Class, classStr(HSMobileOpsMenuLineRow))]
+    public List parmLines(List _value = lines)
+    {
+        lines = _value;
+        return lines;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

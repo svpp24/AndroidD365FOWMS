@@ -102,6 +102,9 @@ fun AppRoot(
         return
     }
 
+    // Over whatever screen is showing: another device still holds this worker's work.
+    if (worker != null) com.d365fo.mobileops.presentation.auth.TakeoverPromptDialog()
+
     when {
         // The licensing gate - between the device gate above and everything below it. A device
         // that cannot reach D365FO at all never gets this far (falls through to
@@ -136,6 +139,7 @@ fun AppRoot(
         // The device is through, but nobody has said who they are yet.
         session is SessionState.Ready && worker == null -> WorkerLoginScreen(
             onOpenSettings = { settingsWhileSignedOut = true },
+            offline = !syncStatus.fullyOnline,
         )
 
         // Several warehouses in D365FO and none is the default: ask once, before Home.
@@ -172,6 +176,9 @@ fun AppRoot(
                         }
                     },
             ) {
+                androidx.compose.runtime.CompositionLocalProvider(
+                    com.d365fo.mobileops.presentation.common.components.LocalSyncStatus provides syncStatus,
+                ) {
                 AppNavGraph(
                     syncStatus = syncStatus,
                     warehouseId = worker?.selected?.warehouseId,
@@ -184,6 +191,7 @@ fun AppRoot(
                         sessionViewModel.signOut()
                     },
                 )
+                }
             }
         }
 
@@ -193,6 +201,7 @@ fun AppRoot(
             state = session,
             tenant = tenant,
             onOpenSettings = { settingsWhileSignedOut = true },
+            onConnected = sessionViewModel::refresh,
         )
     }
 }

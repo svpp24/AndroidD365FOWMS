@@ -14,16 +14,17 @@
 /// is under load, which an operator standing at a scanner should never have to wait out. Now
 /// that same request does one INSERT and returns; a row here means "received", not "done".
 ///
-/// **Processing is operator-triggered, not automatic.** There is deliberately no batch job
-/// draining this table on a timer - see aos/README.md for why a periodic job here was decided
-/// against for now. A supervisor or the operator taps "Process pending" on the Activity screen,
-/// which calls HSMobileOpsPostingService::processPending and walks every Pending row for that
-/// company, most recent request in, still processed oldest first so nothing waits behind a
-/// newer one.
+/// **Processing runs on its own and on demand.** The recurring batch job
+/// HSMobileOpsProcessPendingBatch works every Pending row every few minutes, so work queued on
+/// a handheld - offline included - registers even if nobody opens the app again. "Process
+/// pending" on the Activity screen does the same at once. Both go through
+/// HSMobileOpsPostingService::processCompany, oldest request first, and both can run at the
+/// same time: a row is only ever worked by whoever wins [claim].
 ///
-/// Status is exactly three values: Pending (staged, not yet attempted), Registered (or Posted,
-/// for a transfer - the real work succeeded), Failed (the real work was attempted and refused -
-/// ErrorMessage carries D365FO's own reason). A row never leaves Failed on its own; reprocessing
+/// Status is one of four values: Pending (staged, not yet attempted), Processing (claimed by a
+/// run that is working it now), Registered (or Posted, for a transfer - the real work
+/// succeeded), Failed (the real work was attempted and refused - ErrorMessage carries D365FO's
+/// own reason). A row never leaves Failed on its own; reprocessing
 /// a failed request means the operator submits it again from the device, which lands as a new
 /// row under a new idempotency key.
 /// </summary>
@@ -93,6 +94,82 @@ public class HSMobileOpsPostQueue extends common
     }
 ]]></Source>
 			</Method>
+			<Method>
+				<Name>statusProcessing</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Claimed by a run that is working the row now - see [claim]. Counts as not yet done
+    /// everywhere Pending does.
+    /// </summary>
+    public static str statusProcessing()
+    {
+        return 'Processing';
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>claim</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Moves a Pending row to Processing in its own short transaction and says whether this
+    /// caller won it. The batch job and the "Process pending" button can run at the same time,
+    /// and both working the same row would post the same receipt or shipment twice; the row
+    /// lock makes the second caller wait, then find it no longer Pending and leave it alone.
+    /// ProcessedUtc holds the claim time until the row is finished - see [failInterrupted].
+    /// </summary>
+    public static boolean claim(RecId _recId)
+    {
+        HSMobileOpsPostQueue postQueue;
+        boolean              won;
+
+        ttsbegin;
+        select pessimisticLock firstOnly postQueue
+            where postQueue.RecId  == _recId
+               && postQueue.Status == HSMobileOpsPostQueue::statusPending();
+        if (postQueue.RecId)
+        {
+            postQueue.Status       = HSMobileOpsPostQueue::statusProcessing();
+            postQueue.ProcessedUtc = DateTimeUtil::utcNow();
+            postQueue.update();
+            won = true;
+        }
+        ttscommit;
+
+        return won;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>failInterrupted</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Fails rows of the current company left in Processing for more than half an hour - a run
+    /// that died part way (AOS restart, an exception the posting code does not catch). They are
+    /// not retried: the posting may have committed before its status was written, and working
+    /// it again could book the same stock twice. A person checks the order instead.
+    /// </summary>
+    public static void failInterrupted()
+    {
+        HSMobileOpsPostQueue postQueue;
+        utcdatetime          cutoff = DateTimeUtil::addMinutes(DateTimeUtil::utcNow(), -30);
+
+        ttsbegin;
+        while select forUpdate postQueue
+            where postQueue.Status       == HSMobileOpsPostQueue::statusProcessing()
+               && postQueue.ProcessedUtc <  cutoff
+        {
+            postQueue.Status       = HSMobileOpsPostQueue::statusFailed();
+            postQueue.ErrorMessage = 'Processing was interrupted before it finished. Check the order in D365FO before sending it again.';
+            postQueue.ProcessedUtc = DateTimeUtil::utcNow();
+            postQueue.update();
+        }
+        ttscommit;
+    }
+]]></Source>
+			</Method>
 		</Methods>
 	</SourceCode>
 	<Label>Mobile posting queue</Label>
@@ -106,30 +183,30 @@ public class HSMobileOpsPostQueue extends common
 			i:type="AxTableFieldString">
 			<Name>IdempotencyKey</Name>
 			<Label>Idempotency key</Label>
-			<StringSize>64</StringSize>
 			<Mandatory>Yes</Mandatory>
+			<StringSize>64</StringSize>
 		</AxTableField>
 		<AxTableField xmlns=""
 			i:type="AxTableFieldString">
 			<Name>DocumentType</Name>
-			<Label>Document type</Label>
 			<HelpText>Registration, TransferShipment or TransferReceipt.</HelpText>
-			<StringSize>40</StringSize>
+			<Label>Document type</Label>
 			<Mandatory>Yes</Mandatory>
+			<StringSize>40</StringSize>
 		</AxTableField>
 		<AxTableField xmlns=""
 			i:type="AxTableFieldString">
 			<Name>SourceId</Name>
-			<Label>Source order</Label>
 			<HelpText>The purchase order or transfer order number.</HelpText>
-			<StringSize>40</StringSize>
+			<Label>Source order</Label>
 			<Mandatory>Yes</Mandatory>
+			<StringSize>40</StringSize>
 		</AxTableField>
 		<AxTableField xmlns=""
 			i:type="AxTableFieldString">
 			<Name>Reference</Name>
-			<Label>Reference</Label>
 			<HelpText>Vendor packing slip id for a receipt; blank for a transfer.</HelpText>
+			<Label>Reference</Label>
 			<StringSize>40</StringSize>
 		</AxTableField>
 		<AxTableField xmlns=""
@@ -152,17 +229,17 @@ public class HSMobileOpsPostQueue extends common
 		<AxTableField xmlns=""
 			i:type="AxTableFieldString">
 			<Name>LinesJson</Name>
-			<Label>Lines (JSON)</Label>
 			<HelpText>The captured lines exactly as the device sent them, parsed only when this row is processed. 2000 chars holds roughly ten lines; a bigger basket is posted in more than one go.</HelpText>
+			<Label>Lines (JSON)</Label>
 			<StringSize>2000</StringSize>
 		</AxTableField>
 		<AxTableField xmlns=""
 			i:type="AxTableFieldString">
 			<Name>Status</Name>
+			<HelpText>Pending, Processing, Registered or Failed.</HelpText>
 			<Label>Status</Label>
-			<HelpText>Pending, Registered or Failed.</HelpText>
-			<StringSize>20</StringSize>
 			<Mandatory>Yes</Mandatory>
+			<StringSize>20</StringSize>
 		</AxTableField>
 		<AxTableField xmlns=""
 			i:type="AxTableFieldUtcDateTime">
@@ -172,14 +249,14 @@ public class HSMobileOpsPostQueue extends common
 		<AxTableField xmlns=""
 			i:type="AxTableFieldUtcDateTime">
 			<Name>ProcessedUtc</Name>
+			<HelpText>When this row was claimed for processing, then when it finished - succeeded or failed.</HelpText>
 			<Label>Processed</Label>
-			<HelpText>When this row last left Pending - set whether it succeeded or failed.</HelpText>
 		</AxTableField>
 		<AxTableField xmlns=""
 			i:type="AxTableFieldString">
 			<Name>ErrorMessage</Name>
-			<Label>Error</Label>
 			<HelpText>D365FO's own reason, set only when Status is Failed.</HelpText>
+			<Label>Error</Label>
 			<StringSize>250</StringSize>
 		</AxTableField>
 	</Fields>

@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxService xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsSessionSvc</Name>
+	<Class>HSMobileOpsSessionService</Class>
+	<ExternalName>SessionService</ExternalName>
+	<Namespace>http://schemas.hs.com/mobileops</Namespace>
+	<ServiceOperations>
+		<AxServiceOperation>
+			<Name>startSession</Name>
+			<Method>startSession</Method>
+		</AxServiceOperation>
+		<AxServiceOperation>
+			<Name>peekSession</Name>
+			<Method>peekSession</Method>
+		</AxServiceOperation>
+		<AxServiceOperation>
+			<Name>checkSession</Name>
+			<Method>checkSession</Method>
+		</AxServiceOperation>
+		<AxServiceOperation>
+			<Name>endSession</Name>
+			<Method>endSession</Method>
+		</AxServiceOperation>
+	</ServiceOperations>
+</AxService>

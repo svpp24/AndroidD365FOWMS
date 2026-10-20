@@ -19,4 +19,7 @@ interface StagedLineDao {
     /** Called once the Activity screen's queue-status poll confirms nothing for this order is still Pending. */
     @Query("DELETE FROM staged_line WHERE flowType = :flowType AND orderId = :orderId")
     suspend fun clearForOrder(flowType: FlowType, orderId: String)
+
+    @Query("DELETE FROM staged_line WHERE queueId = :queueId")
+    suspend fun clearForQueue(queueId: String)
 }

@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsSearchRequest</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// search request: what was typed or scanned on the app's Home search, and the worker's warehouse.
+/// </summary>
+[DataContractAttribute]
+class HSMobileOpsSearchRequest
+{
+    DataAreaId dataAreaId;
+    str        warehouseId;
+    str        query;
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmDataAreaId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('DataAreaId')]
+    public DataAreaId parmDataAreaId(DataAreaId _value = dataAreaId)
+    {
+        dataAreaId = _value;
+        return dataAreaId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmWarehouseId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('WarehouseId')]
+    public str parmWarehouseId(str _value = warehouseId)
+    {
+        warehouseId = _value;
+        return warehouseId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmQuery</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Query')]
+    public str parmQuery(str _value = query)
+    {
+        query = _value;
+        return query;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

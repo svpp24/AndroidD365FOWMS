@@ -22,7 +22,7 @@ class ProductVariantTest {
 
     @Test
     fun `label names only the dimensions that are set`() {
-        assertThat(redLarge.label).isEqualTo("Size L · Colour RED")
+        assertThat(redLarge.label).isEqualTo("Size: L · Colour: RED")
         assertThat(ProductVariant.of(" ", "", null, null).isEmpty).isTrue()
     }
 }

@@ -64,6 +64,29 @@ data class BarcodeEntity(
     val styleId: String? = null,
 )
 
+/**
+ * A released product variant (InventDimCombination): the "which variant?" choices for an item,
+ * kept for offline scanning by item number. Blank dimensions are "", not null, so the four of
+ * them can be the key. [syncedAt] is the sync cycle that last saw it - a full refresh removes
+ * what it did not see.
+ */
+@Entity(
+    tableName = "item_variant",
+    primaryKeys = ["itemId", "configId", "sizeId", "colorId", "styleId"],
+    indices = [Index("syncedAt")],
+)
+data class ItemVariantEntity(
+    val itemId: String,
+    val configId: String,
+    val sizeId: String,
+    val colorId: String,
+    val styleId: String,
+    val syncedAt: Long,
+    /** The variant's own product name in D365FO (company language); blank when it has none. */
+    @androidx.room.ColumnInfo(defaultValue = "")
+    val name: String = "",
+)
+
 /** InventLocation (warehouse) joined with the non-WMS location master. */
 @Entity(
     tableName = "location",

@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxEnum xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsCountMasterStatus</Name>
+	<Label>Count status</Label>
+	<HelpText>Open while counters count and the supervisor reviews; Transferred once moved into a D365FO counting journal; Cancelled when abandoned.</HelpText>
+	<EnumValues>
+		<AxEnumValue>
+			<Name>Open</Name>
+			<Label>Open</Label>
+			<Value>0</Value>
+		</AxEnumValue>
+		<AxEnumValue>
+			<Name>Transferred</Name>
+			<Label>Transferred</Label>
+			<Value>1</Value>
+		</AxEnumValue>
+		<AxEnumValue>
+			<Name>Cancelled</Name>
+			<Label>Cancelled</Label>
+			<Value>2</Value>
+		</AxEnumValue>
+	</EnumValues>
+</AxEnum>

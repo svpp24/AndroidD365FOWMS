@@ -1,7 +1,12 @@
 package com.d365fo.mobileops.presentation.common
 
+import com.d365fo.mobileops.presentation.common.theme.WarehouseDimens
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Warehouse
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -151,7 +156,7 @@ fun WarehouseChip(viewModel: WarehouseSwitcherViewModel = hiltViewModel()) {
 
 /**
  * Settings' "Assigned warehouse": the current warehouse's name and code, and the others the
- * worker may switch to from the top bar.
+ * worker may switch to (Change warehouse, or Home's warehouse card).
  */
 @Composable
 fun AssignedWarehouseText(fallbackId: String, viewModel: WarehouseSwitcherViewModel = hiltViewModel()) {
@@ -165,7 +170,7 @@ fun AssignedWarehouseText(fallbackId: String, viewModel: WarehouseSwitcherViewMo
         val others = session?.warehouses.orEmpty().filter { it.warehouseId != selected?.warehouseId }
         if (others.isNotEmpty()) {
             Text(
-                text = "Also assigned: " + others.joinToString { it.chipLabel() } + ". Switch from the top bar.",
+                text = "Also assigned: " + others.joinToString { it.chipLabel() } + ". Switch with Change warehouse below, or by tapping the warehouse card on Home.",
                 style = MaterialTheme.typography.bodySmall,
                 color = WarehouseStatusColors.text3,
             )
@@ -173,25 +178,68 @@ fun AssignedWarehouseText(fallbackId: String, viewModel: WarehouseSwitcherViewMo
     }
 }
 
+/** The selected warehouse's code alone, for Home's top bar. Nothing when none is selected. */
+@Composable
+fun WarehouseCode(viewModel: WarehouseSwitcherViewModel = hiltViewModel()) {
+    val session by viewModel.session.collectAsStateWithLifecycle()
+    val code = session?.selected?.warehouseId ?: return
+    // The same outlined pill as the old top-bar warehouse chip (WarehouseChip), on request.
+    Text(
+        text = code,
+        style = MaterialTheme.typography.labelLarge,
+        fontWeight = FontWeight.SemiBold,
+        color = WarehouseStatusColors.accent,
+        modifier = Modifier
+            .padding(end = 4.dp)
+            .border(1.dp, WarehouseStatusColors.accent, RoundedCornerShape(50))
+            .padding(horizontal = 14.dp, vertical = 5.dp),
+    )
+}
+
 /**
- * The warehouse as a small line under a top-bar title - code and name, ellipsized. Tapping it
- * opens the Change warehouse screen when more than one warehouse is assigned. Sized to fit under
- * the title without making the bar taller.
+ * Home's "where am I" card, above the tiles: the warehouse code and name in full, wrapping. A
+ * tap changes warehouse when several are assigned (also under Settings).
  */
 @Composable
-fun WarehouseSubtitle(onClick: () -> Unit, viewModel: WarehouseSwitcherViewModel = hiltViewModel()) {
+fun WarehouseHeader(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    viewModel: WarehouseSwitcherViewModel = hiltViewModel(),
+) {
     val session by viewModel.session.collectAsStateWithLifecycle()
     val selected = session?.selected
     val canSwitch = session?.warehouses.orEmpty().size > 1
-    Text(
-        text = (selected?.chipLabel() ?: if (canSwitch) "Choose warehouse" else "No warehouse assigned") +
-            if (canSwitch) " \u25BE" else "",
-        style = MaterialTheme.typography.labelSmall,
-        color = WarehouseStatusColors.accent,
-        maxLines = 1,
-        overflow = TextOverflow.Ellipsis,
-        modifier = if (canSwitch) Modifier.clickable(onClick = onClick) else Modifier,
-    )
+    val shape = RoundedCornerShape(com.d365fo.mobileops.presentation.common.theme.WarehouseDimens.CardCorner)
+    androidx.compose.foundation.layout.Row(
+        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+        horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(12.dp),
+        modifier = modifier
+            .fillMaxWidth()
+            .background(androidx.compose.ui.graphics.Color.White, shape)
+            .border(1.5.dp, WarehouseStatusColors.border, shape)
+            .then(if (canSwitch) Modifier.clickable(onClick = onClick) else Modifier)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+    ) {
+        androidx.compose.material3.Icon(
+            Icons.Default.Warehouse,
+            contentDescription = null,
+            tint = WarehouseStatusColors.accent,
+        )
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = selected?.let { "Warehouse ${it.warehouseId}" } ?: "Warehouse",
+                style = MaterialTheme.typography.labelMedium,
+                color = WarehouseStatusColors.text3,
+            )
+            Text(
+                text = selected?.let { it.warehouseName.ifBlank { it.warehouseId } }
+                    ?: if (canSwitch) "Choose warehouse" else "No warehouse assigned",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = WarehouseStatusColors.accent,
+            )
+        }
+    }
 }
 
 /**
@@ -224,14 +272,14 @@ fun ChangeWarehouseScreen(
                 )
             },
             confirmButton = {
-                androidx.compose.material3.TextButton(onClick = {
+                com.d365fo.mobileops.presentation.common.components.DialogButtonRow(
+                    dismiss = { com.d365fo.mobileops.presentation.common.components.CancelOutlinedButton(onClick = { confirmFor = null }, modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget)) { Text("Cancel") } },
+                    confirm = { com.d365fo.mobileops.presentation.common.components.ConfirmButton(onClick = {
                     viewModel.select(target.warehouseId)
                     confirmFor = null
                     onDone()
-                }) { Text("Switch") }
-            },
-            dismissButton = {
-                androidx.compose.material3.TextButton(onClick = { confirmFor = null }) { Text("Cancel") }
+                }, modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget)) { Text("Switch") } },
+                )
             },
         )
     }

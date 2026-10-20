@@ -1,5 +1,16 @@
 package com.d365fo.mobileops.presentation.common
 
+import com.d365fo.mobileops.presentation.common.components.LineIcons
+import androidx.compose.runtime.CompositionLocalProvider
+import com.d365fo.mobileops.presentation.common.tour.AppTourOverlay
+import com.d365fo.mobileops.presentation.common.tour.LocalTourTargets
+import com.d365fo.mobileops.presentation.common.tour.NavigationTour
+import com.d365fo.mobileops.presentation.common.tour.TourTargets
+import com.d365fo.mobileops.presentation.common.tour.TourViewModel
+import com.d365fo.mobileops.presentation.common.tour.tourTarget
+import com.d365fo.mobileops.presentation.common.components.ConnectionDialog
+import com.d365fo.mobileops.util.Formatters
+import androidx.compose.runtime.collectAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -9,11 +20,18 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Home
+import androidx.compose.material.icons.outlined.GridView
+import androidx.compose.material.icons.outlined.Menu
+import androidx.compose.material.icons.outlined.QrCodeScanner
+import androidx.compose.material.icons.automirrored.outlined.Assignment
 import androidx.compose.material.icons.automirrored.filled.Assignment
 import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.CloudOff
@@ -50,11 +68,15 @@ import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.d365fo.mobileops.R
 import com.d365fo.mobileops.data.sync.SyncStatus
 import com.d365fo.mobileops.domain.model.TransferMode
+import com.d365fo.mobileops.presentation.modules.ordercreate.PoCreateScreen
+import com.d365fo.mobileops.presentation.modules.ordercreate.ToCreateScreen
 import com.d365fo.mobileops.presentation.common.theme.WarehouseDimens
 import com.d365fo.mobileops.presentation.common.theme.WarehouseStatusColors
 import com.d365fo.mobileops.presentation.modules.dataenquiry.LocationEntryScreen
@@ -86,6 +108,13 @@ import kotlinx.coroutines.delay
 object Routes {
     const val HOME = "home"
 
+    /** The whole menu as an accordion - a bottom tab (20 Oct restyle). */
+    const val SERVICES = "services"
+
+    /** A sub-menu of the worker's handheld menus (Mobile device menus) - see HandheldMenuScreen. */
+    const val HANDHELD_MENU = "menu/{menuId}"
+    fun handheldMenu(menuId: String) = "menu/" + android.net.Uri.encode(menuId)
+
     /** Switch between the worker's assigned warehouses; other warehouses' work goes on hold. */
     const val CHANGE_WAREHOUSE = "warehouse/change"
 
@@ -106,8 +135,22 @@ object Routes {
      */
     const val TRANSFER_SHIP = "transfer/ship"
     const val TRANSFER_RECEIVE = "transfer/receive"
+
+    /** Create a purchase order / a transfer order - see PoCreateScreen and ToCreateScreen. */
+    const val PO_CREATE = "orders/po/create"
+    const val TO_CREATE = "orders/to/create"
+
+    /** Return stock to a vendor - see ReturnCreateScreen. */
+    const val PURCHASE_RETURN = "orders/return"
+
+    /** Confirm approved purchase orders; [poConfirm] with a PO opens that one straight away. */
+    const val PO_CONFIRM = "orders/po/confirm?purchId={purchId}"
+    fun poConfirm(purchId: String? = null) = if (purchId.isNullOrBlank()) "orders/po/confirm" else "orders/po/confirm?purchId=$purchId"
     const val FAILED_SYNC = "sync/failures"
     const val SETTINGS = "settings"
+
+    /** Send feedback - from any screen's feedback button (with its screenshot) or Settings. */
+    const val FEEDBACK = "feedback"
 
     /** Open counting journals for the worker's assigned warehouse. See CountingJournalListScreen. */
     const val COUNTING_JOURNALS = "counting/journals"
@@ -127,6 +170,9 @@ object Routes {
     /** Create a spot count (server creates the journal). */
     const val COUNTING_SPOT = "counting/spot"
 
+    /** A free store count for the Stock count control center. */
+    const val COUNTING_STORE = "counting/store"
+
     /** Supervisor only: count accuracy by location / item / class / counter. */
     const val COUNTING_ACCURACY = "counting/supervisor/accuracy"
 
@@ -138,6 +184,9 @@ object Routes {
     const val INQUIRY_LOCATION = "enquiry/location"
     const val INQUIRY_PO_TODAY = "enquiry/po-today"
     const val INQUIRY_PO_LINES = "enquiry/po-lines"
+    const val INQUIRY_TRANSFERS = "enquiry/transfers"
+    const val INQUIRY_TRANSFERS_BY_STORE = "enquiry/transfers-by-store"
+    const val INQUIRY_PICKED_SERIALS = "enquiry/picked-serials"
 
     /**
      * The dedicated "type it in" screen for whichever scan-first field sent you here - see
@@ -173,10 +222,11 @@ private data class BottomTab(
 // noticeably heavier/blockier than the other three, reading as a different icon style even
 // though it technically wasn't one.
 private val BOTTOM_TABS = listOf(
-    BottomTab(Routes.HOME, "Home", Icons.Default.Home),
-    BottomTab(Routes.ON_HAND, "On-hand", Icons.Default.Inventory2),
-    BottomTab(Routes.FAILED_SYNC, "Activity", Icons.AutoMirrored.Filled.Assignment),
-    BottomTab(Routes.SETTINGS, "Settings", Icons.Default.Settings),
+    // Home / Services / Activity / More, and a round Scan button (opens On-hand) - 20 Oct restyle.
+    BottomTab(Routes.HOME, "Home", LineIcons.Home),
+    BottomTab(Routes.SERVICES, "Services", LineIcons.Services),
+    BottomTab(Routes.FAILED_SYNC, "Activity", LineIcons.ActivityThin),
+    BottomTab(Routes.SETTINGS, "More", LineIcons.More),
 )
 
 @Composable
@@ -190,28 +240,39 @@ fun AppNavGraph(
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination
 
-    // Edge-triggered, not level-triggered: SyncStatus only ever says what the connection is
-    // *now*, so a transition has to be tracked here to know when to say something about it.
-    // Keyed on fullyOnline, not just online - either kind of degraded connectivity (see the
-    // SyncStatus class doc) sets wasOffline, and the banner only fires once *both* device
-    // internet and the AOS tenant answer again. wasOffline starts false on purpose - an app
-    // launched already online has nothing to announce, this is only for a connection that
-    // actually came back.
-    var wasOffline by remember { mutableStateOf(false) }
-    var showBackOnline by remember { mutableStateOf(false) }
+    // The navigation tour - once per worker, on Home, over the whole app including the
+    // bottom bar. Elements mark themselves as stops with Modifier.tourTarget.
+    val tourTargets = remember { TourTargets() }
+    val tour: TourViewModel = hiltViewModel()
+    val showTour by tour.show.collectAsStateWithLifecycle()
+    val tourOnScreen = showTour && currentRoute?.route == Routes.HOME
 
+    // Edge-triggered: the connection dialog shows once each time the connection drops (or when
+    // the app opens already offline), not on every screen. After that the top bar's connection
+    // icon carries the state, and tapping it shows the same dialog again.
+    var shownForThisOutage by remember { mutableStateOf(false) }
+    var showConnectionDialog by remember { mutableStateOf(false) }
     LaunchedEffect(syncStatus.fullyOnline) {
         if (syncStatus.fullyOnline) {
-            if (wasOffline) {
-                showBackOnline = true
-                delay(BACK_ONLINE_BANNER_MS)
-                showBackOnline = false
-            }
-            wasOffline = false
-        } else {
-            wasOffline = true
-            showBackOnline = false
+            shownForThisOutage = false
+            showConnectionDialog = false
+        } else if (!shownForThisOutage) {
+            // The status starts as "no network" until the first check answers, and a Wi-Fi
+            // handover blips for a second: only an outage that lasts gets the dialog.
+            delay(OFFLINE_DIALOG_GRACE_MS)
+            shownForThisOutage = true
+            showConnectionDialog = true
         }
+    }
+    // Held back while the tour shows - it explains the same icon - and shown when it ends.
+    if (showConnectionDialog && !tourOnScreen) {
+        ConnectionDialog(status = syncStatus, onDismiss = { showConnectionDialog = false })
+    }
+
+    // Saves today's orders for offline use while D365FO answers - see OfflinePrefetcher.
+    val offlineReady: OfflineReadyViewModel = hiltViewModel()
+    LaunchedEffect(warehouseId, syncStatus.fullyOnline) {
+        if (syncStatus.fullyOnline && warehouseId != null) offlineReady.onlineAt(warehouseId)
     }
 
     // The one correct way to reach a bottom-tab destination, from anywhere - a bare
@@ -234,314 +295,316 @@ fun AppNavGraph(
         }
     }
 
-    Scaffold(
-        bottomBar = {
-            Column {
-                // Replaces the old always-present top-bar connectivity icon: nothing shown at
-                // all while fully online (work queues and posts the same either way, so there
-                // is nothing to say), a small strip the moment either device internet or the
-                // AOS tenant itself is unreachable - on every screen, not just Home, since an
-                // operator mid-scan on Receiving needs to know just as much as one sitting on
-                // the Home grid. Two different strips, not one: "check your Wi-Fi" is the
-                // wrong thing to tell someone whose internet is fine and whose tenant is down,
-                // and the reverse is just as wrong - see the SyncStatus class doc. The green
-                // "back online" strip is the mirror image of either, but transient rather than
-                // persistent: once the queue is draining again there is nothing left to keep
-                // saying, so it announces the moment and gets out of the way - see the
-                // LaunchedEffect above.
-                if (!syncStatus.online) {
-                    OfflineStatusBar()
-                } else if (!syncStatus.d365Reachable) {
-                    D365UnreachableStatusBar()
-                } else if (showBackOnline) {
-                    BackOnlineStatusBar()
-                }
-                // Hidden on the workflow screens, not just unhighlighted - see the class doc on
-                // BottomTab for why a step-flow screen is not a tab destination at all.
-                if (currentRoute?.hierarchy?.any { it.route in BOTTOM_TABS.map(BottomTab::route) } == true) {
-                    AppBottomBar(
-                        currentRoute = currentRoute.route,
-                        failedCount = syncStatus.failedCount,
-                        onTabSelected = ::navigateToTab,
-                    )
-                }
-            }
-        },
-    ) { innerPadding ->
-        NavHost(
-            navController = navController,
-            startDestination = Routes.HOME,
-            modifier = Modifier.padding(innerPadding),
-        ) {
-
-            composable(Routes.HOME) {
-                HomeScreen(
-                    warehouseId = warehouseId,
-                    onModuleSelected = { navController.navigate(it) },
-                    onSignOut = onSignOut,
-                    onChangeWarehouse = { navController.navigate(Routes.CHANGE_WAREHOUSE) },
-                )
-            }
-
-            composable(Routes.CHANGE_WAREHOUSE) {
-                ChangeWarehouseScreen(onDone = { navController.popBackStack() })
-            }
-
-            composable(Routes.INQUIRY_LOCATION) {
-                LocationInquiryScreen(
-                    onBack = { navController.popBackStack() },
-                    onManualEntryRequested = { navController.navigate(Routes.INQUIRY_LOCATION_ENTRY) },
-                )
-            }
-
-            composable(Routes.INQUIRY_LOCATION_ENTRY) {
-                LocationEntryScreen(
-                    viewModel = hiltViewModel(navController.getBackStackEntry(Routes.INQUIRY_LOCATION)),
-                    onBack = { navController.popBackStack() },
-                )
-            }
-
-            composable(Routes.INQUIRY_PO_TODAY) {
-                PoOfTodayScreen(
-                    onBack = { navController.popBackStack() },
-                    onReceive = { navController.navigate(Routes.RECEIVE_FLOW) },
-                )
-            }
-
-            composable(Routes.INQUIRY_PO_LINES) {
-                PoLinesScreen(
-                    onBack = { navController.popBackStack() },
-                    onManualEntryRequested = { navController.navigate(Routes.INQUIRY_PO_LINES_ENTRY) },
-                )
-            }
-
-            composable(Routes.INQUIRY_PO_LINES_ENTRY) {
-                PoLinesEntryScreen(
-                    viewModel = hiltViewModel(navController.getBackStackEntry(Routes.INQUIRY_PO_LINES)),
-                    onBack = { navController.popBackStack() },
-                )
-            }
-
-            composable(Routes.COUNTING_JOURNALS) {
-                CountingJournalListScreen(
-                    onBack = { navController.popBackStack() },
-                    onViewLines = { journalId ->
-                        navController.navigate(Routes.countingLines(journalId))
-                    },
-                    onReviewVariance = { journalId ->
-                        navController.navigate(Routes.countingVariance(journalId))
-                    },
-                    onNewSpotCount = { navController.navigate(Routes.COUNTING_SPOT) },
-                    onAccuracy = { navController.navigate(Routes.COUNTING_ACCURACY) },
-                    onStartCounting = { journalId ->
-                        navController.navigate(Routes.countingCapture(journalId))
-                    },
-                )
-            }
-
-            composable(
-                Routes.COUNTING_CAPTURE,
-                arguments = listOf(navArgument("journalId") { type = NavType.StringType }),
-            ) {
-                CountingScanScreen(onBack = { navController.popBackStack() })
-            }
-
-            composable(
-                Routes.COUNTING_LINES,
-                arguments = listOf(navArgument("journalId") { type = NavType.StringType }),
-            ) {
-                CountingCaptureScreen(onBack = { navController.popBackStack() })
-            }
-
-            composable(
-                Routes.COUNTING_VARIANCE,
-                arguments = listOf(navArgument("journalId") { type = NavType.StringType }),
-            ) {
-                SupervisorVarianceScreen(onBack = { navController.popBackStack() })
-            }
-
-            composable(Routes.COUNTING_ACCURACY) {
-                AccuracyReportScreen(onBack = { navController.popBackStack() })
-            }
-
-            composable(Routes.COUNTING_SPOT) {
-                SpotCountScreen(
-                    onBack = { navController.popBackStack() },
-                    onCreated = { navController.popBackStack() },
-                )
-            }
-
-            composable(Routes.SETTINGS) {
-                SettingsScreen(
-                    onBack = { navController.popBackStack() },
-                    onSignOut = onSignOut,
-                    onChangeWarehouse = { navController.navigate(Routes.CHANGE_WAREHOUSE) },
-                )
-            }
-
-            composable(Routes.RECEIVE_FLOW) {
-                ReceivingFlowScreen(
-                    onBack = { navController.popBackStack() },
-                    onManualEntryRequested = { navController.navigate(Routes.RECEIVE_FLOW_ENTRY) },
-                )
-            }
-
-            composable(Routes.RECEIVE_FLOW_ENTRY) {
-                ReceivingEntryScreen(
-                    viewModel = hiltViewModel(navController.getBackStackEntry(Routes.RECEIVE_FLOW)),
-                    onBack = { navController.popBackStack() },
-                )
-            }
-
-            composable(Routes.TRANSFER_SHIP) {
-                TransferFlowScreen(
-                    mode = TransferMode.SHIP,
-                    onBack = { navController.popBackStack() },
-                    onManualEntryRequested = { navController.navigate(Routes.TRANSFER_SHIP_ENTRY) },
-                )
-            }
-
-            composable(Routes.TRANSFER_SHIP_ENTRY) {
-                TransferEntryScreen(
-                    viewModel = hiltViewModel(navController.getBackStackEntry(Routes.TRANSFER_SHIP)),
-                    onBack = { navController.popBackStack() },
-                )
-            }
-
-            composable(Routes.TRANSFER_RECEIVE) {
-                TransferFlowScreen(
-                    mode = TransferMode.RECEIVE,
-                    onBack = { navController.popBackStack() },
-                    onManualEntryRequested = { navController.navigate(Routes.TRANSFER_RECEIVE_ENTRY) },
-                )
-            }
-
-            composable(Routes.TRANSFER_RECEIVE_ENTRY) {
-                TransferEntryScreen(
-                    viewModel = hiltViewModel(navController.getBackStackEntry(Routes.TRANSFER_RECEIVE)),
-                    onBack = { navController.popBackStack() },
-                )
-            }
-
-            composable(Routes.ON_HAND) {
-                OnHandInquiryScreen(
-                    onBack = { navController.popBackStack() },
-                    onManualEntryRequested = { navController.navigate(Routes.ON_HAND_ENTRY) },
-                )
-            }
-
-            composable(Routes.ON_HAND_ENTRY) {
-                OnHandEntryScreen(
-                    viewModel = hiltViewModel(navController.getBackStackEntry(Routes.ON_HAND)),
-                    onBack = { navController.popBackStack() },
-                )
-            }
-
-            composable(Routes.FAILED_SYNC) {
-                FailedSyncScreen(onBack = { navController.popBackStack() })
-            }
+    // The top bar's feedback button: remember which screen and what it looked like, then open
+    // the feedback screen - see FeedbackButton / FeedbackOrigin.
+    val feedbackOrigin: com.d365fo.mobileops.presentation.common.FeedbackOriginViewModel = hiltViewModel()
+    val feedbackScope = rememberCoroutineScope()
+    val launchFeedback: (android.graphics.Bitmap?) -> Unit = { shot ->
+        val screen = screenLabel(navController.currentDestination?.route)
+        feedbackScope.launch {
+            feedbackOrigin.origin.capture(screen, shot)
+            navController.navigate(Routes.FEEDBACK)
         }
     }
-}
 
-/**
- * The entire connectivity signal, now: nothing while online, this strip the moment D365FO isn't
- * reachable. Still amber, not red - going offline is a normal, handled state here (every
- * capture still queues locally and posts once the connection returns), not a failure; a failed
- * posting has its own loud red badge on the Activity tab already. Solid fill rather than the
- * pale tint this used to have: an operator needs to actually notice their captures are queuing
- * locally instead of posting, and the tint alone read as too easy to miss against the rest of
- * the chrome.
- */
-@Composable
-private fun OfflineStatusBar() {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(WarehouseStatusColors.amber)
-            .padding(horizontal = WarehouseDimens.ScreenPadding, vertical = 8.dp),
+    CompositionLocalProvider(
+        LocalTourTargets provides tourTargets,
+        com.d365fo.mobileops.presentation.common.components.LocalFeedbackLauncher provides launchFeedback,
     ) {
-        Icon(
-            Icons.Default.CloudOff,
-            contentDescription = null,
-            tint = Color.White,
-            modifier = Modifier.size(16.dp),
-        )
-        Text(
-            text = stringResource(R.string.status_offline),
-            style = MaterialTheme.typography.labelMedium,
-            fontWeight = FontWeight.Bold,
-            color = Color.White,
-        )
+    Box(modifier = Modifier.fillMaxSize()) {
+        Scaffold(
+            bottomBar = {
+                Column {
+                    // Hidden on the workflow screens, not just unhighlighted - see the class doc on
+                    // BottomTab for why a step-flow screen is not a tab destination at all.
+                    if (currentRoute?.hierarchy?.any { it.route in BOTTOM_TABS.map(BottomTab::route) } == true) {
+                        AppBottomBar(
+                            currentRoute = currentRoute.route,
+                            failedCount = syncStatus.failedCount,
+                            onTabSelected = ::navigateToTab,
+                            onScan = { navController.navigate(Routes.ON_HAND) },
+                        )
+                    }
+                }
+            },
+        ) { innerPadding ->
+            NavHost(
+                navController = navController,
+                startDestination = Routes.HOME,
+                modifier = Modifier.padding(innerPadding),
+            ) {
+
+                composable(Routes.HOME) {
+                    HomeScreen(
+                        warehouseId = warehouseId,
+                        onModuleSelected = { navController.navigate(it) },
+                        onSignOut = onSignOut,
+                        onChangeWarehouse = { navController.navigate(Routes.CHANGE_WAREHOUSE) },
+                        onOpenTab = ::navigateToTab,
+                    )
+                }
+
+                composable(Routes.SERVICES) {
+                    val homeEntry = remember(it) { runCatching { navController.getBackStackEntry(Routes.HOME) }.getOrNull() }
+                    ServicesScreen(
+                        onModuleSelected = { route -> navController.navigate(route) },
+                        accessViewModel = if (homeEntry != null) hiltViewModel(homeEntry) else hiltViewModel(),
+                    )
+                }
+
+                composable(
+                    Routes.HANDHELD_MENU,
+                    arguments = listOf(navArgument("menuId") { type = NavType.StringType }),
+                ) { entry ->
+                    // Home's own view model, so a sub-menu shows the menus and Menu access Home
+                    // already has instead of asking D365FO again.
+                    val homeEntry = remember(entry) { runCatching { navController.getBackStackEntry(Routes.HOME) }.getOrNull() }
+                    HandheldMenuScreen(
+                        menuId = entry.arguments?.getString("menuId").orEmpty(),
+                        accessViewModel = if (homeEntry != null) hiltViewModel(homeEntry) else hiltViewModel(),
+                        onModuleSelected = { navController.navigate(it) },
+                        onBack = { navController.popBackStack() },
+                    )
+                }
+
+                composable(Routes.CHANGE_WAREHOUSE) {
+                    ChangeWarehouseScreen(onDone = { navController.popBackStack() })
+                }
+
+                composable(Routes.INQUIRY_LOCATION) {
+                    LocationInquiryScreen(
+                        onBack = { navController.popBackStack() },
+                        onManualEntryRequested = { navController.navigate(Routes.INQUIRY_LOCATION_ENTRY) },
+                    )
+                }
+
+                composable(Routes.INQUIRY_LOCATION_ENTRY) { entry ->
+                    LocationEntryScreen(
+                        viewModel = hiltViewModel(remember(entry) { navController.getBackStackEntry(Routes.INQUIRY_LOCATION) }),
+                        onBack = { navController.popBackStack() },
+                    )
+                }
+
+                composable(Routes.INQUIRY_PO_TODAY) {
+                    PoOfTodayScreen(
+                        onBack = { navController.popBackStack() },
+                        onReceive = { navController.navigate(Routes.RECEIVE_FLOW) },
+                    )
+                }
+
+                composable(Routes.INQUIRY_TRANSFERS) {
+                    com.d365fo.mobileops.presentation.modules.dataenquiry.TransferOrdersScreen(
+                        byStore = false,
+                        onBack = { navController.popBackStack() },
+                        onOpenShip = { navController.navigate(Routes.TRANSFER_SHIP) },
+                        onOpenReceive = { navController.navigate(Routes.TRANSFER_RECEIVE) },
+                    )
+                }
+
+                composable(Routes.INQUIRY_TRANSFERS_BY_STORE) {
+                    com.d365fo.mobileops.presentation.modules.dataenquiry.TransferOrdersScreen(
+                        byStore = true,
+                        onBack = { navController.popBackStack() },
+                        onOpenShip = { navController.navigate(Routes.TRANSFER_SHIP) },
+                        onOpenReceive = { navController.navigate(Routes.TRANSFER_RECEIVE) },
+                    )
+                }
+
+                composable(Routes.INQUIRY_PICKED_SERIALS) {
+                    com.d365fo.mobileops.presentation.modules.dataenquiry.PickedSerialsScreen(
+                        onBack = { navController.popBackStack() },
+                    )
+                }
+
+                composable(Routes.INQUIRY_PO_LINES) {
+                    PoLinesScreen(
+                        onBack = { navController.popBackStack() },
+                        onManualEntryRequested = { navController.navigate(Routes.INQUIRY_PO_LINES_ENTRY) },
+                    )
+                }
+
+                composable(Routes.INQUIRY_PO_LINES_ENTRY) { entry ->
+                    PoLinesEntryScreen(
+                        viewModel = hiltViewModel(remember(entry) { navController.getBackStackEntry(Routes.INQUIRY_PO_LINES) }),
+                        onBack = { navController.popBackStack() },
+                    )
+                }
+
+                composable(Routes.COUNTING_JOURNALS) {
+                    CountingJournalListScreen(
+                        onBack = { navController.popBackStack() },
+                        onViewLines = { journalId ->
+                            navController.navigate(Routes.countingLines(journalId))
+                        },
+                        onReviewVariance = { journalId ->
+                            navController.navigate(Routes.countingVariance(journalId))
+                        },
+                        onNewSpotCount = { navController.navigate(Routes.COUNTING_SPOT) },
+                        onStoreCount = { navController.navigate(Routes.COUNTING_STORE) },
+                        onAccuracy = { navController.navigate(Routes.COUNTING_ACCURACY) },
+                        onStartCounting = { journalId ->
+                            navController.navigate(Routes.countingCapture(journalId))
+                        },
+                    )
+                }
+
+                composable(
+                    Routes.COUNTING_CAPTURE,
+                    arguments = listOf(navArgument("journalId") { type = NavType.StringType }),
+                ) {
+                    CountingScanScreen(onBack = { navController.popBackStack() })
+                }
+
+                composable(
+                    Routes.COUNTING_LINES,
+                    arguments = listOf(navArgument("journalId") { type = NavType.StringType }),
+                ) {
+                    CountingCaptureScreen(onBack = { navController.popBackStack() })
+                }
+
+                composable(
+                    Routes.COUNTING_VARIANCE,
+                    arguments = listOf(navArgument("journalId") { type = NavType.StringType }),
+                ) {
+                    SupervisorVarianceScreen(onBack = { navController.popBackStack() })
+                }
+
+                composable(Routes.COUNTING_ACCURACY) {
+                    AccuracyReportScreen(onBack = { navController.popBackStack() })
+                }
+
+                composable(Routes.COUNTING_STORE) {
+                    com.d365fo.mobileops.presentation.modules.cyclecounting.store.StoreCountScreen(
+                        onBack = { navController.popBackStack() },
+                    )
+                }
+
+                composable(Routes.COUNTING_SPOT) {
+                    SpotCountScreen(
+                        onBack = { navController.popBackStack() },
+                        onCreated = { navController.popBackStack() },
+                    )
+                }
+
+                composable(Routes.SETTINGS) {
+                    SettingsScreen(
+                        onBack = { navController.popBackStack() },
+                        onSignOut = onSignOut,
+                        onChangeWarehouse = { navController.navigate(Routes.CHANGE_WAREHOUSE) },
+                        onFeedback = { navController.navigate(Routes.FEEDBACK) },
+                    )
+                }
+
+                composable(Routes.FEEDBACK) {
+                    FeedbackScreen(onBack = { navController.popBackStack() })
+                }
+
+                composable(Routes.RECEIVE_FLOW) {
+                    ReceivingFlowScreen(
+                        onBack = { navController.popBackStack() },
+                        onManualEntryRequested = { navController.navigate(Routes.RECEIVE_FLOW_ENTRY) },
+                    )
+                }
+
+                composable(Routes.RECEIVE_FLOW_ENTRY) { entry ->
+                    ReceivingEntryScreen(
+                        viewModel = hiltViewModel(remember(entry) { navController.getBackStackEntry(Routes.RECEIVE_FLOW) }),
+                        onBack = { navController.popBackStack() },
+                    )
+                }
+
+                composable(Routes.TRANSFER_SHIP) {
+                    TransferFlowScreen(
+                        mode = TransferMode.SHIP,
+                        onBack = { navController.popBackStack() },
+                        onManualEntryRequested = { navController.navigate(Routes.TRANSFER_SHIP_ENTRY) },
+                    )
+                }
+
+                composable(Routes.PO_CREATE) {
+                    PoCreateScreen(
+                        onBack = { navController.popBackStack() },
+                        onConfirm = { purchId -> navController.navigate(Routes.poConfirm(purchId)) },
+                    )
+                }
+
+                composable(
+                    Routes.PO_CONFIRM,
+                    arguments = listOf(
+                        navArgument("purchId") {
+                            type = NavType.StringType
+                            nullable = true
+                            defaultValue = null
+                        },
+                    ),
+                ) {
+                    com.d365fo.mobileops.presentation.modules.ordercreate.PoConfirmScreen(onBack = { navController.popBackStack() })
+                }
+
+                composable(Routes.PURCHASE_RETURN) {
+                    com.d365fo.mobileops.presentation.modules.ordercreate.ReturnCreateScreen(onBack = { navController.popBackStack() })
+                }
+
+                composable(Routes.TO_CREATE) {
+                    ToCreateScreen(
+                        onBack = { navController.popBackStack() },
+                        onShip = { navController.navigate(Routes.TRANSFER_SHIP) },
+                    )
+                }
+
+                composable(Routes.TRANSFER_SHIP_ENTRY) { entry ->
+                    TransferEntryScreen(
+                        viewModel = hiltViewModel(remember(entry) { navController.getBackStackEntry(Routes.TRANSFER_SHIP) }),
+                        onBack = { navController.popBackStack() },
+                    )
+                }
+
+                composable(Routes.TRANSFER_RECEIVE) {
+                    TransferFlowScreen(
+                        mode = TransferMode.RECEIVE,
+                        onBack = { navController.popBackStack() },
+                        onManualEntryRequested = { navController.navigate(Routes.TRANSFER_RECEIVE_ENTRY) },
+                    )
+                }
+
+                composable(Routes.TRANSFER_RECEIVE_ENTRY) { entry ->
+                    TransferEntryScreen(
+                        viewModel = hiltViewModel(remember(entry) { navController.getBackStackEntry(Routes.TRANSFER_RECEIVE) }),
+                        onBack = { navController.popBackStack() },
+                    )
+                }
+
+                composable(Routes.ON_HAND) {
+                    OnHandInquiryScreen(
+                        onBack = { navController.popBackStack() },
+                        onManualEntryRequested = { navController.navigate(Routes.ON_HAND_ENTRY) },
+                    )
+                }
+
+                composable(Routes.ON_HAND_ENTRY) { entry ->
+                    OnHandEntryScreen(
+                        viewModel = hiltViewModel(remember(entry) { navController.getBackStackEntry(Routes.ON_HAND) }),
+                        onBack = { navController.popBackStack() },
+                    )
+                }
+
+                composable(Routes.FAILED_SYNC) {
+                    FailedSyncScreen(onBack = { navController.popBackStack() })
+                }
+            }
+        }
+
+        if (tourOnScreen) {
+            AppTourOverlay(NavigationTour, tourTargets, onFinish = tour::markSeen)
+        }
+    }
     }
 }
 
-/**
- * The other half of the "not the same problem" pair with [OfflineStatusBar] - this device has
- * internet, but D365FO itself is not answering. Same amber, same solid fill, same icon even:
- * both strips are "D365FO cannot be reached right now" from the operator's chair, and the
- * reason only matters for what a supervisor does next, not for what the operator sees. Only the
- * wording differs, so it does not send anyone looking at their Wi-Fi for a tenant outage.
- */
-@Composable
-private fun D365UnreachableStatusBar() {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(WarehouseStatusColors.amber)
-            .padding(horizontal = WarehouseDimens.ScreenPadding, vertical = 8.dp),
-    ) {
-        Icon(
-            Icons.Default.CloudOff,
-            contentDescription = null,
-            tint = Color.White,
-            modifier = Modifier.size(16.dp),
-        )
-        Text(
-            text = stringResource(R.string.status_d365_unreachable),
-            style = MaterialTheme.typography.labelMedium,
-            fontWeight = FontWeight.Bold,
-            color = Color.White,
-        )
-    }
-}
 
-/** How long [BackOnlineStatusBar] stays up before it dismisses itself. */
-private const val BACK_ONLINE_BANNER_MS = 3_000L
 
-/**
- * The green mirror of [OfflineStatusBar], shown only for the few seconds right after a
- * connection that was down comes back - see the edge-triggered LaunchedEffect in
- * [AppNavGraph]. Green and not the app's usual accent: this is the one place in the status
- * strip that is explicitly good news, not a neutral state to keep in view.
- */
-@Composable
-private fun BackOnlineStatusBar() {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(WarehouseStatusColors.greenDim)
-            .padding(horizontal = WarehouseDimens.ScreenPadding, vertical = 6.dp),
-    ) {
-        Icon(
-            Icons.Default.CloudDone,
-            contentDescription = null,
-            tint = WarehouseStatusColors.green,
-            modifier = Modifier.size(14.dp),
-        )
-        Text(
-            text = stringResource(R.string.status_back_online),
-            style = MaterialTheme.typography.labelSmall,
-            color = WarehouseStatusColors.green,
-        )
-    }
-}
+
+
 
 /**
  * Hand-built rather than Material3's `NavigationBar` - that composable's own container only ever
@@ -559,7 +622,9 @@ private fun AppBottomBar(
     currentRoute: String?,
     failedCount: Int,
     onTabSelected: (String) -> Unit,
+    onScan: () -> Unit,
 ) {
+  Box(modifier = Modifier.fillMaxWidth()) {
     Surface(
         color = Color.White,
         shadowElevation = 8.dp,
@@ -567,7 +632,7 @@ private fun AppBottomBar(
             .fillMaxWidth()
             .height(WarehouseDimens.BottomBarHeight),
     ) {
-        Row(modifier = Modifier.fillMaxWidth().fillMaxHeight()) {
+        Row(modifier = Modifier.fillMaxWidth().fillMaxHeight().padding(end = 76.dp)) {
             BOTTOM_TABS.forEach { tab ->
                 val selected = currentRoute == tab.route
                 val tint = if (selected) WarehouseStatusColors.accent else WarehouseStatusColors.text3
@@ -577,21 +642,24 @@ private fun AppBottomBar(
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxHeight()
+                        .then(
+                            when (tab.route) {
+                                Routes.FAILED_SYNC -> Modifier.tourTarget("tab_activity")
+                                else -> Modifier
+                            },
+                        )
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = ripple(),
                             onClick = { onTabSelected(tab.route) },
                         ),
                 ) {
-                    val iconTint = if (selected) Color.White else WarehouseStatusColors.text3
+                    // The 20 Oct restyle: no filled circle - the active tab is the navy icon and a
+                    // bolder label, the rest muted.
+                    val iconTint = tint
                     Box(
                         contentAlignment = Alignment.Center,
-                        modifier = Modifier
-                            .size(30.dp)
-                            .background(
-                                if (selected) WarehouseStatusColors.accent else Color.Transparent,
-                                CircleShape,
-                            ),
+                        modifier = Modifier.size(30.dp),
                     ) {
                         // The one badge worth putting on a tab icon: failed postings are the
                         // one thing on this bar that means "something needs you", the same
@@ -603,7 +671,7 @@ private fun AppBottomBar(
                                     tab.icon,
                                     contentDescription = tab.label,
                                     tint = iconTint,
-                                    modifier = Modifier.size(18.dp),
+                                    modifier = Modifier.size(24.dp),
                                 )
                             }
                         } else {
@@ -611,17 +679,65 @@ private fun AppBottomBar(
                                 tab.icon,
                                 contentDescription = tab.label,
                                 tint = iconTint,
-                                modifier = Modifier.size(18.dp),
+                                modifier = Modifier.size(24.dp),
                             )
                         }
                     }
                     Text(
                         text = tab.label,
-                        style = MaterialTheme.typography.labelSmall,
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = if (selected) androidx.compose.ui.text.font.FontWeight.Bold else androidx.compose.ui.text.font.FontWeight.Medium,
                         color = tint,
                     )
                 }
             }
         }
     }
+    // Scan: straight to On-hand - scan any item to see its stock. Round and raised over the bar's
+    // right end, like the mock's floating button.
+    androidx.compose.material3.FloatingActionButton(
+        onClick = onScan,
+        shape = CircleShape,
+        containerColor = Color(0xFF1FA99B),
+        contentColor = Color.White,
+        modifier = Modifier
+            .align(Alignment.TopEnd)
+            .padding(end = 12.dp)
+            .offset(y = (-14).dp)
+            .size(60.dp)
+            .tourTarget("tab_onhand"),
+    ) {
+        Icon(Icons.Outlined.QrCodeScanner, contentDescription = "Scan an item", modifier = Modifier.size(28.dp))
+    }
+  }
+}
+
+/** How long the connection must stay down before the offline dialog shows. */
+private const val OFFLINE_DIALOG_GRACE_MS = 2_000L
+
+
+/** The screen a route shows, as a worker would name it - for feedback (see FeedbackOrigin). */
+internal fun screenLabel(route: String?): String = when {
+    route == null -> "General"
+    route == Routes.HOME -> "Home"
+    route.startsWith("menu/") -> "Menu"
+    route == Routes.RECEIVE_FLOW || route == Routes.RECEIVE_FLOW_ENTRY -> "PO receiving"
+    route == Routes.TRANSFER_SHIP || route == Routes.TRANSFER_SHIP_ENTRY -> "Transfer - Ship"
+    route == Routes.TRANSFER_RECEIVE || route == Routes.TRANSFER_RECEIVE_ENTRY -> "Transfer - Receive"
+    route == Routes.ON_HAND || route == Routes.ON_HAND_ENTRY -> "On-hand"
+    route == Routes.FAILED_SYNC -> "Activity"
+    route == Routes.SETTINGS -> "Settings"
+    route == Routes.CHANGE_WAREHOUSE -> "Change warehouse"
+    route == Routes.PO_CREATE -> "PO creation"
+    route == Routes.TO_CREATE -> "TO creation"
+    route == Routes.PURCHASE_RETURN -> "Purchase return"
+    route.startsWith("orders/po/confirm") -> "PO confirmation"
+    route.startsWith("counting/") -> "Inventory count"
+    route.startsWith(Routes.INQUIRY_LOCATION) -> "Location inquiry"
+    route == Routes.INQUIRY_PO_TODAY -> "PO's of today"
+    route.startsWith(Routes.INQUIRY_PO_LINES) -> "PO lines"
+    route == Routes.INQUIRY_TRANSFERS -> "Transfer orders"
+    route == Routes.INQUIRY_TRANSFERS_BY_STORE -> "TO's by Store"
+    route == Routes.INQUIRY_PICKED_SERIALS -> "Picked serials"
+    else -> route
 }

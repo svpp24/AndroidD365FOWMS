@@ -93,6 +93,9 @@ class HSMobileOpsTransferService
             response.parmToSiteId(
                 HSMobileOpsTransferService::siteOf(transferTable.InventLocationIdTo));
             response.parmToWarehouseId(transferTable.InventLocationIdTo);
+            // Feedback 88c029a1: the warehouses' default bins, so the worker is not asked for one.
+            response.parmDefaultIssueLocation(InventLocation::find(transferTable.InventLocationIdFrom).WMSLocationIdDefaultIssue);
+            response.parmDefaultReceiptLocation(InventLocation::find(transferTable.InventLocationIdTo).WMSLocationIdDefaultReceipt);
 
             // Receive direction only - see the field's own doc on HSMobileOpsTransferResponse.
             // Left at its type default (false) when shipping, which is harmless: the Android
@@ -229,13 +232,13 @@ class HSMobileOpsTransferService
         Map unitsByKey  = new Map(Types::String, Types::Class);
 
         while select LineNum, ItemId, UnitId, QtyTransfer, QtyShipped, QtyReceived,
-                     QtyRemainShip, InventDimId
+                     QtyRemainShip, InventDimId, InventTransId, InventTransIdReceive
             from transferLine
             order by transferLine.LineNum
             where transferLine.TransferId == _transferTable.TransferId
                && (!_itemId || transferLine.ItemId == _itemId)
             join InventSiteId, InventLocationId, wMSLocationId,
-                 configId, InventSizeId, InventColorId, InventStyleId from inventDim
+                 configId, InventSizeId, InventColorId, InventStyleId, inventBatchId from inventDim
                 where inventDim.InventDimId == transferLine.InventDimId
         {
             // The whole reason direction is a parameter. Receiving is bounded by what was
@@ -273,6 +276,7 @@ class HSMobileOpsTransferService
                 HSMobileOpsTransferService::siteOf(_transferTable.InventLocationIdTo));
             line.parmToWarehouseId(_transferTable.InventLocationIdTo);
             line.parmLocationId(inventDim.wMSLocationId);
+            line.parmLineBatchId(inventDim.inventBatchId);
             // Product dimensions - which variant of a product master this line is.
             line.parmConfigId(inventDim.configId);
             line.parmSizeId(inventDim.InventSizeId);
@@ -289,6 +293,9 @@ class HSMobileOpsTransferService
             line.parmSerialPerUnit(HSMobileOpsDimensionRules::serialPerUnit(dimSetup));
             // Units from the item's conversion setup, to the line's transfer unit.
             line.parmUnits(HSMobileOpsUnitService::unitsCached(unitsByKey, transferLine.ItemId, transferLine.InventDimId, transferLine.UnitId));
+            line.parmShippedBatches(!_shipping && line.parmBatchRequired()
+                ? HSMobileOpsTransferService::shippedBatchesOf(transferLine.InventTransId, transferLine.InventTransIdReceive)
+                : new List(Types::Class));
 
             lines.addEnd(line);
 
@@ -299,6 +306,90 @@ class HSMobileOpsTransferService
                 break;
             }
         }
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>shippedBatchesOf</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The batches still to receive on a transfer line, with their quantities: per batch, what
+    /// was shipped (the issue-side transactions that left the source warehouse) less what has been
+    /// received or registered on the receipt side.
+    ///
+    /// Read from the issue side, not from the receipt side's in-transit transactions: those can
+    /// carry a batch other than the one that left. On BSP-TO-000000017 0.58 left as batch 4S2MK
+    /// while the in-transit receipt said 3S6NC (feedback f1afd048), and receiving against it
+    /// failed with "Total received quantity exceeds shipped quantity".
+    ///
+    /// Receive posting checks a scanned batch against the same list
+    /// (HSMobileOpsPostingService.unshippedBatch).
+    /// </summary>
+    public static List shippedBatchesOf(InventTransId _inventTransId, InventTransId _inventTransIdReceive)
+    {
+        List                        batches   = new List(Types::Class);
+        InventTransOriginId         issueId   = InventTransOrigin::findByInventTransId(_inventTransId).RecId;
+        InventTransOriginId         receiptId = InventTransOrigin::findByInventTransId(_inventTransIdReceive).RecId;
+        InventTrans                 inventTrans;
+        InventDim                   inventDim;
+        HSMobileOpsTransferBatchRow row;
+        Map                         shipped  = new Map(Types::String, Types::Real);
+        Map                         received = new Map(Types::String, Types::Real);
+        MapEnumerator               enumerator;
+        InventQty                   open;
+
+        if (!issueId)
+        {
+            return batches;
+        }
+        while select sum(Qty) from inventTrans
+            where inventTrans.InventTransOrigin == issueId
+               && inventTrans.StatusReceipt     == StatusReceipt::None
+               && (inventTrans.StatusIssue      == StatusIssue::Sold
+                || inventTrans.StatusIssue      == StatusIssue::Deducted)
+            join InventBatchId from inventDim
+                group by inventDim.InventBatchId
+                where inventDim.InventDimId == inventTrans.InventDimId
+        {
+            if (inventDim.InventBatchId)
+            {
+                shipped.insert(inventDim.InventBatchId, -inventTrans.Qty);
+            }
+        }
+        if (receiptId)
+        {
+            while select sum(Qty) from inventTrans
+                where inventTrans.InventTransOrigin == receiptId
+                   && inventTrans.StatusIssue       == StatusIssue::None
+                   && (inventTrans.StatusReceipt    == StatusReceipt::Purchased
+                    || inventTrans.StatusReceipt    == StatusReceipt::Received
+                    || inventTrans.StatusReceipt    == StatusReceipt::Registered)
+                join InventBatchId from inventDim
+                    group by inventDim.InventBatchId
+                    where inventDim.InventDimId == inventTrans.InventDimId
+            {
+                if (inventDim.InventBatchId)
+                {
+                    received.insert(inventDim.InventBatchId, inventTrans.Qty);
+                }
+            }
+        }
+
+        enumerator = shipped.getEnumerator();
+        while (enumerator.moveNext())
+        {
+            open = enumerator.currentValue()
+                 - (received.exists(enumerator.currentKey()) ? received.lookup(enumerator.currentKey()) : 0);
+            if (open > 0)
+            {
+                row = new HSMobileOpsTransferBatchRow();
+                row.parmBatchId(enumerator.currentKey());
+                row.parmQty(open);
+                batches.addEnd(row);
+            }
+        }
+        return batches;
     }
 ]]></Source>
 			</Method>

@@ -7,8 +7,8 @@ import com.d365fo.mobileops.data.repository.WorkerContextRepositoryImpl
 import com.d365fo.mobileops.data.repository.WorkerSessionRepository
 import com.d365fo.mobileops.data.security.ClientCredentialsTokenProvider
 import com.d365fo.mobileops.data.security.ConnectionSettings
-import com.d365fo.mobileops.data.security.DeviceCodePollState
-import com.d365fo.mobileops.data.security.DeviceCodeTokenProvider
+import com.d365fo.mobileops.data.security.CredentialRouter
+import com.d365fo.mobileops.data.security.CredentialStatus
 import com.d365fo.mobileops.data.security.DisplayPreferences
 import com.d365fo.mobileops.data.security.DisplayScale
 import com.d365fo.mobileops.data.security.IdlePreferences
@@ -16,16 +16,12 @@ import com.d365fo.mobileops.data.security.IdleTimeout
 import com.d365fo.mobileops.data.security.NetworkPreferences
 import com.d365fo.mobileops.data.security.RequestTimeout
 import com.d365fo.mobileops.data.security.TenantConfig
-import com.d365fo.mobileops.data.security.ThemePreferences
 import com.d365fo.mobileops.domain.model.WorkerContext
-import com.d365fo.mobileops.domain.model.WorkerRole
 import com.d365fo.mobileops.domain.model.role
-import com.d365fo.mobileops.presentation.common.theme.ColorPalette
 import com.d365fo.mobileops.util.NetworkResult
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -37,6 +33,22 @@ import kotlinx.coroutines.withContext
 import timber.log.Timber
 import javax.inject.Inject
 
+/**
+ * The signed-in worker as Settings shows it: display name and user ID ("Pradeep · 001"), or
+ * whichever of the two is set. D365FO falls back to the user ID for a blank display name, so
+ * the two can be the same - shown once then.
+ */
+internal fun signedInLabel(displayName: String?, userName: String?): String {
+    val name = displayName?.trim().orEmpty()
+    val id = userName?.trim().orEmpty()
+    return when {
+        name.isNotEmpty() && id.isNotEmpty() && !name.equals(id, ignoreCase = true) -> "$name · $id"
+        name.isNotEmpty() -> name
+        id.isNotEmpty() -> id
+        else -> "Signed in"
+    }
+}
+
 /** Result of the "test connection" action, shown inline under the form. */
 sealed interface ConnectionTest {
     data object Idle : ConnectionTest
@@ -45,32 +57,20 @@ sealed interface ConnectionTest {
     data class Failed(val reason: String) : ConnectionTest
 }
 
-/** UI state of an in-progress or completed device-code sign-in. Mirrors [DeviceCodePollState]. */
-sealed interface DeviceCodeUiState {
-    data object Idle : DeviceCodeUiState
-    data object Starting : DeviceCodeUiState
-    data class WaitingForUser(val userCode: String, val verificationUri: String) : DeviceCodeUiState
-    data class SignedIn(val userPrincipalName: String?) : DeviceCodeUiState
-    data class Failed(val reason: String) : DeviceCodeUiState
-}
-
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
     private val connectionSettings: ConnectionSettings,
     private val workerContextRepository: WorkerContextRepositoryImpl,
-    private val sessionRepository: WorkerSessionRepository,
-    private val deviceCodeTokenProvider: DeviceCodeTokenProvider,
     private val clientCredentialsTokenProvider: ClientCredentialsTokenProvider,
-    private val themePreferences: ThemePreferences,
+    credentialRouter: CredentialRouter,
     private val networkPreferences: NetworkPreferences,
     private val displayPreferences: DisplayPreferences,
     private val idlePreferences: IdlePreferences,
     private val database: D365Database,
+    private val unsentWork: com.d365fo.mobileops.data.sync.UnsentWork,
+    private val offlineSignIn: com.d365fo.mobileops.data.security.OfflineSignIn,
+    workerSessions: WorkerSessionRepository,
 ) : ViewModel() {
-
-    val palette: StateFlow<ColorPalette> = themePreferences.palette
-
-    fun setPalette(value: ColorPalette) = themePreferences.setPalette(value)
 
     val displayScale: StateFlow<DisplayScale> = displayPreferences.scale
 
@@ -79,10 +79,6 @@ class SettingsViewModel @Inject constructor(
     val idleTimeout: StateFlow<IdleTimeout> = idlePreferences.timeout
 
     fun setIdleTimeout(value: IdleTimeout) = idlePreferences.setTimeout(value)
-
-    val requestTimeout: StateFlow<RequestTimeout> = networkPreferences.timeout
-
-    fun setRequestTimeout(value: RequestTimeout) = networkPreferences.setTimeout(value)
 
     private val handler = CoroutineExceptionHandler { _, t ->
         Timber.e(t, "settings action failed")
@@ -96,60 +92,119 @@ class SettingsViewModel @Inject constructor(
     private val _test = MutableStateFlow<ConnectionTest>(ConnectionTest.Idle)
     val test: StateFlow<ConnectionTest> = _test.asStateFlow()
 
-    private val _deviceCode = MutableStateFlow<DeviceCodeUiState>(
-        deviceCodeTokenProvider.signedInUpn()?.let { DeviceCodeUiState.SignedIn(it) }
-            ?: DeviceCodeUiState.Idle,
-    )
-    val deviceCode: StateFlow<DeviceCodeUiState> = _deviceCode.asStateFlow()
-    private var devicePollJob: Job? = null
+    /** This device's app registration and how often D365FO has throttled it - see [CredentialRouter]. */
+    val credentialStatus: StateFlow<CredentialStatus> = credentialRouter.status
 
     val worker: StateFlow<WorkerContext> = workerContextRepository.observe()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), WorkerContext.UNAUTHENTICATED)
 
     /**
-     * Whether the Admin Center menu entry should show at all - see [WorkerRole]. Purely a UX
-     * gate: the AOS service operations behind the Admin Center re-verify this worker is a
-     * current supervisor themselves before writing anything, so a stale or tampered reading
-     * here can hide or show a menu entry, never grant a permission.
+     * Who is signed in on this handheld, as Session shows it - see [signedInLabel]. From the
+     * handheld session, not [worker]: that one's display name is the service token's user
+     * principal name, blank under client credentials, so Session only ever said "Signed in".
      */
-    val isAdmin: StateFlow<Boolean> = sessionRepository.session
-        .map { it?.role == WorkerRole.ADMIN }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+    val signedInAs: StateFlow<String> = workerSessions.session
+        .map { signedInLabel(it?.displayName, it?.userName) }
+        .stateIn(
+            viewModelScope,
+            SharingStarted.WhileSubscribed(5_000),
+            workerSessions.session.value.let { signedInLabel(it?.displayName, it?.userName) },
+        )
+
+    init {
+        // A profile saved before profiles carried a company takes the device's one, once.
+        viewModelScope.launch(handler) {
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                connectionSettings.backfillCompany(workerContextRepository.current().dataAreaId)
+            }
+        }
+    }
 
     fun canGoLive(): Boolean = connectionSettings.canGoLive()
 
     fun setPostingEnabled(enabled: Boolean) = connectionSettings.setPostingEnabled(enabled)
 
+    /** Settings > Data posting > Post immediately - see NetworkPreferences.postImmediately. */
+    val postImmediately: StateFlow<Boolean> = networkPreferences.postImmediately
+
+    fun setPostImmediately(value: Boolean) = networkPreferences.setPostImmediately(value)
+
     /**
      * Switches to an already-saved profile - see [ConnectionSettings.activate]. Wipes local
-     * data when this actually points the device somewhere new, same as [addProfile] and
-     * [startDeviceCodeSignIn] - order and item data from two tenants must never mix.
+     * data when this actually points the device somewhere new, same as [addProfile] - order and
+     * item data from two tenants must never mix.
      */
-    fun switchProfile(label: String) {
+    fun switchProfile(label: String) = guardUnsent(connectionSettings.wouldChangeTarget(label)) {
         viewModelScope.launch(handler) {
             if (connectionSettings.activate(label)) wipeLocalData()
+            // Each profile carries its own company (from its QR code) - the device follows it.
+            connectionSettings.tenant.value.company.takeIf { it.isNotBlank() }?.let {
+                workerContextRepository.setRegistration(personnelNumber = null, dataAreaId = it)
+            }
             _test.value = ConnectionTest.Idle
         }
+    }
+
+    /** Work that would be wiped by the pending connection change, and that change - see [guardUnsent]. */
+    data class UnsentBlock(val description: String, val proceed: () -> Unit)
+
+    private val _unsentBlock = kotlinx.coroutines.flow.MutableStateFlow<UnsentBlock?>(null)
+    val unsentBlock: StateFlow<UnsentBlock?> = _unsentBlock
+
+    fun keepUnsent() {
+        _unsentBlock.value = null
+    }
+
+    fun deleteUnsentAndProceed() {
+        val block = _unsentBlock.value ?: return
+        _unsentBlock.value = null
+        block.proceed()
     }
 
     /**
-     * Registers a brand new, blank profile under [label] and makes it active, so it appears in
-     * the profile list immediately and the fields below are ready to fill in. Blank fields mean
-     * [TenantConfig.isComplete] is false, so nothing can go live on it until someone fills them
-     * in and saves for real.
+     * Runs [action] - unless it would point the device somewhere new while work on it hasn't
+     * reached D365FO, in which case it asks first (see UnsentWorkDialog). The wipe that follows
+     * a target change would otherwise take that work with it.
      */
-    fun addProfile(label: String) {
-        val trimmed = label.trim()
-        if (trimmed.isBlank()) return
+    private fun guardUnsent(changesTarget: Boolean, action: () -> Unit) {
+        if (!changesTarget) return action()
         viewModelScope.launch(handler) {
-            if (connectionSettings.saveTenant(TenantConfig(label = trimmed))) wipeLocalData()
+            val unsent = unsentWork.summary()
+            if (unsent.isEmpty) action() else _unsentBlock.value = UnsentBlock(unsent.describe(), action)
+        }
+    }
+
+
+    /** Removes a saved, non-active profile. See [ConnectionSettings.deleteProfile]. */
+    /**
+     * Deletes a saved profile - the active one too (see [ConnectionSettings.deleteProfile]).
+     * Deleting the active one points the device elsewhere, so it wipes local data, and asks
+     * first when work on the device hasn't reached D365FO (see [guardUnsent]).
+     */
+    fun deleteProfile(label: String) = guardUnsent(label == connectionSettings.tenant.value.label) {
+        viewModelScope.launch(handler) {
+            if (connectionSettings.deleteProfile(label)) {
+                wipeLocalData()
+                connectionSettings.tenant.value.company.takeIf { it.isNotBlank() }?.let {
+                    workerContextRepository.setRegistration(personnelNumber = null, dataAreaId = it)
+                }
+            }
             _test.value = ConnectionTest.Idle
         }
     }
 
-    /** Removes a saved, non-active profile. See [ConnectionSettings.deleteProfile]. */
-    fun deleteProfile(label: String) {
-        connectionSettings.deleteProfile(label)
+    /** How much work would wait (or go) - shown in the remove/reset confirmations. */
+    suspend fun unsentDescription(): String? = unsentWork.summary().takeIf { !it.isEmpty }?.describe()
+
+    /**
+     * Clears the credentials of every profile and the offline sign-ins. Local data - including
+     * work not yet in D365FO - is kept: it is sent once a connection QR code is scanned again.
+     */
+    fun resetConnection() {
+        connectionSettings.clearAllCredentials()
+        offlineSignIn.forgetAll()
+        clientCredentialsTokenProvider.invalidateCache()
+        _test.value = ConnectionTest.Idle
     }
 
     /**
@@ -163,80 +218,16 @@ class SettingsViewModel @Inject constructor(
      */
     private suspend fun wipeLocalData() = withContext(Dispatchers.IO) {
         database.clearAllTables()
-        deviceCodeTokenProvider.invalidateCache()
         clientCredentialsTokenProvider.invalidateCache()
-    }
-
-    /**
-     * Stores the device's legal entity.
-     *
-     * Warehouse is deliberately not set here any more — it comes from the signed-in worker's
-     * own backoffice assignment (see WorkerSessionRepository), never from a device-level field.
-     * Legal entity stays device-level: the device connects to one company, chosen before anyone
-     * signs in, independent of which warehouses that company's directory assigns per worker.
-     */
-    fun saveLegalEntity(dataAreaId: String) {
-        viewModelScope.launch(handler) {
-            val company = dataAreaId.trim().uppercase()
-            workerContextRepository.setRegistration(
-                personnelNumber = null,
-                dataAreaId = company,
-            )
-            _test.value = ConnectionTest.Ok("Legal entity $company saved.")
-        }
-    }
-
-    /**
-     * Saves [config] and starts an interactive device-code sign-in in one tap - there is no
-     * separate "save" step on screen any more. The old two-step "save and test" wording made
-     * sense back when device-code was one of two auth modes and testing the D365FO connection
-     * was a reasonable thing to check before touching Azure AD; now that it's the only device
-     * credential, a person filling in the form wants exactly one thing to happen: get signed in.
-     *
-     * Wipes local data first when this actually changes the active target, same as
-     * [addProfile]/[switchProfile] - order and item data from two tenants must never mix.
-     */
-    fun startDeviceCodeSignIn(config: TenantConfig) {
-        devicePollJob?.cancel()
-        _deviceCode.value = DeviceCodeUiState.Starting
-
-        devicePollJob = viewModelScope.launch(handler) {
-            if (connectionSettings.saveTenant(config)) wipeLocalData()
-
-            when (val challenge = deviceCodeTokenProvider.startDeviceCodeFlow()) {
-                is NetworkResult.Error -> {
-                    _deviceCode.value = DeviceCodeUiState.Failed(challenge.failure.message)
-                }
-                NetworkResult.Loading -> Unit
-                is NetworkResult.Success -> {
-                    _deviceCode.value = DeviceCodeUiState.WaitingForUser(
-                        userCode = challenge.data.userCode,
-                        verificationUri = challenge.data.verificationUri,
-                    )
-                    deviceCodeTokenProvider.pollForToken(challenge.data).collect { state ->
-                        _deviceCode.value = when (state) {
-                            DeviceCodePollState.Pending -> return@collect
-                            is DeviceCodePollState.Success ->
-                                DeviceCodeUiState.SignedIn(state.userPrincipalName)
-                            DeviceCodePollState.Expired ->
-                                DeviceCodeUiState.Failed("The code expired before sign-in finished. Try again.")
-                            DeviceCodePollState.Declined ->
-                                DeviceCodeUiState.Failed("Sign-in was declined.")
-                            is DeviceCodePollState.Error -> DeviceCodeUiState.Failed(state.message)
-                        }
-                    }
-                }
-            }
-        }
     }
 
     /**
      * Saves [config] and immediately tries to acquire a token with its client secret - the
      * client-credentials grant has no interactive step, so "save" and "test" are the same
      * click. Wipes local data first when this actually changes the active target, same as
-     * [addProfile]/[switchProfile]/[startDeviceCodeSignIn].
+     * [addProfile]/[switchProfile].
      */
-    fun saveAndSignInWithSecret(config: TenantConfig) {
+    fun saveAndSignInWithSecret(config: TenantConfig) = guardUnsent(connectionSettings.wouldChangeTarget(config)) {
         _test.value = ConnectionTest.Running
         viewModelScope.launch(handler) {
             if (connectionSettings.saveTenant(config)) wipeLocalData()
@@ -247,30 +238,5 @@ class SettingsViewModel @Inject constructor(
                 is NetworkResult.Success -> ConnectionTest.Ok("Signed in with client secret.")
             }
         }
-    }
-
-    /**
-     * Persists [config] and [dataAreaId] with no side effect beyond that - no sign-in attempt,
-     * no connection test. Added back after the two folded-in "save and act" buttons
-     * ([startDeviceCodeSignIn], [saveAndSignInWithSecret]) turned out to be the *only* way typed
-     * fields ever reached storage: confirmed live that leaving this screen (or the process dying)
-     * straight after typing, without tapping one of those, silently discarded the edit. A worker
-     * setting up a device with no browser handy yet - or wanting to fix a typo without kicking off
-     * a new sign-in - needs a way to just save.
-     */
-    fun saveConnection(config: TenantConfig, dataAreaId: String) {
-        viewModelScope.launch(handler) {
-            if (connectionSettings.saveTenant(config)) wipeLocalData()
-            val company = dataAreaId.trim().uppercase()
-            workerContextRepository.setRegistration(personnelNumber = null, dataAreaId = company)
-            _test.value = ConnectionTest.Ok("Saved.")
-        }
-    }
-
-    fun cancelDeviceCodeSignIn() {
-        devicePollJob?.cancel()
-        devicePollJob = null
-        _deviceCode.value = deviceCodeTokenProvider.signedInUpn()?.let { DeviceCodeUiState.SignedIn(it) }
-            ?: DeviceCodeUiState.Idle
     }
 }

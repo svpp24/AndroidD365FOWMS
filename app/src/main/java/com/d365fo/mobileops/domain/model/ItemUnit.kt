@@ -12,7 +12,6 @@ data class ItemUnit(val unitId: String, val factor: BigDecimal, val decimals: In
 
 /** An entered quantity, converted into the line's unit. */
 data class ConvertedQuantity(val entered: BigDecimal, val enteredUnit: String, val quantity: BigDecimal) {
-    val wasConverted: Boolean get() = quantity.compareTo(entered) != 0 || enteredUnit.isNotBlank()
 }
 
 object UnitConversion {

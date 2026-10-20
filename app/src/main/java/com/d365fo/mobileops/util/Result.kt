@@ -8,7 +8,6 @@ sealed interface NetworkResult<out T> {
     data class Error(val failure: AppFailure) : NetworkResult<Nothing>
     data object Loading : NetworkResult<Nothing>
 
-    val successOrNull: T? get() = (this as? Success)?.data
 }
 
 inline fun <T, R> NetworkResult<T>.map(transform: (T) -> R): NetworkResult<R> = when (this) {

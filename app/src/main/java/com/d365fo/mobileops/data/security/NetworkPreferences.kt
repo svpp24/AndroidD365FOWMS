@@ -37,6 +37,21 @@ class NetworkPreferences @Inject constructor(
         _timeout.value = value
     }
 
+    /**
+     * Settings > Data posting > Post immediately (feedback 301e5d0e). On: each posting asks
+     * D365FO to process it in the same call (ProcessNow) and the worker sees it posted - or
+     * refused, with the reason - before moving on. Off (the default): D365FO stages it as
+     * Pending and its batch job or "Process pending" posts it within minutes, so the worker
+     * never waits on a slow posting.
+     */
+    private val _postImmediately = MutableStateFlow(secureStore.getString(KEY_POST_IMMEDIATELY) == "1")
+    val postImmediately: StateFlow<Boolean> = _postImmediately.asStateFlow()
+
+    fun setPostImmediately(value: Boolean) {
+        secureStore.putString(KEY_POST_IMMEDIATELY, if (value) "1" else "0")
+        _postImmediately.value = value
+    }
+
     private fun loadTimeout(): RequestTimeout =
         secureStore.getString(KEY_TIMEOUT)
             ?.let { runCatching { RequestTimeout.valueOf(it) }.getOrNull() }
@@ -44,5 +59,6 @@ class NetworkPreferences @Inject constructor(
 
     private companion object {
         const val KEY_TIMEOUT = "network_request_timeout"
+        const val KEY_POST_IMMEDIATELY = "post_immediately"
     }
 }

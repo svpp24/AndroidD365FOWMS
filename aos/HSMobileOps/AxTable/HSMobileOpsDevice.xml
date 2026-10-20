@@ -259,107 +259,107 @@ public class HSMobileOpsDevice extends common
 	<TitleField1>FriendlyName</TitleField1>
 	<TitleField2>DeviceId</TitleField2>
 	<CacheLookup>NotInTTS</CacheLookup>
-	<!-- One fleet for the whole environment, not one per legal entity - see the class doc. -->
-	<SaveDataPerCompany>No</SaveDataPerCompany>
 	<ClusteredIndex>DeviceIdIdx</ClusteredIndex>
 	<PrimaryIndex>DeviceIdIdx</PrimaryIndex>
 	<ReplacementKey>DeviceIdIdx</ReplacementKey>
+	<!-- One fleet for the whole environment, not one per legal entity - see the class doc. -->
+	<SaveDataPerCompany>No</SaveDataPerCompany>
 	<Fields>
 		<AxTableField xmlns=""
 			i:type="AxTableFieldString">
 			<Name>DeviceId</Name>
-			<Label>Device ID</Label>
-			<HelpText>Generated on the handheld itself and stable for the life of the install - not a hardware serial number.</HelpText>
-			<StringSize>64</StringSize>
-			<Mandatory>Yes</Mandatory>
 			<AllowEdit>No</AllowEdit>
+			<HelpText>Generated on the handheld itself and stable for the life of the install - not a hardware serial number.</HelpText>
+			<Label>Device ID</Label>
+			<Mandatory>Yes</Mandatory>
+			<StringSize>64</StringSize>
 		</AxTableField>
 		<AxTableField xmlns=""
 			i:type="AxTableFieldString">
 			<Name>FriendlyName</Name>
-			<Label>Friendly name</Label>
-			<HelpText>Brand and model together, e.g. "Zebra TC27". Recomputed on every sign-in.</HelpText>
-			<StringSize>121</StringSize>
 			<AllowEdit>No</AllowEdit>
+			<HelpText>Brand and model together, e.g. "Zebra TC27". Recomputed on every sign-in.</HelpText>
+			<Label>Friendly name</Label>
+			<StringSize>121</StringSize>
 		</AxTableField>
 		<AxTableField xmlns=""
 			i:type="AxTableFieldString">
 			<Name>DeviceBrand</Name>
+			<AllowEdit>No</AllowEdit>
 			<Label>Brand</Label>
 			<StringSize>60</StringSize>
-			<AllowEdit>No</AllowEdit>
 		</AxTableField>
 		<AxTableField xmlns=""
 			i:type="AxTableFieldString">
 			<Name>DeviceModel</Name>
+			<AllowEdit>No</AllowEdit>
 			<Label>Model</Label>
 			<StringSize>60</StringSize>
-			<AllowEdit>No</AllowEdit>
 		</AxTableField>
 		<AxTableField xmlns=""
 			i:type="AxTableFieldString">
 			<Name>Platform</Name>
-			<Label>Platform</Label>
-			<HelpText>"Android" today - this app has no other client - but reported by the device rather than assumed, the same as the standard Warehouse app's own device list, so a future non-Android client needs no schema change here.</HelpText>
-			<StringSize>30</StringSize>
 			<AllowEdit>No</AllowEdit>
+			<HelpText>"Android" today - this app has no other client - but reported by the device rather than assumed, the same as the standard Warehouse app's own device list, so a future non-Android client needs no schema change here.</HelpText>
+			<Label>Platform</Label>
+			<StringSize>30</StringSize>
 		</AxTableField>
 		<AxTableField xmlns=""
 			i:type="AxTableFieldString">
 			<Name>PlatformVersion</Name>
-			<Label>Platform version</Label>
-			<HelpText>The OS version, e.g. "14". Useful the same way AppVersionName is - a fault that only shows up on some handhelds often turns out to be an OS-version line, not a device-model one.</HelpText>
-			<StringSize>30</StringSize>
 			<AllowEdit>No</AllowEdit>
+			<HelpText>The OS version, e.g. "14". Useful the same way AppVersionName is - a fault that only shows up on some handhelds often turns out to be an OS-version line, not a device-model one.</HelpText>
+			<Label>Platform version</Label>
+			<StringSize>30</StringSize>
 		</AxTableField>
 		<AxTableField xmlns=""
 			i:type="AxTableFieldString">
 			<Name>AppVersionName</Name>
-			<Label>App version</Label>
-			<HelpText>The app build last signed in from this device. Useful when a fault only shows up on some handhelds - the first question is usually whether they are all on the same build.</HelpText>
-			<StringSize>32</StringSize>
 			<AllowEdit>No</AllowEdit>
+			<HelpText>The app build last signed in from this device. Useful when a fault only shows up on some handhelds - the first question is usually whether they are all on the same build.</HelpText>
+			<Label>App version</Label>
+			<StringSize>32</StringSize>
 		</AxTableField>
 		<AxTableField xmlns=""
 			i:type="AxTableFieldString">
 			<Name>LastUserName</Name>
-			<Label>Last user</Label>
-			<ExtendedDataType>HSMobileOpsUserName</ExtendedDataType>
 			<AllowEdit>No</AllowEdit>
+			<ExtendedDataType>HSMobileOpsUserName</ExtendedDataType>
+			<Label>Last user</Label>
 		</AxTableField>
 		<AxTableField xmlns=""
 			i:type="AxTableFieldString">
 			<Name>LastSiteId</Name>
-			<Label>Last site</Label>
-			<ExtendedDataType>InventSiteId</ExtendedDataType>
 			<AllowEdit>No</AllowEdit>
+			<ExtendedDataType>InventSiteId</ExtendedDataType>
+			<Label>Last site</Label>
 		</AxTableField>
 		<AxTableField xmlns=""
 			i:type="AxTableFieldString">
 			<Name>LastWarehouseId</Name>
-			<Label>Last warehouse</Label>
-			<HelpText>The signed-in worker's default warehouse as of their last sign-in - not necessarily where the device is right now if they later switched warehouses without signing out.</HelpText>
-			<ExtendedDataType>InventLocationId</ExtendedDataType>
 			<AllowEdit>No</AllowEdit>
+			<ExtendedDataType>InventLocationId</ExtendedDataType>
+			<HelpText>The signed-in worker's default warehouse as of their last sign-in - not necessarily where the device is right now if they later switched warehouses without signing out.</HelpText>
+			<Label>Last warehouse</Label>
 		</AxTableField>
 		<AxTableField xmlns=""
 			i:type="AxTableFieldUtcDateTime">
 			<Name>LastSignInUtc</Name>
-			<Label>Last sign-in</Label>
 			<AllowEdit>No</AllowEdit>
+			<Label>Last sign-in</Label>
 		</AxTableField>
 		<AxTableField xmlns=""
 			i:type="AxTableFieldUtcDateTime">
 			<Name>FirstSeenUtc</Name>
-			<Label>First seen</Label>
 			<AllowEdit>No</AllowEdit>
+			<Label>First seen</Label>
 		</AxTableField>
 		<AxTableField xmlns=""
 			i:type="AxTableFieldEnum">
 			<Name>IsActive</Name>
-			<Label>Active</Label>
-			<HelpText>Deactivate a device that has been retired or lost. It can still sign in - this is not a remote lock on that device itself - but it drops off the active-fleet view, and, unlike before licensing existed, deactivating it now also frees up one of the license's device slots for a replacement handheld. See HSMobileOpsLicense.</HelpText>
 			<EnumType>NoYes</EnumType>
+			<HelpText>Deactivate a device that has been retired or lost. It can still sign in - this is not a remote lock on that device itself - but it drops off the active-fleet view, and, unlike before licensing existed, deactivating it now also frees up one of the license's device slots for a replacement handheld. See HSMobileOpsLicense.</HelpText>
+			<Label>Active</Label>
 		</AxTableField>
 	</Fields>
 	<FullTextIndexes />

@@ -1,6 +1,5 @@
 package com.d365fo.mobileops.presentation.modules.dataenquiry
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -13,6 +12,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import com.d365fo.mobileops.presentation.common.components.AppCard as Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -136,41 +136,52 @@ private fun PurchaseOrderRow(order: PurchaseOrderSummary, onReceive: () -> Unit)
 
     // Open orders start receiving on tap; received/invoiced/cancelled ones are information only.
     val receivable = order.status.isOpen
-    Card(
-        modifier = Modifier.fillMaxWidth()
-            .then(if (receivable) Modifier.clickable(onClick = onReceive) else Modifier),
-    ) {
-        Column(
-            modifier = Modifier.padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
+    val body: @Composable () -> Unit = {
+        Row(
+            modifier = Modifier.padding(start = 12.dp, top = 12.dp, bottom = 12.dp, end = if (receivable) 4.dp else 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = order.purchId,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    StatusChip(text = statusText, color = statusColor, dimColor = statusDim)
+                }
                 Text(
-                    text = order.purchId,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
+                    text = listOfNotNull(
+                        "Vendor ${order.vendorAccount}".takeIf { order.vendorAccount.isNotBlank() },
+                        order.warehouseId?.let { "Whs $it" },
+                    ).joinToString(" · "),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                StatusChip(text = statusText, color = statusColor, dimColor = statusDim)
+                order.deliveryDate?.let {
+                    Text(
+                        text = "Requested ${Formatters.shortDate(it)}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = WarehouseStatusColors.text3,
+                    )
+                }
             }
-            Text(
-                text = listOfNotNull(
-                    "Vendor ${order.vendorAccount}".takeIf { order.vendorAccount.isNotBlank() },
-                    order.warehouseId?.let { "Whs $it" },
-                ).joinToString(" · "),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            order.deliveryDate?.let {
-                Text(
-                    text = "Requested ${Formatters.shortDate(it)}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = WarehouseStatusColors.text3,
+            if (receivable) {
+                Icon(
+                    Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                    contentDescription = "Receive",
+                    tint = WarehouseStatusColors.text3,
                 )
             }
         }
+    }
+    if (receivable) {
+        Card(onClick = onReceive, modifier = Modifier.fillMaxWidth()) { body() }
+    } else {
+        Card(modifier = Modifier.fillMaxWidth()) { body() }
     }
 }

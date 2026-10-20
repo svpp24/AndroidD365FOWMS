@@ -1,0 +1,230 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsOrderItem</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// What the app needs to order an item: units, active dimensions, valid variants and the purchase order settings (minimum, maximum, multiple, standard quantity).
+/// </summary>
+[DataContractAttribute]
+class HSMobileOpsOrderItem
+{
+    str itemId;
+    str itemName;
+    str purchUnit;
+    str inventUnit;
+    boolean configActive;
+    boolean sizeActive;
+    boolean colorActive;
+    boolean styleActive;
+    boolean batchActive;
+    boolean serialActive;
+    boolean negativePhysical;
+    real minQty;
+    real maxQty;
+    real multipleQty;
+    real standardQty;
+    List variants;
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmItemId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ItemId')]
+    public str parmItemId(str _value = itemId)
+    {
+        itemId = _value;
+        return itemId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmItemName</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ItemName')]
+    public str parmItemName(str _value = itemName)
+    {
+        itemName = _value;
+        return itemName;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmPurchUnit</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('PurchUnit')]
+    public str parmPurchUnit(str _value = purchUnit)
+    {
+        purchUnit = _value;
+        return purchUnit;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmInventUnit</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('InventUnit')]
+    public str parmInventUnit(str _value = inventUnit)
+    {
+        inventUnit = _value;
+        return inventUnit;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmConfigActive</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ConfigActive')]
+    public boolean parmConfigActive(boolean _value = configActive)
+    {
+        configActive = _value;
+        return configActive;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmSizeActive</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('SizeActive')]
+    public boolean parmSizeActive(boolean _value = sizeActive)
+    {
+        sizeActive = _value;
+        return sizeActive;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmColorActive</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ColorActive')]
+    public boolean parmColorActive(boolean _value = colorActive)
+    {
+        colorActive = _value;
+        return colorActive;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmStyleActive</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('StyleActive')]
+    public boolean parmStyleActive(boolean _value = styleActive)
+    {
+        styleActive = _value;
+        return styleActive;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmBatchActive</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('BatchActive')]
+    public boolean parmBatchActive(boolean _value = batchActive)
+    {
+        batchActive = _value;
+        return batchActive;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmSerialActive</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('SerialActive')]
+    public boolean parmSerialActive(boolean _value = serialActive)
+    {
+        serialActive = _value;
+        return serialActive;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmNegativePhysical</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The item's model group allows physical negative inventory: a transfer may then take more
+    /// than is on hand, as D365FO itself would allow, so no stock refusal applies.
+    /// </summary>
+    [DataMemberAttribute('NegativePhysical')]
+    public boolean parmNegativePhysical(boolean _value = negativePhysical)
+    {
+        negativePhysical = _value;
+        return negativePhysical;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmMinQty</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('MinQty')]
+    public real parmMinQty(real _value = minQty)
+    {
+        minQty = _value;
+        return minQty;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmMaxQty</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('MaxQty')]
+    public real parmMaxQty(real _value = maxQty)
+    {
+        maxQty = _value;
+        return maxQty;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmMultipleQty</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('MultipleQty')]
+    public real parmMultipleQty(real _value = multipleQty)
+    {
+        multipleQty = _value;
+        return multipleQty;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmStandardQty</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('StandardQty')]
+    public real parmStandardQty(real _value = standardQty)
+    {
+        standardQty = _value;
+        return standardQty;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmVariants</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Variants'),
+     DataCollectionAttribute(Types::Class, classStr(HSMobileOpsOrderLine))]
+    public List parmVariants(List _value = variants)
+    {
+        variants = _value;
+        return variants;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

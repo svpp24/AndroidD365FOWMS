@@ -1,0 +1,115 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxTable xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsCountStage</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// One counter's staging journal inside a stock count (HSMobileOpsCountMaster): what that
+/// worker counted, kept apart from everyone else's until the supervisor transfers the count.
+/// </summary>
+public class HSMobileOpsCountStage extends common
+{
+}
+]]></Declaration>
+		<Methods>
+		</Methods>
+	</SourceCode>
+	<Label>Stock count counter</Label>
+	<TitleField1>UserName</TitleField1>
+	<TitleField2>Status</TitleField2>
+	<CacheLookup>NotInTTS</CacheLookup>
+	<ClusteredIndex>MasterUserIdx</ClusteredIndex>
+	<PrimaryIndex>MasterUserIdx</PrimaryIndex>
+	<Fields>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldInt64">
+			<Name>MasterRecId</Name>
+			<AllowEdit>No</AllowEdit>
+			<ExtendedDataType>RefRecId</ExtendedDataType>
+			<Label>Stock count</Label>
+			<Mandatory>Yes</Mandatory>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>UserName</Name>
+			<AllowEdit>No</AllowEdit>
+			<ExtendedDataType>HSMobileOpsUserName</ExtendedDataType>
+			<Label>Counter</Label>
+			<Mandatory>Yes</Mandatory>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>DisplayName</Name>
+			<AllowEdit>No</AllowEdit>
+			<Label>Name</Label>
+			<StringSize>60</StringSize>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>DeviceId</Name>
+			<AllowEdit>No</AllowEdit>
+			<Label>Device</Label>
+			<StringSize>64</StringSize>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldEnum">
+			<Name>Status</Name>
+			<AllowEdit>No</AllowEdit>
+			<Label>Status</Label>
+			<EnumType>HSMobileOpsCountStageStatus</EnumType>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldUtcDateTime">
+			<Name>StartedUtc</Name>
+			<AllowEdit>No</AllowEdit>
+			<Label>Started</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldUtcDateTime">
+			<Name>SubmittedUtc</Name>
+			<AllowEdit>No</AllowEdit>
+			<Label>Submitted</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldInt">
+			<Name>LineCount</Name>
+			<AllowEdit>No</AllowEdit>
+			<Label>Counted lines</Label>
+		</AxTableField>
+	</Fields>
+	<FullTextIndexes />
+	<Indexes>
+		<AxTableIndex>
+			<Name>MasterUserIdx</Name>
+			<AllowDuplicates>No</AllowDuplicates>
+			<Fields>
+				<AxTableIndexField>
+					<DataField>MasterRecId</DataField>
+				</AxTableIndexField>
+				<AxTableIndexField>
+					<DataField>UserName</DataField>
+				</AxTableIndexField>
+			</Fields>
+		</AxTableIndex>
+	</Indexes>
+	<Mappings />
+	<Relations>
+		<AxTableRelation xmlns=""
+			i:type="AxTableRelationForeignKey">
+			<Name>HSMobileOpsCountMaster</Name>
+			<Cardinality>ZeroMore</Cardinality>
+			<RelatedTable>HSMobileOpsCountMaster</RelatedTable>
+			<RelatedTableCardinality>ExactlyOne</RelatedTableCardinality>
+			<RelationshipType>Association</RelationshipType>
+			<Constraints>
+				<AxTableRelationConstraint xmlns=""
+					i:type="AxTableRelationConstraintField">
+					<Name>MasterRecId</Name>
+					<Field>MasterRecId</Field>
+					<RelatedField>RecId</RelatedField>
+				</AxTableRelationConstraint>
+			</Constraints>
+		</AxTableRelation>
+	</Relations>
+	<StateMachines />
+</AxTable>

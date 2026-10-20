@@ -128,10 +128,6 @@ class SupervisorVarianceViewModel @Inject constructor(
 
     fun reject() = review(ReviewAction.REJECT, null, null, null)
 
-    fun openRecount() = openDecision(ReviewAction.RECOUNT)
-
-    fun cancelRecount() = cancelDecision()
-
     fun requestRecount(assignTo: String, note: String) {
         _state.update { it.copy(decision = null) }
         review(ReviewAction.RECOUNT, assignTo, note, null)

@@ -42,8 +42,8 @@ import com.d365fo.mobileops.data.security.DisplayScale
  */
 // Very light blue-white page, so white cards read as cards without needing heavy borders - the layout
 // reference this app was restyled to match (white cards, blue accents) uses the same.
-private val Bg = Color(0xFFF2F6FC)
-private val Bg2 = Color(0xFFF0F3FA)
+// Light neutral grey with borderless-looking white cards - the 20 Oct restyle (navy on grey).
+private val Bg = Color(0xFFF3F3F6)
 private val Surface = Color(0xFFFFFFFF)
 private val Surface2 = Color(0xFFF5F7FC)
 // Darker than the mockup's own value on both of these - the mockup renders on a backlit
@@ -53,16 +53,16 @@ private val Surface2 = Color(0xFFF5F7FC)
 // item code, hint, count and timestamp on this app is set in, not an edge case. Border moved
 // the same direction for the same reason: a card edge or field outline that all but disappears
 // against Bg/Surface is a real "which one is my input" question, not just a look.
-private val Border = Color(0xFFAEB9D4)
+private val Border = Color(0xFFC3C7D8)
 private val Green = Color(0xFF16A34A)
 private val GreenDim = Color(0xFFE3F4E9)
 private val Amber = Color(0xFFD97706)
 private val AmberDim = Color(0xFFFAEFE1)
 private val Red = Color(0xFFDC2626)
 private val RedDim = Color(0xFFFCE9E9)
-private val Text1 = Color(0xFF111827)
-private val Text2 = Color(0xFF4B5563)
-private val Text3 = Color(0xFF5B6472)
+private val Text1 = Color(0xFF14183A)
+private val Text2 = Color(0xFF3E4360)
+private val Text3 = Color(0xFF5A5F7A)
 
 /**
  * The one thing a worker can personalise: which accent colour reads as "this app" to them.
@@ -92,6 +92,8 @@ enum class ColorPalette(
      */
     val gradientStart: Color? = null,
 ) {
+    /** Deep indigo-navy, the 20 Oct restyle's identity (navy text and outlined buttons on grey). */
+    INDIGO("Indigo", Color(0xFF232A7C), Color(0xFFE1E0F6)),
     MICROSOFT("Microsoft blue", Color(0xFF0078D4), Color(0xFFEFF6FC)),
     BLUE("Blue", Color(0xFF0274BE), Color(0xFFEAF7FD)),
     GREEN("Green", Color(0xFF15803D), Color(0xFFE1F3E8)),
@@ -135,14 +137,6 @@ enum class ColorPalette(
     FOREST("Forest", Color(0xFF0B4F3C), Color(0xFFE6F2ED), Color(0xFF6FBE63)),
     ;
 
-    /** True only for the dedicated gradient entries above - see [gradientStart]. */
-    val isGradient: Boolean get() = gradientStart != null
-
-    /** [WarehouseStatusColors.accentGradient]'s own two stops for this palette specifically -
-     *  what a picker swatch previews, since it's exactly what the app renders once this is
-     *  selected. */
-    val gradientBrush: Brush
-        get() = Brush.linearGradient(listOf(gradientStart ?: lerp(accent, Color.White, 0.30f), accent))
 }
 
 /**
@@ -224,9 +218,25 @@ private fun industrialColors(palette: ColorPalette) = lightColorScheme(
     onSurface = Text1,
     surfaceVariant = Surface2,
     onSurfaceVariant = Text2,
-
-
+    // Material draws cards, dialogs, menus and switch tracks from the surfaceContainer roles,
+    // and selected filter chips from secondaryContainer. Left unset they fall back to
+    // Material's stock lavender-grey, which made every list card look disabled. White here,
+    // like the Home tiles, with the border doing the separating.
+    surfaceContainerLowest = Surface,
+    surfaceContainerLow = Surface,
+    surfaceContainer = Surface,
+    surfaceContainerHigh = Surface,
+    surfaceContainerHighest = Surface,
+    primaryContainer = palette.accentDim,
+    onPrimaryContainer = palette.accent,
+    secondaryContainer = palette.accentDim,
+    onSecondaryContainer = palette.accent,
+    tertiaryContainer = AmberDim,
+    onTertiaryContainer = Color(0xFF92400E),
+    errorContainer = RedDim,
+    onErrorContainer = Color(0xFF991B1B),
     outline = Border,
+    outlineVariant = Color(0xFFE3E5EE),
 )
 
 /**
@@ -253,45 +263,75 @@ private fun industrialColors(palette: ColorPalette) = lightColorScheme(
  * every recomposition, the same as [industrialColors] already is for the accent colour.
  * Letter-spacing is left unscaled: it's already small and isn't what "text size" means here.
  */
+/**
+ * Nunito Sans (20 Oct restyle: the mock's rounded sans), bundled as one variable font -
+ * res/font/nunito_sans.ttf, SIL Open Font License (assets/licenses/NunitoSans-OFL.txt). Each
+ * weight is an instance of the weight axis.
+ */
+@OptIn(androidx.compose.ui.text.ExperimentalTextApi::class)
+private val AppFont: FontFamily = FontFamily(
+    listOf(400, 500, 600, 700, 800).map { w ->
+        androidx.compose.ui.text.font.Font(
+            resId = com.d365fo.mobileops.R.font.nunito_sans,
+            weight = FontWeight(w),
+            variationSettings = androidx.compose.ui.text.font.FontVariation.Settings(
+                androidx.compose.ui.text.font.FontVariation.weight(w),
+            ),
+        )
+    },
+)
+
+/** Every style in [AppFont] - the roles [warehouseTypography] leaves at Material's defaults too. */
+private fun Typography.withFont(font: FontFamily) = Typography(
+    displayLarge = displayLarge.copy(fontFamily = font), displayMedium = displayMedium.copy(fontFamily = font),
+    displaySmall = displaySmall.copy(fontFamily = font), headlineLarge = headlineLarge.copy(fontFamily = font),
+    headlineMedium = headlineMedium.copy(fontFamily = font), headlineSmall = headlineSmall.copy(fontFamily = font),
+    titleLarge = titleLarge.copy(fontFamily = font), titleMedium = titleMedium.copy(fontFamily = font),
+    titleSmall = titleSmall.copy(fontFamily = font), bodyLarge = bodyLarge.copy(fontFamily = font),
+    bodyMedium = bodyMedium.copy(fontFamily = font), bodySmall = bodySmall.copy(fontFamily = font),
+    labelLarge = labelLarge.copy(fontFamily = font), labelMedium = labelMedium.copy(fontFamily = font),
+    labelSmall = labelSmall.copy(fontFamily = font),
+)
+
 private fun warehouseTypography(scale: Float) = Typography(
     displaySmall = TextStyle(
-        fontFamily = FontFamily.Default, fontWeight = FontWeight.Medium,
+        fontFamily = AppFont, fontWeight = FontWeight.Medium,
         fontSize = 34.sp * scale, lineHeight = 38.sp * scale, letterSpacing = 0.3.sp,
     ),
     headlineMedium = TextStyle(
-        fontFamily = FontFamily.Default, fontWeight = FontWeight.Medium,
+        fontFamily = AppFont, fontWeight = FontWeight.Medium,
         fontSize = 27.sp * scale, lineHeight = 32.sp * scale, letterSpacing = 0.3.sp,
     ),
     headlineSmall = TextStyle(
-        fontFamily = FontFamily.Default, fontWeight = FontWeight.Medium,
+        fontFamily = AppFont, fontWeight = FontWeight.Medium,
         fontSize = 23.sp * scale, lineHeight = 28.sp * scale, letterSpacing = 0.2.sp,
     ),
     titleLarge = TextStyle(
-        fontFamily = FontFamily.Default, fontWeight = FontWeight.Medium,
+        fontFamily = AppFont, fontWeight = FontWeight.Medium,
         fontSize = 20.sp * scale, lineHeight = 25.sp * scale, letterSpacing = 0.2.sp,
     ),
     titleMedium = TextStyle(
-        fontFamily = FontFamily.Default, fontWeight = FontWeight.Medium,
+        fontFamily = AppFont, fontWeight = FontWeight.Medium,
         fontSize = 17.sp * scale, lineHeight = 22.sp * scale, letterSpacing = 0.2.sp,
     ),
     bodyLarge = TextStyle(
-        fontFamily = FontFamily.Default, fontWeight = FontWeight.Normal,
+        fontFamily = AppFont, fontWeight = FontWeight.Normal,
         fontSize = 16.sp * scale, lineHeight = 22.sp * scale,
     ),
     bodyMedium = TextStyle(
-        fontFamily = FontFamily.Default, fontWeight = FontWeight.Normal,
+        fontFamily = AppFont, fontWeight = FontWeight.Normal,
         fontSize = 14.sp * scale, lineHeight = 19.sp * scale,
     ),
     labelLarge = TextStyle(
-        fontFamily = FontFamily.Default, fontWeight = FontWeight.Medium,
+        fontFamily = AppFont, fontWeight = FontWeight.Medium,
         fontSize = 13.sp * scale, lineHeight = 17.sp * scale, letterSpacing = 0.4.sp,
     ),
     labelMedium = TextStyle(
-        fontFamily = FontFamily.Default, fontWeight = FontWeight.Medium,
+        fontFamily = AppFont, fontWeight = FontWeight.Medium,
         fontSize = 11.sp * scale, lineHeight = 15.sp * scale, letterSpacing = 0.3.sp,
     ),
     labelSmall = TextStyle(
-        fontFamily = FontFamily.Default, fontWeight = FontWeight.Medium,
+        fontFamily = AppFont, fontWeight = FontWeight.Medium,
         fontSize = 10.sp * scale, lineHeight = 13.sp * scale, letterSpacing = 0.6.sp,
     ),
 )
@@ -382,7 +422,7 @@ fun D365MobileTheme(
 
     MaterialTheme(
         colorScheme = industrialColors(palette),
-        typography = warehouseTypography(scale.factor),
+        typography = warehouseTypography(scale.factor).withFont(AppFont),
         shapes = AppShapes,
         content = content,
     )

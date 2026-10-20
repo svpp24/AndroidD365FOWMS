@@ -29,7 +29,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import com.d365fo.mobileops.presentation.common.components.SquareTextButton as TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -37,7 +37,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -74,7 +73,12 @@ fun SupervisorVarianceScreen(
         AlertDialog(
             onDismissRequest = viewModel::dismissMessage,
             text = { Text(message) },
-            confirmButton = { ConfirmButton(onClick = viewModel::dismissMessage) { Text("OK") } },
+            confirmButton = {
+                com.d365fo.mobileops.presentation.common.components.DialogButtonRow(
+                    dismiss = null,
+                    confirm = { com.d365fo.mobileops.presentation.common.components.ConfirmButton(onClick = viewModel::dismissMessage, modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget)) { Text("OK") } },
+                )
+            },
         )
     }
     if (state.confirmPost) {
@@ -87,8 +91,12 @@ fun SupervisorVarianceScreen(
                         "can't be reopened or counted again.",
                 )
             },
-            confirmButton = { ConfirmButton(onClick = viewModel::post) { Text("Post journal") } },
-            dismissButton = { CancelOutlinedButton(onClick = viewModel::cancelPost) { Text("Cancel") } },
+            confirmButton = {
+                com.d365fo.mobileops.presentation.common.components.DialogButtonRow(
+                    dismiss = { com.d365fo.mobileops.presentation.common.components.CancelOutlinedButton(onClick = viewModel::cancelPost, modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget)) { Text("Cancel") } },
+                    confirm = { com.d365fo.mobileops.presentation.common.components.ConfirmButton(onClick = viewModel::post, modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget)) { Text("Post journal") } },
+                )
+            },
         )
     }
     state.decision?.let { action ->
@@ -244,7 +252,7 @@ private fun VarianceRow(line: VarianceLine, currency: String, selected: Boolean,
         Row(modifier = Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
             Checkbox(checked = selected, onCheckedChange = { onToggle() })
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(line.itemNumber, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.SemiBold)
+                Text(line.itemNumber, fontWeight = FontWeight.SemiBold)
                 if (line.itemName != line.itemNumber) Text(line.itemName, style = MaterialTheme.typography.bodySmall)
                 Text(
                     text = listOfNotNull(
@@ -386,8 +394,12 @@ private fun DecisionDialog(
                 }
             }
         },
-        confirmButton = { ConfirmButton(onClick = { onConfirm(reason, comment, assignTo) }) { Text(verb) } },
-        dismissButton = { CancelOutlinedButton(onClick = onDismiss) { Text("Cancel") } },
+        confirmButton = {
+            com.d365fo.mobileops.presentation.common.components.DialogButtonRow(
+                dismiss = { com.d365fo.mobileops.presentation.common.components.CancelOutlinedButton(onClick = onDismiss, modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget)) { Text("Cancel") } },
+                confirm = { com.d365fo.mobileops.presentation.common.components.ConfirmButton(onClick = { onConfirm(reason, comment, assignTo) }, modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget)) { Text(verb) } },
+            )
+        },
     )
 }
 

@@ -83,6 +83,7 @@ class HSMobileOpsCountingService
         InventJournalName              inventJournalName;
         InventJournalTrans             inventJournalTrans;
         InventDim                      inventDim;
+        HSMobileOpsCountMaster         countMaster;
         List                           rows = new List(Types::Class);
         DataAreaId                     company;
         InventLocationId               warehouseId;
@@ -111,7 +112,7 @@ class HSMobileOpsCountingService
             inventJournalTrans = null;
             inventDim          = null;
 
-            while select RecId, JournalId, JournalNameId, CreatedDateTime
+            while select RecId, JournalId, JournalNameId, CreatedDateTime, Description
                 from inventJournalTable
                 where inventJournalTable.JournalType == InventJournalType::Count
                    && inventJournalTable.Posted      == NoYes::No
@@ -123,6 +124,12 @@ class HSMobileOpsCountingService
                 exists join inventDim
                     where inventDim.InventDimId      == inventJournalTrans.InventDimId
                        && inventDim.InventLocationId  == warehouseId
+                // A store count's journal from the control center is already counted - the
+                // supervisor reviews and posts it in D365FO; a counter must not count it again
+                // (user, 13 Oct). A journal count goes back onto its own journal, which stays.
+                notexists join countMaster
+                    where countMaster.TransferredJournalId == inventJournalTable.JournalId
+                       && countMaster.SourceJournalId      == ''
             {
                 lineCount = 0;
                 inventJournalTrans = null;
@@ -140,13 +147,15 @@ class HSMobileOpsCountingService
                 row = new HSMobileOpsJournalSummaryRow();
                 row.parmJournalId(inventJournalTable.JournalId);
                 row.parmJournalNameId(inventJournalTable.JournalNameId);
-                row.parmDescription(inventJournalName.Description);
+                // The journal's own description first - a spot count or discrepancy report writes
+                // "Spot count - BSR-47274-0 by 001" there; the journal name's is the fallback.
+                row.parmDescription(inventJournalTable.Description ? inventJournalTable.Description : inventJournalName.Description);
                 row.parmJournalDate(DateTimeUtil::date(inventJournalTable.CreatedDateTime));
                 row.parmLineCount(lineCount);
                 // TODO (X++ owner): choose DIRECT for small journals (spot, opportunity,
-                // recount, triggered) and fill Claims/Ranges from the claim and range tables.
+                // recount, triggered) and fill Ranges once location ranges exist.
                 row.parmTransferMode('DMF');
-                row.parmClaims(new List(Types::Class));
+                row.parmClaims(HSMobileOpsCountingService::journalClaims(company, inventJournalTable.JournalId, _request.parmUserId()));
                 row.parmRanges(new List(Types::Class));
                 // TODO (X++ owner): per-journal counting mode and zero-stock verification flag.
                 row.parmLocationFirst(false);
@@ -158,7 +167,20 @@ class HSMobileOpsCountingService
                 row.parmRecountOf('');
                 // TODO (X++ owner): origin from the count plan / trigger that created the journal,
                 // priority by your rules, tolerance text and ABC class for display.
-                row.parmOriginType('SCHEDULED');
+                // Spot counts and discrepancy reports are known by the description this model
+                // writes when it creates them (HSMobileOpsCountTaskService.createSpotJournal).
+                if (subStr(inventJournalTable.Description, 1, 10) == 'Spot count')
+                {
+                    row.parmOriginType('SPOT');
+                }
+                else if (subStr(inventJournalTable.Description, 1, 11) == 'Discrepancy')
+                {
+                    row.parmOriginType('TRIGGERED');
+                }
+                else
+                {
+                    row.parmOriginType('SCHEDULED');
+                }
                 row.parmPriority(0);
                 row.parmToleranceInfo('');
                 row.parmAbcClass('');
@@ -433,6 +455,34 @@ class HSMobileOpsCountingService
 ]]></Source>
 			</Method>
 			<Method>
+				<Name>journalClaims</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The journal's live claim for its list row - who is counting it, until when. The holder's
+    /// own device shows its own claim instead, so a claim under the asking user's login is on
+    /// another handheld and says so.
+    /// </summary>
+    private static List journalClaims(DataAreaId _company, InventJournalId _journalId, str _userId)
+    {
+        List                     claims = new List(Types::Class);
+        HSMobileOpsLineClaim     claim  = HSMobileOpsCountTaskService::activeClaim(_company, _journalId);
+        HSMobileOpsCountClaimRow claimRow;
+
+        if (claim.RecId)
+        {
+            claimRow = new HSMobileOpsCountClaimRow();
+            claimRow.parmClaimedBy(HSMobileOpsCountTaskService::claimedByLabel(claim)
+                + (_userId && strUpr(claim.ClaimedByUserName) == strUpr(_userId) ? ' on another device' : ''));
+            claimRow.parmDeviceId(claim.DeviceId);
+            claimRow.parmExpiresUtc(claim.ClaimExpiresUtc);
+            claims.addEnd(claimRow);
+        }
+        return claims;
+    }
+]]></Source>
+			</Method>
+			<Method>
 				<Name>importCounts</Name>
 				<Source><![CDATA[
 
@@ -479,9 +529,15 @@ class HSMobileOpsCountingService
             return response;
         }
 
-        // TODO (X++ owner): validate _request.parmClaimToken(), dedupe on
-        // _request.parmSubmissionId(), and store the audit fields (UserId, DeviceId,
-        // StartedAtUtc, SubmittedAtUtc, PassNumber, OriginType).
+        // Another device's live claim means these counts would overwrite its work.
+        if (HSMobileOpsCountTaskService::otherClaimHolder(company, journalId, _request.parmUserId(), _request.parmDeviceId()))
+        {
+            response.parmErrorCode('CLAIM_LOST');
+            return response;
+        }
+
+        // TODO (X++ owner): dedupe on _request.parmSubmissionId(), and store the audit fields
+        // (UserId, DeviceId, StartedAtUtc, SubmittedAtUtc, PassNumber, OriginType).
 
         changecompany (company)
         {

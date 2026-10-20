@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsTransferListRequest</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// listTransferOrders / listPickedSerials request. Days limits how far back serials go (default 30); Search filters serials by item or serial.
+/// </summary>
+[DataContractAttribute]
+class HSMobileOpsTransferListRequest
+{
+    DataAreaId dataAreaId;
+    str        warehouseId;
+    int        days;
+    str        search;
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmDataAreaId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('DataAreaId')]
+    public DataAreaId parmDataAreaId(DataAreaId _value = dataAreaId)
+    {
+        dataAreaId = _value;
+        return dataAreaId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmWarehouseId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('WarehouseId')]
+    public str parmWarehouseId(str _value = warehouseId)
+    {
+        warehouseId = _value;
+        return warehouseId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmDays</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Days')]
+    public int parmDays(int _value = days)
+    {
+        days = _value;
+        return days;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmSearch</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Search')]
+    public str parmSearch(str _value = search)
+    {
+        search = _value;
+        return search;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

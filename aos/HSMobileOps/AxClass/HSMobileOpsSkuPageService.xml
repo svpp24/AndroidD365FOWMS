@@ -1,0 +1,364 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsSkuPageService</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// The handheld's offline item, barcode and variant cache, a page at a time
+/// (HSMobileOpsSkuPageSvc/getSkuPage) - see getSkuPage. Replaced a DMF export of the
+/// standard released-product entity.
+/// </summary>
+class HSMobileOpsSkuPageService
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>getSkuPage</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// One page of a master-data feed for the handheld's offline cache - the replacement for the
+    /// DMF export of the standard released-product entity (hundreds of fields, 6-7 minutes for
+    /// 18,495 items). Only what the handheld uses, read in key order from indexed tables, a page
+    /// at a time: the device resumes from NextKey, and with ChangedSinceUtc only what changed.
+    ///
+    /// Feeds and their row columns:
+    ///   ITEMS    - key ItemId:  [itemId, searchName, inventUnit, purchUnit, salesUnit, batch(0/1), serial(0/1), location(0/1), active(0/1)]
+    ///              ChangedSinceUtc: InventTable.ModifiedDateTime.
+    ///   BARCODES - key RecId:   [barcode, itemId, qty, unit, configId, sizeId, colorId, styleId, blocked(0/1)]
+    ///              ChangedSinceUtc: InventItemBarcode.ModifiedDateTime.
+    ///   VARIANTS - key RecId:   [itemId, configId, sizeId, colorId, styleId]
+    ///              No modified date on InventDimCombination - a delta is "RecId after AfterKey";
+    ///              the device's weekly full refresh catches the rest.
+    ///
+    /// Only what a handheld can use: service items are never sent; a full refresh (no
+    /// ChangedSinceUtc) also leaves out items whose lifecycle state is not Active and blocked
+    /// barcodes - the device drops what a full refresh did not send. A delta still sends a change
+    /// to stopped or blocked, so the device marks it inactive the same day.
+    /// </summary>
+    public HSMobileOpsSkuPageResponse getSkuPage(HSMobileOpsSkuPageRequest _request)
+    {
+        HSMobileOpsSkuPageResponse response = new HSMobileOpsSkuPageResponse();
+        int          pageSize;
+        utcdatetime  since = DateTimeUtil::minValue();
+
+        response.parmSuccess(false);
+        response.parmServerUtc(DateTimeUtil::toStr(DateTimeUtil::utcNow()));
+        if (!_request || !_request.parmDataAreaId() || !CompanyInfo::findDataArea(_request.parmDataAreaId()).RecId)
+        {
+            response.parmErrorCode('INVALID_REQUEST');
+            return response;
+        }
+        pageSize = _request.parmPageSize();
+        if (pageSize <= 0)
+        {
+            pageSize = 2000;
+        }
+        pageSize = min(pageSize, 5000);
+        if (_request.parmChangedSinceUtc())
+        {
+            since = DateTimeUtil::parse(_request.parmChangedSinceUtc());
+        }
+
+        changecompany (_request.parmDataAreaId())
+        {
+            switch (_request.parmFeed())
+            {
+                case 'ITEMS':
+                    HSMobileOpsSkuPageService::itemPage(response, _request.parmAfterKey(), since, pageSize);
+                    break;
+                case 'BARCODES':
+                    HSMobileOpsSkuPageService::barcodePage(response, str2Int64(_request.parmAfterKey()), since, pageSize);
+                    break;
+                case 'VARIANTS':
+                    HSMobileOpsSkuPageService::variantPage(response, str2Int64(_request.parmAfterKey()), pageSize);
+                    break;
+                default:
+                    response.parmErrorCode('INVALID_REQUEST');
+                    response.parmMessage(strFmt('Unknown feed %1', _request.parmFeed()));
+                    return response;
+            }
+        }
+        response.parmSuccess(true);
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>itemPage</Name>
+				<Source><![CDATA[
+
+    private static void itemPage(HSMobileOpsSkuPageResponse _response, ItemId _after, utcdatetime _since, int _pageSize)
+    {
+        InventTable                         inventTable;
+        InventTableModule                   inventModule;
+        InventTableModule                   purchModule;
+        InventTableModule                   salesModule;
+        EcoResTrackingDimensionGroupItem    trackingItem;
+        EcoResStorageDimensionGroupItem     storageItem;
+        Map                                 trackingCache = new Map(Types::Int64, Types::Container);
+        Map                                 locationCache = new Map(Types::Int64, Types::Integer);
+        System.Text.StringBuilder           json = new System.Text.StringBuilder();
+        container                           tracking;
+        int                                 rows;
+        ItemId                              last;
+        boolean                             more;
+
+        json.Append('[');
+        boolean full = _since == DateTimeUtil::minValue();
+
+        while select ItemId, NameAlias, ProductLifecycleStateId from inventTable
+            order by inventTable.ItemId
+            where inventTable.ItemId > _after
+               && inventTable.ModifiedDateTime >= _since
+               && inventTable.ItemType != ItemType::Service
+               && (!full || !inventTable.ProductLifecycleStateId || inventTable.ProductLifecycleStateId == 'Active')
+            outer join UnitId from inventModule
+                where inventModule.ItemId     == inventTable.ItemId
+                   && inventModule.ModuleType == ModuleInventPurchSales::Invent
+            outer join UnitId from purchModule
+                where purchModule.ItemId     == inventTable.ItemId
+                   && purchModule.ModuleType == ModuleInventPurchSales::Purch
+            outer join UnitId from salesModule
+                where salesModule.ItemId     == inventTable.ItemId
+                   && salesModule.ModuleType == ModuleInventPurchSales::Sales
+            outer join TrackingDimensionGroup from trackingItem
+                where trackingItem.ItemId         == inventTable.ItemId
+                   && trackingItem.ItemDataAreaId == inventTable.DataAreaId
+            outer join StorageDimensionGroup from storageItem
+                where storageItem.ItemId         == inventTable.ItemId
+                   && storageItem.ItemDataAreaId == inventTable.DataAreaId
+        {
+            if (rows >= _pageSize)
+            {
+                more = true;
+                break;
+            }
+            tracking = HSMobileOpsSkuPageService::trackingFlags(trackingItem.TrackingDimensionGroup, trackingCache);
+            if (rows)
+            {
+                json.Append(',');
+            }
+            json.Append('[');
+            json.Append(HSMobileOpsSkuPageService::jsonStr(inventTable.ItemId)); json.Append(',');
+            json.Append(HSMobileOpsSkuPageService::jsonStr(inventTable.NameAlias)); json.Append(',');
+            json.Append(HSMobileOpsSkuPageService::jsonStr(inventModule.UnitId)); json.Append(',');
+            json.Append(HSMobileOpsSkuPageService::jsonStr(purchModule.UnitId)); json.Append(',');
+            json.Append(HSMobileOpsSkuPageService::jsonStr(salesModule.UnitId)); json.Append(',');
+            json.Append(conPeek(tracking, 1) ? '1' : '0'); json.Append(',');
+            json.Append(conPeek(tracking, 2) ? '1' : '0'); json.Append(',');
+            json.Append(HSMobileOpsSkuPageService::locationActive(storageItem.StorageDimensionGroup, locationCache) ? '1' : '0'); json.Append(',');
+            json.Append(!inventTable.ProductLifecycleStateId || inventTable.ProductLifecycleStateId == 'Active' ? '1' : '0');
+            json.Append(']');
+            last = inventTable.ItemId;
+            rows++;
+        }
+        json.Append(']');
+        _response.parmRowsJson(json.ToString());
+        _response.parmRowCount(rows);
+        _response.parmNextKey(last ? last : _after);
+        _response.parmHasMore(more);
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>barcodePage</Name>
+				<Source><![CDATA[
+
+    private static void barcodePage(HSMobileOpsSkuPageResponse _response, RecId _after, utcdatetime _since, int _pageSize)
+    {
+        InventItemBarcode           barcode;
+        InventDim                   inventDim;
+        InventTable                 inventTable;
+        System.Text.StringBuilder   json = new System.Text.StringBuilder();
+        int                         rows;
+        RecId                       last;
+        boolean                     more;
+        boolean                     full = _since == DateTimeUtil::minValue();
+
+        json.Append('[');
+        while select itemBarCode, ItemId, Qty, UnitID, Blocked, RecId from barcode
+            order by barcode.RecId
+            where barcode.RecId            > _after
+               && barcode.ModifiedDateTime >= _since
+               && (!full || !barcode.Blocked)
+            outer join configId, InventSizeId, InventColorId, InventStyleId from inventDim
+                where inventDim.inventDimId == barcode.inventDimId
+            // The item filter of itemPage, so no barcode points at an item the device does not have.
+            exists join inventTable
+                where inventTable.ItemId   == barcode.ItemId
+                   && inventTable.ItemType != ItemType::Service
+                   && (!full || !inventTable.ProductLifecycleStateId || inventTable.ProductLifecycleStateId == 'Active')
+        {
+            if (rows >= _pageSize)
+            {
+                more = true;
+                break;
+            }
+            if (rows)
+            {
+                json.Append(',');
+            }
+            json.Append('[');
+            json.Append(HSMobileOpsSkuPageService::jsonStr(barcode.itemBarCode)); json.Append(',');
+            json.Append(HSMobileOpsSkuPageService::jsonStr(barcode.ItemId)); json.Append(',');
+            json.Append(num2Str(barcode.Qty, 0, 6, 1, 0)); json.Append(',');
+            json.Append(HSMobileOpsSkuPageService::jsonStr(barcode.UnitID)); json.Append(',');
+            json.Append(HSMobileOpsSkuPageService::jsonStr(inventDim.configId)); json.Append(',');
+            json.Append(HSMobileOpsSkuPageService::jsonStr(inventDim.InventSizeId)); json.Append(',');
+            json.Append(HSMobileOpsSkuPageService::jsonStr(inventDim.InventColorId)); json.Append(',');
+            json.Append(HSMobileOpsSkuPageService::jsonStr(inventDim.InventStyleId)); json.Append(',');
+            json.Append(barcode.Blocked ? '1' : '0');
+            json.Append(']');
+            last = barcode.RecId;
+            rows++;
+        }
+        json.Append(']');
+        _response.parmRowsJson(json.ToString());
+        _response.parmRowCount(rows);
+        _response.parmNextKey(int642Str(last ? last : _after));
+        _response.parmHasMore(more);
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>variantPage</Name>
+				<Source><![CDATA[
+
+    private static void variantPage(HSMobileOpsSkuPageResponse _response, RecId _after, int _pageSize)
+    {
+        InventDimCombination        combination;
+        InventDim                   inventDim;
+        EcoResProductTranslation    translation;
+        LanguageId                  language = CompanyInfo::languageId();
+        System.Text.StringBuilder   json = new System.Text.StringBuilder();
+        int                         rows;
+        RecId                       last;
+        boolean                     more;
+
+        json.Append('[');
+        while select ItemId, RecId, DistinctProductVariant from combination
+            order by combination.RecId
+            where combination.RecId > _after
+            join configId, InventSizeId, InventColorId, InventStyleId from inventDim
+                where inventDim.inventDimId == combination.InventDimId
+            // The variant's own name, in the company's language - the handheld's variant picker
+            // showed only "Config C1". Outer: a variant without a translation still syncs.
+            outer join Name from translation
+                where translation.Product    == combination.DistinctProductVariant
+                   && translation.LanguageId == language
+        {
+            if (rows >= _pageSize)
+            {
+                more = true;
+                break;
+            }
+            if (rows)
+            {
+                json.Append(',');
+            }
+            json.Append('[');
+            json.Append(HSMobileOpsSkuPageService::jsonStr(combination.ItemId)); json.Append(',');
+            json.Append(HSMobileOpsSkuPageService::jsonStr(inventDim.configId)); json.Append(',');
+            json.Append(HSMobileOpsSkuPageService::jsonStr(inventDim.InventSizeId)); json.Append(',');
+            json.Append(HSMobileOpsSkuPageService::jsonStr(inventDim.InventColorId)); json.Append(',');
+            json.Append(HSMobileOpsSkuPageService::jsonStr(inventDim.InventStyleId)); json.Append(',');
+            json.Append(HSMobileOpsSkuPageService::jsonStr(translation.Name));
+            json.Append(']');
+            last = combination.RecId;
+            rows++;
+        }
+        json.Append(']');
+        _response.parmRowsJson(json.ToString());
+        _response.parmRowCount(rows);
+        _response.parmNextKey(int642Str(last ? last : _after));
+        _response.parmHasMore(more);
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>trackingFlags</Name>
+				<Source><![CDATA[
+
+    /// <summary>[batch active, serial active] of a tracking dimension group - looked up once per group per page.</summary>
+    private static container trackingFlags(RefRecId _group, Map _cache)
+    {
+        EcoResTrackingDimensionGroupFldSetup setup;
+        boolean batch;
+        boolean serial;
+
+        if (!_group)
+        {
+            return [false, false];
+        }
+        if (_cache.exists(_group))
+        {
+            return _cache.lookup(_group);
+        }
+        while select DimensionFieldId, IsActive from setup
+            where setup.TrackingDimensionGroup == _group
+               && setup.IsActive               == NoYes::Yes
+        {
+            if (setup.DimensionFieldId == fieldNum(InventDim, InventBatchId))
+            {
+                batch = true;
+            }
+            if (setup.DimensionFieldId == fieldNum(InventDim, InventSerialId))
+            {
+                serial = true;
+            }
+        }
+        _cache.insert(_group, [batch, serial]);
+        return [batch, serial];
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>locationActive</Name>
+				<Source><![CDATA[
+
+    /// <summary>Whether a storage dimension group has the location active - looked up once per group per page.</summary>
+    private static boolean locationActive(RefRecId _group, Map _cache)
+    {
+        EcoResStorageDimensionGroupFldSetup setup;
+        int active;
+
+        if (!_group)
+        {
+            return true;
+        }
+        if (_cache.exists(_group))
+        {
+            return _cache.lookup(_group) == 1;
+        }
+        select firstonly RecId from setup
+            where setup.StorageDimensionGroup == _group
+               && setup.DimensionFieldId      == fieldNum(InventDim, wMSLocationId)
+               && setup.IsActive              == NoYes::Yes;
+        active = setup.RecId ? 1 : 0;
+        _cache.insert(_group, active);
+        return active == 1;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>jsonStr</Name>
+				<Source><![CDATA[
+
+    private static str jsonStr(str _value)
+    {
+        str value = _value;
+
+        value = strReplace(value, '\\', '\\\\');
+        value = strReplace(value, '"', '\\"');
+        value = strReplace(value, '\n', '\\n');
+        value = strReplace(value, '\r', '\\r');
+        value = strReplace(value, '\t', '\\t');
+        return '"' + value + '"';
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

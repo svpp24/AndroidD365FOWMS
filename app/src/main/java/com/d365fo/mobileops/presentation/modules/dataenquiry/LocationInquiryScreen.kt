@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
@@ -93,15 +94,8 @@ fun LocationInquiryScreen(
                 .padding(horizontal = WarehouseDimens.ScreenPadding),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            if (state.busy) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-
-            OutlinedTextField(
-                value = state.warehouseId,
-                onValueChange = viewModel::onWarehouseChange,
-                label = { Text("Warehouse") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth().heightIn(min = 64.dp),
-            )
+            // A fixed slot, so the bar never moves the scan card below it.
+            Box(Modifier.fillMaxWidth().height(4.dp)) { if (state.busy) LinearProgressIndicator(modifier = Modifier.fillMaxWidth()) }
 
             // Read-only tap target - overlaid Box, not clickable() on the field itself. See the
             // identical note on OnHandInquiryScreen: a read-only field's own pointer input
@@ -129,17 +123,19 @@ fun LocationInquiryScreen(
                         .clickable(onClick = onManualEntryRequested),
                 )
             }
+            // Inside the card, as on the creation screens and Counting.
+            com.d365fo.mobileops.presentation.common.components.HeroCameraButton(onClick = { showCamera = true })
             }
 
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(
-                    onClick = { showCamera = true },
-                    modifier = Modifier.weight(1f).heightIn(min = 56.dp),
-                ) {
-                    Icon(Icons.Default.PhotoCamera, contentDescription = null)
-                    Text("Scan with camera", modifier = Modifier.padding(start = 8.dp))
-                }
-            }
+            // Under the scan card, not above it - the card stays in one place on every screen.
+            OutlinedTextField(
+                value = state.warehouseId,
+                onValueChange = viewModel::onWarehouseChange,
+                label = { Text("Warehouse") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth().heightIn(min = 64.dp),
+            )
+
 
             state.error?.let { message ->
                 ErrorBanner(message = message)

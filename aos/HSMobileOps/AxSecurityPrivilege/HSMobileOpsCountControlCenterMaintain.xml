@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxSecurityPrivilege xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsCountControlCenterMaintain</Name>
+	<Description>Review stock counts in the Stock count control center, decide duplicates and transfer counts into counting journals; set up which stores each supervisor manages.</Description>
+	<Label>Maintain stock count control center</Label>
+	<DirectAccessPermissions />
+	<EntryPoints>
+		<AxSecurityEntryPointReference>
+			<Name>HSMobileOpsCountControlCenter</Name>
+			<Grant>
+				<Read>Allow</Read>
+				<Update>Allow</Update>
+			</Grant>
+			<ObjectName>HSMobileOpsCountControlCenter</ObjectName>
+			<ObjectType>MenuItemDisplay</ObjectType>
+			<Forms />
+		</AxSecurityEntryPointReference>
+		<AxSecurityEntryPointReference>
+			<Name>HSMobileOpsCountStore</Name>
+			<Grant>
+				<Create>Allow</Create>
+				<Read>Allow</Read>
+				<Update>Allow</Update>
+				<Delete>Allow</Delete>
+			</Grant>
+			<ObjectName>HSMobileOpsCountStore</ObjectName>
+			<ObjectType>MenuItemDisplay</ObjectType>
+			<Forms />
+		</AxSecurityEntryPointReference>
+		<AxSecurityEntryPointReference>
+			<Name>HSMobileOpsCountTransfer</Name>
+			<Grant>
+				<Invoke>Allow</Invoke>
+			</Grant>
+			<ObjectName>HSMobileOpsCountTransfer</ObjectName>
+			<ObjectType>MenuItemAction</ObjectType>
+			<Forms />
+		</AxSecurityEntryPointReference>
+		<AxSecurityEntryPointReference>
+			<Name>HSMobileOpsCountRefresh</Name>
+			<Grant>
+				<Invoke>Allow</Invoke>
+			</Grant>
+			<ObjectName>HSMobileOpsCountRefresh</ObjectName>
+			<ObjectType>MenuItemAction</ObjectType>
+			<Forms />
+		</AxSecurityEntryPointReference>
+		<AxSecurityEntryPointReference>
+			<Name>HSMobileOpsCountCancel</Name>
+			<Grant>
+				<Invoke>Allow</Invoke>
+			</Grant>
+			<ObjectName>HSMobileOpsCountCancel</ObjectName>
+			<ObjectType>MenuItemAction</ObjectType>
+			<Forms />
+		</AxSecurityEntryPointReference>
+		<AxSecurityEntryPointReference>
+			<Name>HSMobileOpsCountKeepLine</Name>
+			<Grant>
+				<Invoke>Allow</Invoke>
+			</Grant>
+			<ObjectName>HSMobileOpsCountKeepLine</ObjectName>
+			<ObjectType>MenuItemAction</ObjectType>
+			<Forms />
+		</AxSecurityEntryPointReference>
+		<AxSecurityEntryPointReference>
+			<Name>HSMobileOpsCountSumLines</Name>
+			<Grant>
+				<Invoke>Allow</Invoke>
+			</Grant>
+			<ObjectName>HSMobileOpsCountSumLines</ObjectName>
+			<ObjectType>MenuItemAction</ObjectType>
+			<Forms />
+		</AxSecurityEntryPointReference>
+		<AxSecurityEntryPointReference>
+			<Name>HSMobileOpsCountRejectLines</Name>
+			<Grant>
+				<Invoke>Allow</Invoke>
+			</Grant>
+			<ObjectName>HSMobileOpsCountRejectLines</ObjectName>
+			<ObjectType>MenuItemAction</ObjectType>
+			<Forms />
+		</AxSecurityEntryPointReference>
+	</EntryPoints>
+	<FormControlOverrides />
+</AxSecurityPrivilege>

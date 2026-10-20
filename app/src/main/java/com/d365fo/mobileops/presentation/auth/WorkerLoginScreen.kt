@@ -21,6 +21,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -37,7 +39,16 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.d365fo.mobileops.R
 import com.d365fo.mobileops.presentation.common.components.ErrorBanner
+import com.d365fo.mobileops.data.security.OfflineSignIn
+import com.d365fo.mobileops.presentation.common.theme.WarehouseDimens
 import com.d365fo.mobileops.presentation.common.theme.WarehouseStatusColors
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CloudOff
+import androidx.compose.material3.Icon
 
 /**
  * Worker sign-in.
@@ -53,9 +64,11 @@ import com.d365fo.mobileops.presentation.common.theme.WarehouseStatusColors
 @Composable
 fun WorkerLoginScreen(
     onOpenSettings: () -> Unit,
+    offline: Boolean = false,
     viewModel: WorkerLoginViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val signOutNotice by viewModel.signOutNotice.collectAsStateWithLifecycle()
     val passwordFocus = remember { FocusRequester() }
     val userNameFocus = remember { FocusRequester() }
     val keyboardController = LocalSoftwareKeyboardController.current
@@ -65,9 +78,28 @@ fun WorkerLoginScreen(
     // but the keyboard only comes up on an explicit tap, the same as every other auto-focused
     // field in this app now. Simply not calling show() was tried first and was not enough - this
     // device's own IME brings itself up on any focus change regardless of what the app requests.
+    // The last worker's name is filled in (feedback, 10 Oct): straight to the PIN then - focused
+    // and with its keyboard up, as that is the one thing left to do.
     LaunchedEffect(Unit) {
-        runCatching { userNameFocus.requestFocus() }
-        keyboardController?.hide()
+        if (viewModel.prefill()) {
+            runCatching { passwordFocus.requestFocus() }
+            keyboardController?.show()
+        } else {
+            runCatching { userNameFocus.requestFocus() }
+            keyboardController?.hide()
+        }
+    }
+    // hide() alone still lost the race on this device (keyboard up on every arrival, seen in
+    // release builds), so the field is read-only until tapped, as the counting scan box is.
+    var typing by remember { mutableStateOf(false) }
+    val userNameInteraction = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+    LaunchedEffect(userNameInteraction) {
+        userNameInteraction.interactions.collect {
+            if (it is androidx.compose.foundation.interaction.PressInteraction.Release && !typing) {
+                typing = true
+                keyboardController?.show()
+            }
+        }
     }
 
     // Scrollable, not just centered - when the keyboard opens (an explicit tap on a field;
@@ -90,6 +122,9 @@ fun WorkerLoginScreen(
         state.error?.let { message ->
             ErrorBanner(message = message)
         }
+        if (state.error == null) {
+            signOutNotice?.let { message -> ErrorBanner(message = message) }
+        }
 
         // Same artwork as the launcher icon, but its own drawable (res/drawable-nodpi/ic_app_logo.png)
         // rather than reusing ic_launcher_foreground directly - this one is laid out at full
@@ -111,6 +146,11 @@ fun WorkerLoginScreen(
             style = MaterialTheme.typography.labelSmall,
             color = WarehouseStatusColors.text3,
         )
+        Text(
+            text = com.d365fo.mobileops.util.AppVersion.short,
+            style = MaterialTheme.typography.labelSmall,
+            color = WarehouseStatusColors.text3,
+        )
 
         Text(
             text = "Sign in",
@@ -118,12 +158,27 @@ fun WorkerLoginScreen(
             fontWeight = FontWeight.SemiBold,
         )
 
+        // Only once "offline" has lasted a few seconds: the network and D365FO checks at start
+        // and on resume can report a blip, which flashed this notice for a second (feedback).
+        var showOffline by remember { mutableStateOf(false) }
+        LaunchedEffect(offline) {
+            if (offline) {
+                kotlinx.coroutines.delay(3_000)
+                showOffline = true
+            } else {
+                showOffline = false
+            }
+        }
+        if (showOffline) OfflineSignInNotice()
+
         OutlinedTextField(
             value = state.userName,
             onValueChange = viewModel::onUserNameChange,
             label = { Text("User name") },
             singleLine = true,
             enabled = !state.busy,
+            readOnly = !typing,
+            interactionSource = userNameInteraction,
             keyboardOptions = KeyboardOptions(
                 autoCorrectEnabled = false,
                 imeAction = ImeAction.Next,
@@ -139,13 +194,14 @@ fun WorkerLoginScreen(
 
         OutlinedTextField(
             value = state.password,
-            onValueChange = viewModel::onPasswordChange,
-            label = { Text("Password") },
+            // A PIN is digits only (HSMobileOpsPassword::policyFailure), typed on the number pad.
+            onValueChange = { value -> viewModel.onPasswordChange(value.filter { it.isDigit() }) },
+            label = { Text("PIN") },
             singleLine = true,
             enabled = !state.busy,
             visualTransformation = PasswordVisualTransformation(),
             keyboardOptions = KeyboardOptions(
-                keyboardType = KeyboardType.Password,
+                keyboardType = KeyboardType.NumberPassword,
                 autoCorrectEnabled = false,
                 imeAction = ImeAction.Done,
             ),
@@ -159,7 +215,7 @@ fun WorkerLoginScreen(
         Button(
             onClick = viewModel::signIn,
             enabled = !state.busy && state.userName.isNotBlank() && state.password.isNotBlank(),
-            modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
+            modifier = Modifier.fillMaxWidth().heightIn(min = WarehouseDimens.MinTouchTarget),
         ) {
             if (state.busy) {
                 CircularProgressIndicator(modifier = Modifier.heightIn(max = 24.dp))
@@ -170,9 +226,35 @@ fun WorkerLoginScreen(
 
         OutlinedButton(
             onClick = onOpenSettings,
-            modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
+            modifier = Modifier.fillMaxWidth().heightIn(min = WarehouseDimens.MinTouchTarget),
         ) {
             Text("Connection settings")
         }
+    }
+}
+
+/** What still works while D365FO can't be reached, so a worker isn't left guessing. */
+@Composable
+private fun OfflineSignInNotice() {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(WarehouseStatusColors.amberDim, RoundedCornerShape(WarehouseDimens.CardCorner))
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+    ) {
+        Icon(
+            Icons.Default.CloudOff,
+            contentDescription = null,
+            tint = WarehouseStatusColors.amber,
+            modifier = Modifier.size(24.dp),
+        )
+        Text(
+            text = "No connection to D365FO. If you signed in on this device in the last " +
+                "${OfflineSignIn.VALID_DAYS} days, you can still sign in and work. " +
+                "Your work is sent when the connection is back.",
+            style = MaterialTheme.typography.bodyMedium,
+        )
     }
 }

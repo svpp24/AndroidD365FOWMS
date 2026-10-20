@@ -10,7 +10,8 @@ data class ItemUnitsServiceRequest(@SerialName("_request") val request: ItemUnit
 @Serializable
 data class ItemUnitsRequestBody(
     @SerialName("DataAreaId") val dataAreaId: String,
-    @SerialName("Items") val items: List<ItemUnitsKeyDto>,
+    /** [rowsJson] of [ItemUnitsKeyDto]s. */
+    @SerialName("ItemsJson") val itemsJson: String,
 )
 
 @Serializable

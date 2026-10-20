@@ -17,6 +17,8 @@ class HSMobileOpsPurchLineContract
     LineNum             lineNumber;
     ItemId              itemId;
     Name                itemName;
+    str                 mobileDescription1;
+    str                 mobileDescription2;
     UnitOfMeasureSymbol purchUnit;
     UnitOfMeasureSymbol inventUnit;
 
@@ -449,6 +451,36 @@ class HSMobileOpsPurchLineContract
     {
         units = _value;
         return units;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmMobileDescription1</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The item's warehouse mobile device description line 1 (WHSInventTable.RFDescription1).
+    /// </summary>
+    [DataMemberAttribute('MobileDescription1')]
+    public str parmMobileDescription1(str _value = mobileDescription1)
+    {
+        mobileDescription1 = _value;
+        return mobileDescription1;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmMobileDescription2</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The item's warehouse mobile device description line 2 (WHSInventTable.RFDescription2).
+    /// </summary>
+    [DataMemberAttribute('MobileDescription2')]
+    public str parmMobileDescription2(str _value = mobileDescription2)
+    {
+        mobileDescription2 = _value;
+        return mobileDescription2;
     }
 ]]></Source>
 			</Method>

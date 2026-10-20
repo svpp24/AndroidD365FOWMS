@@ -1,5 +1,7 @@
 package com.d365fo.mobileops.presentation.common.components
 
+import androidx.compose.material.icons.filled.PhotoCamera
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -38,50 +40,50 @@ fun PromptHeroCard(
     hint: String? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
+    // A white card with the prompt as its heading and an outlined field (20 Oct restyle, the
+    // mock's "Scan item" card) - it was a full accent gradient with white text.
     Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        horizontalAlignment = Alignment.Start,
+        verticalArrangement = Arrangement.spacedBy(10.dp),
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
-            .background(WarehouseStatusColors.accentGradient)
-            .padding(horizontal = 16.dp, vertical = 20.dp),
+            .clip(RoundedCornerShape(12.dp))
+            .background(Color.White)
+            .padding(horizontal = 14.dp, vertical = 14.dp),
     ) {
         Text(
             text = prompt,
-            style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.SemiBold,
-            color = Color.White,
-            textAlign = TextAlign.Center,
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.ExtraBold,
+            color = MaterialTheme.colorScheme.onSurface,
         )
         hint?.let {
             Text(
                 text = it,
                 style = MaterialTheme.typography.bodyMedium,
-                color = Color.White.copy(alpha = 0.92f),
-                textAlign = TextAlign.Center,
+                color = WarehouseStatusColors.text3,
             )
         }
         content()
     }
 }
 
-/** A white, borderless field for use inside [PromptHeroCard] - pill-shaped, dark text. */
+/** The field inside [PromptHeroCard]: white, outlined in the accent, dark text. */
 @Composable
 fun heroFieldColors() = OutlinedTextFieldDefaults.colors(
     focusedContainerColor = Color.White,
     unfocusedContainerColor = Color.White,
     disabledContainerColor = Color.White,
-    focusedBorderColor = Color.Transparent,
-    unfocusedBorderColor = Color.Transparent,
-    disabledBorderColor = Color.Transparent,
+    focusedBorderColor = WarehouseStatusColors.accent,
+    unfocusedBorderColor = WarehouseStatusColors.accent,
+    disabledBorderColor = WarehouseStatusColors.border,
     focusedTextColor = MaterialTheme.colorScheme.onSurface,
     unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
     disabledTextColor = MaterialTheme.colorScheme.onSurface,
     cursorColor = WarehouseStatusColors.accent,
 )
 
-val HeroFieldShape = RoundedCornerShape(50)
+val HeroFieldShape = RoundedCornerShape(10.dp)
 
 /** The round accent "enter" badge at the end of a hero field - purely a visual cue; the field
  * around it is what takes the tap. */
@@ -90,8 +92,8 @@ fun HeroEnterBadge() {
     Box(
         contentAlignment = Alignment.Center,
         modifier = Modifier
-            .size(36.dp)
-            .background(WarehouseStatusColors.accent, CircleShape),
+            .size(38.dp)
+            .background(WarehouseStatusColors.accent, RoundedCornerShape(8.dp)),
     ) {
         Icon(
             Icons.AutoMirrored.Filled.KeyboardReturn,
@@ -136,4 +138,20 @@ fun BarcodeFieldIcon() {
         tint = WarehouseStatusColors.accent,
         modifier = Modifier.size(26.dp),
     )
+}
+
+/** "Scan with camera" inside a [PromptHeroCard] - accent outline on the white card. */
+@Composable
+fun HeroCameraButton(onClick: () -> Unit, enabled: Boolean = true) {
+    SquareOutlinedButton(
+        onClick = onClick,
+        enabled = enabled,
+        shape = RoundedCornerShape(10.dp),
+        border = androidx.compose.foundation.BorderStroke(1.5.dp, WarehouseStatusColors.accent),
+        colors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(contentColor = WarehouseStatusColors.accent),
+        modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
+    ) {
+        androidx.compose.material3.Icon(androidx.compose.material.icons.Icons.Default.PhotoCamera, contentDescription = null)
+        Text("Scan with camera", modifier = Modifier.padding(start = 8.dp))
+    }
 }

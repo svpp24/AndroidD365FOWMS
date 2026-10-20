@@ -9,8 +9,8 @@ import javax.inject.Singleton
 /**
  * Everything needed to reach one D365FO environment. Entered on the device.
  *
- * [clientSecret] only matters when [authType] is [AuthType.CLIENT_CREDENTIALS] - restored after
- * a brief removal in favour of device-code alone. It ships a fleet-wide secret onto every
+ * Signs in with client credentials only - device-code sign-in was removed (Microsoft Entra
+ * security defaults block it in new tenants from 1 July 2026). [clientSecret] ships onto every
  * handheld that carries it (real cost: a rooted or backed-up device yields it), but that risk is
  * now the device owner's explicit choice per profile, not this app's only option.
  */
@@ -20,8 +20,22 @@ data class TenantConfig(
     val tenantId: String = "",
     val clientId: String = "",
     val clientSecret: String = "",
-    val authType: AuthType = AuthType.CLIENT_CREDENTIALS,
+    /**
+     * More app registrations for client credentials, after [clientId]/[clientSecret]: each
+     * device uses one, so the fleet shares D365FO's per-registration request allowance out
+     * between them - see [CredentialPool].
+     */
+    val extraCredentials: List<AppCredential> = emptyList(),
+    /**
+     * The legal entity this profile works in, from its connection QR code. Blank for a profile
+     * saved before profiles carried one - the device's own company setting is used then.
+     */
+    val company: String = "",
 ) {
+    /** Every registration a device may use: the main one first, then [extraCredentials]. */
+    val credentials: List<AppCredential>
+        get() = listOf(AppCredential(clientId.trim(), clientSecret.trim())) + extraCredentials
+
     val odataRoot: String get() = "${resourceUrl.trimEnd('/')}/data/"
     val servicesRoot: String get() = "${resourceUrl.trimEnd('/')}/api/services/"
     val host: String get() = resourceUrl.substringAfter("://").substringBefore('/')
@@ -38,7 +52,8 @@ data class TenantConfig(
         !resourceUrl.startsWith("https://") -> "Environment URL must start with https://"
         tenantId.isBlank() -> "Directory (tenant) ID is required"
         clientId.isBlank() -> "Application (client) ID is required"
-        authType == AuthType.CLIENT_CREDENTIALS && clientSecret.isBlank() -> "Client secret is required"
+        clientSecret.isBlank() -> "Client secret is required"
+        extraCredentials.any { !it.isComplete } -> "Each extra app registration needs a client ID and a secret"
         else -> null
     }
 
@@ -47,7 +62,7 @@ data class TenantConfig(
         tenantId.isBlank() -> "No directory (tenant) ID configured"
         clientId.isBlank() -> "No application (client) ID configured"
         resourceUrl.isBlank() -> "No environment URL configured"
-        authType == AuthType.CLIENT_CREDENTIALS && clientSecret.isBlank() -> "No client secret configured"
+        clientSecret.isBlank() -> "No client secret configured"
         else -> null
     }
 }
@@ -85,6 +100,9 @@ class ConnectionSettings @Inject constructor(
         // init-order lesson learned the hard way elsewhere in this app (see
         // ReceivingFlowViewModel's own two-init-block comment).
         ensureSeeded()
+        // The removed device-code sign-in kept a refresh token here; a token nothing uses any
+        // more is still a credential, so it does not stay on the device.
+        SecureStore.LEGACY_DEVICE_CODE_KEYS.forEach(secureStore::remove)
     }
 
     private val _profiles = MutableStateFlow(loadProfileLabels().mapNotNull(::readProfile))
@@ -121,6 +139,28 @@ class ConnectionSettings @Inject constructor(
      * @return true if this actually changed the active resource URL or tenant ID, meaning the
      * caller must wipe local data before the next read happens against the new target.
      */
+    /**
+     * Gives a profile saved before profiles carried a company the device's own one - a one-off
+     * backfill so the profile card shows it and switching back to it restores it.
+     */
+    fun backfillCompany(company: String) {
+        val current = _tenant.value
+        if (current.company.isNotBlank() || company.isBlank() || readProfile(current.label) == null) return
+        secureStore.putString(companyKey(current.label), company.trim().uppercase())
+        _tenant.value = current.copy(company = company.trim().uppercase())
+        _profiles.value = loadProfileLabels().mapNotNull(::readProfile)
+    }
+
+    /** Whether [saveTenant] with [config] would point the device somewhere new (and so wipe local data). */
+    fun wouldChangeTarget(config: TenantConfig): Boolean {
+        val previous = _tenant.value
+        return previous.label != config.label ||
+            previous.resourceUrl != config.resourceUrl || previous.tenantId != config.tenantId
+    }
+
+    /** Whether [activate] with [label] would point the device somewhere new. */
+    fun wouldChangeTarget(label: String): Boolean = label != _tenant.value.label && readProfile(label) != null
+
     fun saveTenant(config: TenantConfig): Boolean {
         val previous = _tenant.value
         val changed = previous.label == config.label &&
@@ -158,19 +198,52 @@ class ConnectionSettings @Inject constructor(
     }
 
     /**
-     * Removes a saved profile. Refuses to delete the active one - switch to a different profile
-     * first - so there is never a moment with no active connection to fall back on.
+     * Removes a saved profile - its URL and app registrations. The active one too: another saved
+     * profile then becomes active, or none is, and the device asks for a connection QR code.
+     *
+     * @return true when the active target changed, meaning the caller must wipe local data.
      */
     fun deleteProfile(label: String): Boolean {
-        if (label == _tenant.value.label) return false
-        val labels = loadProfileLabels() - label
-        if (labels.isEmpty()) return false
+        val labels = loadProfileLabels()
+        if (label !in labels) return false
+        val remaining = labels - label
 
-        secureStore.putString(KEY_PROFILE_LABELS, labels.joinToString(","))
+        // An empty list is stored as "", never removed: a missing key re-seeds the compiled-in
+        // defaults on the next start (see ensureSeeded), which would undo the delete.
+        secureStore.putString(KEY_PROFILE_LABELS, remaining.joinToString(","))
         clearProfileFields(label)
         secureStore.remove(postingKey(label))
-        _profiles.value = labels.mapNotNull(::readProfile)
+        _profiles.value = remaining.mapNotNull(::readProfile)
+
+        if (label != _tenant.value.label) return false
+        val next = remaining.firstOrNull()
+        if (next != null) {
+            secureStore.putString(KEY_ACTIVE_LABEL, next)
+            _tenant.value = readProfile(next) ?: TenantConfig(label = next)
+        } else {
+            secureStore.remove(KEY_ACTIVE_LABEL)
+            _tenant.value = TenantConfig(label = "")
+        }
+        _postingEnabled.value = loadPosting(_tenant.value.label)
         return true
+    }
+
+    /**
+     * Removes the tenant, client IDs and secrets of every profile. Profiles and their URLs stay,
+     * and so does everything in the local database: no work is lost, it waits until a
+     * connection QR code is scanned again.
+     */
+    fun clearAllCredentials() {
+        loadProfileLabels().forEach { label ->
+            secureStore.remove(tenantIdKey(label))
+            secureStore.remove(clientIdKey(label))
+            secureStore.remove(clientSecretKey(label))
+            secureStore.remove(poolKey(label))
+            secureStore.remove(authTypeKey(label))
+        }
+        val label = _tenant.value.label
+        _tenant.value = readProfile(label) ?: TenantConfig(label = label)
+        _profiles.value = loadProfileLabels().mapNotNull(::readProfile)
     }
 
     fun setPostingEnabled(enabled: Boolean) {
@@ -182,11 +255,9 @@ class ConnectionSettings @Inject constructor(
     fun canGoLive(): Boolean = _tenant.value.isComplete
 
     /**
-     * Prefill from whatever was compiled in, so a configured build still works out of the box -
-     * device-code, not client-credentials, as of 2026-09-29 (see local.properties' own comment
-     * on AAD_CLIENT_ID). A fresh install still needs the one-time interactive browser step this
-     * implies; there is no way to compile in a device-code sign-in that skips it, unlike a
-     * client secret.
+     * Prefill from whatever was compiled in, so a developer build still works out of the box. A
+     * fleet build normally compiles nothing in and is configured by scanning the connection QR
+     * code instead (see ConnectionQr).
      */
     fun compiledDefaultFor(environment: D365Environment): TenantConfig = TenantConfig(
         label = environment.name,
@@ -194,7 +265,10 @@ class ConnectionSettings @Inject constructor(
         tenantId = com.d365fo.mobileops.BuildConfig.AAD_TENANT_ID,
         clientId = com.d365fo.mobileops.BuildConfig.AAD_CLIENT_ID,
         clientSecret = com.d365fo.mobileops.BuildConfig.AAD_CLIENT_SECRET,
-        authType = AuthType.DEVICE_CODE,
+        // local.properties keeps it on one line: registrations separated by ";".
+        extraCredentials = CredentialPool.parse(
+            com.d365fo.mobileops.BuildConfig.AAD_CLIENT_POOL.replace(';', '\n'),
+        ),
     )
 
     // --- persistence ---
@@ -205,7 +279,8 @@ class ConnectionSettings @Inject constructor(
         secureStore.putString(tenantIdKey(label), config.tenantId.trim())
         secureStore.putString(clientIdKey(label), config.clientId.trim())
         secureStore.putString(clientSecretKey(label), config.clientSecret.trim())
-        secureStore.putString(authTypeKey(label), config.authType.name)
+        secureStore.putString(poolKey(label), CredentialPool.format(config.extraCredentials))
+        if (config.company.isNotBlank()) secureStore.putString(companyKey(label), config.company.trim().uppercase())
     }
 
     private fun clearProfileFields(label: String) {
@@ -214,6 +289,8 @@ class ConnectionSettings @Inject constructor(
         secureStore.remove(clientIdKey(label))
         secureStore.remove(clientSecretKey(label))
         secureStore.remove(authTypeKey(label))
+        secureStore.remove(poolKey(label))
+        secureStore.remove(companyKey(label))
     }
 
     private fun readProfile(label: String): TenantConfig? {
@@ -224,9 +301,8 @@ class ConnectionSettings @Inject constructor(
             tenantId = secureStore.getString(tenantIdKey(label)) ?: "",
             clientId = secureStore.getString(clientIdKey(label)) ?: "",
             clientSecret = secureStore.getString(clientSecretKey(label)) ?: "",
-            authType = secureStore.getString(authTypeKey(label))
-                ?.let { runCatching { AuthType.valueOf(it) }.getOrNull() }
-                ?: AuthType.CLIENT_CREDENTIALS,
+            extraCredentials = CredentialPool.parse(secureStore.getString(poolKey(label)).orEmpty()),
+            company = secureStore.getString(companyKey(label)).orEmpty(),
         )
     }
 
@@ -265,9 +341,6 @@ class ConnectionSettings @Inject constructor(
                     tenantId = secureStore.getString(KEY_LEGACY_TENANT_ID) ?: "",
                     clientId = secureStore.getString(KEY_LEGACY_CLIENT_ID) ?: "",
                     clientSecret = secureStore.getString(KEY_LEGACY_CLIENT_SECRET) ?: "",
-                    authType = secureStore.getString(KEY_LEGACY_AUTH_TYPE)
-                        ?.let { runCatching { AuthType.valueOf(it) }.getOrNull() }
-                        ?: AuthType.CLIENT_CREDENTIALS,
                 ),
             )
             secureStore.getString(KEY_LEGACY_POSTING)?.let { secureStore.putString(postingKey(label), it) }
@@ -289,6 +362,8 @@ class ConnectionSettings @Inject constructor(
     private fun clientIdKey(label: String) = "connection_profile_client_id::$label"
     private fun clientSecretKey(label: String) = "connection_profile_client_secret::$label"
     private fun authTypeKey(label: String) = "connection_profile_auth_type::$label"
+    private fun poolKey(label: String) = "connection_profile_client_pool::$label"
+    private fun companyKey(label: String) = "connection_profile_company::$label"
     private fun postingKey(label: String) = "connection_profile_posting_enabled::$label"
 
     private companion object {
@@ -303,7 +378,6 @@ class ConnectionSettings @Inject constructor(
         const val KEY_LEGACY_TENANT_ID = "connection_tenant_id"
         const val KEY_LEGACY_CLIENT_ID = "connection_client_id"
         const val KEY_LEGACY_CLIENT_SECRET = "connection_client_secret"
-        const val KEY_LEGACY_AUTH_TYPE = "connection_auth_type"
         const val KEY_LEGACY_POSTING = "connection_posting_enabled"
     }
 }

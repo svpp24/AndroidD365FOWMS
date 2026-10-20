@@ -1,5 +1,6 @@
 package com.d365fo.mobileops.presentation.auth
 
+import com.d365fo.mobileops.presentation.common.theme.WarehouseDimens
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -15,14 +16,14 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Checklist
-import androidx.compose.material.icons.filled.Login
-import androidx.compose.material.icons.filled.MoveToInbox
-import androidx.compose.material.icons.filled.Widgets
+import androidx.compose.material.icons.filled.CloudOff
+import androidx.compose.material.icons.automirrored.filled.Login
+import androidx.compose.material.icons.filled.QrCodeScanner
+import androidx.compose.material.icons.filled.TaskAlt
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import com.d365fo.mobileops.presentation.common.components.SquareTextButton as TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -52,8 +53,9 @@ private data class OnboardingPage(
  * having been seen before, it just shows the pages and calls [onDone] once, from either exit.
  *
  * Four pages, not an exhaustive tour - the same "keep it to what actually matters at 6am" reasons
- * [WorkerLoginScreen] is kept to two fields. Deep how-to lives on each module's own screen; this
- * just orients a worker who has never opened the app before.
+ * [WorkerLoginScreen] is kept to two fields. Where things are on screen is the navigation tour's
+ * job, once signed in (see presentation/common/tour/AppTour.kt); this just orients a worker who
+ * has never opened the app before.
  */
 @Composable
 fun OnboardingScreen(
@@ -62,28 +64,29 @@ fun OnboardingScreen(
     val pages = remember {
         listOf(
             OnboardingPage(
-                icon = Icons.Default.Login,
-                title = "Sign in with your D365 account",
-                body = "Your handheld already talks to D365FO on its own - this is the second " +
-                    "step, so every scan and post is attributed to you, not just the device.",
+                icon = Icons.AutoMirrored.Filled.Login,
+                title = "Sign in with your worker account",
+                body = "Use the user name and PIN set up for you in D365FO. Everything you scan and " +
+                    "post is recorded under your name.",
             ),
             OnboardingPage(
-                icon = Icons.Default.Widgets,
-                title = "One tile per task",
-                body = "The home screen lists what this handheld can do. A greyed-out tile " +
-                    "marked \"Planned\" isn't broken - it just isn't built yet.",
+                icon = Icons.Default.QrCodeScanner,
+                title = "Scan to work",
+                body = "Each task goes step by step: scan the order, the item, then enter the quantity - " +
+                    "the number pad opens by itself. Lines are checked against D365FO as you go.",
             ),
             OnboardingPage(
-                icon = Icons.Default.MoveToInbox,
-                title = "Receiving: scan, don't type",
-                body = "Scan a purchase order, then an item, then the quantity. Each step is " +
-                    "checked against D365FO before the next one appears.",
+                icon = Icons.Default.CloudOff,
+                title = "Keeps working offline",
+                body = "No connection? Carry on. Your work is saved on this device and sent to D365FO by " +
+                    "itself when the connection is back. You can even sign in offline if you signed in " +
+                    "here in the last 7 days.",
             ),
             OnboardingPage(
-                icon = Icons.Default.Checklist,
-                title = "Counting: get data, then count",
-                body = "Pull a counting journal's lines onto the device, scan items as you go, " +
-                    "and submit only what was actually counted.",
+                icon = Icons.Default.TaskAlt,
+                title = "Nothing gets lost",
+                body = "Every scan is saved straight away. Unfinished jobs wait on Home, and Activity " +
+                    "shows anything still to be sent or that D365FO refused.",
             ),
         )
     }
@@ -187,7 +190,7 @@ fun OnboardingScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 24.dp)
-                .heightIn(min = 56.dp),
+                .heightIn(min = WarehouseDimens.MinTouchTarget),
         ) {
             Text(if (isLastPage) "Get started" else "Next")
         }

@@ -2,7 +2,7 @@
 <AxMenuItemDisplay xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
 	<Name>HSMobileOpsUser</Name>
 	<Label>Mobile device users</Label>
-	<HelpText>Create handheld logins, assign the warehouses each worker may work in, and reset passwords.</HelpText>
+	<HelpText>Create handheld logins, assign the warehouses each worker may work in, and reset PINs.</HelpText>
 	<Object>HSMobileOpsUser</Object>
 	<ObjectType>Form</ObjectType>
 </AxMenuItemDisplay>

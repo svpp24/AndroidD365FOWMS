@@ -1,0 +1,197 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxTable xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsFeedback</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Feedback sent from the handheld (Problem / Idea / Question), with the screen, app version,
+/// worker and warehouse it came from, the app's recent log and a screenshot (JPEG, in the
+/// record). Reviewed on the Mobile feedback form; Status and Reply go back to the worker.
+/// One list for the environment, like the device fleet.
+/// </summary>
+public class HSMobileOpsFeedback extends common
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>findByFeedbackId</Name>
+				<Source><![CDATA[
+
+    public static HSMobileOpsFeedback findByFeedbackId(str _feedbackId, boolean _forUpdate = false)
+    {
+        HSMobileOpsFeedback feedback;
+
+        if (_feedbackId)
+        {
+            feedback.selectForUpdate(_forUpdate);
+            select firstonly feedback where feedback.FeedbackId == _feedbackId;
+        }
+        return feedback;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+	<Label>Mobile feedback</Label>
+	<TitleField1>Screen</TitleField1>
+	<TitleField2>UserName</TitleField2>
+	<CacheLookup>NotInTTS</CacheLookup>
+	<ReplacementKey>FeedbackIdIdx</ReplacementKey>
+	<SaveDataPerCompany>No</SaveDataPerCompany>
+	<Fields>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>FeedbackId</Name>
+			<AllowEdit>No</AllowEdit>
+			<HelpText>Generated on the handheld - also the idempotency key, so a resend cannot record it twice.</HelpText>
+			<Label>Feedback ID</Label>
+			<Mandatory>Yes</Mandatory>
+			<StringSize>64</StringSize>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldEnum">
+			<Name>FeedbackType</Name>
+			<AllowEdit>No</AllowEdit>
+			<Label>Type</Label>
+			<EnumType>HSMobileOpsFeedbackType</EnumType>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>Screen</Name>
+			<AllowEdit>No</AllowEdit>
+			<HelpText>The app screen the feedback was sent from.</HelpText>
+			<Label>Screen</Label>
+			<StringSize>100</StringSize>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>Message</Name>
+			<AllowEdit>No</AllowEdit>
+			<ExtendedDataType>Notes</ExtendedDataType>
+			<Label>Message</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldEnum">
+			<Name>Status</Name>
+			<HelpText>Shown to the worker in the app, with the reply.</HelpText>
+			<Label>Status</Label>
+			<EnumType>HSMobileOpsFeedbackStatus</EnumType>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>Response</Name>
+			<ExtendedDataType>Notes</ExtendedDataType>
+			<HelpText>Shown to the worker in the app under their feedback.</HelpText>
+			<Label>Reply</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>UserName</Name>
+			<AllowEdit>No</AllowEdit>
+			<ExtendedDataType>HSMobileOpsUserName</ExtendedDataType>
+			<Label>Worker</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>WarehouseId</Name>
+			<AllowEdit>No</AllowEdit>
+			<ExtendedDataType>InventLocationId</ExtendedDataType>
+			<Label>Warehouse</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>AppVersion</Name>
+			<AllowEdit>No</AllowEdit>
+			<Label>App version</Label>
+			<StringSize>32</StringSize>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>DeviceModel</Name>
+			<AllowEdit>No</AllowEdit>
+			<Label>Device</Label>
+			<StringSize>121</StringSize>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>DeviceId</Name>
+			<AllowEdit>No</AllowEdit>
+			<Label>Device ID</Label>
+			<StringSize>64</StringSize>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldUtcDateTime">
+			<Name>SubmittedUtc</Name>
+			<AllowEdit>No</AllowEdit>
+			<Label>Sent</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldEnum">
+			<Name>HasScreenshot</Name>
+			<AllowEdit>No</AllowEdit>
+			<HelpText>The screenshot is a document attachment of this record (Attachments).</HelpText>
+			<Label>Screenshot attached</Label>
+			<EnumType>NoYes</EnumType>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldEnum">
+			<Name>SelectedForExport</Name>
+			<HelpText>Ticked records are what Export feedback downloads; with none ticked it downloads the list shown.</HelpText>
+			<Label>Export</Label>
+			<EnumType>NoYes</EnumType>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldContainer">
+			<Name>Screenshot</Name>
+			<AllowEdit>No</AllowEdit>
+			<ExtendedDataType>Bitmap</ExtendedDataType>
+			<HelpText>The screen the feedback was sent from, as the worker saw it (JPEG).</HelpText>
+			<Label>Screenshot</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>Logs</Name>
+			<AllowEdit>No</AllowEdit>
+			<ExtendedDataType>Notes</ExtendedDataType>
+			<HelpText>The last lines of the app's own log when the feedback was sent.</HelpText>
+			<Label>App log</Label>
+		</AxTableField>
+	</Fields>
+	<FullTextIndexes />
+	<Indexes>
+		<AxTableIndex>
+			<Name>FeedbackIdIdx</Name>
+			<AllowDuplicates>No</AllowDuplicates>
+			<Fields>
+				<AxTableIndexField>
+					<DataField>FeedbackId</DataField>
+				</AxTableIndexField>
+			</Fields>
+		</AxTableIndex>
+		<AxTableIndex>
+			<Name>SubmittedIdx</Name>
+			<AllowDuplicates>Yes</AllowDuplicates>
+			<Fields>
+				<AxTableIndexField>
+					<DataField>SubmittedUtc</DataField>
+				</AxTableIndexField>
+			</Fields>
+		</AxTableIndex>
+		<AxTableIndex>
+			<Name>UserIdx</Name>
+			<AllowDuplicates>Yes</AllowDuplicates>
+			<Fields>
+				<AxTableIndexField>
+					<DataField>UserName</DataField>
+				</AxTableIndexField>
+				<AxTableIndexField>
+					<DataField>SubmittedUtc</DataField>
+				</AxTableIndexField>
+			</Fields>
+		</AxTableIndex>
+	</Indexes>
+	<Mappings />
+	<Relations />
+	<StateMachines />
+</AxTable>

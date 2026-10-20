@@ -24,6 +24,7 @@ class HSMobileOpsPostLine
     str           batchManufacturingDate;
     str           batchExpiryDate;
     List          serialIds;
+    boolean       picked;
 
 }
 ]]></Declaration>
@@ -183,6 +184,21 @@ class HSMobileOpsPostLine
     {
         serialIds = _value;
         return serialIds;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmPicked</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Transfer shipment: already picked when it was scanned (pickTransferLine) - not picked again at posting.
+    /// </summary>
+    [DataMemberAttribute('Picked')]
+    public boolean parmPicked(boolean _value = picked)
+    {
+        picked = _value;
+        return picked;
     }
 ]]></Source>
 			</Method>

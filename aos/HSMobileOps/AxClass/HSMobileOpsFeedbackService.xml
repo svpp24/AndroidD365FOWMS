@@ -1,0 +1,275 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsFeedbackService</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Feedback from the handheld (HSMobileOpsFeedbackSvc): submitFeedback records it - idempotent
+/// on FeedbackId, the screenshot attached to the record as a JPEG - and listMyFeedback returns a
+/// worker's own feedback with the team's status and reply, so the app can show them.
+/// </summary>
+class HSMobileOpsFeedbackService
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>submitFeedback</Name>
+				<Source><![CDATA[
+
+    public HSMobileOpsFeedbackResponse submitFeedback(HSMobileOpsFeedbackRequest _request)
+    {
+        HSMobileOpsFeedbackResponse response = HSMobileOpsFeedbackService::newResponse();
+        HSMobileOpsFeedback         feedback;
+        str                         attachProblem;
+
+        if (!_request || !_request.parmFeedbackId() || !_request.parmMessage())
+        {
+            response.parmErrorCode('INVALID_REQUEST');
+            response.parmMessage('The feedback was empty');
+            return response;
+        }
+
+        feedback = HSMobileOpsFeedback::findByFeedbackId(_request.parmFeedbackId());
+        if (feedback.RecId)
+        {
+            response.parmSuccess(true);
+            response.parmAlreadyCreated(true);
+            return response;
+        }
+
+        try
+        {
+            ttsbegin;
+            feedback.clear();
+            feedback.FeedbackId   = _request.parmFeedbackId();
+            feedback.FeedbackType = HSMobileOpsFeedbackService::feedbackType(_request.parmFeedbackType());
+            feedback.Screen       = subStr(_request.parmScreen(), 1, 100);
+            feedback.Message      = _request.parmMessage();
+            feedback.UserName     = _request.parmUserName();
+            feedback.WarehouseId  = _request.parmWarehouseId();
+            feedback.AppVersion   = subStr(_request.parmAppVersion(), 1, 32);
+            feedback.DeviceModel  = subStr(_request.parmDeviceModel(), 1, 121);
+            feedback.DeviceId     = subStr(_request.parmDeviceId(), 1, 64);
+            feedback.Logs         = _request.parmLogs();
+            feedback.SubmittedUtc = DateTimeUtil::utcNow();
+            feedback.Status       = HSMobileOpsFeedbackStatus::New;
+            feedback.insert();
+            ttscommit;
+        }
+        catch (Exception::DuplicateKeyException)
+        {
+            // A resend that raced the first one: it is recorded, which is all the device needs.
+            response.parmSuccess(true);
+            response.parmAlreadyCreated(true);
+            return response;
+        }
+
+        // The screenshot is a convenience: a failure to attach it never loses the feedback, and
+        // the reason is put at the top of the record's App log so it shows on the form.
+        if (_request.parmScreenshotBase64())
+        {
+            attachProblem = HSMobileOpsFeedbackService::attachScreenshot(feedback, _request.parmScreenshotBase64(), _request.parmDataAreaId());
+            if (attachProblem)
+            {
+                ttsbegin;
+                feedback = HSMobileOpsFeedback::findByFeedbackId(_request.parmFeedbackId(), true);
+                feedback.Logs = attachProblem + '\n\n' + feedback.Logs;
+                feedback.update();
+                ttscommit;
+                response.parmMessage(attachProblem);
+            }
+        }
+
+        response.parmSuccess(true);
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>listMyFeedback</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The worker's own feedback, newest first (Take, up to 100), with status and reply.
+    /// </summary>
+    public HSMobileOpsFeedbackResponse listMyFeedback(HSMobileOpsFeedbackRequest _request)
+    {
+        HSMobileOpsFeedbackResponse response = HSMobileOpsFeedbackService::newResponse();
+        HSMobileOpsFeedback         feedback;
+        HSMobileOpsFeedbackItem     item;
+        int                         take;
+        int                         added;
+
+        if (!_request || !_request.parmUserName())
+        {
+            response.parmErrorCode('INVALID_REQUEST');
+            return response;
+        }
+        take = _request.parmTake() > 0 ? min(_request.parmTake(), 100) : 30;
+
+        while select feedback
+            order by SubmittedUtc desc
+            where feedback.UserName == _request.parmUserName()
+        {
+            item = new HSMobileOpsFeedbackItem();
+            item.parmFeedbackId(feedback.FeedbackId);
+            item.parmSubmittedUtc(DateTimeUtil::toStr(feedback.SubmittedUtc));
+            item.parmScreen(feedback.Screen);
+            item.parmFeedbackType(enum2Symbol(enumNum(HSMobileOpsFeedbackType), feedback.FeedbackType));
+            item.parmMessage(feedback.Message);
+            item.parmStatus(enum2Symbol(enumNum(HSMobileOpsFeedbackStatus), feedback.Status));
+            item.parmResponse(feedback.Response);
+            response.parmItems().addEnd(item);
+            added++;
+            if (added >= take)
+            {
+                break;
+            }
+        }
+
+        response.parmSuccess(true);
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>updateFeedback</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Changes the type and message of feedback the worker sent, while it is still New - once
+    /// the team has picked it up (In progress, Done, Won't do) it is no longer editable.
+    /// </summary>
+    public HSMobileOpsFeedbackResponse updateFeedback(HSMobileOpsFeedbackRequest _request)
+    {
+        HSMobileOpsFeedbackResponse response = HSMobileOpsFeedbackService::newResponse();
+        HSMobileOpsFeedback         feedback;
+
+        if (!_request || !_request.parmFeedbackId() || !_request.parmUserName() || !_request.parmMessage())
+        {
+            response.parmErrorCode('INVALID_REQUEST');
+            response.parmMessage('The feedback was empty');
+            return response;
+        }
+
+        ttsbegin;
+        feedback = HSMobileOpsFeedback::findByFeedbackId(_request.parmFeedbackId(), true);
+        if (!feedback.RecId || feedback.UserName != _request.parmUserName())
+        {
+            ttsabort;
+            response.parmErrorCode('NOT_FOUND');
+            response.parmMessage('That feedback was not found');
+            return response;
+        }
+        if (feedback.Status != HSMobileOpsFeedbackStatus::New)
+        {
+            ttsabort;
+            response.parmErrorCode('NOT_EDITABLE');
+            response.parmMessage(strFmt('The team has already picked this up (%1) - send new feedback instead', enum2Str(feedback.Status)));
+            return response;
+        }
+        feedback.FeedbackType = HSMobileOpsFeedbackService::feedbackType(_request.parmFeedbackType());
+        feedback.Message      = _request.parmMessage();
+        feedback.update();
+        ttscommit;
+
+        response.parmSuccess(true);
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>attachScreenshot</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Stores the JPEG in the feedback record (the form's Screenshot tab) and marks HasScreenshot.
+    /// Returns '' or why it could not be stored.
+    /// </summary>
+    private static str attachScreenshot(HSMobileOpsFeedback _feedback, str _base64, DataAreaId _dataAreaId)
+    {
+        HSMobileOpsFeedback  feedback;
+        System.Byte[]        bytes;
+        System.IO.MemoryStream stream;
+        System.Exception     clrError;
+
+        try
+        {
+            // Kept in the record (Screenshot), not as a document attachment: attachments need the
+            // environment's file storage set up, and on the dev VM it is not (no client secret).
+            bytes  = System.Convert::FromBase64String(_base64);
+            stream = new System.IO.MemoryStream(bytes);
+
+            ttsbegin;
+            feedback = HSMobileOpsFeedback::findByFeedbackId(_feedback.FeedbackId, true);
+            feedback.Screenshot    = Binary::constructFromMemoryStream(stream).getContainer();
+            feedback.HasScreenshot = NoYes::Yes;
+            feedback.update();
+            ttscommit;
+            return '';
+        }
+        catch (Exception::CLRError)
+        {
+            clrError = CLRInterop::getLastException();
+            return 'Screenshot not attached: ' + (clrError ? subStr(clrError.ToString(), 1, 300) : 'CLR error');
+        }
+        catch (Exception::Error)
+        {
+            return 'Screenshot not attached: ' + HSMobileOpsFeedbackService::lastError();
+        }
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>feedbackType</Name>
+				<Source><![CDATA[
+
+    private static HSMobileOpsFeedbackType feedbackType(str _value)
+    {
+        switch (_value)
+        {
+            case 'Idea':     return HSMobileOpsFeedbackType::Idea;
+            case 'Question': return HSMobileOpsFeedbackType::Question;
+            default:         return HSMobileOpsFeedbackType::Problem;
+        }
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>newResponse</Name>
+				<Source><![CDATA[
+
+    private static HSMobileOpsFeedbackResponse newResponse()
+    {
+        HSMobileOpsFeedbackResponse response = new HSMobileOpsFeedbackResponse();
+
+        response.parmSuccess(false);
+        response.parmItems(new List(Types::Class));
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>lastError</Name>
+				<Source><![CDATA[
+
+    private static str lastError()
+    {
+        SysInfologEnumerator enumerator = SysInfologEnumerator::newData(infolog.infologData());
+        str                  message;
+
+        while (enumerator.moveNext())
+        {
+            if (enumerator.currentException() == Exception::Error || enumerator.currentException() == Exception::Warning)
+            {
+                message += (message ? ' | ' : '') + enumerator.currentMessage();
+            }
+        }
+        return message ? message : 'no message';
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

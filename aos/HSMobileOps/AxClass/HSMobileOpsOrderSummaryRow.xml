@@ -11,6 +11,7 @@ class HSMobileOpsOrderSummaryRow
 {
     str        purchId;
     str        vendorAccount;
+    boolean    hasOpenLines;
     str        status;
     str        siteId;
     str        warehouseId;
@@ -88,6 +89,22 @@ class HSMobileOpsOrderSummaryRow
     {
         deliveryDate = _value;
         return deliveryDate;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmHasOpenLines</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Whether a line still has quantity to receive (RemainPurchPhysical above zero) - receiving
+    /// offers only these under "Due today"; the PO of today inquiry lists every order.
+    /// </summary>
+    [DataMemberAttribute('HasOpenLines')]
+    public boolean parmHasOpenLines(boolean _value = hasOpenLines)
+    {
+        hasOpenLines = _value;
+        return hasOpenLines;
     }
 ]]></Source>
 			</Method>

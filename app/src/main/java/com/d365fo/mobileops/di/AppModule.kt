@@ -12,7 +12,6 @@ import com.d365fo.mobileops.data.repository.WorkerSessionRepository
 import com.d365fo.mobileops.data.security.ConnectionSettings
 import com.d365fo.mobileops.data.security.SecureStore
 import com.d365fo.mobileops.data.security.TokenProvider
-import com.d365fo.mobileops.data.security.AuthTokenProviderRouter
 import com.d365fo.mobileops.data.sync.ConnectivityMonitor
 import com.d365fo.mobileops.data.sync.SyncScheduler
 import com.d365fo.mobileops.domain.repository.OnDemandLookupRepository
@@ -86,13 +85,10 @@ object AppModule {
 @InstallIn(SingletonComponent::class)
 abstract class RepositoryModule {
 
-    /**
-     * Routes between client-credentials and device-code at runtime, per the active profile's
-     * [com.d365fo.mobileops.data.security.AuthType] - see [AuthTokenProviderRouter].
-     */
+    /** Client credentials - the only device credential since device-code sign-in was removed. */
     @Binds
     @Singleton
-    abstract fun bindTokenProvider(impl: AuthTokenProviderRouter): TokenProvider
+    abstract fun bindTokenProvider(impl: com.d365fo.mobileops.data.security.ClientCredentialsTokenProvider): TokenProvider
 
     /**
      * Three layers, outermost first: cache, then the AOS service, then OData.

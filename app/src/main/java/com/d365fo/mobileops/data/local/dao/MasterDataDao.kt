@@ -75,18 +75,6 @@ interface ItemDao {
     @Query("SELECT * FROM item WHERE itemId = :itemId")
     suspend fun getItem(itemId: String): ItemEntity?
 
-    /** Manual-entry fallback when the label is damaged. */
-    @Query(
-        """
-        SELECT * FROM item
-        WHERE active = 1
-          AND (itemId LIKE :query || '%' OR itemName LIKE '%' || :query || '%')
-        ORDER BY CASE WHEN itemId LIKE :query || '%' THEN 0 ELSE 1 END, itemId
-        LIMIT :limit
-        """,
-    )
-    suspend fun searchItems(query: String, limit: Int = 25): List<ItemEntity>
-
     @Query("SELECT COUNT(*) FROM item")
     suspend fun itemCount(): Int
 
@@ -95,6 +83,22 @@ interface ItemDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertBarcodes(barcodes: List<BarcodeEntity>)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertVariants(variants: List<com.d365fo.mobileops.data.local.entity.ItemVariantEntity>)
+
+    @Query("SELECT * FROM item_variant WHERE itemId = :itemId ORDER BY configId, sizeId, colorId, styleId")
+    suspend fun variantsOf(itemId: String): List<com.d365fo.mobileops.data.local.entity.ItemVariantEntity>
+
+    // After a full SKU refresh: rows it did not see are no longer in D365FO.
+    @Query("DELETE FROM item WHERE modifiedAt < :before")
+    suspend fun deleteItemsNotSeenSince(before: Long): Int
+
+    @Query("DELETE FROM barcode WHERE modifiedAt < :before")
+    suspend fun deleteBarcodesNotSeenSince(before: Long): Int
+
+    @Query("DELETE FROM item_variant WHERE syncedAt < :before")
+    suspend fun deleteVariantsNotSeenSince(before: Long): Int
 
     /**
      * Master-data pull writes in bounded transactions so a large sync stays responsive.
@@ -112,11 +116,6 @@ interface ItemDao {
     suspend fun upsertBarcodesChunked(barcodes: List<BarcodeEntity>, chunkSize: Int = Constants.DB_BATCH_SIZE) =
         barcodes.chunked(chunkSize).forEach { upsertBarcodes(it) }
 
-    @Query("DELETE FROM item")
-    suspend fun clearItems()
-
-    @Query("DELETE FROM barcode")
-    suspend fun clearBarcodes()
 }
 
 @Dao
@@ -148,15 +147,8 @@ interface LocationDao {
     )
     suspend fun search(warehouseId: String, query: String, limit: Int = 25): List<LocationEntity>
 
-    @Query("SELECT * FROM location WHERE warehouseId = :warehouseId AND active = 1 ORDER BY locationId")
-    fun observeForWarehouse(warehouseId: String): Flow<List<LocationEntity>>
-
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(locations: List<LocationEntity>)
-
-    @Transaction
-    suspend fun upsertChunked(locations: List<LocationEntity>) =
-        locations.chunked(Constants.DB_BATCH_SIZE).forEach { upsert(it) }
 
     @Query("DELETE FROM location")
     suspend fun clear()
@@ -164,31 +156,6 @@ interface LocationDao {
 
 @Dao
 interface InventDimDao {
-
-    /**
-     * Finds an existing InventDimId for a dimension set. NULL-safe comparison: an unset
-     * location must match a stored NULL, which `=` would not do.
-     */
-    @Query(
-        """
-        SELECT * FROM invent_dim
-        WHERE itemId IS :itemId
-          AND siteId IS :siteId
-          AND warehouseId IS :warehouseId
-          AND locationId IS :locationId
-          AND batchId IS :batchId
-          AND serialId IS :serialId
-        LIMIT 1
-        """,
-    )
-    suspend fun findMatching(
-        itemId: String?,
-        siteId: String?,
-        warehouseId: String?,
-        locationId: String?,
-        batchId: String?,
-        serialId: String?,
-    ): InventDimEntity?
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(dims: List<InventDimEntity>)
@@ -200,39 +167,8 @@ interface InventDimDao {
 @Dao
 interface OnHandDao {
 
-    @Query(
-        """
-        SELECT * FROM onhand_cache
-        WHERE itemId = :itemId
-          AND (:siteId IS NULL OR siteId = :siteId)
-          AND (:warehouseId IS NULL OR warehouseId = :warehouseId)
-        ORDER BY warehouseId, locationId, batchId
-        """,
-    )
-    fun observeForItem(
-        itemId: String,
-        siteId: String?,
-        warehouseId: String?,
-    ): Flow<List<OnHandCacheEntity>>
-
-    @Query(
-        """
-        SELECT MIN(cachedAt) FROM onhand_cache
-        WHERE itemId = :itemId
-          AND (:siteId IS NULL OR siteId = :siteId)
-          AND (:warehouseId IS NULL OR warehouseId = :warehouseId)
-        """,
-    )
-    suspend fun oldestCacheStamp(itemId: String, siteId: String?, warehouseId: String?): Long?
-
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(rows: List<OnHandCacheEntity>)
-
-    @Query("DELETE FROM onhand_cache WHERE itemId = :itemId")
-    suspend fun evictItem(itemId: String)
-
-    @Query("DELETE FROM onhand_cache WHERE cachedAt < :olderThan")
-    suspend fun evictStale(olderThan: Long): Int
 
     @Query("DELETE FROM onhand_cache")
     suspend fun clear()
@@ -266,9 +202,6 @@ interface ValidationAuditDao {
     @Query("SELECT * FROM validation_audit ORDER BY occurredAt DESC LIMIT :limit")
     suspend fun recent(limit: Int = 200): List<ValidationAuditEntity>
 
-    /** The audit log is capped locally; it is a triage aid, not the system of record. */
-    @Query("DELETE FROM validation_audit WHERE occurredAt < :olderThan")
-    suspend fun purge(olderThan: Long): Int
 }
 
 @Dao

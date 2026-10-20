@@ -159,6 +159,10 @@ class LiveMobileOpsServiceApi @Inject constructor(
         body: com.d365fo.mobileops.data.remote.dto.PostServiceRequest,
     ) = delegate.get().postTransferReceipt(body)
 
+    override suspend fun pickTransferLine(
+        body: com.d365fo.mobileops.data.remote.dto.PostServiceRequest,
+    ) = delegate.get().pickTransferLine(body)
+
     override suspend fun processPending(
         body: com.d365fo.mobileops.data.remote.dto.PostQueueServiceRequest,
     ) = delegate.get().processPending(body)
@@ -166,10 +170,6 @@ class LiveMobileOpsServiceApi @Inject constructor(
     override suspend fun getQueueStatus(
         body: com.d365fo.mobileops.data.remote.dto.PostQueueServiceRequest,
     ) = delegate.get().getQueueStatus(body)
-
-    override suspend fun exportSkuMaster(
-        body: com.d365fo.mobileops.data.remote.dto.SkuExportServiceRequest,
-    ) = delegate.get().exportSkuMaster(body)
 
     override suspend fun getLicense(
         body: com.d365fo.mobileops.data.remote.dto.GetLicenseServiceRequest,
@@ -193,6 +193,16 @@ class LiveMobileOpsServiceApi @Inject constructor(
 
     override suspend fun dmfGetAzureWriteUrl(body: com.d365fo.mobileops.data.remote.dto.DmfServiceRequest) = delegate.get().dmfGetAzureWriteUrl(body)
 
+    override suspend fun listTransferOrders(
+        body: com.d365fo.mobileops.data.remote.dto.TransferListServiceRequest,
+        tag: com.d365fo.mobileops.data.remote.interceptor.IdempotentRead,
+    ) = delegate.get().listTransferOrders(body, tag)
+
+    override suspend fun listPickedSerials(
+        body: com.d365fo.mobileops.data.remote.dto.TransferListServiceRequest,
+        tag: com.d365fo.mobileops.data.remote.interceptor.IdempotentRead,
+    ) = delegate.get().listPickedSerials(body, tag)
+
     override suspend fun getOrdersForDate(
         body: com.d365fo.mobileops.data.remote.dto.OrdersForDateServiceRequest,
         tag: com.d365fo.mobileops.data.remote.interceptor.IdempotentRead,
@@ -213,9 +223,6 @@ class LiveMobileOpsServiceApi @Inject constructor(
         tag: com.d365fo.mobileops.data.remote.interceptor.IdempotentRead,
     ) = delegate.get().getWarehousesService(body, tag)
 
-    override suspend fun uploadAiSample(
-        body: com.d365fo.mobileops.data.remote.dto.AiSampleServiceRequest,
-    ) = delegate.get().uploadAiSample(body)
 
     override suspend fun getItemUnits(
         body: com.d365fo.mobileops.data.remote.dto.ItemUnitsServiceRequest,
@@ -226,6 +233,81 @@ class LiveMobileOpsServiceApi @Inject constructor(
         body: com.d365fo.mobileops.data.remote.dto.UserWarehousesServiceRequest,
         tag: com.d365fo.mobileops.data.remote.interceptor.IdempotentRead,
     ) = delegate.get().getUserWarehouses(body, tag)
+
+    override suspend fun getModulePermissions(
+        body: com.d365fo.mobileops.data.remote.dto.OrderServiceRequest,
+    ) = delegate.get().getModulePermissions(body)
+
+    override suspend fun listVendors(
+        body: com.d365fo.mobileops.data.remote.dto.OrderServiceRequest,
+        tag: com.d365fo.mobileops.data.remote.interceptor.IdempotentRead,
+    ) = delegate.get().listVendors(body, tag)
+
+    override suspend fun getOrderItem(
+        body: com.d365fo.mobileops.data.remote.dto.OrderServiceRequest,
+        tag: com.d365fo.mobileops.data.remote.interceptor.IdempotentRead,
+    ) = delegate.get().getOrderItem(body, tag)
+
+    override suspend fun priceLines(
+        body: com.d365fo.mobileops.data.remote.dto.OrderServiceRequest,
+    ) = delegate.get().priceLines(body)
+
+    override suspend fun createPurchaseOrder(
+        body: com.d365fo.mobileops.data.remote.dto.OrderServiceRequest,
+    ) = delegate.get().createPurchaseOrder(body)
+
+    override suspend fun getStock(
+        body: com.d365fo.mobileops.data.remote.dto.OrderServiceRequest,
+        tag: com.d365fo.mobileops.data.remote.interceptor.IdempotentRead,
+    ) = delegate.get().getStock(body, tag)
+
+    override suspend fun createTransferOrder(
+        body: com.d365fo.mobileops.data.remote.dto.OrderServiceRequest,
+    ) = delegate.get().createTransferOrder(body)
+
+    override suspend fun listPurchaseOrdersToConfirm(
+        body: com.d365fo.mobileops.data.remote.dto.OrderServiceRequest,
+        tag: com.d365fo.mobileops.data.remote.interceptor.IdempotentRead,
+    ) = delegate.get().listPurchaseOrdersToConfirm(body, tag)
+
+    override suspend fun getPurchaseOrderForConfirm(
+        body: com.d365fo.mobileops.data.remote.dto.OrderServiceRequest,
+        tag: com.d365fo.mobileops.data.remote.interceptor.IdempotentRead,
+    ) = delegate.get().getPurchaseOrderForConfirm(body, tag)
+
+    override suspend fun getSkuPage(
+        body: com.d365fo.mobileops.data.remote.dto.SkuPageServiceRequest,
+    ) = delegate.get().getSkuPage(body)
+
+    override suspend fun logSignInSession(
+        body: com.d365fo.mobileops.data.remote.dto.SignInLogServiceRequest,
+    ) = delegate.get().logSignInSession(body)
+
+    override suspend fun submitFeedback(
+        body: com.d365fo.mobileops.data.remote.dto.FeedbackServiceRequest,
+    ) = delegate.get().submitFeedback(body)
+
+    override suspend fun updateFeedback(
+        body: com.d365fo.mobileops.data.remote.dto.FeedbackServiceRequest,
+    ) = delegate.get().updateFeedback(body)
+
+    override suspend fun listMyFeedback(
+        body: com.d365fo.mobileops.data.remote.dto.FeedbackServiceRequest,
+        tag: com.d365fo.mobileops.data.remote.interceptor.IdempotentRead,
+    ) = delegate.get().listMyFeedback(body, tag)
+
+    override suspend fun confirmPurchaseOrder(
+        body: com.d365fo.mobileops.data.remote.dto.OrderServiceRequest,
+    ) = delegate.get().confirmPurchaseOrder(body)
+
+    override suspend fun listReturnReasons(
+        body: com.d365fo.mobileops.data.remote.dto.OrderServiceRequest,
+        tag: com.d365fo.mobileops.data.remote.interceptor.IdempotentRead,
+    ) = delegate.get().listReturnReasons(body, tag)
+
+    override suspend fun createPurchaseReturn(
+        body: com.d365fo.mobileops.data.remote.dto.OrderServiceRequest,
+    ) = delegate.get().createPurchaseReturn(body)
 }
 
 @Singleton
@@ -400,4 +482,68 @@ class LiveCountSupervisorServiceApi @Inject constructor(
         body: com.d365fo.mobileops.data.remote.dto.AccuracyServiceRequest,
         tag: com.d365fo.mobileops.data.remote.interceptor.IdempotentRead,
     ) = delegate.get().getAccuracyReport(body, tag)
+}
+
+/** `HSMobileOpsMenuSvc` - the handheld menus (see HandheldMenuRepository). */
+@Singleton
+class LiveMenuServiceApi @Inject constructor(
+    factory: D365RetrofitFactory,
+    settings: ConnectionSettings,
+) : MenuServiceApi {
+
+    private val delegate = RebuildingApi(factory, MenuServiceApi::class.java) {
+        settings.tenant.value.servicesRoot
+    }
+
+    override suspend fun getMenu(
+        body: com.d365fo.mobileops.data.remote.dto.MenuServiceRequest,
+        tag: com.d365fo.mobileops.data.remote.interceptor.IdempotentRead,
+    ) = delegate.get().getMenu(body, tag)
+}
+
+/** `HSMobileOpsSessionSvc` - one active device per worker (see ActiveSessionGuard). */
+@Singleton
+class LiveSessionServiceApi @Inject constructor(
+    factory: D365RetrofitFactory,
+    settings: ConnectionSettings,
+) : SessionServiceApi {
+
+    private val delegate = RebuildingApi(factory, SessionServiceApi::class.java) {
+        settings.tenant.value.servicesRoot
+    }
+
+    override suspend fun startSession(body: com.d365fo.mobileops.data.remote.dto.SessionServiceRequest) =
+        delegate.get().startSession(body)
+
+    override suspend fun peekSession(body: com.d365fo.mobileops.data.remote.dto.SessionServiceRequest) =
+        delegate.get().peekSession(body)
+
+    override suspend fun checkSession(body: com.d365fo.mobileops.data.remote.dto.SessionServiceRequest) =
+        delegate.get().checkSession(body)
+
+    override suspend fun endSession(body: com.d365fo.mobileops.data.remote.dto.SessionServiceRequest) =
+        delegate.get().endSession(body)
+}
+
+/** `HSMobileOpsCountStageSvc` - Stock count control center staging (see CountStagingRepository). */
+@Singleton
+class LiveCountStageServiceApi @Inject constructor(
+    factory: D365RetrofitFactory,
+    settings: ConnectionSettings,
+) : CountStageServiceApi {
+
+    private val delegate = RebuildingApi(factory, CountStageServiceApi::class.java) {
+        settings.tenant.value.servicesRoot
+    }
+
+    override suspend fun openStage(body: com.d365fo.mobileops.data.remote.dto.CountStageServiceRequest) =
+        delegate.get().openStage(body)
+
+    override suspend fun submitLines(body: com.d365fo.mobileops.data.remote.dto.CountStageServiceRequest) =
+        delegate.get().submitLines(body)
+
+    override suspend fun getStageMode(
+        body: com.d365fo.mobileops.data.remote.dto.CountStageServiceRequest,
+        tag: com.d365fo.mobileops.data.remote.interceptor.IdempotentRead,
+    ) = delegate.get().getStageMode(body, tag)
 }

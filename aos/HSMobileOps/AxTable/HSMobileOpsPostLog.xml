@@ -63,8 +63,8 @@ public class HSMobileOpsPostLog extends common
 			i:type="AxTableFieldString">
 			<Name>IdempotencyKey</Name>
 			<Label>Idempotency key</Label>
-			<StringSize>64</StringSize>
 			<Mandatory>Yes</Mandatory>
+			<StringSize>64</StringSize>
 		</AxTableField>
 		<AxTableField xmlns=""
 			i:type="AxTableFieldString">
@@ -120,6 +120,7 @@ public class HSMobileOpsPostLog extends common
 		</AxTableIndex>
 		<AxTableIndex>
 			<Name>SourceIdx</Name>
+			<AllowDuplicates>Yes</AllowDuplicates>
 			<Fields>
 				<AxTableIndexField>
 					<DataField>SourceId</DataField>

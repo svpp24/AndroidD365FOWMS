@@ -10,7 +10,8 @@ import javax.inject.Singleton
 /**
  * See the class doc on [StagedLineEntity] for why this exists: AOS never reduces a purchase or
  * transfer order's outstanding quantity for a line that has only been staged (Pending), not yet
- * actually registered, and runs no automatic job that would. This is the client-side stand-in,
+ * actually registered - that waits for its batch job (every few minutes) or Process pending.
+ * This is the client-side stand-in for the gap,
  * read once per order lookup and netted in-memory from then on - never a per-scan network or DB
  * cost.
  */
@@ -48,4 +49,7 @@ class StagedLineRepository @Inject constructor(
 
     /** Called once the Activity screen's queue-status poll confirms nothing for this order is still Pending. */
     suspend fun clearForOrder(flowType: FlowType, orderId: String) = dao.clearForOrder(flowType, orderId)
+
+    /** One posting's lines, once D365FO has registered them (Post immediately). */
+    suspend fun clearForQueue(queueId: String) = dao.clearForQueue(queueId)
 }

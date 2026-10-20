@@ -1,0 +1,2000 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsOrderCreateService</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Purchase and transfer order creation from the handheld. Registered as HSMobileOpsOrderCreateSvc.
+///
+/// **Orders are captured offline and created here when the device syncs.** The app queues one
+/// createPurchaseOrder / createTransferOrder call per order; each is atomic (the whole order or
+/// nothing) and idempotent on its key through HSMobileOpsPostLog, so a retry after a lost reply
+/// returns the order already created instead of a second one.
+///
+/// **Prices are D365FO's, set at creation.** createLine searches trade agreements (vendor, price
+/// group, all) the way the purchase order form does; priceLines shows the same result in advance
+/// while the device is online. A supervisor's price override (Mobile device users > IsSupervisor)
+/// replaces it on that line only.
+///
+/// **Both creates need explicit Menu access** (PO_CREATE, TO_CREATE): unlike the other modules,
+/// a worker without a row allowing them is refused.
+///
+/// **Creating a PO also confirms it** (confirmCreated) - one process on the handheld.
+/// **Purchase return** (PURCHASE_RETURN, explicit) creates a return order, confirms it and posts
+/// its packing slip in one call - createPurchaseReturn.
+/// **PO confirmation** (PO_CONFIRM, also explicit) lists the approved, unconfirmed purchase
+/// orders of a warehouse assigned to the worker and confirms one through PurchFormLetter - queued
+/// and idempotent like the creates, so a confirmation captured offline is sent once.
+/// </summary>
+class HSMobileOpsOrderCreateService
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>getModulePermissions</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The worker's Menu access rows, so the app picks up a change without a new sign-in.
+    /// </summary>
+    public HSMobileOpsOrderResponse getModulePermissions(HSMobileOpsOrderRequest _request)
+    {
+        HSMobileOpsOrderResponse        response = HSMobileOpsOrderCreateService::newResponse();
+        HSMobileOpsUser                 user;
+        HSMobileOpsUserModulePermission permission;
+        HSMobileOpsModulePermission     contract;
+        str                             code;
+
+        if (!HSMobileOpsOrderCreateService::validCompany(_request) || !_request.parmUserName())
+        {
+            response.parmErrorCode('INVALID_REQUEST');
+            return response;
+        }
+
+        changecompany (_request.parmDataAreaId())
+        {
+            user = HSMobileOpsUser::find(_request.parmUserName());
+            if (!user.RecId)
+            {
+                response.parmErrorCode('USER_NOT_FOUND');
+                return response;
+            }
+
+            while select Module, IsAllowed from permission
+                where permission.UserRecId == user.RecId
+            {
+                code = HSMobileOpsOrderCreateService::moduleCode(permission.Module);
+                if (code)
+                {
+                    contract = new HSMobileOpsModulePermission();
+                    contract.parmModule(code);
+                    contract.parmIsAllowed(permission.IsAllowed == NoYes::Yes);
+                    response.parmPermissions().addEnd(contract);
+                }
+            }
+        }
+
+        response.parmSuccess(true);
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>listVendors</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Vendors not on hold, in account order, a page at a time (Skip, Take up to 1000) - the app
+    /// keeps the whole list on the device so vendor search works offline.
+    /// </summary>
+    public HSMobileOpsOrderResponse listVendors(HSMobileOpsOrderRequest _request)
+    {
+        HSMobileOpsOrderResponse response = HSMobileOpsOrderCreateService::newResponse();
+        VendTable                vendTable;
+        DirPartyTable            party;
+        HSMobileOpsOrderVendor   vendor;
+        int                      skip;
+        int                      take;
+        int                      seen;
+        int                      added;
+
+        if (!HSMobileOpsOrderCreateService::validCompany(_request))
+        {
+            response.parmErrorCode('INVALID_REQUEST');
+            return response;
+        }
+
+        skip = max(0, _request.parmSkip());
+        take = _request.parmTake() > 0 ? min(_request.parmTake(), 1000) : 500;
+
+        changecompany (_request.parmDataAreaId())
+        {
+            while select AccountNum, Currency, PaymTermId, DlvTerm, DlvMode from vendTable
+                order by vendTable.AccountNum
+                where vendTable.Blocked == CustVendorBlocked::No
+                outer join Name from party
+                    where party.RecId == vendTable.Party
+            {
+                seen++;
+                if (seen <= skip)
+                {
+                    continue;
+                }
+                if (added >= take)
+                {
+                    response.parmHasMore(true);
+                    break;
+                }
+                vendor = new HSMobileOpsOrderVendor();
+                vendor.parmAccountNum(vendTable.AccountNum);
+                vendor.parmName(party.Name);
+                vendor.parmCurrencyCode(vendTable.Currency);
+                vendor.parmPaymentTerms(vendTable.PaymTermId);
+                vendor.parmDeliveryTerms(vendTable.DlvTerm);
+                vendor.parmDeliveryMode(vendTable.DlvMode);
+                response.parmVendors().addEnd(vendor);
+                added++;
+            }
+        }
+
+        response.parmSuccess(true);
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>getOrderItem</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// What ordering an item needs: units, which product and tracking dimensions are active, the
+    /// released variants (only those can be ordered) and the purchase order settings.
+    /// </summary>
+    public HSMobileOpsOrderResponse getOrderItem(HSMobileOpsOrderRequest _request)
+    {
+        HSMobileOpsOrderResponse response = HSMobileOpsOrderCreateService::newResponse();
+        HSMobileOpsOrderItem     item = response.parmItem();
+        InventTable              inventTable;
+        InventDimGroupSetup      setup;
+        InventItemPurchSetup     purchSetup;
+        InventDimCombination     combo;
+        InventDim                dim;
+        HSMobileOpsOrderLine     variant;
+        int                      variants;
+
+        if (!HSMobileOpsOrderCreateService::validCompany(_request) || !_request.parmItemId())
+        {
+            response.parmErrorCode('INVALID_REQUEST');
+            return response;
+        }
+
+        changecompany (_request.parmDataAreaId())
+        {
+            inventTable = InventTable::find(_request.parmItemId());
+            if (!inventTable.RecId)
+            {
+                response.parmErrorCode('ITEM_NOT_FOUND');
+                response.parmMessage(strFmt('No item %1', _request.parmItemId()));
+                return response;
+            }
+
+            setup = InventDimGroupSetup::newItemId(inventTable.ItemId);
+            item.parmItemId(inventTable.ItemId);
+            item.parmItemName(inventTable.itemName());
+            item.parmPurchUnit(inventTable.purchUnitId());
+            item.parmInventUnit(inventTable.inventUnitId());
+            item.parmConfigActive(setup.isDimensionActive(fieldNum(InventDim, ConfigId)));
+            item.parmSizeActive(setup.isDimensionActive(fieldNum(InventDim, InventSizeId)));
+            item.parmColorActive(setup.isDimensionActive(fieldNum(InventDim, InventColorId)));
+            item.parmStyleActive(setup.isDimensionActive(fieldNum(InventDim, InventStyleId)));
+            item.parmBatchActive(setup.isDimensionActive(fieldNum(InventDim, InventBatchId)));
+            item.parmSerialActive(setup.isDimensionActive(fieldNum(InventDim, InventSerialId)));
+            item.parmNegativePhysical(HSMobileOpsOrderCreateService::allowsNegativePhysical(inventTable.ItemId, _request.parmFromWarehouseId()));
+
+            select firstonly purchSetup
+                where purchSetup.ItemId      == inventTable.ItemId
+                   && purchSetup.InventDimId == InventDim::inventDimIdBlank();
+            item.parmMinQty(purchSetup.LowestQty);
+            item.parmMaxQty(purchSetup.HighestQty);
+            item.parmMultipleQty(purchSetup.MultipleQty);
+            item.parmStandardQty(purchSetup.StandardQty);
+
+            while select InventDimId from combo
+                where combo.ItemId == inventTable.ItemId
+                join ConfigId, InventSizeId, InventColorId, InventStyleId from dim
+                    where dim.inventDimId == combo.InventDimId
+            {
+                variant = new HSMobileOpsOrderLine();
+                variant.parmItemId(inventTable.ItemId);
+                variant.parmConfigId(dim.ConfigId);
+                variant.parmSizeId(dim.InventSizeId);
+                variant.parmColorId(dim.InventColorId);
+                variant.parmStyleId(dim.InventStyleId);
+                item.parmVariants().addEnd(variant);
+                variants++;
+                if (variants >= 2000)
+                {
+                    break;
+                }
+            }
+        }
+
+        response.parmSuccess(true);
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>priceLines</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The price each line would get on a purchase order for this vendor today - the same search
+    /// createLine runs - with its source, discount and line amount. Nothing is written.
+    /// </summary>
+    public HSMobileOpsOrderResponse priceLines(HSMobileOpsOrderRequest _request)
+    {
+        HSMobileOpsOrderResponse response = HSMobileOpsOrderCreateService::newResponse();
+        VendTable                vendTable;
+        PurchTable               purchTable;
+        ListEnumerator           enumerator;
+        HSMobileOpsOrderLine     line;
+        real                     total;
+        str                      stage = 'order header';
+        System.Exception         clrError;
+
+        if (!HSMobileOpsOrderCreateService::validCompany(_request) || !_request.parmVendorAccount())
+        {
+            response.parmErrorCode('INVALID_REQUEST');
+            return response;
+        }
+
+        changecompany (_request.parmDataAreaId())
+        {
+            vendTable = VendTable::find(_request.parmVendorAccount());
+            if (!vendTable.RecId)
+            {
+                response.parmErrorCode('VENDOR_NOT_FOUND');
+                return response;
+            }
+
+            try
+            {
+                purchTable = HSMobileOpsOrderCreateService::purchHeader(vendTable, _request);
+                stage = 'lines';
+
+                if (_request.parmLines())
+                {
+                    enumerator = _request.parmLines().getEnumerator();
+                    while (enumerator.moveNext())
+                    {
+                        line = enumerator.current();
+                        HSMobileOpsOrderCreateService::priceLine(purchTable, vendTable, line);
+                        total += line.parmLineAmount();
+                        response.parmLines().addEnd(line);
+                    }
+                }
+                response.parmCurrencyCode(purchTable.CurrencyCode);
+            }
+            catch (Exception::Error)
+            {
+                // Not fatal to the worker: D365FO prices the order again when it creates it.
+                response.parmErrorCode('PRICE_FAILED');
+                response.parmMessage(stage + ': ' + HSMobileOpsOrderCreateService::lastError());
+                return response;
+            }
+            catch (Exception::CLRError)
+            {
+                clrError = CLRInterop::getLastException();
+                response.parmErrorCode('PRICE_FAILED');
+                response.parmMessage(stage + ': ' + (clrError ? subStr(clrError.ToString(), 1, 1000) : 'CLR error'));
+                return response;
+            }
+            catch
+            {
+                response.parmErrorCode('PRICE_FAILED');
+                response.parmMessage(stage + ': ' + HSMobileOpsOrderCreateService::lastError());
+                return response;
+            }
+        }
+
+        response.parmOrderTotal(total);
+        response.parmSuccess(true);
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>createPurchaseOrder</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Creates the purchase order - header and every line, or nothing - priced by D365FO, and
+    /// returns its number with the price each line got.
+    /// </summary>
+    public HSMobileOpsOrderResponse createPurchaseOrder(HSMobileOpsOrderRequest _request)
+    {
+        HSMobileOpsOrderResponse response = HSMobileOpsOrderCreateService::newResponse();
+        HSMobileOpsUser          user;
+        HSMobileOpsPostLog       existing;
+        VendTable                vendTable;
+        PurchTable               purchTable;
+        PurchLine                purchLine;
+        InventDim                dim;
+        ListEnumerator           enumerator;
+        HSMobileOpsOrderLine     line;
+        real                     total;
+        boolean                  hasLines;
+
+        if (!HSMobileOpsOrderCreateService::validCompany(_request) || !_request.parmIdempotencyKey()
+            || !_request.parmVendorAccount() || !_request.parmWarehouseId())
+        {
+            response.parmErrorCode('INVALID_REQUEST');
+            response.parmMessage('The order was incomplete');
+            return response;
+        }
+
+        changecompany (_request.parmDataAreaId())
+        {
+            existing = HSMobileOpsPostLog::findByKey(_request.parmIdempotencyKey());
+            if (existing.RecId)
+            {
+                // A resend: created before - finish the confirmation if that part failed then.
+                response.parmSuccess(true);
+                response.parmAlreadyCreated(true);
+                response.parmDocumentNumber(existing.DocumentNumber);
+                HSMobileOpsOrderCreateService::confirmCreated(existing.DocumentNumber, response);
+                return response;
+            }
+
+            user = HSMobileOpsUser::find(_request.parmUserName());
+            if (!HSMobileOpsOrderCreateService::mayCreate(user, HSMobileOpsModule::PO_CREATE))
+            {
+                response.parmErrorCode('NOT_PERMITTED');
+                response.parmMessage(strFmt('%1 may not create purchase orders - ask a supervisor for Menu access', _request.parmUserName()));
+                return response;
+            }
+
+            vendTable = VendTable::find(_request.parmVendorAccount());
+            if (!vendTable.RecId)
+            {
+                response.parmErrorCode('VENDOR_NOT_FOUND');
+                response.parmMessage(strFmt('No vendor %1', _request.parmVendorAccount()));
+                return response;
+            }
+            if (vendTable.Blocked != CustVendorBlocked::No)
+            {
+                response.parmErrorCode('VENDOR_ON_HOLD');
+                response.parmMessage(strFmt('Vendor %1 is on hold (%2)', vendTable.AccountNum, vendTable.Blocked));
+                return response;
+            }
+
+            try
+            {
+                ttsbegin;
+                purchTable = HSMobileOpsOrderCreateService::purchHeader(vendTable, _request);
+                purchTable.PurchId = NumberSeq::newGetNum(PurchParameters::numRefPurchId()).num();
+                purchTable.insert();
+
+                enumerator = _request.parmLines() ? _request.parmLines().getEnumerator() : null;
+                while (enumerator && enumerator.moveNext())
+                {
+                    line = enumerator.current();
+                    if (line.parmQty() <= 0)
+                    {
+                        continue;
+                    }
+                    hasLines = true;
+                    dim = HSMobileOpsOrderCreateService::lineDim(line, purchTable.InventSiteId, purchTable.InventLocationId);
+
+                    purchLine.clear();
+                    purchLine.initFromPurchTable(purchTable);
+                    purchLine.ItemId = line.parmItemId();
+                    purchLine.initFromInventTable(InventTable::find(purchLine.ItemId));
+                    purchLine.InventDimId = dim.inventDimId;
+                    if (line.parmUnitId())
+                    {
+                        purchLine.PurchUnit = line.parmUnitId();
+                    }
+                    purchLine.PurchQty = line.parmQty();
+                    // Validation, inventory quantity, charges and the price search as the purchase
+                    // order form runs them; the item fields were initialised just above.
+                    purchLine.createLine(true, false, false, true, true, true);
+
+                    if (line.parmPriceOverride() && user.IsSupervisor && line.parmPrice() > 0)
+                    {
+                        purchLine.selectForUpdate(true);
+                        purchLine.PurchPrice = line.parmPrice();
+                        purchLine.LineAmount = purchLine.calcLineAmount();
+                        purchLine.update();
+                    }
+
+                    HSMobileOpsOrderCreateService::describeLine(purchLine, vendTable, line);
+                    total += purchLine.LineAmount;
+                    response.parmLines().addEnd(line);
+                }
+
+                if (!hasLines)
+                {
+                    throw error('The order has no lines with a quantity');
+                }
+
+                HSMobileOpsOrderCreateService::writeLog(_request, 'PurchaseOrderCreate', purchTable.PurchId);
+                ttscommit;
+
+                response.parmDocumentNumber(purchTable.PurchId);
+                response.parmCurrencyCode(purchTable.CurrencyCode);
+                response.parmOrderTotal(total);
+                response.parmSuccess(true);
+            }
+            catch (Exception::Error)
+            {
+                response.parmErrorCode('CREATE_FAILED');
+                response.parmMessage(HSMobileOpsOrderCreateService::lastError());
+                response.parmLines(new List(Types::Class));
+            }
+            catch (Exception::Deadlock)
+            {
+                response.parmErrorCode('RETRY');
+                response.parmMessage('D365FO was busy - the order will be sent again');
+                response.parmLines(new List(Types::Class));
+            }
+        }
+
+        // One process with PO confirmation: the order created above is confirmed straight away.
+        if (response.parmSuccess() && response.parmDocumentNumber())
+        {
+            changecompany (_request.parmDataAreaId())
+            {
+                HSMobileOpsOrderCreateService::confirmCreated(response.parmDocumentNumber(), response);
+            }
+        }
+
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>getStock</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// What is available of one item variant in a warehouse, per batch and serial - the rows a
+    /// transfer order line can draw from. Untracked items return one row.
+    /// </summary>
+    public HSMobileOpsOrderResponse getStock(HSMobileOpsOrderRequest _request)
+    {
+        HSMobileOpsOrderResponse response = HSMobileOpsOrderCreateService::newResponse();
+        InventSum                inventSum;
+        InventDim                stock;
+        HSMobileOpsOrderLine     row;
+
+        if (!HSMobileOpsOrderCreateService::validCompany(_request) || !_request.parmItemId() || !_request.parmWarehouseId())
+        {
+            response.parmErrorCode('INVALID_REQUEST');
+            return response;
+        }
+
+        changecompany (_request.parmDataAreaId())
+        {
+            while select sum(AvailPhysical) from inventSum
+                where inventSum.ItemId == _request.parmItemId()
+                   && inventSum.Closed == NoYes::No
+                join InventBatchId, InventSerialId, wMSLocationId from stock
+                    group by stock.InventBatchId, stock.InventSerialId, stock.wMSLocationId
+                    where stock.inventDimId      == inventSum.InventDimId
+                       && stock.InventLocationId == _request.parmWarehouseId()
+                       && stock.ConfigId         == _request.parmConfigId()
+                       && stock.InventSizeId     == _request.parmSizeId()
+                       && stock.InventColorId    == _request.parmColorId()
+                       && stock.InventStyleId    == _request.parmStyleId()
+            {
+                if (inventSum.AvailPhysical <= 0)
+                {
+                    continue;
+                }
+                row = new HSMobileOpsOrderLine();
+                row.parmItemId(_request.parmItemId());
+                row.parmConfigId(_request.parmConfigId());
+                row.parmSizeId(_request.parmSizeId());
+                row.parmColorId(_request.parmColorId());
+                row.parmStyleId(_request.parmStyleId());
+                row.parmBatchId(stock.InventBatchId);
+                row.parmSerialId(stock.InventSerialId);
+                row.parmLocationId(stock.wMSLocationId);
+                row.parmAvailable(inventSum.AvailPhysical);
+                response.parmLines().addEnd(row);
+            }
+        }
+
+        response.parmSuccess(true);
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>createTransferOrder</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Creates the transfer order between two of the worker's warehouses, through the From
+    /// warehouse's transit warehouse - every line or nothing. Refused when a line asks for more
+    /// than is available at From (per batch / serial when one is given).
+    /// </summary>
+    public HSMobileOpsOrderResponse createTransferOrder(HSMobileOpsOrderRequest _request)
+    {
+        HSMobileOpsOrderResponse response = HSMobileOpsOrderCreateService::newResponse();
+        HSMobileOpsUser          user;
+        HSMobileOpsPostLog       existing;
+        InventLocation           fromLocation;
+        InventLocation           toLocation;
+        InventTransferTable      transferTable;
+        InventTransferLine       transferLine;
+        InventDim                dim;
+        ListEnumerator           enumerator;
+        HSMobileOpsOrderLine     line;
+        str                      shortage;
+        real                     available;
+        LineNum                  lineNum;
+        boolean                  statusActive;
+
+        if (!HSMobileOpsOrderCreateService::validCompany(_request) || !_request.parmIdempotencyKey()
+            || !_request.parmFromWarehouseId() || !_request.parmToWarehouseId())
+        {
+            response.parmErrorCode('INVALID_REQUEST');
+            response.parmMessage('The order was incomplete');
+            return response;
+        }
+
+        changecompany (_request.parmDataAreaId())
+        {
+            existing = HSMobileOpsPostLog::findByKey(_request.parmIdempotencyKey());
+            if (existing.RecId)
+            {
+                response.parmSuccess(true);
+                response.parmAlreadyCreated(true);
+                response.parmDocumentNumber(existing.DocumentNumber);
+                return response;
+            }
+
+            user = HSMobileOpsUser::find(_request.parmUserName());
+            if (!HSMobileOpsOrderCreateService::mayCreate(user, HSMobileOpsModule::TO_CREATE))
+            {
+                response.parmErrorCode('NOT_PERMITTED');
+                response.parmMessage(strFmt('%1 may not create transfer orders - ask a supervisor for Menu access', _request.parmUserName()));
+                return response;
+            }
+
+            if (_request.parmFromWarehouseId() == _request.parmToWarehouseId())
+            {
+                response.parmErrorCode('SAME_WAREHOUSE');
+                response.parmMessage('From and To must be different warehouses');
+                return response;
+            }
+            if (!HSMobileOpsOrderCreateService::isAssigned(user, _request.parmFromWarehouseId())
+             || !HSMobileOpsOrderCreateService::isAssigned(user, _request.parmToWarehouseId()))
+            {
+                response.parmErrorCode('WAREHOUSE_NOT_ASSIGNED');
+                response.parmMessage('Both warehouses must be assigned to you in Mobile device users');
+                return response;
+            }
+
+            fromLocation = InventLocation::find(_request.parmFromWarehouseId());
+            toLocation   = InventLocation::find(_request.parmToWarehouseId());
+            if (!fromLocation.RecId || !toLocation.RecId)
+            {
+                response.parmErrorCode('WAREHOUSE_NOT_FOUND');
+                return response;
+            }
+            if (!fromLocation.InventLocationIdTransit)
+            {
+                response.parmErrorCode('NO_TRANSIT_WAREHOUSE');
+                response.parmMessage(strFmt('Warehouse %1 has no transit warehouse set up', fromLocation.InventLocationId));
+                return response;
+            }
+            response.parmTransitWarehouseId(fromLocation.InventLocationIdTransit);
+
+            // Stock first, before anything is written: a shortage refuses the whole order.
+            enumerator = _request.parmLines() ? _request.parmLines().getEnumerator() : null;
+            while (enumerator && enumerator.moveNext())
+            {
+                line = enumerator.current();
+                if (line.parmQty() <= 0)
+                {
+                    continue;
+                }
+                available = HSMobileOpsOrderCreateService::available(line, fromLocation.InventLocationId);
+                // An item allowed physical negative inventory may go below zero, as D365FO allows.
+                if (line.parmQty() > available
+                 && !HSMobileOpsOrderCreateService::allowsNegativePhysical(line.parmItemId(), fromLocation.InventLocationId))
+                {
+                    shortage += (shortage ? '; ' : '') + strFmt('%1 %2: %3 asked, %4 available',
+                        line.parmItemId(), HSMobileOpsOrderCreateService::dimText(line), line.parmQty(), available);
+                }
+            }
+            if (shortage)
+            {
+                response.parmErrorCode('INSUFFICIENT_STOCK');
+                response.parmMessage(strFmt('Not enough stock at %1: %2', fromLocation.InventLocationId, shortage));
+                return response;
+            }
+
+            try
+            {
+                ttsbegin;
+                transferTable.clear();
+                transferTable.initValue();
+                transferTable.TransferId           = NumberSeq::newGetNum(InventParameters::numRefTransferId()).num();
+                transferTable.InventLocationIdFrom = fromLocation.InventLocationId;
+                transferTable.modifiedField(fieldNum(InventTransferTable, InventLocationIdFrom));
+                transferTable.InventLocationIdTo   = toLocation.InventLocationId;
+                transferTable.modifiedField(fieldNum(InventTransferTable, InventLocationIdTo));
+                transferTable.InventLocationIdTransit = fromLocation.InventLocationIdTransit;
+                transferTable.ShipDate             = HSMobileOpsOrderCreateService::isoDate(_request.parmShipDate());
+                transferTable.ReceiveDate          = HSMobileOpsOrderCreateService::isoDate(_request.parmReceiveDate(), transferTable.ShipDate);
+                transferTable.insert();
+
+                enumerator = _request.parmLines() ? _request.parmLines().getEnumerator() : null;
+                while (enumerator && enumerator.moveNext())
+                {
+                    line = enumerator.current();
+                    if (line.parmQty() <= 0)
+                    {
+                        continue;
+                    }
+                    statusActive = InventDimGroupSetup::newItemId(line.parmItemId())
+                        .isDimensionActive(fieldNum(InventDim, InventStatusId));
+                    dim = HSMobileOpsOrderCreateService::lineDim(line, fromLocation.InventSiteId, fromLocation.InventLocationId);
+                    if (statusActive && !dim.InventStatusId)
+                    {
+                        dim.InventStatusId = HSMobileOpsOrderCreateService::defaultStatus(fromLocation.InventLocationId);
+                        dim = InventDim::findOrCreate(dim);
+                    }
+
+                    lineNum++;
+                    transferLine.clear();
+                    transferLine.initValue();
+                    transferLine.initFromInventTransferTable(transferTable, NoYes::Yes);
+                    transferLine.ItemId = line.parmItemId();
+                    transferLine.initFromInventTable(InventTable::find(transferLine.ItemId));
+                    transferLine.InventDimId      = dim.inventDimId;
+                    transferLine.QtyTransfer      = line.parmQty();
+                    transferLine.QtyRemainShip    = line.parmQty();
+                    transferLine.QtyRemainReceive = line.parmQty();
+                    transferLine.LineNum          = lineNum;
+                    transferLine.insert();
+
+                    line.parmLineNumber(lineNum);
+                    line.parmItemName(InventTable::find(line.parmItemId()).itemName());
+                    response.parmLines().addEnd(line);
+                }
+
+                if (!lineNum)
+                {
+                    throw error('The order has no lines with a quantity');
+                }
+
+                HSMobileOpsOrderCreateService::writeLog(_request, 'TransferOrderCreate', transferTable.TransferId);
+                ttscommit;
+
+                response.parmDocumentNumber(transferTable.TransferId);
+                response.parmSuccess(true);
+            }
+            catch (Exception::Error)
+            {
+                response.parmErrorCode('CREATE_FAILED');
+                response.parmMessage(HSMobileOpsOrderCreateService::lastError());
+                response.parmLines(new List(Types::Class));
+            }
+            catch (Exception::Deadlock)
+            {
+                response.parmErrorCode('RETRY');
+                response.parmMessage('D365FO was busy - the order will be sent again');
+                response.parmLines(new List(Types::Class));
+            }
+        }
+
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>purchHeader</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// A purchase order header for this vendor, not inserted: the vendor's defaults (currency,
+    /// payment and delivery terms, price group), then the warehouse and delivery date asked for.
+    /// </summary>
+    private static PurchTable purchHeader(VendTable _vendTable, HSMobileOpsOrderRequest _request)
+    {
+        PurchTable     purchTable;
+        InventLocation location = InventLocation::find(_request.parmWarehouseId());
+
+        purchTable.clear();
+        purchTable.initValue();
+        purchTable.OrderAccount = _vendTable.AccountNum;
+        purchTable.initFromVendTable(_vendTable);
+        if (location.RecId)
+        {
+            purchTable.InventSiteId     = location.InventSiteId;
+            purchTable.InventLocationId = location.InventLocationId;
+        }
+        purchTable.DeliveryDate = HSMobileOpsOrderCreateService::isoDate(_request.parmDeliveryDate());
+        return purchTable;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>priceLine</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Prices one line on an in-memory purchase order line - the same initialisation and price
+    /// search createLine runs, without writing anything.
+    /// </summary>
+    private static void priceLine(PurchTable _purchTable, VendTable _vendTable, HSMobileOpsOrderLine _line)
+    {
+        PurchLine        purchLine;
+        InventDim        dim;
+        str              stage = 'dimensions';
+        System.Exception clrError;
+
+        try
+        {
+            dim = HSMobileOpsOrderCreateService::lineDim(_line, _purchTable.InventSiteId, _purchTable.InventLocationId);
+
+            stage = 'line defaults';
+            purchLine.clear();
+            purchLine.initFromPurchTable(_purchTable);
+            purchLine.ItemId = _line.parmItemId();
+            purchLine.initFromInventTable(InventTable::find(purchLine.ItemId));
+            purchLine.InventDimId = dim.inventDimId;
+            if (_line.parmUnitId())
+            {
+                purchLine.PurchUnit = _line.parmUnitId();
+            }
+            purchLine.PurchQty = _line.parmQty() > 0 ? _line.parmQty() : 1;
+
+            stage = 'price and discount';
+            purchLine.setPriceDisc(purchLine.inventDim());
+
+            stage = 'line amount';
+            purchLine.LineAmount = purchLine.calcLineAmount();
+
+            stage = 'price source';
+            HSMobileOpsOrderCreateService::describeLine(purchLine, _vendTable, _line);
+        }
+        catch (Exception::CLRError)
+        {
+            // A .NET failure leaves nothing in the infolog - name the step and its message.
+            clrError = CLRInterop::getLastException();
+            throw error(strFmt('%1 (%2): %3', _line.parmItemId(), stage,
+                clrError ? subStr(clrError.ToString(), 1, 1000) : 'CLR error'));
+        }
+        catch (Exception::Error)
+        {
+            throw error(strFmt('%1 (%2): %3', _line.parmItemId(), stage, HSMobileOpsOrderCreateService::lastError()));
+        }
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>describeLine</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Copies a purchase line's price, discount, unit and amount onto the contract, with where the
+    /// price came from.
+    /// </summary>
+    private static void describeLine(PurchLine _purchLine, VendTable _vendTable, HSMobileOpsOrderLine _line)
+    {
+        _line.parmItemName(InventTable::find(_purchLine.ItemId).itemName());
+        _line.parmUnitId(_purchLine.PurchUnit);
+        _line.parmPrice(_purchLine.PurchPrice);
+        _line.parmPriceUnit(_purchLine.PriceUnit);
+        _line.parmDiscPct(_purchLine.LinePercent);
+        _line.parmDiscAmount(_purchLine.LineDisc);
+        _line.parmLineAmount(_purchLine.LineAmount);
+        _line.parmLineNumber(_purchLine.LineNumber);
+        if (_line.parmPriceOverride() && _purchLine.PurchPrice == _line.parmPrice() && _line.parmPrice() > 0)
+        {
+            _line.parmPriceSource('Price entered on the handheld');
+        }
+        else
+        {
+            _line.parmPriceSource(HSMobileOpsOrderCreateService::priceSource(_purchLine, _vendTable));
+        }
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>priceSource</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Where a line's price comes from: the most specific purchase price trade agreement in force
+    /// for this item and vendor (vendor, then price group, then all vendors), else the item's base
+    /// purchase price.
+    /// </summary>
+    private static str priceSource(PurchLine _purchLine, VendTable _vendTable)
+    {
+        PriceDiscTable agreement;
+        date           today = DateTimeUtil::getSystemDate(DateTimeUtil::getUserPreferredTimeZone());
+
+        if (!_purchLine.PurchPrice)
+        {
+            return 'No price found';
+        }
+
+        select firstonly AccountCode from agreement
+            order by agreement.AccountCode
+            where agreement.Relation     == PriceType::PricePurch
+               && agreement.ItemCode     == PriceDiscProductCodeType::Table
+               && agreement.ItemRelation == _purchLine.ItemId
+               && ((agreement.AccountCode == PriceDiscPartyCodeType::Table   && agreement.AccountRelation == _vendTable.AccountNum)
+                || (agreement.AccountCode == PriceDiscPartyCodeType::GroupId && agreement.AccountRelation == _vendTable.PriceGroup)
+                ||  agreement.AccountCode == PriceDiscPartyCodeType::All)
+               && (agreement.FromDate == dateNull() || agreement.FromDate <= today)
+               && (agreement.ToDate   == dateNull() || agreement.ToDate   >= today)
+               && agreement.QuantityAmountFrom <= _purchLine.PurchQty;
+
+        if (!agreement.RecId)
+        {
+            return 'Base purchase price';
+        }
+        switch (agreement.AccountCode)
+        {
+            case PriceDiscPartyCodeType::Table:   return 'Trade agreement - this vendor';
+            case PriceDiscPartyCodeType::GroupId: return 'Trade agreement - price group';
+            default:                              return 'Trade agreement - all vendors';
+        }
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>lineDim</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The line's dimension: its variant, the site and warehouse, and the batch and serial when
+    /// the worker gave one.
+    /// </summary>
+    private static InventDim lineDim(HSMobileOpsOrderLine _line, InventSiteId _siteId, InventLocationId _warehouseId)
+    {
+        InventDim dim;
+
+        dim.ConfigId         = _line.parmConfigId();
+        dim.InventSizeId     = _line.parmSizeId();
+        dim.InventColorId    = _line.parmColorId();
+        dim.InventStyleId    = _line.parmStyleId();
+        dim.InventSiteId     = _siteId;
+        dim.InventLocationId = _warehouseId;
+        if (_line.parmBatchId())
+        {
+            dim.InventBatchId = _line.parmBatchId();
+        }
+        if (_line.parmSerialId())
+        {
+            dim.InventSerialId = _line.parmSerialId();
+        }
+        if (_line.parmLocationId())
+        {
+            dim.wMSLocationId = _line.parmLocationId();
+        }
+        return InventDim::findOrCreate(dim);
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>allowsNegativePhysical</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Whether physical negative inventory is allowed for the item taken from _warehouseId - then
+    /// a transfer may take more than is on hand, as D365FO itself allows. Either the item's model
+    /// group (Physical negative inventory) or the warehouse (Warehouses form, Physical negative
+    /// inventory - InventLocation.RetailInventNegPhysical, on for AAC and AAS) allows it.
+    /// </summary>
+    public static boolean allowsNegativePhysical(ItemId _itemId, InventLocationId _warehouseId = '')
+    {
+        InventTable    inventTable = InventTable::find(_itemId);
+        InventLocation inventLocation;
+        FieldId        negPhysical = fieldName2Id(tableNum(InventLocation), 'RetailInventNegPhysical');
+
+        if (!inventTable.RecId)
+        {
+            return false;
+        }
+        if (InventModelGroup::find(inventTable.modelGroupId()).NegativePhysical == NoYes::Yes)
+        {
+            return true;
+        }
+        if (!_warehouseId || !negPhysical)
+        {
+            return false;
+        }
+        // Read by name: the field compiles as "not a class, table or extended data type" here.
+        inventLocation = InventLocation::find(_warehouseId);
+        return inventLocation.(negPhysical) == NoYes::Yes;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>available</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Available physical quantity of the line's variant at a warehouse - of its batch and
+    /// serial only when the line names one.
+    /// </summary>
+    private static real available(HSMobileOpsOrderLine _line, InventLocationId _warehouseId)
+    {
+        InventSum inventSum;
+        InventDim stock;
+
+        select sum(AvailPhysical) from inventSum
+            where inventSum.ItemId == _line.parmItemId()
+               && inventSum.Closed == NoYes::No
+            exists join stock
+                where stock.inventDimId      == inventSum.InventDimId
+                   && stock.InventLocationId == _warehouseId
+                   && stock.ConfigId         == _line.parmConfigId()
+                   && stock.InventSizeId     == _line.parmSizeId()
+                   && stock.InventColorId    == _line.parmColorId()
+                   && stock.InventStyleId    == _line.parmStyleId()
+                   && (!_line.parmBatchId()  || stock.InventBatchId  == _line.parmBatchId())
+                   && (!_line.parmSerialId() || stock.InventSerialId == _line.parmSerialId());
+
+        return inventSum.AvailPhysical;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>dimText</Name>
+				<Source><![CDATA[
+
+    private static str dimText(HSMobileOpsOrderLine _line)
+    {
+        str text;
+        container parts = [_line.parmConfigId(), _line.parmSizeId(), _line.parmColorId(), _line.parmStyleId(), _line.parmBatchId(), _line.parmSerialId()];
+        int i;
+
+        for (i = 1; i <= conLen(parts); i++)
+        {
+            if (conPeek(parts, i))
+            {
+                text += (text ? ' ' : '') + conPeek(parts, i);
+            }
+        }
+        return text;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>mayCreate</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Whether the worker has explicit Menu access to a creation module - no row means no, unlike
+    /// the other modules (see the class doc).
+    /// </summary>
+    private static boolean mayCreate(HSMobileOpsUser _user, HSMobileOpsModule _module)
+    {
+        HSMobileOpsUserModulePermission permission;
+
+        if (!_user.RecId || !_user.IsActive)
+        {
+            return false;
+        }
+        select firstonly IsAllowed from permission
+            where permission.UserRecId == _user.RecId
+               && permission.Module    == _module;
+        return permission.RecId && permission.IsAllowed == NoYes::Yes;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>isAssigned</Name>
+				<Source><![CDATA[
+
+    private static boolean isAssigned(HSMobileOpsUser _user, InventLocationId _warehouseId)
+    {
+        HSMobileOpsUserWarehouse assignment;
+
+        select firstonly RecId from assignment
+            where assignment.UserRecId   == _user.RecId
+               && assignment.WarehouseId == _warehouseId;
+        return assignment.RecId != 0;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>defaultStatus</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The inventory status a new line takes - the same rule as HSMobileOpsPostingService's: the
+    /// warehouse's default, then the warehouse management parameters', then the company's only
+    /// non-blocking status.
+    /// </summary>
+    private static WHSInventStatusId defaultStatus(InventLocationId _warehouse)
+    {
+        WHSInventStatusId statusId = InventLocation::find(_warehouse).DefaultStatusId;
+        WHSInventStatus   status;
+
+        if (!statusId)
+        {
+            statusId = WHSParameters::find().DefaultStatusId;
+        }
+        if (!statusId)
+        {
+            select count(RecId) from status where status.InventStatusBlocking == NoYes::No;
+            if (status.RecId == 1)
+            {
+                select firstonly InventStatusId from status where status.InventStatusBlocking == NoYes::No;
+                statusId = status.InventStatusId;
+            }
+        }
+        return statusId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>writeLog</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Records the created order against its idempotency key, inside the creating transaction:
+    /// a concurrent retry that got there first makes this insert fail and the order roll back.
+    /// </summary>
+    private static void writeLog(HSMobileOpsOrderRequest _request, str _documentType, str _documentNumber)
+    {
+        HSMobileOpsPostLog postLog;
+
+        postLog.clear();
+        postLog.IdempotencyKey   = _request.parmIdempotencyKey();
+        postLog.DocumentType     = _documentType;
+        postLog.SourceId         = _documentNumber;
+        postLog.DocumentNumber   = _documentNumber;
+        postLog.PostedByUserName = _request.parmUserName();
+        postLog.DeviceId         = _request.parmDeviceId();
+        postLog.PostedUtc        = DateTimeUtil::utcNow();
+        postLog.insert();
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>newResponse</Name>
+				<Source><![CDATA[
+
+    private static HSMobileOpsOrderResponse newResponse()
+    {
+        HSMobileOpsOrderResponse response = new HSMobileOpsOrderResponse();
+        HSMobileOpsOrderItem     item = new HSMobileOpsOrderItem();
+
+        item.parmVariants(new List(Types::Class));
+        response.parmSuccess(false);
+        response.parmItem(item);
+        response.parmVendors(new List(Types::Class));
+        response.parmLines(new List(Types::Class));
+        response.parmPermissions(new List(Types::Class));
+        response.parmOrders(new List(Types::Class));
+        response.parmReasons(new List(Types::Class));
+        response.parmActions(new List(Types::Class));
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>validCompany</Name>
+				<Source><![CDATA[
+
+    private static boolean validCompany(HSMobileOpsOrderRequest _request)
+    {
+        return _request && _request.parmDataAreaId() && CompanyInfo::findDataArea(_request.parmDataAreaId()).RecId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>isoDate</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// A yyyy-MM-dd date from the device, or [_default] (today) when it is missing or not a date.
+    /// </summary>
+    private static date isoDate(str _value, date _default = dateNull())
+    {
+        date fallback = _default ? _default : DateTimeUtil::getSystemDate(DateTimeUtil::getUserPreferredTimeZone());
+        date parsed;
+
+        if (strLen(_value) < 10)
+        {
+            return fallback;
+        }
+        parsed = mkDate(str2int(subStr(_value, 9, 2)), str2int(subStr(_value, 6, 2)), str2int(subStr(_value, 1, 4)));
+        return parsed ? parsed : fallback;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>lastError</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Every error and warning D365FO logged for the failure, joined - the actual reason, not a
+    /// summary of it.
+    /// </summary>
+    private static str lastError()
+    {
+        SysInfologEnumerator enumerator = SysInfologEnumerator::newData(infolog.infologData());
+        str                  message;
+
+        while (enumerator.moveNext())
+        {
+            if (enumerator.currentException() == Exception::Error
+             || enumerator.currentException() == Exception::Warning)
+            {
+                message += (message ? ' | ' : '') + enumerator.currentMessage();
+            }
+        }
+        return message ? message : 'D365FO refused the order without a message';
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>moduleCode</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// HSMobileOpsModule -> the app's WarehouseWorkflow name. An explicit switch, as in
+    /// HSMobileOpsUserService, so a reordered enum cannot silently change the wire format.
+    /// </summary>
+    private static str moduleCode(HSMobileOpsModule _module)
+    {
+        switch (_module)
+        {
+            case HSMobileOpsModule::PO_RECEIVING:       return 'PO_RECEIVING';
+            case HSMobileOpsModule::TRANSFER_SHIP:      return 'TRANSFER_SHIP';
+            case HSMobileOpsModule::TRANSFER_RECEIVE:   return 'TRANSFER_RECEIVE';
+            case HSMobileOpsModule::INVENTORY_COUNT:    return 'INVENTORY_COUNT';
+            case HSMobileOpsModule::LOCATION_INQUIRY:   return 'LOCATION_INQUIRY';
+            case HSMobileOpsModule::PO_OF_TODAY:        return 'PO_OF_TODAY';
+            case HSMobileOpsModule::PO_LINES:           return 'PO_LINES';
+            case HSMobileOpsModule::TRANSFER_ORDERS:    return 'TRANSFER_ORDERS';
+            case HSMobileOpsModule::TRANSFERS_BY_STORE: return 'TRANSFERS_BY_STORE';
+            case HSMobileOpsModule::PICKED_SERIALS:     return 'PICKED_SERIALS';
+            case HSMobileOpsModule::PO_CREATE:          return 'PO_CREATE';
+            case HSMobileOpsModule::TO_CREATE:          return 'TO_CREATE';
+            case HSMobileOpsModule::PO_CONFIRM:         return 'PO_CONFIRM';
+            case HSMobileOpsModule::PURCHASE_RETURN:    return 'PURCHASE_RETURN';
+            default:                                    return '';
+        }
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>listPurchaseOrdersToConfirm</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The purchase orders of a warehouse assigned to the worker that are approved and not yet
+    /// confirmed, latest delivery first, a page at a time (Skip, Take up to 200).
+    /// </summary>
+    public HSMobileOpsOrderResponse listPurchaseOrdersToConfirm(HSMobileOpsOrderRequest _request)
+    {
+        HSMobileOpsOrderResponse response = HSMobileOpsOrderCreateService::newResponse();
+        HSMobileOpsUser          user;
+        PurchTable               purchTable;
+        int                      skip;
+        int                      take;
+        int                      seen;
+        int                      added;
+
+        if (!HSMobileOpsOrderCreateService::validCompany(_request) || !_request.parmUserName() || !_request.parmWarehouseId())
+        {
+            response.parmErrorCode('INVALID_REQUEST');
+            return response;
+        }
+
+        skip = max(0, _request.parmSkip());
+        take = _request.parmTake() > 0 ? min(_request.parmTake(), 200) : 100;
+
+        changecompany (_request.parmDataAreaId())
+        {
+            user = HSMobileOpsUser::find(_request.parmUserName());
+            if (!user.RecId)
+            {
+                response.parmErrorCode('USER_NOT_FOUND');
+                return response;
+            }
+            if (!HSMobileOpsOrderCreateService::isAssigned(user, _request.parmWarehouseId()))
+            {
+                response.parmErrorCode('WAREHOUSE_NOT_ASSIGNED');
+                response.parmMessage(strFmt('Warehouse %1 is not assigned to you', _request.parmWarehouseId()));
+                return response;
+            }
+
+            while select purchTable
+                order by DeliveryDate desc, PurchId desc
+                where purchTable.InventLocationId == _request.parmWarehouseId()
+                   && purchTable.PurchaseType     == PurchaseType::Purch
+                   && purchTable.PurchStatus      == PurchStatus::Backorder
+                   && purchTable.DocumentState    == VersioningDocumentState::Approved
+            {
+                seen++;
+                if (seen <= skip)
+                {
+                    continue;
+                }
+                if (added >= take)
+                {
+                    response.parmHasMore(true);
+                    break;
+                }
+                response.parmOrders().addEnd(HSMobileOpsOrderCreateService::summary(purchTable));
+                added++;
+            }
+        }
+
+        response.parmSuccess(true);
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>getPurchaseOrder</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// One purchase order for PO confirmation: its summary (Orders, one row) and its lines with
+    /// D365FO's prices. Any status - the app shows whether it can still be confirmed.
+    /// </summary>
+    public HSMobileOpsOrderResponse getPurchaseOrder(HSMobileOpsOrderRequest _request)
+    {
+        HSMobileOpsOrderResponse response = HSMobileOpsOrderCreateService::newResponse();
+        HSMobileOpsUser          user;
+        PurchTable               purchTable;
+        PurchLine                purchLine;
+        InventDim                dim;
+        HSMobileOpsOrderLine     line;
+        real                     total;
+
+        if (!HSMobileOpsOrderCreateService::validCompany(_request) || !_request.parmUserName() || !_request.parmPurchId())
+        {
+            response.parmErrorCode('INVALID_REQUEST');
+            return response;
+        }
+
+        changecompany (_request.parmDataAreaId())
+        {
+            user       = HSMobileOpsUser::find(_request.parmUserName());
+            purchTable = PurchTable::find(_request.parmPurchId());
+            if (!purchTable.RecId)
+            {
+                response.parmErrorCode('NOT_FOUND');
+                response.parmMessage(strFmt('No purchase order %1', _request.parmPurchId()));
+                return response;
+            }
+            if (!user.RecId || !HSMobileOpsOrderCreateService::isAssigned(user, purchTable.InventLocationId))
+            {
+                response.parmErrorCode('WAREHOUSE_NOT_ASSIGNED');
+                response.parmMessage(strFmt('%1 is for warehouse %2, which is not assigned to you', purchTable.PurchId, purchTable.InventLocationId));
+                return response;
+            }
+
+            response.parmOrders().addEnd(HSMobileOpsOrderCreateService::summary(purchTable));
+            response.parmCurrencyCode(purchTable.CurrencyCode);
+
+            while select purchLine
+                order by LineNumber
+                where purchLine.PurchId   == purchTable.PurchId
+                   && purchLine.IsDeleted == NoYes::No
+                join dim
+                    where dim.inventDimId == purchLine.InventDimId
+            {
+                line = new HSMobileOpsOrderLine();
+                line.parmLineNumber(purchLine.LineNumber);
+                line.parmItemId(purchLine.ItemId);
+                // The product name - purchLine.itemName() appends the variant, which the app shows separately.
+                line.parmItemName(InventTable::find(purchLine.ItemId).itemName());
+                line.parmConfigId(dim.ConfigId);
+                line.parmSizeId(dim.InventSizeId);
+                line.parmColorId(dim.InventColorId);
+                line.parmStyleId(dim.InventStyleId);
+                line.parmBatchId(dim.InventBatchId);
+                line.parmSerialId(dim.InventSerialId);
+                line.parmQty(purchLine.PurchQty);
+                line.parmUnitId(purchLine.PurchUnit);
+                line.parmPrice(purchLine.PurchPrice);
+                line.parmPriceUnit(purchLine.PriceUnit);
+                line.parmDiscPct(purchLine.LinePercent);
+                line.parmDiscAmount(purchLine.LineDisc);
+                line.parmLineAmount(purchLine.LineAmount);
+                response.parmLines().addEnd(line);
+                total += purchLine.LineAmount;
+            }
+            response.parmOrderTotal(total);
+        }
+
+        response.parmSuccess(true);
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>confirmPurchaseOrder</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Confirms an approved purchase order (PurchFormLetter, DocumentStatus::PurchaseOrder) and
+    /// returns its confirmation number. Idempotent on the key; an order already confirmed - from
+    /// another device or in D365FO itself - is reported as such rather than refused.
+    /// </summary>
+    public HSMobileOpsOrderResponse confirmPurchaseOrder(HSMobileOpsOrderRequest _request)
+    {
+        HSMobileOpsOrderResponse response = HSMobileOpsOrderCreateService::newResponse();
+        HSMobileOpsUser          user;
+        HSMobileOpsPostLog       existing;
+        PurchTable               purchTable;
+        PurchFormLetter          purchFormLetter;
+        PurchId                  purchId = _request ? _request.parmPurchId() : '';
+
+        if (!HSMobileOpsOrderCreateService::validCompany(_request) || !_request.parmIdempotencyKey() || !purchId)
+        {
+            response.parmErrorCode('INVALID_REQUEST');
+            response.parmMessage('The confirmation was incomplete');
+            return response;
+        }
+
+        changecompany (_request.parmDataAreaId())
+        {
+            existing = HSMobileOpsPostLog::findByKey(_request.parmIdempotencyKey());
+            if (existing.RecId)
+            {
+                response.parmSuccess(true);
+                response.parmAlreadyCreated(true);
+                response.parmDocumentNumber(existing.DocumentNumber);
+                response.parmConfirmationNumber(HSMobileOpsOrderCreateService::confirmationNumber(existing.DocumentNumber));
+                return response;
+            }
+
+            user = HSMobileOpsUser::find(_request.parmUserName());
+            if (!HSMobileOpsOrderCreateService::mayCreate(user, HSMobileOpsModule::PO_CONFIRM))
+            {
+                response.parmErrorCode('NOT_PERMITTED');
+                response.parmMessage(strFmt('%1 may not confirm purchase orders - ask a supervisor for Menu access', _request.parmUserName()));
+                return response;
+            }
+
+            purchTable = PurchTable::find(purchId);
+            if (!purchTable.RecId)
+            {
+                response.parmErrorCode('NOT_FOUND');
+                response.parmMessage(strFmt('No purchase order %1', purchId));
+                return response;
+            }
+            if (!HSMobileOpsOrderCreateService::isAssigned(user, purchTable.InventLocationId))
+            {
+                response.parmErrorCode('WAREHOUSE_NOT_ASSIGNED');
+                response.parmMessage(strFmt('%1 is for warehouse %2, which is not assigned to you', purchId, purchTable.InventLocationId));
+                return response;
+            }
+            if (purchTable.DocumentState == VersioningDocumentState::Confirmed)
+            {
+                response.parmSuccess(true);
+                response.parmAlreadyCreated(true);
+                response.parmDocumentNumber(purchId);
+                response.parmConfirmationNumber(HSMobileOpsOrderCreateService::confirmationNumber(purchId));
+                response.parmMessage(strFmt('%1 was already confirmed', purchId));
+                return response;
+            }
+            if (purchTable.DocumentState != VersioningDocumentState::Approved)
+            {
+                response.parmErrorCode('NOT_APPROVED');
+                response.parmMessage(strFmt('%1 is %2 - only an approved order can be confirmed', purchId, purchTable.DocumentState));
+                return response;
+            }
+
+            try
+            {
+                purchFormLetter = PurchFormLetter::construct(DocumentStatus::PurchaseOrder);
+                purchFormLetter.update(purchTable, '', DateTimeUtil::getSystemDate(DateTimeUtil::getUserPreferredTimeZone()),
+                    PurchUpdate::All, AccountOrder::None, NoYes::No, NoYes::No);
+            }
+            catch (Exception::Deadlock)
+            {
+                response.parmErrorCode('RETRY');
+                response.parmMessage('D365FO was busy - the confirmation will be sent again');
+                return response;
+            }
+            catch (Exception::UpdateConflict)
+            {
+                response.parmErrorCode('RETRY');
+                response.parmMessage('D365FO was busy - the confirmation will be sent again');
+                return response;
+            }
+            catch (Exception::Error)
+            {
+                response.parmErrorCode('CONFIRM_FAILED');
+                response.parmMessage(HSMobileOpsOrderCreateService::lastError());
+                return response;
+            }
+
+            // The form letter reports some refusals in the infolog without throwing - the order's
+            // own state is the answer.
+            purchTable = PurchTable::find(purchId);
+            if (purchTable.DocumentState != VersioningDocumentState::Confirmed)
+            {
+                response.parmErrorCode('CONFIRM_FAILED');
+                response.parmMessage(HSMobileOpsOrderCreateService::lastError());
+                return response;
+            }
+
+            ttsbegin;
+            HSMobileOpsOrderCreateService::writeLog(_request, 'PurchaseOrderConfirm', purchId);
+            ttscommit;
+
+            response.parmDocumentNumber(purchId);
+            response.parmConfirmationNumber(HSMobileOpsOrderCreateService::confirmationNumber(purchId));
+            response.parmSuccess(true);
+        }
+
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>listReturnReasons</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The company's return reason codes and return actions, for the purchase return screen
+    /// (kept on the device).
+    /// </summary>
+    public HSMobileOpsOrderResponse listReturnReasons(HSMobileOpsOrderRequest _request)
+    {
+        HSMobileOpsOrderResponse response = HSMobileOpsOrderCreateService::newResponse();
+        ReturnReasonCode         reason;
+        ReturnActionDefaults     action;
+        HSMobileOpsReturnReason  row;
+        str                      lastAction;
+
+        if (!HSMobileOpsOrderCreateService::validCompany(_request))
+        {
+            response.parmErrorCode('INVALID_REQUEST');
+            return response;
+        }
+        changecompany (_request.parmDataAreaId())
+        {
+            while select ReasonCodeId, Description from reason
+                order by ReasonCodeId
+            {
+                row = new HSMobileOpsReturnReason();
+                row.parmCode(reason.ReasonCodeId);
+                row.parmDescription(reason.Description);
+                response.parmReasons().addEnd(row);
+            }
+            while select ReturnActionId, Txt from action
+                order by ReturnActionId
+            {
+                if (action.ReturnActionId == lastAction)
+                {
+                    continue;
+                }
+                lastAction = action.ReturnActionId;
+                row = new HSMobileOpsReturnReason();
+                row.parmCode(action.ReturnActionId);
+                row.parmDescription(action.Txt);
+                response.parmActions().addEnd(row);
+            }
+        }
+        response.parmSuccess(true);
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>createPurchaseReturn</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Returns stock to a vendor in one step: creates a return order (PurchaseType ReturnItem,
+    /// negative lines, the vendor's RMA number or one of ours), confirms it and posts its packing
+    /// slip, so the stock leaves the warehouse. The order is committed before confirming and
+    /// posting; if either fails the reason comes back in Message and a resend of the same key
+    /// finishes them. Idempotent on the key (HSMobileOpsPostLog 'PurchaseReturnCreate').
+    /// </summary>
+    public HSMobileOpsOrderResponse createPurchaseReturn(HSMobileOpsOrderRequest _request)
+    {
+        HSMobileOpsOrderResponse response = HSMobileOpsOrderCreateService::newResponse();
+        HSMobileOpsUser          user;
+        HSMobileOpsPostLog       existing;
+        VendTable                vendTable;
+        PurchTable               purchTable;
+        PurchLine                purchLine;
+        InventDim                dim;
+        ListEnumerator           enumerator;
+        HSMobileOpsOrderLine     line;
+        boolean                  hasLines;
+        str                      shortage;
+        real                     onHand;
+        str                      actionId;
+
+        if (!HSMobileOpsOrderCreateService::validCompany(_request) || !_request.parmIdempotencyKey()
+            || !_request.parmVendorAccount() || !_request.parmWarehouseId())
+        {
+            response.parmErrorCode('INVALID_REQUEST');
+            response.parmMessage('The return was incomplete');
+            return response;
+        }
+
+        changecompany (_request.parmDataAreaId())
+        {
+            existing = HSMobileOpsPostLog::findByKey(_request.parmIdempotencyKey());
+            if (existing.RecId)
+            {
+                response.parmSuccess(true);
+                response.parmAlreadyCreated(true);
+                response.parmDocumentNumber(existing.DocumentNumber);
+                HSMobileOpsOrderCreateService::completeReturn(existing.DocumentNumber, response,
+                    HSMobileOpsOrderCreateService::returnAction(_request.parmReturnActionId()));
+                return response;
+            }
+
+            user = HSMobileOpsUser::find(_request.parmUserName());
+            if (!HSMobileOpsOrderCreateService::mayCreate(user, HSMobileOpsModule::PURCHASE_RETURN))
+            {
+                response.parmErrorCode('NOT_PERMITTED');
+                response.parmMessage(strFmt('%1 may not return to vendors - ask a supervisor for Menu access', _request.parmUserName()));
+                return response;
+            }
+            if (!HSMobileOpsOrderCreateService::isAssigned(user, _request.parmWarehouseId()))
+            {
+                response.parmErrorCode('WAREHOUSE_NOT_ASSIGNED');
+                response.parmMessage(strFmt('Warehouse %1 is not assigned to you', _request.parmWarehouseId()));
+                return response;
+            }
+            vendTable = VendTable::find(_request.parmVendorAccount());
+            if (!vendTable.RecId)
+            {
+                response.parmErrorCode('VENDOR_NOT_FOUND');
+                response.parmMessage(strFmt('No vendor %1', _request.parmVendorAccount()));
+                return response;
+            }
+            if (_request.parmReturnReasonCode() && !ReturnReasonCode::exist(_request.parmReturnReasonCode()))
+            {
+                response.parmErrorCode('REASON_NOT_FOUND');
+                response.parmMessage(strFmt('No return reason %1', _request.parmReturnReasonCode()));
+                return response;
+            }
+
+            actionId = HSMobileOpsOrderCreateService::returnAction(_request.parmReturnActionId());
+            if (!actionId)
+            {
+                response.parmErrorCode('ACTION_REQUIRED');
+                response.parmMessage('Pick a return action - D365FO needs one on every return line');
+                return response;
+            }
+
+            // Every line must be on hand where it is taken from - checked before anything is created.
+            enumerator = _request.parmLines() ? _request.parmLines().getEnumerator() : null;
+            while (enumerator && enumerator.moveNext())
+            {
+                line = enumerator.current();
+                if (line.parmQty() <= 0)
+                {
+                    continue;
+                }
+                onHand = HSMobileOpsOrderCreateService::availableAt(line, _request.parmWarehouseId());
+                if (line.parmQty() > onHand)
+                {
+                    shortage += (shortage ? '; ' : '') + strFmt('%1 %2: %3 to return, %4 on hand',
+                        line.parmItemId(), HSMobileOpsOrderCreateService::dimText(line) + (line.parmLocationId() ? ' ' + line.parmLocationId() : ''),
+                        line.parmQty(), onHand);
+                }
+            }
+            if (shortage)
+            {
+                response.parmErrorCode('INSUFFICIENT_STOCK');
+                response.parmMessage(strFmt('Not enough stock at %1: %2', _request.parmWarehouseId(), shortage));
+                return response;
+            }
+
+            try
+            {
+                ttsbegin;
+                purchTable = HSMobileOpsOrderCreateService::purchHeader(vendTable, _request);
+                purchTable.PurchId            = NumberSeq::newGetNum(PurchParameters::numRefPurchId()).num();
+                purchTable.PurchaseType       = PurchaseType::ReturnItem;
+                purchTable.ReturnItemNum      = _request.parmRmaNumber()
+                    ? subStr(_request.parmRmaNumber(), 1, 10)
+                    : HSMobileOpsOrderCreateService::rmaFromPurchId(purchTable.PurchId);
+                purchTable.ReturnReasonCodeId = _request.parmReturnReasonCode();
+                purchTable.insert();
+
+                enumerator = _request.parmLines() ? _request.parmLines().getEnumerator() : null;
+                while (enumerator && enumerator.moveNext())
+                {
+                    line = enumerator.current();
+                    if (line.parmQty() <= 0)
+                    {
+                        continue;
+                    }
+                    hasLines = true;
+                    dim = HSMobileOpsOrderCreateService::lineDim(line, purchTable.InventSiteId, purchTable.InventLocationId);
+                    // A warehouse-management warehouse needs the inventory status too: the
+                    // status of the stock the line is taken from.
+                    if (!dim.InventStatusId)
+                    {
+                        dim.InventStatusId = HSMobileOpsOrderCreateService::stockStatus(line, purchTable.InventLocationId);
+                        if (dim.InventStatusId)
+                        {
+                            dim = InventDim::findOrCreate(dim);
+                        }
+                    }
+
+                    purchLine.clear();
+                    purchLine.initFromPurchTable(purchTable);
+                    purchLine.ItemId = line.parmItemId();
+                    purchLine.initFromInventTable(InventTable::find(purchLine.ItemId));
+                    purchLine.InventDimId = dim.inventDimId;
+                    if (line.parmUnitId())
+                    {
+                        purchLine.PurchUnit = line.parmUnitId();
+                    }
+                    purchLine.PurchQty       = -line.parmQty();
+                    purchLine.ReturnActionId = actionId;
+                    purchLine.createLine(true, false, false, true, true, true);
+                }
+
+                if (!hasLines)
+                {
+                    throw error('The return has no lines with a quantity');
+                }
+
+                HSMobileOpsOrderCreateService::writeLog(_request, 'PurchaseReturnCreate', purchTable.PurchId);
+                ttscommit;
+
+                response.parmDocumentNumber(purchTable.PurchId);
+                response.parmSuccess(true);
+            }
+            catch (Exception::Error)
+            {
+                response.parmErrorCode('CREATE_FAILED');
+                response.parmMessage(HSMobileOpsOrderCreateService::lastError());
+            }
+            catch (Exception::Deadlock)
+            {
+                response.parmErrorCode('RETRY');
+                response.parmMessage('D365FO was busy - the return will be sent again');
+            }
+
+            if (response.parmSuccess())
+            {
+                HSMobileOpsOrderCreateService::completeReturn(purchTable.PurchId, response, actionId);
+            }
+        }
+
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>completeReturn</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Confirms a return order created from the handheld and posts its packing slip (the return
+    /// order number as the packing slip id - unique, unlike an RMA number). Each step is skipped when already done, so a resend only
+    /// finishes what failed; a failure goes to Message and leaves the order as it is.
+    /// </summary>
+    private static void completeReturn(PurchId _purchId, HSMobileOpsOrderResponse _response, str _actionId = '')
+    {
+        PurchTable           purchTable = PurchTable::find(_purchId);
+        PurchFormLetter      letter;
+        VendPackingSlipJour  slip;
+        PurchLine            purchLine;
+
+        if (!purchTable.RecId)
+        {
+            return;
+        }
+        // Posting refuses a return line without a return action.
+        if (_actionId)
+        {
+            ttsbegin;
+            while select forupdate purchLine
+                where purchLine.PurchId        == _purchId
+                   && purchLine.ReturnActionId == ''
+            {
+                purchLine.ReturnActionId = _actionId;
+                purchLine.update();
+            }
+            ttscommit;
+        }
+        HSMobileOpsOrderCreateService::confirmCreated(_purchId, _response);
+        if (_response.parmMessage())
+        {
+            return;
+        }
+
+        select firstonly PackingSlipId from slip
+            order by DeliveryDate desc, RecId desc
+            where slip.PurchId == _purchId;
+        if (!slip.PackingSlipId)
+        {
+            try
+            {
+                letter = PurchFormLetter::construct(DocumentStatus::PackingSlip);
+                letter.update(PurchTable::find(_purchId), purchTable.PurchId,
+                    DateTimeUtil::getSystemDate(DateTimeUtil::getUserPreferredTimeZone()),
+                    PurchUpdate::All, AccountOrder::None, NoYes::No, NoYes::No);
+            }
+            catch (Exception::Error)
+            {
+                _response.parmMessage('Confirmed; packing slip not posted - ' + HSMobileOpsOrderCreateService::lastError());
+                return;
+            }
+            catch (Exception::Deadlock)
+            {
+                _response.parmMessage('Confirmed; packing slip not posted - D365FO was busy');
+                return;
+            }
+            select firstonly PackingSlipId from slip
+                order by DeliveryDate desc, RecId desc
+                where slip.PurchId == _purchId;
+        }
+        if (slip.PackingSlipId)
+        {
+            _response.parmPackingSlipId(slip.PackingSlipId);
+        }
+        else
+        {
+            _response.parmMessage('Confirmed; packing slip not posted - ' + HSMobileOpsOrderCreateService::lastError());
+        }
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>returnAction</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The return action for a purchase return: the one asked for when it exists, else the
+    /// procurement parameters' default, else the only one set up - blank when none applies.
+    /// </summary>
+    private static str returnAction(str _asked)
+    {
+        ReturnActionDefaults action;
+        str                  fallback = PurchParameters::find().ReturnActionDefault;
+        int                  actions;
+        str                  only;
+
+        if (_asked)
+        {
+            select firstonly RecId from action where action.ReturnActionId == _asked;
+            return action.RecId ? _asked : '';
+        }
+        if (fallback)
+        {
+            return fallback;
+        }
+        while select ReturnActionId from action
+            order by ReturnActionId
+        {
+            if (action.ReturnActionId != only)
+            {
+                actions++;
+                only = action.ReturnActionId;
+            }
+        }
+        return actions == 1 ? only : '';
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>rmaFromPurchId</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// An RMA number when the vendor gave none: the return order's number part without leading
+    /// zeros (BSP-PO-000161697 gives 161697), as people here type it - ReturnItemNum holds 10.
+    /// </summary>
+    private static str rmaFromPurchId(PurchId _purchId)
+    {
+        str digits = strKeep(_purchId, '0123456789');
+        int i = 1;
+
+        while (i < strLen(digits) && subStr(digits, i, 1) == '0')
+        {
+            i++;
+        }
+        digits = subStr(digits, i, strLen(digits));
+        return strLen(digits) > 10 ? subStr(digits, strLen(digits) - 9, 10) : digits;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>stockStatus</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The inventory status of the line's stock at a warehouse - of its bin, batch and serial
+    /// when the line names them - taking the status with the most physically available.
+    /// </summary>
+    private static str stockStatus(HSMobileOpsOrderLine _line, InventLocationId _warehouseId)
+    {
+        InventSum inventSum;
+        InventDim stock;
+
+        select firstonly AvailPhysical from inventSum
+            order by AvailPhysical desc
+            where inventSum.ItemId        == _line.parmItemId()
+               && inventSum.Closed        == NoYes::No
+               && inventSum.AvailPhysical >  0
+            join InventStatusId from stock
+                where stock.inventDimId      == inventSum.InventDimId
+                   && stock.InventLocationId == _warehouseId
+                   && stock.ConfigId         == _line.parmConfigId()
+                   && stock.InventSizeId     == _line.parmSizeId()
+                   && stock.InventColorId    == _line.parmColorId()
+                   && stock.InventStyleId    == _line.parmStyleId()
+                   && (!_line.parmLocationId() || stock.wMSLocationId  == _line.parmLocationId())
+                   && (!_line.parmBatchId()    || stock.InventBatchId  == _line.parmBatchId())
+                   && (!_line.parmSerialId()   || stock.InventSerialId == _line.parmSerialId());
+
+        return stock.InventStatusId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>availableAt</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Physically available of the line's variant at a warehouse - of its bin, batch and serial
+    /// only when the line names them.
+    /// </summary>
+    private static real availableAt(HSMobileOpsOrderLine _line, InventLocationId _warehouseId)
+    {
+        InventSum inventSum;
+        InventDim stock;
+
+        select sum(AvailPhysical) from inventSum
+            where inventSum.ItemId == _line.parmItemId()
+               && inventSum.Closed == NoYes::No
+            exists join stock
+                where stock.inventDimId      == inventSum.InventDimId
+                   && stock.InventLocationId == _warehouseId
+                   && stock.ConfigId         == _line.parmConfigId()
+                   && stock.InventSizeId     == _line.parmSizeId()
+                   && stock.InventColorId    == _line.parmColorId()
+                   && stock.InventStyleId    == _line.parmStyleId()
+                   && (!_line.parmLocationId() || stock.wMSLocationId  == _line.parmLocationId())
+                   && (!_line.parmBatchId()    || stock.InventBatchId  == _line.parmBatchId())
+                   && (!_line.parmSerialId()   || stock.InventSerialId == _line.parmSerialId());
+
+        return inventSum.AvailPhysical;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>confirmCreated</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Confirms a purchase order just created from the handheld (PurchFormLetter,
+    /// DocumentStatus::PurchaseOrder) and puts the confirmation number on the response. The order
+    /// is already committed: a confirmation that fails (for instance an approval workflow still
+    /// has the order in review) only adds the reason to Message - the created order stands, and
+    /// a resend of the same key tries the confirmation again.
+    /// </summary>
+    private static void confirmCreated(PurchId _purchId, HSMobileOpsOrderResponse _response)
+    {
+        PurchTable      purchTable = PurchTable::find(_purchId);
+        PurchFormLetter purchFormLetter;
+
+        if (!purchTable.RecId)
+        {
+            return;
+        }
+        if (purchTable.DocumentState == VersioningDocumentState::Confirmed)
+        {
+            _response.parmConfirmationNumber(HSMobileOpsOrderCreateService::confirmationNumber(_purchId));
+            return;
+        }
+        if (purchTable.DocumentState != VersioningDocumentState::Approved)
+        {
+            _response.parmMessage(strFmt('Created; not confirmed - it is %1 and needs approval first', purchTable.DocumentState));
+            return;
+        }
+        try
+        {
+            purchFormLetter = PurchFormLetter::construct(DocumentStatus::PurchaseOrder);
+            purchFormLetter.update(purchTable, '', DateTimeUtil::getSystemDate(DateTimeUtil::getUserPreferredTimeZone()),
+                PurchUpdate::All, AccountOrder::None, NoYes::No, NoYes::No);
+        }
+        catch (Exception::Error)
+        {
+            _response.parmMessage('Created; not confirmed - ' + HSMobileOpsOrderCreateService::lastError());
+            return;
+        }
+        catch (Exception::Deadlock)
+        {
+            _response.parmMessage('Created; not confirmed - D365FO was busy');
+            return;
+        }
+        if (PurchTable::find(_purchId).DocumentState == VersioningDocumentState::Confirmed)
+        {
+            _response.parmConfirmationNumber(HSMobileOpsOrderCreateService::confirmationNumber(_purchId));
+        }
+        else
+        {
+            _response.parmMessage('Created; not confirmed - ' + HSMobileOpsOrderCreateService::lastError());
+        }
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>summary</Name>
+				<Source><![CDATA[
+
+    private static HSMobileOpsOrderSummary summary(PurchTable _purchTable)
+    {
+        HSMobileOpsOrderSummary summary = new HSMobileOpsOrderSummary();
+        PurchLine               purchLine;
+
+        select count(RecId), sum(LineAmount) from purchLine
+            where purchLine.PurchId   == _purchTable.PurchId
+               && purchLine.IsDeleted == NoYes::No;
+
+        summary.parmPurchId(_purchTable.PurchId);
+        summary.parmVendorAccount(_purchTable.OrderAccount);
+        summary.parmVendorName(_purchTable.PurchName);
+        summary.parmWarehouseId(_purchTable.InventLocationId);
+        summary.parmDeliveryDate(HSMobileOpsOrderCreateService::isoText(_purchTable.DeliveryDate));
+        summary.parmLineCount(int642int(purchLine.RecId));
+        summary.parmOrderTotal(purchLine.LineAmount);
+        summary.parmCurrencyCode(_purchTable.CurrencyCode);
+        summary.parmApprovalStatus(enum2Symbol(enumNum(VersioningDocumentState), _purchTable.DocumentState));
+        summary.parmPurchStatus(enum2Symbol(enumNum(PurchStatus), _purchTable.PurchStatus));
+        summary.parmCreatedBy(_purchTable.createdBy);
+        summary.parmCreatedDate(HSMobileOpsOrderCreateService::isoText(DateTimeUtil::date(_purchTable.createdDateTime)));
+        summary.parmConfirmationNumber(HSMobileOpsOrderCreateService::confirmationNumber(_purchTable.PurchId));
+        return summary;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>confirmationNumber</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The latest confirmation of the order (VendPurchOrderJour.PurchOrderDocNum), '' if none.
+    /// </summary>
+    private static str confirmationNumber(PurchId _purchId)
+    {
+        VendPurchOrderJour jour;
+
+        select firstonly PurchOrderDocNum from jour
+            order by PurchOrderDate desc, RecId desc
+            where jour.PurchId == _purchId;
+        return jour.PurchOrderDocNum;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>isoText</Name>
+				<Source><![CDATA[
+
+    private static str isoText(date _date)
+    {
+        return _date ? date2Str(_date, 321, DateDay::Digits2, DateSeparator::Hyphen, DateMonth::Digits2, DateSeparator::Hyphen, DateYear::Digits4) : '';
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

@@ -1,0 +1,499 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxForm xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns="Microsoft.Dynamics.AX.Metadata.V6">
+	<Name>HSMobileOpsFeedback</Name>
+	<SourceCode>
+		<Methods xmlns="">
+			<Method>
+				<Name>classDeclaration</Name>
+				<Source><![CDATA[
+/// <summary>
+/// Feedback sent from the handheld, newest first. Set Status and Reply - the worker sees both in
+/// the app. The screenshot, when one was sent, is under Attachments.
+/// </summary>
+[Form]
+public class HSMobileOpsFeedback extends FormRun
+{
+}
+]]></Source>
+			</Method>
+			<Method>
+				<Name>init</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Newest feedback first.
+    /// </summary>
+    public void init()
+    {
+        super();
+        HSMobileOpsFeedback_ds.queryBuildDataSource().addSortField(fieldNum(HSMobileOpsFeedback, SubmittedUtc), SortOrder::Descending);
+    }
+]]></Source>
+			</Method>
+		</Methods>
+		<DataSources xmlns="" />
+		<DataControls xmlns="" />
+		<Members xmlns="" />
+	</SourceCode>
+	<DataSources>
+		<AxFormDataSource xmlns="">
+			<Name>HSMobileOpsFeedback</Name>
+			<Table>HSMobileOpsFeedback</Table>
+			<Fields>
+				<AxFormDataSourceField>
+					<DataField>FeedbackId</DataField>
+				</AxFormDataSourceField>
+				<AxFormDataSourceField>
+					<DataField>FeedbackType</DataField>
+				</AxFormDataSourceField>
+				<AxFormDataSourceField>
+					<DataField>Screen</DataField>
+				</AxFormDataSourceField>
+				<AxFormDataSourceField>
+					<DataField>Message</DataField>
+				</AxFormDataSourceField>
+				<AxFormDataSourceField>
+					<DataField>Status</DataField>
+				</AxFormDataSourceField>
+				<AxFormDataSourceField>
+					<DataField>Response</DataField>
+				</AxFormDataSourceField>
+				<AxFormDataSourceField>
+					<DataField>UserName</DataField>
+				</AxFormDataSourceField>
+				<AxFormDataSourceField>
+					<DataField>WarehouseId</DataField>
+				</AxFormDataSourceField>
+				<AxFormDataSourceField>
+					<DataField>AppVersion</DataField>
+				</AxFormDataSourceField>
+				<AxFormDataSourceField>
+					<DataField>DeviceModel</DataField>
+				</AxFormDataSourceField>
+				<AxFormDataSourceField>
+					<DataField>DeviceId</DataField>
+				</AxFormDataSourceField>
+				<AxFormDataSourceField>
+					<DataField>SubmittedUtc</DataField>
+				</AxFormDataSourceField>
+				<AxFormDataSourceField>
+					<DataField>HasScreenshot</DataField>
+				</AxFormDataSourceField>
+				<AxFormDataSourceField>
+					<DataField>Logs</DataField>
+				</AxFormDataSourceField>
+				<AxFormDataSourceField>
+					<DataField>Screenshot</DataField>
+				</AxFormDataSourceField>
+			</Fields>
+			<ReferencedDataSources />
+			<AllowCreate>No</AllowCreate>
+			<InsertIfEmpty>No</InsertIfEmpty>
+			<DataSourceLinks />
+			<DerivedDataSources />
+		</AxFormDataSource>
+	</DataSources>
+	<Design>
+		<Caption xmlns="">Mobile feedback</Caption>
+		<DataSource xmlns="">HSMobileOpsFeedback</DataSource>
+		<Pattern xmlns="">SimpleListDetails</Pattern>
+		<PatternVersion xmlns="">1.3</PatternVersion>
+		<Style xmlns="">SimpleListDetails</Style>
+		<TitleDataSource xmlns="">HSMobileOpsFeedback</TitleDataSource>
+		<Controls xmlns="">
+			<AxFormControl xmlns=""
+				i:type="AxFormActionPaneControl">
+				<Name>ActionPane</Name>
+				<Type>ActionPane</Type>
+				<FormControlExtension
+					i:nil="true" />
+				<Controls>
+					<AxFormControl xmlns=""
+						i:type="AxFormButtonGroupControl">
+						<Name>ExportGroup</Name>
+						<Type>ButtonGroup</Type>
+						<FormControlExtension
+							i:nil="true" />
+						<Controls>
+							<AxFormControl xmlns=""
+								i:type="AxFormMenuFunctionButtonControl">
+								<Name>ExportButton</Name>
+								<HelpText>Download feedback.md plus screenshots, in a zip: the records ticked Export, otherwise every record shown with the current filter.</HelpText>
+								<Type>MenuFunctionButton</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<ButtonDisplay>TextOnly</ButtonDisplay>
+								<DataSource>HSMobileOpsFeedback</DataSource>
+								<MenuItemName>HSMobileOpsFeedbackExport</MenuItemName>
+								<MenuItemType>Action</MenuItemType>
+								<NeedsRecord>Yes</NeedsRecord>
+								<Text>Export feedback</Text>
+							</AxFormControl>
+						</Controls>
+						<ArrangeMethod>Vertical</ArrangeMethod>
+						<Caption>Export</Caption>
+						<DataSource>HSMobileOpsFeedback</DataSource>
+					</AxFormControl>
+				</Controls>
+				<AlignChild>No</AlignChild>
+				<AlignChildren>No</AlignChildren>
+				<ArrangeMethod>Vertical</ArrangeMethod>
+			</AxFormControl>
+			<AxFormControl xmlns=""
+				i:type="AxFormGroupControl">
+				<Name>GridContainer1</Name>
+				<HeightMode>SizeToAvailable</HeightMode>
+				<Type>Group</Type>
+				<FormControlExtension
+					i:nil="true" />
+				<Controls>
+					<AxFormControl>
+						<Name>QuickFilterControl1</Name>
+						<WidthMode>SizeToAvailable</WidthMode>
+						<FormControlExtension>
+							<Name>QuickFilterControl</Name>
+							<ExtensionComponents />
+							<ExtensionProperties>
+								<AxFormControlExtensionProperty>
+									<Name>targetControlName</Name>
+									<Type>String</Type>
+								</AxFormControlExtensionProperty>
+								<AxFormControlExtensionProperty>
+									<Name>placeholderText</Name>
+									<Type>String</Type>
+								</AxFormControlExtensionProperty>
+								<AxFormControlExtensionProperty>
+									<Name>defaultColumnName</Name>
+									<Type>String</Type>
+								</AxFormControlExtensionProperty>
+							</ExtensionProperties>
+						</FormControlExtension>
+					</AxFormControl>
+					<AxFormControl xmlns=""
+						i:type="AxFormGridControl">
+						<Name>FormGridControl1</Name>
+						<AllowEdit>No</AllowEdit>
+						<Type>Grid</Type>
+						<WidthMode>SizeToContent</WidthMode>
+						<FormControlExtension
+							i:nil="true" />
+						<Controls>
+							<AxFormControl xmlns=""
+								i:type="AxFormDateTimeControl">
+								<Name>Grid_SubmittedUtc</Name>
+								<AllowEdit>No</AllowEdit>
+								<Type>DateTime</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<DataField>SubmittedUtc</DataField>
+								<DataSource>HSMobileOpsFeedback</DataSource>
+							</AxFormControl>
+							<AxFormControl xmlns=""
+								i:type="AxFormComboBoxControl">
+								<Name>Grid_FeedbackType</Name>
+								<AllowEdit>No</AllowEdit>
+								<Type>ComboBox</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<DataField>FeedbackType</DataField>
+								<DataSource>HSMobileOpsFeedback</DataSource>
+							</AxFormControl>
+							<AxFormControl xmlns=""
+								i:type="AxFormStringControl">
+								<Name>Grid_Screen</Name>
+								<AllowEdit>No</AllowEdit>
+								<Type>String</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<DataField>Screen</DataField>
+								<DataSource>HSMobileOpsFeedback</DataSource>
+							</AxFormControl>
+							<AxFormControl xmlns=""
+								i:type="AxFormComboBoxControl">
+								<Name>Grid_Status</Name>
+								<AllowEdit>No</AllowEdit>
+								<Type>ComboBox</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<DataField>Status</DataField>
+								<DataSource>HSMobileOpsFeedback</DataSource>
+							</AxFormControl>
+						</Controls>
+						<DataSource>HSMobileOpsFeedback</DataSource>
+						<MultiSelect>No</MultiSelect>
+						<ShowRowLabels>No</ShowRowLabels>
+						<Style>List</Style>
+					</AxFormControl>
+				</Controls>
+				<FrameType>None</FrameType>
+				<Style>SidePanel</Style>
+			</AxFormControl>
+			<AxFormControl xmlns=""
+				i:type="AxFormGroupControl">
+				<Name>DetailsHeader</Name>
+				<Type>Group</Type>
+				<WidthMode>SizeToAvailable</WidthMode>
+				<FormControlExtension
+					i:nil="true" />
+				<Controls>
+							<AxFormControl xmlns=""
+								i:type="AxFormStringControl">
+								<Name>Header_Screen</Name>
+								<AllowEdit>No</AllowEdit>
+								<Type>String</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<DataField>Screen</DataField>
+								<DataSource>HSMobileOpsFeedback</DataSource>
+							</AxFormControl>
+							<AxFormControl xmlns=""
+								i:type="AxFormComboBoxControl">
+								<Name>Header_FeedbackType</Name>
+								<AllowEdit>No</AllowEdit>
+								<Type>ComboBox</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<DataField>FeedbackType</DataField>
+								<DataSource>HSMobileOpsFeedback</DataSource>
+							</AxFormControl>
+							<AxFormControl xmlns=""
+								i:type="AxFormStringControl">
+								<Name>Header_UserName</Name>
+								<AllowEdit>No</AllowEdit>
+								<Type>String</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<DataField>UserName</DataField>
+								<DataSource>HSMobileOpsFeedback</DataSource>
+							</AxFormControl>
+							<AxFormControl xmlns=""
+								i:type="AxFormCheckBoxControl">
+								<Name>Header_SelectedForExport</Name>
+								<HelpText>Tick to include this record in Export feedback; with none ticked, Export feedback takes the list shown.</HelpText>
+								<Type>CheckBox</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<DataField>SelectedForExport</DataField>
+								<DataSource>HSMobileOpsFeedback</DataSource>
+							</AxFormControl>
+				</Controls>
+				<ColumnsMode>Fill</ColumnsMode>
+				<FrameType>None</FrameType>
+			</AxFormControl>
+			<AxFormControl xmlns=""
+				i:type="AxFormTabControl">
+				<Name>Tab</Name>
+				<AlignControl>No</AlignControl>
+				<Type>Tab</Type>
+				<FormControlExtension
+					i:nil="true" />
+				<Controls>
+					<AxFormControl xmlns=""
+						i:type="AxFormTabPageControl">
+						<Name>FeedbackPage</Name>
+						<Pattern>FieldsFieldGroups</Pattern>
+						<PatternVersion>1.1</PatternVersion>
+						<Type>TabPage</Type>
+						<FormControlExtension
+							i:nil="true" />
+						<Controls>
+							<AxFormControl xmlns=""
+								i:type="AxFormStringControl">
+								<Name>Message</Name>
+								<AllowEdit>No</AllowEdit>
+								<Type>String</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<DataField>Message</DataField>
+								<DataSource>HSMobileOpsFeedback</DataSource>
+								<DisplayHeight>6</DisplayHeight>
+								<DisplayHeightMode>Fixed</DisplayHeightMode>
+								<DisplayLength>60</DisplayLength>
+								<DisplayLengthMode>Fixed</DisplayLengthMode>
+								<MultiLine>Yes</MultiLine>
+							</AxFormControl>
+							<AxFormControl xmlns=""
+								i:type="AxFormComboBoxControl">
+								<Name>Status</Name>
+								<Type>ComboBox</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<DataField>Status</DataField>
+								<DataSource>HSMobileOpsFeedback</DataSource>
+							</AxFormControl>
+							<AxFormControl xmlns=""
+								i:type="AxFormStringControl">
+								<Name>Response</Name>
+								<Type>String</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<DataField>Response</DataField>
+								<DataSource>HSMobileOpsFeedback</DataSource>
+								<DisplayHeight>6</DisplayHeight>
+								<DisplayHeightMode>Fixed</DisplayHeightMode>
+								<DisplayLength>60</DisplayLength>
+								<DisplayLengthMode>Fixed</DisplayLengthMode>
+								<MultiLine>Yes</MultiLine>
+							</AxFormControl>
+						</Controls>
+						<ColumnsMode>Fill</ColumnsMode>
+						<Caption>Feedback</Caption>
+						<DataSource>HSMobileOpsFeedback</DataSource>
+					</AxFormControl>
+					<AxFormControl xmlns=""
+						i:type="AxFormTabPageControl">
+						<Name>ScreenshotPage</Name>
+						<Type>TabPage</Type>
+						<FormControlExtension
+							i:nil="true" />
+						<Controls>
+							<AxFormControl xmlns=""
+								i:type="AxFormImageControl">
+								<Name>Screenshot</Name>
+								<Height>640</Height>
+								<HeightMode>Manual</HeightMode>
+								<Type>Image</Type>
+								<Width>360</Width>
+								<WidthMode>Manual</WidthMode>
+								<FormControlExtension
+									i:nil="true" />
+								<DataField>Screenshot</DataField>
+								<DataSource>HSMobileOpsFeedback</DataSource>
+							</AxFormControl>
+						</Controls>
+						<Caption>Screenshot</Caption>
+						<DataSource>HSMobileOpsFeedback</DataSource>
+					</AxFormControl>
+					<AxFormControl xmlns=""
+						i:type="AxFormTabPageControl">
+						<Name>ContextPage</Name>
+						<Pattern>FieldsFieldGroups</Pattern>
+						<PatternVersion>1.1</PatternVersion>
+						<Type>TabPage</Type>
+						<FormControlExtension
+							i:nil="true" />
+						<Controls>
+							<AxFormControl xmlns=""
+								i:type="AxFormStringControl">
+								<Name>UserName</Name>
+								<AllowEdit>No</AllowEdit>
+								<Type>String</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<DataField>UserName</DataField>
+								<DataSource>HSMobileOpsFeedback</DataSource>
+							</AxFormControl>
+							<AxFormControl xmlns=""
+								i:type="AxFormStringControl">
+								<Name>WarehouseId</Name>
+								<AllowEdit>No</AllowEdit>
+								<Type>String</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<DataField>WarehouseId</DataField>
+								<DataSource>HSMobileOpsFeedback</DataSource>
+							</AxFormControl>
+							<AxFormControl xmlns=""
+								i:type="AxFormStringControl">
+								<Name>AppVersion</Name>
+								<AllowEdit>No</AllowEdit>
+								<Type>String</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<DataField>AppVersion</DataField>
+								<DataSource>HSMobileOpsFeedback</DataSource>
+							</AxFormControl>
+							<AxFormControl xmlns=""
+								i:type="AxFormStringControl">
+								<Name>DeviceModel</Name>
+								<AllowEdit>No</AllowEdit>
+								<Type>String</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<DataField>DeviceModel</DataField>
+								<DataSource>HSMobileOpsFeedback</DataSource>
+							</AxFormControl>
+							<AxFormControl xmlns=""
+								i:type="AxFormStringControl">
+								<Name>DeviceId</Name>
+								<AllowEdit>No</AllowEdit>
+								<Type>String</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<DataField>DeviceId</DataField>
+								<DataSource>HSMobileOpsFeedback</DataSource>
+							</AxFormControl>
+							<AxFormControl xmlns=""
+								i:type="AxFormDateTimeControl">
+								<Name>SubmittedUtc</Name>
+								<AllowEdit>No</AllowEdit>
+								<Type>DateTime</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<DataField>SubmittedUtc</DataField>
+								<DataSource>HSMobileOpsFeedback</DataSource>
+							</AxFormControl>
+							<AxFormControl xmlns=""
+								i:type="AxFormCheckBoxControl">
+								<Name>HasScreenshot</Name>
+								<AllowEdit>No</AllowEdit>
+								<Type>CheckBox</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<DataField>HasScreenshot</DataField>
+								<DataSource>HSMobileOpsFeedback</DataSource>
+							</AxFormControl>
+							<AxFormControl xmlns=""
+								i:type="AxFormStringControl">
+								<Name>FeedbackId</Name>
+								<AllowEdit>No</AllowEdit>
+								<Type>String</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<DataField>FeedbackId</DataField>
+								<DataSource>HSMobileOpsFeedback</DataSource>
+							</AxFormControl>
+						</Controls>
+						<ColumnsMode>Fill</ColumnsMode>
+						<Caption>Sent from</Caption>
+						<DataSource>HSMobileOpsFeedback</DataSource>
+					</AxFormControl>
+					<AxFormControl xmlns=""
+						i:type="AxFormTabPageControl">
+						<Name>LogPage</Name>
+						<Pattern>FieldsFieldGroups</Pattern>
+						<PatternVersion>1.1</PatternVersion>
+						<Type>TabPage</Type>
+						<FormControlExtension
+							i:nil="true" />
+						<Controls>
+							<AxFormControl xmlns=""
+								i:type="AxFormStringControl">
+								<Name>Logs</Name>
+								<AllowEdit>No</AllowEdit>
+								<Type>String</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<DataField>Logs</DataField>
+								<DataSource>HSMobileOpsFeedback</DataSource>
+								<DisplayHeight>24</DisplayHeight>
+								<DisplayHeightMode>Fixed</DisplayHeightMode>
+								<DisplayLength>120</DisplayLength>
+								<DisplayLengthMode>Fixed</DisplayLengthMode>
+								<MultiLine>Yes</MultiLine>
+							</AxFormControl>
+						</Controls>
+						<ColumnsMode>Fill</ColumnsMode>
+						<Caption>App log</Caption>
+						<DataSource>HSMobileOpsFeedback</DataSource>
+					</AxFormControl>
+				</Controls>
+				<AlignChild>No</AlignChild>
+				<ArrangeMethod>Vertical</ArrangeMethod>
+				<DataSource>HSMobileOpsFeedback</DataSource>
+				<Style>FastTabs</Style>
+			</AxFormControl>
+		</Controls>
+	</Design>
+	<Parts />
+</AxForm>

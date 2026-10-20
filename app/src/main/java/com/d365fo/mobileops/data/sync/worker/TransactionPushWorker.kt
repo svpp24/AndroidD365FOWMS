@@ -33,9 +33,14 @@ class TransactionPushWorker @AssistedInject constructor(
     private val queue: SyncQueueRepository,
     private val dispatcher: PostingDispatcher,
     private val notifier: SyncNotifier,
+    private val connectionSettings: com.d365fo.mobileops.data.security.ConnectionSettings,
 ) : CoroutineWorker(context, params) {
 
     override suspend fun doWork(): Result {
+        // Settings > Data posting is off: every capture stays queued on the device, untouched -
+        // not attempted, so not failed. Switching it on sends them (see SyncStatusProvider). An
+        // admin's permission change is configuration, not a capture, so it still goes.
+        val postingAllowed = connectionSettings.postingEnabled.value
         var processed = 0
         var deadLettered = 0
 
@@ -43,12 +48,17 @@ class TransactionPushWorker @AssistedInject constructor(
             val batch = queue.leaseBatch()
             if (batch.isEmpty()) break
 
-            batch.forEachIndexed { index, entry ->
+            val held = batch.filter {
+                !postingAllowed && it.operation != com.d365fo.mobileops.data.local.entity.SyncOperation.SET_WORKER_PERMISSION
+            }
+            if (held.isNotEmpty()) queue.releaseLease(held)
+            val toSend = batch - held.toSet()
+            toSend.forEachIndexed { index, entry ->
                 if (isStopped) {
                     // WorkManager is reclaiming us. Release the untouched remainder of the
                     // lease so the next run picks them up at once rather than waiting for
                     // the lease to expire.
-                    queue.releaseLease(batch.drop(index))
+                    queue.releaseLease(toSend.drop(index))
                     return Result.success()
                 }
 
@@ -79,7 +89,7 @@ class TransactionPushWorker @AssistedInject constructor(
                         // same wall and burning everyone's retry budget.
                         if (result.failure.retryable) {
                             Timber.i("push halted: %s", result.failure.message)
-                            queue.releaseLease(batch.drop(index + 1))
+                            queue.releaseLease(toSend.drop(index + 1))
                             return finish(processed + 1, deadLettered)
                         }
                     }
@@ -88,6 +98,8 @@ class TransactionPushWorker @AssistedInject constructor(
                 }
                 processed++
             }
+            // Held entries come straight back in the next lease: stop here instead of looping.
+            if (held.isNotEmpty()) break
         }
         return finish(processed, deadLettered)
     }

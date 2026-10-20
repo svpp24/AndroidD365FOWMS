@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsCloudLicenseResult</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// What HSMobileOpsLicenseCloudClient::checkStatus() found when it called the vendor's
+/// CheckLicense Azure Function - never thrown, always returned, same reasoning as
+/// HSMobileOpsLicenseStatus.
+///
+/// `reachable` is the field callers check first: false means the Function itself could not be
+/// reached or answered with a server error - a transient outage, not a verdict about this
+/// customer - and HSMobileOpsLicense::verifyWithAttestation's grace-period cache exists
+/// specifically to ride that out rather than lock a whole fleet out over it. `true` with
+/// licenseStatus "Unknown" is a real answer (the Function ran fine and found no row for this
+/// customerId), not a reachability failure - the two are deliberately not conflated.
+/// </summary>
+[Wrappable(false)]
+internal final class HSMobileOpsCloudLicenseResult
+{
+    boolean reachable;
+    str     licenseStatus;
+    str     integrityVerdict;
+    str     reasonsText;
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmReachable</Name>
+				<Source><![CDATA[
+
+    internal boolean parmReachable(boolean _value = reachable)
+    {
+        reachable = _value;
+        return reachable;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmLicenseStatus</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// "Active" / "Suspended" / "Revoked" / "Unknown" - see CheckLicense's own response shape
+    /// (azure-license-function/function_app.py). Blank when reachable is false.
+    /// </summary>
+    internal str parmLicenseStatus(str _value = licenseStatus)
+    {
+        licenseStatus = _value;
+        return licenseStatus;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmIntegrityVerdict</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// "PASS" / "FAIL" / "UNVERIFIED" - see azure-license-function/playintegrity.py. Blank when
+    /// reachable is false.
+    /// </summary>
+    internal str parmIntegrityVerdict(str _value = integrityVerdict)
+    {
+        integrityVerdict = _value;
+        return integrityVerdict;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmReasonsText</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The Function's own "reasons" array, joined with "; " - human-readable detail for
+    /// whichever verdict came back, surfaced in HSMobileOpsLicenseStatus::parmMessage() on
+    /// failure so an administrator sees something more specific than "integrity check failed".
+    /// </summary>
+    internal str parmReasonsText(str _value = reasonsText)
+    {
+        reasonsText = _value;
+        return reasonsText;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

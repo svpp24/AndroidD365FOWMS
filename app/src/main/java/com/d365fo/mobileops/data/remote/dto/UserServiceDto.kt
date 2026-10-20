@@ -35,6 +35,10 @@ data class SignInRequestBody(
     @SerialName("Platform") val platform: String = "",
     @SerialName("PlatformVersion") val platformVersion: String = "",
     @SerialName("AppVersionName") val appVersionName: String = "",
+    /** A Play Integrity Standard API token from [com.d365fo.mobileops.data.security.PlayIntegrityTokenProvider],
+     *  or null if one could not be obtained - see `HSMobileOpsLicense::verifyWithAttestation` for
+     *  how AOS treats a missing token (UNVERIFIED, not a hard failure). */
+    @SerialName("IntegrityToken") val integrityToken: String? = null,
 )
 
 @Serializable
@@ -42,12 +46,14 @@ data class SignInServiceResponse(
     @SerialName("Success") val success: Boolean = false,
     /**
      * INVALID_CREDENTIALS, INACTIVE, LOCKED_OUT, NO_WAREHOUSE, INVALID_REQUEST, NO_LICENSE,
-     * LICENSE_INVALID, LICENSE_EXPIRED, DEVICE_LIMIT_REACHED.
+     * LICENSE_INVALID, LICENSE_EXPIRED, DEVICE_LIMIT_REACHED, LICENSE_REVOKED, INTEGRITY_FAILED.
      *
      * A wrong user name and a wrong password both come back as INVALID_CREDENTIALS by design, so
-     * the client must not try to be more specific than the server was. The four license-related
-     * codes are checked server-side before credentials are even looked at - see
-     * WorkerSessionRepository.signIn.
+     * the client must not try to be more specific than the server was. The license-related codes
+     * are all checked server-side before credentials are even looked at - see
+     * WorkerSessionRepository.signIn. The last two (LICENSE_REVOKED, INTEGRITY_FAILED) only ever
+     * come from the live cloud/attestation check layered on top of the local certificate/license
+     * chain - see `HSMobileOpsLicense::verifyWithAttestation`.
      */
     @SerialName("ErrorCode") val errorCode: String? = null,
     @SerialName("Message") val message: String? = null,

@@ -19,20 +19,9 @@ class ThemePreferences @Inject constructor(
     private val _palette = MutableStateFlow(loadPalette())
     val palette: StateFlow<ColorPalette> = _palette.asStateFlow()
 
-    fun setPalette(value: ColorPalette) {
-        secureStore.putString(KEY_PALETTE, value.name)
-        _palette.value = value
-    }
-
     /**
-     * Always Maroon (with its light-to-full gradient) - the palette picker was removed on
-     * request, so a colour saved by an older build is ignored rather than kept.
+     * Always Indigo - the navy look the app was restyled to (user, 20 Oct); the palette picker
+     * was removed on request, so a colour saved by an older build is ignored rather than kept.
      */
-    private fun loadPalette(): ColorPalette = ColorPalette.MAROON
-
-    private companion object {
-        // Bumped from "color_palette" so devices that had a different colour saved reset once to the
-        // new Microsoft-blue default rather than keeping the old choice.
-        const val KEY_PALETTE = "color_palette_v2"
-    }
+    private fun loadPalette(): ColorPalette = ColorPalette.INDIGO
 }

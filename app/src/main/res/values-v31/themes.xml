@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Android 12+ shows the launch screen's icon inside a circle two-thirds its size; the
+         launcher icon's slanted H reached past it and lost two corners. The launch screen gets
+         its own copy of the logo, scaled to fit, so the launcher icon keeps its full size. -->
+    <style name="Theme.D365MobileOps" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/ic_splash_logo</item>
+    </style>
+</resources>

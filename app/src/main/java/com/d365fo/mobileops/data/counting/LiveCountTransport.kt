@@ -12,7 +12,10 @@ import javax.inject.Singleton
 class LiveCountTransport @Inject constructor(
     private val dmf: CountingJournalRepository,
     private val direct: DirectCountingRepository,
+    private val staging: CountStagingRepository,
 ) : CountTransport {
+
+    override suspend fun submitStaged(journalId: String, audit: SubmissionAudit) = staging.submitJournal(journalId, audit)
 
     override suspend fun startDmfImport(journalId: String, audit: SubmissionAudit, claimToken: String?) =
         dmf.submitCounts(journalId, audit, claimToken).toTransport()

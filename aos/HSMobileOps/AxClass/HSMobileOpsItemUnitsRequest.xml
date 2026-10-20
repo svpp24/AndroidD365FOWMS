@@ -10,6 +10,7 @@
 class HSMobileOpsItemUnitsRequest
 {
     DataAreaId dataAreaId;
+    str itemsJson;
     List items;
 
 }
@@ -31,12 +32,97 @@ class HSMobileOpsItemUnitsRequest
 				<Name>parmItems</Name>
 				<Source><![CDATA[
 
-    [DataMemberAttribute('Items'),
-     DataCollectionAttribute(Types::Class, classStr(HSMobileOpsItemUnitsKey))]
+    /// <summary>
+    /// The item variants, read from ItemsJson. Not a data member itself: a list of a custom class
+    /// does not bind on the way in (JObject cast failure - see HSMobileOpsPostRequest.parmLinesJson).
+    /// </summary>
     public List parmItems(List _value = items)
     {
         items = _value;
+        if (!items && itemsJson)
+        {
+            items = HSMobileOpsItemUnitsRequest::itemsFromJson(itemsJson);
+        }
         return items;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmItemsJson</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The item variants as a JSON array of HSMobileOpsItemUnitsKey's members.
+    /// </summary>
+    [DataMemberAttribute('ItemsJson')]
+    public str parmItemsJson(str _value = itemsJson)
+    {
+        itemsJson = _value;
+        return itemsJson;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>itemsFromJson</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Item keys from a JSON array, as the handheld sends them. Missing members read as blank;
+    /// an unparseable string gives an empty list.
+    /// </summary>
+    private static List itemsFromJson(str _json)
+    {
+        List                         result = new List(Types::Class);
+        System.Object                parsed;
+        Newtonsoft.Json.Linq.JArray  jArray;
+        Newtonsoft.Json.Linq.JObject jItem;
+        HSMobileOpsItemUnitsKey      itemKey;
+        int                          itemCount;
+        int                          i;
+
+        try
+        {
+            parsed = Newtonsoft.Json.Linq.JArray::Parse(_json);
+        }
+        catch (Exception::CLRError)
+        {
+            return result;
+        }
+        jArray = parsed;
+        if (jArray == null)
+        {
+            return result;
+        }
+
+        itemCount = jArray.get_Count();
+        for (i = 0; i < itemCount; i++)
+        {
+            jItem = jArray.get_Item(i);
+            if (jItem == null)
+            {
+                continue;
+            }
+            itemKey = new HSMobileOpsItemUnitsKey();
+            itemKey.parmItemId(HSMobileOpsItemUnitsRequest::jsonStr(jItem, 'ItemId'));
+            itemKey.parmConfigId(HSMobileOpsItemUnitsRequest::jsonStr(jItem, 'ConfigId'));
+            itemKey.parmSizeId(HSMobileOpsItemUnitsRequest::jsonStr(jItem, 'SizeId'));
+            itemKey.parmColorId(HSMobileOpsItemUnitsRequest::jsonStr(jItem, 'ColorId'));
+            itemKey.parmStyleId(HSMobileOpsItemUnitsRequest::jsonStr(jItem, 'StyleId'));
+            result.addEnd(itemKey);
+        }
+        return result;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>jsonStr</Name>
+				<Source><![CDATA[
+
+    private static str jsonStr(Newtonsoft.Json.Linq.JObject _obj, str _property)
+    {
+        Newtonsoft.Json.Linq.JToken token = _obj ? _obj.get_Item(_property) : null;
+
+        return token == null ? '' : token.ToString();
     }
 ]]></Source>
 			</Method>

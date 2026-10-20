@@ -218,6 +218,9 @@ interface CountingDao {
     @Query("SELECT * FROM count_exception WHERE journalId = :journalId AND sentAt IS NULL ORDER BY capturedAt")
     suspend fun unsentExceptions(journalId: String): List<CountExceptionEntity>
 
+    @Query("SELECT * FROM count_exception WHERE clientId = :clientId AND sentAt IS NULL")
+    suspend fun unsentException(clientId: String): CountExceptionEntity?
+
     @Query("UPDATE count_exception SET sentAt = :at, sendError = NULL WHERE journalId = :journalId AND sentAt IS NULL")
     suspend fun markExceptionsSent(journalId: String, at: Long)
 
@@ -226,9 +229,6 @@ interface CountingDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertLocationCheck(check: CountLocationCheckEntity)
-
-    @Query("SELECT * FROM count_location_check WHERE journalId = :journalId")
-    fun observeLocationChecks(journalId: String): Flow<List<CountLocationCheckEntity>>
 
     @Query("SELECT * FROM count_location_check WHERE journalId = :journalId AND sentAt IS NULL")
     suspend fun unsentLocationChecks(journalId: String): List<CountLocationCheckEntity>

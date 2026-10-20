@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxService xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsTransferListSvc</Name>
+	<Class>HSMobileOpsTransferListService</Class>
+	<ExternalName>TransferListService</ExternalName>
+	<Namespace>http://schemas.hs.com/mobileops</Namespace>
+	<ServiceOperations>
+		<AxServiceOperation>
+			<Name>listTransferOrders</Name>
+			<Method>listTransferOrders</Method>
+		</AxServiceOperation>
+		<AxServiceOperation>
+			<Name>listPickedSerials</Name>
+			<Method>listPickedSerials</Method>
+		</AxServiceOperation>
+	</ServiceOperations>
+</AxService>

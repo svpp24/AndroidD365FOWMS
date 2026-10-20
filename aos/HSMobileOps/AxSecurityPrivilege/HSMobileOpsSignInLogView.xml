@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxSecurityPrivilege xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsSignInLogView</Name>
+	<Description>See when each worker signed in and out on the handhelds, and for how long.</Description>
+	<Label>View worker sign-in history</Label>
+	<DirectAccessPermissions>
+		<AxSecurityDataEntityReference>
+			<Grant>
+				<Read>Allow</Read>
+			</Grant>
+			<Name>HSMobileOpsSignInLog</Name>
+			<Fields />
+		</AxSecurityDataEntityReference>
+	</DirectAccessPermissions>
+	<EntryPoints>
+		<AxSecurityEntryPointReference>
+			<Name>HSMobileOpsSignInLog</Name>
+			<Grant>
+				<Read>Allow</Read>
+			</Grant>
+			<ObjectName>HSMobileOpsSignInLog</ObjectName>
+			<ObjectType>MenuItemDisplay</ObjectType>
+			<Forms />
+		</AxSecurityEntryPointReference>
+	</EntryPoints>
+	<FormControlOverrides />
+</AxSecurityPrivilege>

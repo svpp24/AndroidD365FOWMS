@@ -1,0 +1,216 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsTransferListService</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Lists for the app's Transfer orders, TO's by Store and Picked serials screens - reads only,
+/// registered as HSMobileOpsTransferListSvc. One request shape for both operations.
+/// </summary>
+class HSMobileOpsTransferListService
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>listTransferOrders</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Open transfer orders for WarehouseId that the warehouse can act on: ones still to ship
+    /// from it (Created) and ones shipped to it and not yet received (Shipped). At most
+    /// maxRows(), soonest ship date first.
+    /// </summary>
+    [Wrappable(false), Hookable(false)]
+    public HSMobileOpsTransferListResponse listTransferOrders(HSMobileOpsTransferListRequest _request)
+    {
+        HSMobileOpsTransferListResponse response = new HSMobileOpsTransferListResponse();
+        HSMobileOpsTransferSummaryRow   row;
+        List                            orders = new List(Types::Class);
+        InventTransferTable             transferTable;
+        InventTransferLine              transferLine;
+        InventLocationId                warehouseId;
+        int                             rows;
+
+        response.parmSuccess(false);
+        response.parmOrders(orders);
+        response.parmSerials(new List(Types::Class));
+
+        if (!_request || !_request.parmDataAreaId() || !_request.parmWarehouseId()
+         || !CompanyInfo::findDataArea(_request.parmDataAreaId()).RecId)
+        {
+            response.parmErrorCode('INVALID_REQUEST');
+            return response;
+        }
+        warehouseId = _request.parmWarehouseId();
+
+        changecompany (_request.parmDataAreaId())
+        {
+            while select TransferId, InventLocationIdFrom, InventLocationIdTo, TransferStatus, ShipDate, ReceiveDate
+                from transferTable
+                order by ShipDate, TransferId
+                where (transferTable.InventLocationIdFrom == warehouseId
+                        && transferTable.TransferStatus == InventTransferStatus::Created)
+                   || (transferTable.InventLocationIdTo == warehouseId
+                        && transferTable.TransferStatus == InventTransferStatus::Shipped)
+            {
+                select count(RecId) from transferLine
+                    where transferLine.TransferId == transferTable.TransferId;
+                // A header with no lines (BSP-TO-000000022) has nothing to ship or receive.
+                if (!transferLine.RecId)
+                {
+                    continue;
+                }
+
+                row = new HSMobileOpsTransferSummaryRow();
+                row.parmTransferId(transferTable.TransferId);
+                row.parmFromWarehouseId(transferTable.InventLocationIdFrom);
+                row.parmToWarehouseId(transferTable.InventLocationIdTo);
+                row.parmStatus(enum2Symbol(enumNum(InventTransferStatus), transferTable.TransferStatus));
+                row.parmShipDate(HSMobileOpsTransferListService::isoDate(transferTable.ShipDate));
+                row.parmReceiveDate(HSMobileOpsTransferListService::isoDate(transferTable.ReceiveDate));
+                row.parmLineCount(any2Int(transferLine.RecId));
+                row.parmDirection(transferTable.InventLocationIdFrom == warehouseId ? 'OUT' : 'IN');
+                orders.addEnd(row);
+
+                rows++;
+                if (rows >= HSMobileOpsTransferListService::maxRows())
+                {
+                    break;
+                }
+            }
+        }
+
+        response.parmOrders(orders);
+        response.parmSuccess(true);
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>listPickedSerials</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Serial numbers that left WarehouseId in the last Days days (default 30) - picked,
+    /// deducted or sold - newest first, with the order that took each one. Search, when given,
+    /// keeps rows whose item or serial contains it. At most maxRows().
+    /// </summary>
+    [Wrappable(false), Hookable(false)]
+    public HSMobileOpsTransferListResponse listPickedSerials(HSMobileOpsTransferListRequest _request)
+    {
+        HSMobileOpsTransferListResponse response = new HSMobileOpsTransferListResponse();
+        HSMobileOpsSerialHistoryRow     row;
+        List                            serials = new List(Types::Class);
+        InventSerial                    inventSerial;
+        InventTrans                     inventTrans;
+        InventTransOrigin               origin;
+        InventDim                       inventDim;
+        InventLocationId                warehouseId;
+        TransDate                       cutoff;
+        str                             search;
+        Map                             names = new Map(Types::String, Types::String);
+        int                             rows;
+
+        response.parmSuccess(false);
+        response.parmOrders(new List(Types::Class));
+        response.parmSerials(serials);
+
+        if (!_request || !_request.parmDataAreaId() || !_request.parmWarehouseId()
+         || !CompanyInfo::findDataArea(_request.parmDataAreaId()).RecId)
+        {
+            response.parmErrorCode('INVALID_REQUEST');
+            return response;
+        }
+        warehouseId = _request.parmWarehouseId();
+        cutoff      = DateTimeUtil::getSystemDate(DateTimeUtil::getUserPreferredTimeZone())
+                    - (_request.parmDays() > 0 ? _request.parmDays() : 30);
+        search      = strLRTrim(_request.parmSearch());
+
+        changecompany (_request.parmDataAreaId())
+        {
+            // Starts from InventSerial - one row per item and serial, by far the smallest of the
+            // three tables (3 rows here, against 5.9M InventDim and 34M InventTrans) - then each
+            // serial's item to its transactions through InventTrans' item index, and only then the
+            // dimension, by its primary key. Starting from InventTrans scanned it (29 s), and
+            // from InventDim, which has no index leading with the serial, scanned that (6.5 s).
+            while select forceNestedLoop ItemId, InventSerialId from inventSerial
+                join inventTrans
+                    order by DateStatus desc
+                    where inventTrans.ItemId       == inventSerial.ItemId
+                       && inventTrans.DateStatus   >= cutoff
+                       && (inventTrans.StatusIssue == StatusIssue::Picked
+                        || inventTrans.StatusIssue == StatusIssue::Deducted
+                        || inventTrans.StatusIssue == StatusIssue::Sold)
+                join InventLocationId, InventSerialId, InventBatchId from inventDim
+                    where inventDim.inventDimId      == inventTrans.inventDimId
+                       && inventDim.InventSerialId   == inventSerial.InventSerialId
+                       && inventDim.InventLocationId == warehouseId
+                join ReferenceId, ReferenceCategory from origin
+                    where origin.RecId == inventTrans.InventTransOrigin
+            {
+                if (search
+                 && !strScan(inventTrans.ItemId, search, 1, strLen(inventTrans.ItemId))
+                 && !strScan(inventDim.InventSerialId, search, 1, strLen(inventDim.InventSerialId)))
+                {
+                    continue;
+                }
+                if (!names.exists(inventTrans.ItemId))
+                {
+                    names.insert(inventTrans.ItemId, InventTable::find(inventTrans.ItemId).defaultProductName());
+                }
+
+                row = new HSMobileOpsSerialHistoryRow();
+                row.parmItemId(inventTrans.ItemId);
+                row.parmItemName(names.lookup(inventTrans.ItemId));
+                row.parmSerialId(inventDim.InventSerialId);
+                row.parmBatchId(inventDim.InventBatchId);
+                row.parmReference(origin.ReferenceId);
+                row.parmReferenceType(enum2Symbol(enumNum(InventTransType), origin.ReferenceCategory));
+                row.parmStatus(enum2Symbol(enumNum(StatusIssue), inventTrans.StatusIssue));
+                row.parmTransDate(HSMobileOpsTransferListService::isoDate(inventTrans.DateStatus));
+                row.parmQuantity(-inventTrans.Qty);
+                serials.addEnd(row);
+
+                rows++;
+                if (rows >= HSMobileOpsTransferListService::maxRows())
+                {
+                    break;
+                }
+            }
+        }
+
+        response.parmSerials(serials);
+        response.parmSuccess(true);
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>isoDate</Name>
+				<Source><![CDATA[
+
+    private static str isoDate(TransDate _date)
+    {
+        if (!_date)
+        {
+            return '';
+        }
+        return date2Str(_date, 321, DateDay::Digits2, DateSeparator::Hyphen,
+            DateMonth::Digits2, DateSeparator::Hyphen, DateYear::Digits4);
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>maxRows</Name>
+				<Source><![CDATA[
+
+    private static int maxRows()
+    {
+        return 300;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

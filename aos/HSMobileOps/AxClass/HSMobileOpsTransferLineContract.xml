@@ -21,6 +21,7 @@ class HSMobileOpsTransferLineContract
     InventSiteId        toSiteId;
     InventLocationId    toWarehouseId;
     WMSLocationId       locationId;
+    InventBatchId       lineBatchId;
 
     boolean             batchRequired;
     boolean             serialRequired;
@@ -35,6 +36,7 @@ class HSMobileOpsTransferLineContract
     boolean locationMandatory;
     boolean serialPerUnit;
     List    units;
+    List    shippedBatches;
 }
 ]]></Declaration>
 		<Methods>
@@ -207,6 +209,22 @@ class HSMobileOpsTransferLineContract
 ]]></Source>
 			</Method>
 			<Method>
+				<Name>parmLineBatchId</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The batch on the line itself - set when the order was created for a chosen batch
+    /// (TO creation's "which stock?"). A hint for shipping; blank for "any batch".
+    /// </summary>
+    [DataMemberAttribute('LineBatchId')]
+    public InventBatchId parmLineBatchId(InventBatchId _value = lineBatchId)
+    {
+        lineBatchId = _value;
+        return lineBatchId;
+    }
+]]></Source>
+			</Method>
+			<Method>
 				<Name>parmBatchRequired</Name>
 				<Source><![CDATA[
 
@@ -349,6 +367,24 @@ class HSMobileOpsTransferLineContract
     {
         units = _value;
         return units;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmShippedBatches</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Receive direction: the batches in transit on this line - shipped and not yet received -
+    /// with their quantities, so the handheld can refuse a batch that was not shipped, or more of
+    /// one than was. Empty when shipping or when the item has no batch.
+    /// </summary>
+    [DataMemberAttribute('ShippedBatches'),
+     DataCollectionAttribute(Types::Class, classStr(HSMobileOpsTransferBatchRow))]
+    public List parmShippedBatches(List _value = shippedBatches)
+    {
+        shippedBatches = _value;
+        return shippedBatches;
     }
 ]]></Source>
 			</Method>

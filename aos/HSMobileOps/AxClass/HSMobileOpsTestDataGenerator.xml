@@ -219,6 +219,86 @@ class HSMobileOpsTestDataGenerator
 ]]></Source>
 			</Method>
 			<Method>
+				<Name>mixLines</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// One line per kind of item, for the mixed purchase and transfer orders:
+    /// [item, config, size, color, style, PO qty, TO qty].
+    /// </summary>
+    public static container mixLines()
+    {
+        return [
+            ['HSN001', '', '', '', '', 5, 2],                    // no variant, no tracking
+            ['HSV001', 'C1', 'S', 'Red', 'Slim', 4, 2],          // variant, no tracking
+            ['BSR-47274-0', '', '', '', '', 6, 3],               // no variant, batch
+            ['HSN002', '', '', '', '', 2, 1],                    // no variant, serial
+            ['HST002', 'C1', 'M', 'Blue', 'Regular', 3, 2],      // variant, batch
+            ['HST003', 'C1', 'M', 'Blue', 'Regular', 2, 1],      // variant, serial
+            ['HST001', 'C1', 'M', 'Blue', 'Regular', 2, 1]       // variant, batch + serial
+        ];
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>ensureMixItems</Name>
+				<Source><![CDATA[
+
+    /// <summary>The two non-variant test items the mixed orders need, and vendor approval for all.</summary>
+    public static void ensureMixItems()
+    {
+        container lines = HSMobileOpsTestDataGenerator::mixLines();
+        int       i;
+
+        HSMobileOpsTestDataGenerator::ensureTrackingGroup('HSNone', false, false);
+        HSMobileOpsTestDataGenerator::ensureTrackingGroup('HSSerial', false, true);
+        HSMobileOpsTestDataGenerator::ensureProduct('HSN001', 'HS test plain item (no variant, no tracking)', 'HSNone');
+        HSMobileOpsTestDataGenerator::ensureProduct('HSN002', 'HS test serial item (no variant)', 'HSSerial');
+        for (i = 1; i <= conLen(lines); i++)
+        {
+            HSMobileOpsCreateVariantTestPO::ensureApprovedVendor(conPeek(conPeek(lines, i), 1), '19721');
+        }
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>ensureProduct</Name>
+				<Source><![CDATA[
+
+    /// <summary>A released product without product dimensions, set up like Dm001.</summary>
+    private static void ensureProduct(ItemId _itemId, str _name, str _trackingGroup)
+    {
+        InventTable                           template = InventTable::find('Dm001');
+        EcoResReleasedProductCreationV2Entity creation;
+
+        if (!InventTable::find(_itemId).RecId)
+        {
+            ttsbegin;
+            creation.ItemNumber                     = _itemId;
+            creation.ProductNumber                  = _itemId;
+            creation.ProductType                    = EcoResProductType::Item;
+            creation.ProductSubType                 = EcoResProductSubtype::Product;
+            creation.ProductName                    = _name;
+            creation.ProductSearchName              = _itemId;
+            creation.SearchName                     = _itemId;
+            creation.ItemModelGroupId               = template.modelGroupId();
+            creation.ProductGroupId                 = template.itemGroupId();
+            creation.StorageDimensionGroupName      = EcoResStorageDimensionGroup::find(
+                EcoResStorageDimensionGroupItem::findByItem(curExt(), template.ItemId).StorageDimensionGroup).Name;
+            creation.TrackingDimensionGroupName     = _trackingGroup;
+            creation.InventoryReservationHierarchyName = 'LP Con';
+            creation.InventoryUnitSymbol            = template.inventUnitId();
+            creation.PurchaseUnitSymbol             = template.purchUnitId();
+            creation.SalesUnitSymbol                = template.salesUnitId();
+            creation.BOMUnitSymbol                  = template.inventUnitId();
+            creation.insert();
+            ttscommit;
+        }
+        HSMobileOpsCreateVariantTestPO::ensureWmsSetup(_itemId);
+    }
+]]></Source>
+			</Method>
+			<Method>
 				<Name>ensureMaster</Name>
 				<Source><![CDATA[
 
@@ -390,7 +470,7 @@ class HSMobileOpsTestDataGenerator
 
     /// <summary>
     /// The InventDimId of a released variant (product dimensions only); blank when the variant
-    /// is not released. With _site/_warehouse/_location, the full dimension combination instead.
+    /// is not released. All four blank: an item without variants. With _site/_warehouse/_location, the full dimension combination instead.
     /// </summary>
     public static InventDimId variantDimId(ItemId _itemId, str _config, str _size, str _color, str _style,
         boolean _create = true, InventSiteId _site = '', InventLocationId _warehouse = '', WMSLocationId _location = '',
@@ -404,10 +484,14 @@ class HSMobileOpsTestDataGenerator
         dim.InventColorId = _color;
         dim.InventStyleId = _style;
         dim = InventDim::findOrCreate(dim);
-        combo = InventDimCombination::findByInventDim(_itemId, dim);
-        if (!combo.RecId)
+        // An item without product dimensions has no variant to look up.
+        if (_config || _size || _color || _style)
         {
-            return '';
+            combo = InventDimCombination::findByInventDim(_itemId, dim);
+            if (!combo.RecId)
+            {
+                return '';
+            }
         }
         if (!_create)
         {

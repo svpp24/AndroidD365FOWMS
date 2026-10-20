@@ -1,0 +1,167 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsMenuSeed</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Create default menus (Mobile device menus form): a Main menu (made the default when there is
+/// none) opening Inbound, Outbound, Inventory management and Inquiries, each holding the modules
+/// that belong there. A menu ID that already exists is left exactly as it is, so running it
+/// again only adds what is missing. Lines saved before Sequence and Opens existed get them filled.
+/// </summary>
+class HSMobileOpsMenuSeed
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>main</Name>
+				<Source><![CDATA[
+
+    public static void main(Args _args)
+    {
+        FormRun  callerForm = _args ? _args.caller() as FormRun : null;
+        RefRecId mainMenu, inbound, outbound, inventory, inquiry;
+        int      created;
+        int      filled;
+
+        ttsbegin;
+        filled = HSMobileOpsMenuSeed::fillLineDetails();
+        inbound = HSMobileOpsMenuSeed::createMenu('INBOUND', 'Inbound', NoYes::No);
+        HSMobileOpsMenuSeed::addModule(inbound, HSMobileOpsModule::PO_RECEIVING);
+        HSMobileOpsMenuSeed::addModule(inbound, HSMobileOpsModule::TRANSFER_RECEIVE);
+        HSMobileOpsMenuSeed::addModule(inbound, HSMobileOpsModule::PO_CREATE);
+
+        outbound = HSMobileOpsMenuSeed::createMenu('OUTBOUND', 'Outbound', NoYes::No);
+        HSMobileOpsMenuSeed::addModule(outbound, HSMobileOpsModule::TRANSFER_SHIP);
+        HSMobileOpsMenuSeed::addModule(outbound, HSMobileOpsModule::TO_CREATE);
+        HSMobileOpsMenuSeed::addModule(outbound, HSMobileOpsModule::PURCHASE_RETURN);
+
+        inventory = HSMobileOpsMenuSeed::createMenu('INVENTORY', 'Inventory management', NoYes::No);
+        HSMobileOpsMenuSeed::addModule(inventory, HSMobileOpsModule::INVENTORY_COUNT);
+
+        inquiry = HSMobileOpsMenuSeed::createMenu('INQUIRY', 'Inquiries', NoYes::No);
+        HSMobileOpsMenuSeed::addModule(inquiry, HSMobileOpsModule::LOCATION_INQUIRY);
+        HSMobileOpsMenuSeed::addModule(inquiry, HSMobileOpsModule::PO_OF_TODAY);
+        HSMobileOpsMenuSeed::addModule(inquiry, HSMobileOpsModule::PO_LINES);
+        HSMobileOpsMenuSeed::addModule(inquiry, HSMobileOpsModule::TRANSFER_ORDERS);
+        HSMobileOpsMenuSeed::addModule(inquiry, HSMobileOpsModule::TRANSFERS_BY_STORE);
+        HSMobileOpsMenuSeed::addModule(inquiry, HSMobileOpsModule::PICKED_SERIALS);
+
+        mainMenu = HSMobileOpsMenuSeed::createMenu('MAIN', 'Main menu',
+            HSMobileOpsMenu::findDefault().RecId ? NoYes::No : NoYes::Yes);
+        HSMobileOpsMenuSeed::addSubMenu(mainMenu, 'INBOUND');
+        HSMobileOpsMenuSeed::addSubMenu(mainMenu, 'OUTBOUND');
+        HSMobileOpsMenuSeed::addSubMenu(mainMenu, 'INVENTORY');
+        HSMobileOpsMenuSeed::addSubMenu(mainMenu, 'INQUIRY');
+        ttscommit;
+
+        created = (mainMenu ? 1 : 0) + (inbound ? 1 : 0) + (outbound ? 1 : 0) + (inventory ? 1 : 0) + (inquiry ? 1 : 0);
+        if (created)
+        {
+            info(strFmt('%1 menus created. Workers see the default menu the next time Home is shown on the handheld.', created));
+        }
+        else
+        {
+            info('The default menus already exist. No menus were added.');
+        }
+        if (filled)
+        {
+            info(strFmt('Sequence and Opens filled in on %1 existing menu lines.', filled));
+        }
+
+        if (callerForm)
+        {
+            callerForm.dataSource(1).research(true);
+        }
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>fillLineDetails</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Lines saved before Sequence and Opens existed have neither: Sequence takes the line's
+    /// LineNum, and saving the line fills Opens. Returns how many lines were filled.
+    /// </summary>
+    private static int fillLineDetails()
+    {
+        HSMobileOpsMenuLine line;
+        int                 filled;
+
+        while select forUpdate line
+            where line.Sequence == 0 || line.Opens == ''
+        {
+            if (!line.Sequence)
+            {
+                line.Sequence = real2int(line.LineNum);
+            }
+            line.update();
+            filled++;
+        }
+        return filled;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>createMenu</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Creates a menu and returns its RecId, or 0 when the ID is already taken (left alone).
+    /// </summary>
+    private static RefRecId createMenu(str _menuId, str _name, NoYes _isDefault)
+    {
+        HSMobileOpsMenu menu;
+
+        if (HSMobileOpsMenu::find(_menuId).RecId)
+        {
+            return 0;
+        }
+        menu.MenuId    = _menuId;
+        menu.Name      = _name;
+        menu.IsDefault = _isDefault;
+        menu.insert();
+        return menu.RecId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>addModule</Name>
+				<Source><![CDATA[
+
+    private static void addModule(RefRecId _menuRecId, HSMobileOpsModule _module)
+    {
+        HSMobileOpsMenuLine line;
+
+        if (_menuRecId)
+        {
+            line.MenuRecId = _menuRecId;
+            line.LineType  = HSMobileOpsMenuLineType::Module;
+            line.Module    = _module;
+            line.insert();
+        }
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>addSubMenu</Name>
+				<Source><![CDATA[
+
+    private static void addSubMenu(RefRecId _menuRecId, str _subMenuId)
+    {
+        HSMobileOpsMenuLine line;
+
+        if (_menuRecId && HSMobileOpsMenu::find(_subMenuId).RecId)
+        {
+            line.MenuRecId = _menuRecId;
+            line.LineType  = HSMobileOpsMenuLineType::SubMenu;
+            line.SubMenuId = _subMenuId;
+            line.insert();
+        }
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

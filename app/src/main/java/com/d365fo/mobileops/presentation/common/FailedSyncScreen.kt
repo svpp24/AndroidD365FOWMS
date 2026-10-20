@@ -1,5 +1,7 @@
 package com.d365fo.mobileops.presentation.common
 
+import androidx.compose.ui.Alignment
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -9,6 +11,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import com.d365fo.mobileops.presentation.common.components.SquareButton as Button
@@ -27,7 +30,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
@@ -76,6 +78,10 @@ class FailedSyncViewModel @Inject constructor(
     fun dismissActivity(key: String) = countingDownloads.dismiss(key)
 
     val failures: StateFlow<List<FailedSyncEntity>> = syncQueue.observeFailures()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /** Captured work still on this device, not yet handed to D365FO - offline, or between tries. */
+    val waiting: StateFlow<List<com.d365fo.mobileops.data.local.entity.SyncQueueEntity>> = syncQueue.observeWaiting()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     /**
@@ -210,9 +216,10 @@ class FailedSyncViewModel @Inject constructor(
  *
  * Two lists, not one. [FailedSyncViewModel.failures] is this *device's* own outbound queue -
  * whether it managed to hand a captured receipt to D365FO at all. [FailedSyncViewModel.queueStatus]
- * is D365FO's own record of what it did with what it received - Pending until someone triggers
- * [FailedSyncViewModel.processPending], then Registered or Failed. A receipt can clear the first
- * list within a second of being captured and still sit at Pending in the second for a shift.
+ * is D365FO's own record of what it did with what it received - Pending until D365FO's batch
+ * job works it (every few minutes) or someone triggers [FailedSyncViewModel.processPending],
+ * then Registered or Failed. A receipt can clear the first list within a second of being
+ * captured and still sit at Pending in the second for a few minutes.
  */
 @Composable
 fun FailedSyncScreen(
@@ -220,27 +227,26 @@ fun FailedSyncScreen(
     viewModel: FailedSyncViewModel = hiltViewModel(),
 ) {
     val failures by viewModel.failures.collectAsStateWithLifecycle()
+    val waiting by viewModel.waiting.collectAsStateWithLifecycle()
     val activities by viewModel.countingActivities.collectAsStateWithLifecycle()
     val queueStatus by viewModel.queueStatus.collectAsStateWithLifecycle()
     val queueLoading by viewModel.queueLoading.collectAsStateWithLifecycle()
     val processing by viewModel.processing.collectAsStateWithLifecycle()
     val queueError by viewModel.queueError.collectAsStateWithLifecycle()
+    val online = com.d365fo.mobileops.presentation.common.components.LocalSyncStatus.current?.fullyOnline != false
+    val postingEnabled = com.d365fo.mobileops.presentation.common.components.LocalSyncStatus.current?.postingEnabled != false
 
-    LaunchedEffect(Unit) { viewModel.loadQueueStatus() }
+    // On opening, and again when the connection comes back - the queue lives in D365FO.
+    LaunchedEffect(online) { if (online) viewModel.loadQueueStatus() }
+    // Something just sent: what D365FO received has changed.
+    LaunchedEffect(waiting.size) { if (online) viewModel.loadQueueStatus() }
 
     Scaffold(
         topBar = {
+            // A bottom tab: the greeting bar like Home, Services and More, no back arrow (20 Oct restyle).
             TopAppBar(
-                title = { Text("Activity") },
+                title = { HomeGreeting() },
                 expandedHeight = WarehouseDimens.TopBarHeight,
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(
-                            Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = stringResource(R.string.action_back),
-                        )
-                    }
-                },
             )
         },
     ) { padding ->
@@ -251,11 +257,26 @@ fun FailedSyncScreen(
                 .padding(horizontal = WarehouseDimens.ScreenPadding),
             verticalArrangement = Arrangement.spacedBy(WarehouseDimens.ItemSpacing),
         ) {
+            // First: work captured on this device that D365FO hasn't received yet. Offline this
+            // is the answer to "is my receipt safe?" - it is, and here it is.
+            if (waiting.isNotEmpty()) {
+                item {
+                    Text(
+                        text = "Waiting to send · ${waiting.size}",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = androidx.compose.ui.text.font.FontWeight.ExtraBold,
+                        modifier = Modifier.padding(top = WarehouseDimens.ItemSpacing),
+                    )
+                }
+                items(waiting, key = { it.queueId }) { entry -> WaitingCard(entry, online, postingEnabled) }
+            }
+
             if (activities.isNotEmpty()) {
                 item {
                     Text(
                         text = "Counting",
-                        style = MaterialTheme.typography.titleMedium,
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = androidx.compose.ui.text.font.FontWeight.ExtraBold,
                         modifier = Modifier.padding(top = WarehouseDimens.ItemSpacing),
                     )
                 }
@@ -267,7 +288,8 @@ fun FailedSyncScreen(
             item {
                 Text(
                     text = "Registration queue",
-                    style = MaterialTheme.typography.titleMedium,
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = androidx.compose.ui.text.font.FontWeight.ExtraBold,
                     modifier = Modifier.padding(top = WarehouseDimens.ItemSpacing),
                 )
             }
@@ -278,7 +300,7 @@ fun FailedSyncScreen(
                 ) {
                     Button(
                         onClick = viewModel::processPending,
-                        enabled = !processing,
+                        enabled = !processing && online,
                         modifier = Modifier
                             .weight(1f)
                             .heightIn(min = WarehouseDimens.MinTouchTarget),
@@ -294,7 +316,17 @@ fun FailedSyncScreen(
                     }
                 }
             }
-            queueError?.let { message ->
+            if (!online) {
+                // Not an error: the queue lives in D365FO, so there is nothing to show until it
+                // answers. What this device still has to send is listed above and below.
+                item {
+                    Text(
+                        text = "The registration queue in D365FO can be checked when the connection is back.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            } else queueError?.let { message ->
                 item {
                     ErrorBanner(message = message)
                 }
@@ -310,7 +342,7 @@ fun FailedSyncScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-            } else if (queueStatus.isEmpty()) {
+            } else if (online && queueStatus.isEmpty()) {
                 item {
                     Text(
                         text = "Nothing has been submitted for registration yet.",
@@ -319,7 +351,9 @@ fun FailedSyncScreen(
                     )
                 }
             } else {
-                items(queueStatus, key = { it.receivedUtc.orEmpty() + it.sourceId }) { entry ->
+                // D365FO's rows have no id of their own, and one document can have two in the same
+                // second (a PO created and then confirmed) - the position keeps every key unique.
+                itemsIndexed(queueStatus, key = { i, it -> "$i|${it.documentType}|${it.receivedUtc.orEmpty()}|${it.sourceId}" }) { _, entry ->
                     QueueStatusCard(entry)
                 }
             }
@@ -327,7 +361,8 @@ fun FailedSyncScreen(
             item {
                 Text(
                     text = "Failed postings",
-                    style = MaterialTheme.typography.titleMedium,
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = androidx.compose.ui.text.font.FontWeight.ExtraBold,
                     modifier = Modifier.padding(top = WarehouseDimens.ItemSpacing),
                 )
             }
@@ -353,7 +388,54 @@ fun FailedSyncScreen(
 }
 
 @Composable
+private fun WaitingCard(entry: com.d365fo.mobileops.data.local.entity.SyncQueueEntity, online: Boolean, postingEnabled: Boolean) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.padding(WarehouseDimens.ScreenPadding),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Text(text = entry.aggregateId, style = MaterialTheme.typography.titleMedium)
+            Text(
+                text = operationLabel(entry.operation) + " · saved " +
+                    com.d365fo.mobileops.util.Formatters.clockTime(entry.createdAt),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                text = when {
+                    !postingEnabled -> "Held on this device - posting is switched off in Settings"
+                    online -> "Sending to D365FO…"
+                    else -> "Saved on this device - sent when D365FO can be reached"
+                },
+                style = MaterialTheme.typography.bodyMedium,
+                color = if (online && postingEnabled) MaterialTheme.colorScheme.onSurfaceVariant else WarehouseStatusColors.amber,
+            )
+        }
+    }
+}
+
+private fun operationLabel(operation: com.d365fo.mobileops.data.local.entity.SyncOperation): String = when (operation) {
+    com.d365fo.mobileops.data.local.entity.SyncOperation.POST_PRODUCT_RECEIPT -> "PO receipt"
+    com.d365fo.mobileops.data.local.entity.SyncOperation.POST_ARRIVAL_JOURNAL -> "Arrival"
+    com.d365fo.mobileops.data.local.entity.SyncOperation.TRANSFER_ORDER_SHIP -> "Transfer shipment"
+    com.d365fo.mobileops.data.local.entity.SyncOperation.TRANSFER_ORDER_RECEIVE -> "Transfer receipt"
+    com.d365fo.mobileops.data.local.entity.SyncOperation.POST_PACKING_SLIP -> "Packing slip"
+    com.d365fo.mobileops.data.local.entity.SyncOperation.POST_INVENTORY_JOURNAL -> "Inventory journal"
+    com.d365fo.mobileops.data.local.entity.SyncOperation.SET_WORKER_PERMISSION -> "Permission change"
+    com.d365fo.mobileops.data.local.entity.SyncOperation.CREATE_PURCHASE_ORDER -> "New purchase order"
+    com.d365fo.mobileops.data.local.entity.SyncOperation.CREATE_TRANSFER_ORDER -> "New transfer order"
+    com.d365fo.mobileops.data.local.entity.SyncOperation.CONFIRM_PURCHASE_ORDER -> "PO confirmation"
+    com.d365fo.mobileops.data.local.entity.SyncOperation.SEND_FEEDBACK -> "Feedback"
+    com.d365fo.mobileops.data.local.entity.SyncOperation.CREATE_PURCHASE_RETURN -> "Return to vendor"
+}
+
+@Composable
 private fun ActivityCard(activity: CountingActivity, onDismiss: () -> Unit) {
+    // A run in progress can't move while D365FO can't be reached: say so, rather than show a
+    // progress bar that isn't progressing.
+    val status = com.d365fo.mobileops.presentation.common.components.LocalSyncStatus.current
+    val postingOff = activity.inProgress && status?.postingEnabled == false
+    val waiting = activity.inProgress && (status?.fullyOnline == false || postingOff)
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(
             modifier = Modifier.padding(WarehouseDimens.ScreenPadding),
@@ -370,12 +452,18 @@ private fun ActivityCard(activity: CountingActivity, onDismiss: () -> Unit) {
                 ErrorBanner(message = activity.label)
             } else {
                 Text(
-                    text = activity.label,
+                    text = when {
+                        postingOff -> "Held on this device - posting is switched off in Settings"
+                        waiting -> "Waiting for the connection - continues when D365FO answers"
+                        else -> activity.label
+                    },
                     style = MaterialTheme.typography.bodyMedium,
                     color = if (activity.warning) WarehouseStatusColors.amber else MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            if (activity.inProgress) {
+            if (waiting) {
+                Unit
+            } else if (activity.inProgress) {
                 val percent = activity.percent
                 if (percent != null) {
                     LinearProgressIndicator(progress = { percent / 100f }, modifier = Modifier.fillMaxWidth())
@@ -409,7 +497,6 @@ private fun QueueStatusCard(entry: PostQueueEntry) {
                 Text(
                     text = entry.sourceId,
                     style = MaterialTheme.typography.titleMedium,
-                    fontFamily = FontFamily.Monospace,
                 )
                 Text(
                     text = entry.status,
@@ -418,18 +505,21 @@ private fun QueueStatusCard(entry: PostQueueEntry) {
                 )
             }
             Text(
-                text = entry.documentType,
+                text = readableDocumentType(entry.documentType),
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             // Prefers processedUtc (when D365FO actually actioned it) over receivedUtc (when
             // this device's request landed) - the more useful of the two once both exist, since
             // "when did this finish" is what a supervisor scanning this list is really asking.
-            (entry.processedUtc ?: entry.receivedUtc)
-                ?.let(Formatters::odataToEpochMillis)
+            // D365FO sends its empty date (1900-01-01) rather than null for a row not processed
+            // yet - shown as-is that read "Processed 04:28" on a pending row.
+            val processedAt = entry.processedUtc?.let(Formatters::odataToEpochMillis)?.takeIf { it > EMPTY_DATE_CUTOFF }
+            val receivedAt = entry.receivedUtc?.let(Formatters::odataToEpochMillis)?.takeIf { it > EMPTY_DATE_CUTOFF }
+            (processedAt ?: receivedAt)
                 ?.let { epochMs ->
                     Text(
-                        text = (if (entry.processedUtc != null) "Processed " else "Received ") +
+                        text = (if (processedAt != null) "Processed " else "Received ") +
                             Formatters.clockTime(epochMs),
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -482,7 +572,6 @@ private fun FailureCard(
             Text(
                 text = failure.aggregateId,
                 style = MaterialTheme.typography.titleMedium,
-                fontFamily = FontFamily.Monospace,
             )
             Text(
                 text = failure.operation.name.replace('_', ' ').lowercase(),
@@ -501,11 +590,26 @@ private fun FailureCard(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(WarehouseDimens.ItemSpacing),
             ) {
-                TextButton(
-                    onClick = onAcknowledge,
-                    modifier = Modifier.heightIn(min = WarehouseDimens.MinTouchTarget),
-                ) {
-                    Text("Acknowledge")
+                // Acknowledged cards stay listed (Resubmit still works) but must look seen: the
+                // button stayed exactly as it was, so a tap changed nothing a worker could see
+                // except the tab badge.
+                if (failure.acknowledged) {
+                    Text(
+                        text = "✓ Acknowledged",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier
+                            .heightIn(min = WarehouseDimens.MinTouchTarget)
+                            .wrapContentHeight(Alignment.CenterVertically)
+                            .padding(horizontal = 12.dp),
+                    )
+                } else {
+                    TextButton(
+                        onClick = onAcknowledge,
+                        modifier = Modifier.heightIn(min = WarehouseDimens.MinTouchTarget),
+                    ) {
+                        Text("Acknowledge")
+                    }
                 }
                 Button(
                     onClick = onResubmit,
@@ -518,4 +622,15 @@ private fun FailureCard(
             }
         }
     }
+}
+
+/** Anything before 2000 is D365FO's "no date" value, not a real time. */
+private const val EMPTY_DATE_CUTOFF = 946_684_800_000L
+
+/** D365FO's codes ("TransferReceipt") as words - shown on every queue card. */
+private fun readableDocumentType(code: String): String = when (code) {
+    "Registration" -> "PO receipt"
+    "TransferReceipt" -> "Transfer receipt"
+    "TransferShipment" -> "Transfer shipment"
+    else -> code.replace(Regex("(?<=[a-z])(?=[A-Z])"), " ").lowercase().replaceFirstChar { it.uppercase() }
 }

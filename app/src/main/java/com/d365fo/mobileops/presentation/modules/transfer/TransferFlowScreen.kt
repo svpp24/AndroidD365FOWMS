@@ -23,6 +23,8 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ListAlt
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ReportProblem
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.Remove
@@ -48,6 +50,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -105,12 +108,96 @@ fun TransferFlowScreen(
     // phantom touch on the icon's tap target instead.
     val stepBack = {
         if (!viewModel.justScanned()) {
-            if (state.step == TransferStep.TRANSFER_ORDER) onBack() else viewModel.back()
+            when {
+                // Back from "Scanned so far" closes the list rather than stepping the flow back
+                // from under it - see ReceivingFlowScreen's stepBack.
+                state.showingCaptured -> viewModel.showCaptured(false)
+                state.step == TransferStep.TRANSFER_ORDER -> onBack()
+                else -> viewModel.back()
+            }
         }
     }
     BackHandler(onBack = stepBack)
 
+    var confirmDiscard by remember { mutableStateOf(false) }
+    if (confirmDiscard) {
+        com.d365fo.mobileops.presentation.common.components.DiscardScannedDialog(
+            lines = state.captured.size,
+            orderId = state.capture.transferId,
+            onKeep = { confirmDiscard = false },
+            onDiscard = {
+                confirmDiscard = false
+                viewModel.reset()
+            },
+        )
+    }
+
+    // Opens the number pad on reaching the quantity step, once per line - see the identical
+    // note on ReceivingFlowScreen.
+    var keypadOpenedFor by rememberSaveable { mutableStateOf<String?>(null) }
+    // The shared quantity popup (QuantityPicker), shown over this screen - not the full typing screen.
+    var showQuantity by remember { mutableStateOf(false) }
+    val quantityKey = if (state.step == TransferStep.QUANTITY && !state.busy && state.lineChoices.isEmpty() &&
+        !state.showingCaptured
+    ) {
+        "${state.capture.line?.lineNumber}:${state.captured.size}"
+    } else {
+        null
+    }
+    LaunchedEffect(quantityKey) {
+        if (quantityKey != null && quantityKey != keypadOpenedFor) {
+            while (viewModel.justScanned()) kotlinx.coroutines.delay(150)
+            keypadOpenedFor = quantityKey
+            showQuantity = true
+        }
+    }
+
+    if (showQuantity && state.step == TransferStep.QUANTITY) {
+        // Closes itself when a scan moves the flow on, or is refused or answered with a notice -
+        // otherwise that answer lands behind it, unseen (see the same rule on the entry screen).
+        val openedOn = remember { Triple(state.capture.line?.lineNumber, state.error, state.lineNotice?.id) }
+        LaunchedEffect(state.step, state.error, state.lineNotice?.id, state.capture.line?.lineNumber) {
+            if (state.capture.line?.lineNumber != openedOn.first ||
+                (state.error != null && state.error != openedOn.second) ||
+                (state.lineNotice != null && state.lineNotice?.id != openedOn.third)
+            ) showQuantity = false
+        }
+        val line = state.capture.line
+        com.d365fo.mobileops.presentation.common.components.QuantityPicker(
+            subtitle = line?.let { l ->
+                listOfNotNull(
+                    l.itemId,
+                    l.variant.label.takeIf { it.isNotBlank() },
+                    l.unitId,
+                ).joinToString(" · ")
+            },
+            hint = hintFor(state),
+            confirmLabel = "Confirm",
+            validate = viewModel::quantityError,
+            // No "all outstanding" button here (feedback) - the hint above says what is left.
+            extras = line?.takeIf { it.units.size > 1 }?.let { l ->
+                {
+                    com.d365fo.mobileops.presentation.common.components.UnitChips(
+                        units = l.units,
+                        lineUnit = l.unitId,
+                        selected = state.entryUnit ?: l.unitId,
+                        onSelect = viewModel::selectEntryUnit,
+                    )
+                }
+            },
+            onConfirm = { value ->
+                showQuantity = false
+                viewModel.onManualEntry(value)
+            },
+            // The scanner's phantom back must not close it - see stepBack.
+            onDismiss = { if (!viewModel.justScanned()) showQuantity = false },
+        )
+    }
+
     com.d365fo.mobileops.presentation.modules.cyclecounting.opportunity.OpportunityCountPrompt()
+    val discrepancy = androidx.hilt.navigation.compose.hiltViewModel<
+        com.d365fo.mobileops.presentation.modules.cyclecounting.opportunity.DiscrepancyViewModel,
+    >()
 
     Scaffold(
         topBar = {
@@ -123,10 +210,16 @@ fun TransferFlowScreen(
                     }
                 },
                 actions = {
+                    // Once an order is open, Report and Start over go in the overflow menu: with
+                    // the list, connection and feedback icons the bar was crowded (feedback
+                    // 994bf988). Before that, Report keeps its labelled button.
+                    val orderOpen = state.capture.transferId != null
                     if (mode == TransferMode.SHIP) {
                         com.d365fo.mobileops.presentation.modules.cyclecounting.opportunity.ReportDiscrepancyAction(
                             locationId = state.capture.locationId ?: state.capture.line?.locationId,
                             itemId = state.capture.line?.itemId,
+                            showTrigger = !orderOpen,
+                            viewModel = discrepancy,
                         )
                     }
                     // The "view scanned so far, and remove one if it is wrong" menu - see the
@@ -141,11 +234,29 @@ fun TransferFlowScreen(
                             }
                         }
                     }
-                    if (state.capture.transferId != null) {
-                        IconButton(onClick = viewModel::reset) {
-                            Icon(Icons.Default.Close, contentDescription = "Start over")
-                        }
+                },
+                // Report and Start over in the screen's one ⋮ menu, above Send feedback - a
+                // second ⋮ of its own sat beside it ("controls merged", feedback 10 Oct).
+                menuItems = if (state.capture.transferId == null) null else { close ->
+                    if (mode == TransferMode.SHIP && discrepancy.enabled) {
+                        androidx.compose.material3.DropdownMenuItem(
+                            text = { Text("Report discrepancy") },
+                            leadingIcon = { Icon(Icons.Default.ReportProblem, contentDescription = null) },
+                            onClick = { close(); discrepancy.open(state.capture.locationId ?: state.capture.line?.locationId, state.capture.line?.itemId) },
+                        )
                     }
+                    androidx.compose.material3.DropdownMenuItem(
+                        text = { Text("Start over") },
+                        leadingIcon = { Icon(Icons.Default.Close, contentDescription = null) },
+                        onClick = {
+                            close()
+                            // Asks first when anything is scanned - see DiscardScannedDialog - and
+                            // ignores the scanner's phantom tap (see stepBack).
+                            if (!viewModel.justScanned()) {
+                                if (state.captured.isEmpty()) viewModel.reset() else confirmDiscard = true
+                            }
+                        },
+                    )
                 },
             )
         },
@@ -159,7 +270,12 @@ fun TransferFlowScreen(
         ) {
             StepProgress(state)
 
-            state.capture.transferId?.let { CaptureSummary(state) }
+            // The scan card stays in one place on every step (feedback, 10 Oct): it used to sit
+            // below this summary, which grows from one row to five as the steps fill it in, so
+            // the card moved down the screen each step. With the card showing, the summary is
+            // drawn below it (StepPrompt's context); elsewhere it stays on top.
+            val prompting = !state.showingCaptured && state.lineChoices.isEmpty()
+            if (!prompting) state.capture.transferId?.let { CaptureSummary(state) }
 
             // weight(1f) so StepPrompt has the screen's actual remaining height to work with -
             // see the identical note on PO receiving's own copy of this Box.
@@ -172,6 +288,7 @@ fun TransferFlowScreen(
                         onAdjustQuantity = viewModel::adjustCapturedQuantity,
                         onClose = { viewModel.showCaptured(false) },
                         onPost = viewModel::postTransfer,
+                        shipping = mode == TransferMode.SHIP,
                     )
 
                     state.lineChoices.isNotEmpty() ->
@@ -180,20 +297,32 @@ fun TransferFlowScreen(
                     else -> StepPrompt(
                         state = state,
                         onSubmit = viewModel::onManualEntry,
-                        onTypeManually = onManualEntryRequested,
+                        onTypeManually = { if (state.step == TransferStep.QUANTITY) showQuantity = true else onManualEntryRequested() },
                         onOpenCamera = { showCamera = true },
                             onSkip = viewModel::skipStep,
                         onSearchItem = { showItemSearch = true },
                         onSelectUnit = viewModel::selectEntryUnit,
+                        context = { state.capture.transferId?.let { CaptureSummary(state) } },
+                        onReviewScanned = { viewModel.showCaptured(true) },
                     )
                 }
             }
 
+            state.postNotice?.let { notice ->
+                when (notice.kind) {
+                    PostNoticeKind.SENT ->
+                        com.d365fo.mobileops.presentation.common.components.SuccessBanner(notice.message, viewModel::dismissPostNotice)
+                    PostNoticeKind.QUEUED ->
+                        com.d365fo.mobileops.presentation.common.components.WarningBanner(notice.message, viewModel::dismissPostNotice)
+                    PostNoticeKind.REFUSED -> ErrorPanel(notice.message, viewModel::dismissPostNotice)
+                }
+            }
             state.error?.let { message ->
                 ErrorPanel(message, viewModel::dismissError)
             }
         }
     }
+    com.d365fo.mobileops.presentation.common.components.QuickNotice(state.lineNotice, viewModel::clearLineNotice)
 
     if (showCamera) {
         CameraScannerSheet(
@@ -210,7 +339,7 @@ fun TransferFlowScreen(
             lines = state.openLines,
             onPick = { line ->
                 showItemSearch = false
-                viewModel.onManualEntry(line.itemId)
+                viewModel.pickSearchedLine(line.itemId, line.lineNumber)
             },
             onDismiss = { showItemSearch = false },
         )
@@ -243,6 +372,8 @@ private fun StepPrompt(
     onSkip: () -> Unit = {},
     onSearchItem: () -> Unit,
     onSelectUnit: (String) -> Unit = {},
+    context: @Composable () -> Unit = {},
+    onReviewScanned: () -> Unit = {},
 ) {
     val focusRequester = remember { FocusRequester() }
 
@@ -303,16 +434,13 @@ private fun StepPrompt(
                         .clickable(enabled = !state.busy, onClick = onTypeManually),
                 )
             }
+                        // Inside the card, as on every other scan screen.
+            com.d365fo.mobileops.presentation.common.components.HeroCameraButton(onClick = onOpenCamera, enabled = !state.busy)
             }
-        }
-
-        Column(
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-            // Fixed, not derived from navigationBarsPadding() - see the identical note on
-            // ReceivingFlowScreen's own StepPrompt. Confirmed live: without this, the button row
-            // sat flush against the true bottom edge of the glass once the nav bar was hidden.
-            modifier = Modifier.padding(bottom = WarehouseDimens.ScreenPadding),
-        ) {
+            // In the scrolling group with the card, not the fixed bottom one: with up to six unit
+            // chips there, the bottom group squeezed the card - its rounded bottom was cut off
+            // and this button sat against the cut edge, reading as one control (feedback
+            // f0eda53c "controls merged", 10 Oct).
             // Offered as a button, never pre-filled: pre-filling has an operator confirm the
             // full quantity by reflex, which is exactly how a short shipment or receipt gets
             // booked in full.
@@ -340,12 +468,39 @@ private fun StepPrompt(
                     )
                 }
             }
+            context()
+        }
+
+        Column(
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+            // Fixed, not derived from navigationBarsPadding() - see the identical note on
+            // ReceivingFlowScreen's own StepPrompt. Confirmed live: without this, the button row
+            // sat flush against the true bottom edge of the glass once the nav bar was hidden.
+            modifier = Modifier.padding(bottom = WarehouseDimens.ScreenPadding),
+        ) {
+
+            // The same way out as PO receiving's "Register n lines scanned so far": with every line
+            // scanned the item step was all that was left, and the only way to post was the small
+            // list icon in the top bar (TO-31, 10 Oct). Opens the scanned list with Post transfer.
+            if (state.step == TransferStep.ITEM && state.captured.isNotEmpty()) {
+                OutlinedButton(
+                    onClick = onReviewScanned,
+                    enabled = !state.busy,
+                    modifier = Modifier.fillMaxWidth().heightIn(min = WarehouseDimens.MinTouchTarget),
+                ) {
+                    val lines = "${state.captured.size} " + (if (state.captured.size == 1) "line" else "lines")
+                    // The list's own words: "Picked so far" / "Confirm picking" when shipping.
+                    Text(
+                        if (state.capture.mode == TransferMode.SHIP) "Confirm $lines picked so far" else "Receive $lines scanned so far",
+                    )
+                }
+            }
 
             if (com.d365fo.mobileops.domain.model.canSkipTransferStep(state.step, state.capture)) {
                 OutlinedButton(
                     onClick = onSkip,
                     enabled = !state.busy,
-                    modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
+                    modifier = Modifier.fillMaxWidth().heightIn(min = WarehouseDimens.MinTouchTarget),
                 ) { Text("Skip - not required for this item") }
             }
 
@@ -357,18 +512,11 @@ private fun StepPrompt(
                     OutlinedButton(
                         onClick = onSearchItem,
                         enabled = !state.busy,
-                        modifier = Modifier.weight(1f).heightIn(min = 56.dp),
+                        modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget),
                     ) {
-                        Icon(Icons.Default.Search, contentDescription = "Search by item name or ID")
+                        Icon(Icons.Default.Search, contentDescription = null)
+                        Text("Search items", modifier = Modifier.padding(start = 8.dp))
                     }
-                }
-                OutlinedButton(
-                    onClick = onOpenCamera,
-                    enabled = !state.busy,
-                    modifier = Modifier.weight(1f).heightIn(min = 56.dp),
-                ) {
-                    Icon(Icons.Default.PhotoCamera, contentDescription = null)
-                    Text("Scan with camera", modifier = Modifier.padding(start = 8.dp))
                 }
             }
         }
@@ -394,9 +542,11 @@ private fun ItemSearchSheet(
         if (needle.isEmpty()) {
             lines
         } else {
+            // The variant too: "Red" or "C2" finds the one line of several for the same item.
             lines.filter {
                 it.itemId.contains(needle, ignoreCase = true) ||
-                    it.itemName.contains(needle, ignoreCase = true)
+                    it.itemName.contains(needle, ignoreCase = true) ||
+                    it.variant.matches(needle)
             }
         }
     }
@@ -455,6 +605,15 @@ private fun ItemSearchSheet(
                                         style = MaterialTheme.typography.bodyMedium,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     )
+                                    // Which variant: lines for the same item otherwise read identically here.
+                                    line.variant.label.takeIf { it.isNotBlank() }?.let { variant ->
+                                        Text(
+                                            text = variant,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = MaterialTheme.colorScheme.primary,
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -481,7 +640,7 @@ private fun LineChoice(lines: List<TransferOrderLine>, onPick: (TransferOrderLin
                     Column(modifier = Modifier.padding(12.dp)) {
                         Text(
                             text = "Line ${plain(BigDecimal.valueOf(line.lineNumber))} · " +
-                                "${plain(line.remainingQuantity)} ${line.unitId} outstanding",
+                                "${com.d365fo.mobileops.util.Formatters.qtyUnit(line.remainingQuantity, line.unitId)} outstanding",
                             style = MaterialTheme.typography.titleMedium,
                         )
                         Text(
@@ -509,19 +668,34 @@ private fun CapturedLines(
     onAdjustQuantity: (Int, Int) -> Unit,
     onClose: () -> Unit,
     onPost: () -> Unit,
+    /**
+     * Transfer - Ship is picking, then confirming it: each scan is picked in D365FO, and
+     * "Confirm picking" posts the shipment of what was picked (user, 8 Oct 2026).
+     */
+    shipping: Boolean = false,
 ) {
     Column(
         modifier = Modifier.fillMaxSize(),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Text(
-            text = "Scanned so far (${captured.size})",
+            text = (if (shipping) "Picked so far" else "Scanned so far") + " (${captured.size})",
             style = MaterialTheme.typography.headlineSmall,
             fontWeight = FontWeight.SemiBold,
         )
+        val online = com.d365fo.mobileops.presentation.common.components.LocalSyncStatus.current?.fullyOnline != false
         Text(
-            text = "Held on this device until you post it. Check every line before you do — " +
-                "posting cannot be undone from here.",
+            text = if (shipping && online) {
+                "Each line is picked in D365FO as you scan it. Confirm picking when you are done - " +
+                    "that posts the shipment, which cannot be undone from here."
+            } else if (shipping) {
+                // Offline nothing is picked when scanned - the shipment posting picks it.
+                "D365FO can't be reached, so lines are kept on this device and picked when the " +
+                    "shipment posts. Confirm picking when you are done - it is sent as soon as D365FO is back."
+            } else {
+                "Held on this device until you post it. Check every line before you do — " +
+                    "posting cannot be undone from here."
+            },
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -564,7 +738,7 @@ private fun CapturedLines(
                                     Icon(Icons.Default.Remove, contentDescription = "Decrease quantity")
                                 }
                                 Text(
-                                    text = "${plain(entry.quantity)} ${entry.unitSymbol}",
+                                    text = "${com.d365fo.mobileops.util.Formatters.qtyUnit(entry.quantity, entry.unitSymbol)}",
                                     style = MaterialTheme.typography.titleMedium,
                                 )
                                 IconButton(
@@ -576,16 +750,35 @@ private fun CapturedLines(
                                 }
                             }
                             val detail = listOfNotNull(
+                                // The variant first: on a product master it is what tells two
+                                // lines of one item apart (Dm001 on TO-14 showed only "AAC").
+                                entry.variantLabel.takeIf { it.isNotBlank() },
                                 entry.locationId?.takeIf { it.isNotBlank() },
                                 entry.batchId?.takeIf { it.isNotBlank() }?.let { "Batch $it" },
-                                entry.serialIds.size.takeIf { it > 0 }
-                                    ?.let { n -> if (n == 1) "1 serial" else "$n serials" },
+                                // The serial itself, like the batch - "1 serial" did not say which.
+                                // Many (one per unit) are counted, the first named.
+                                when (entry.serialIds.size) {
+                                    0 -> null
+                                    1 -> "Serial ${entry.serialIds[0]}"
+                                    else -> "${entry.serialIds.size} serials (${entry.serialIds[0]}, …)"
+                                },
                             ).joinToString(" · ")
                             if (detail.isNotBlank()) {
                                 Text(
                                     text = detail,
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            if (shipping) {
+                                Text(
+                                    text = when {
+                                        entry.pickedEarlier -> "Was already picked in D365FO - check no other device is shipping it"
+                                        entry.picked -> "Picked in D365FO"
+                                        else -> "Not picked yet - picked when you confirm"
+                                    },
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = if (entry.picked && !entry.pickedEarlier) WarehouseStatusColors.green else WarehouseStatusColors.amber,
                                 )
                             }
                         }
@@ -599,19 +792,33 @@ private fun CapturedLines(
 
         // Post is the primary action here, for the same reason as the receiving screen: this is
         // the last thing an operator sees before the transfer leaves the device.
-        Button(
-            onClick = onPost,
-            enabled = !busy && captured.isNotEmpty(),
-            modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
+        // Side by side, the same order as every dialog: the action on the left, going back on
+        // the right (feedback, 10 Oct).
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Text(if (busy) "Posting…" else "Post transfer")
-        }
-        OutlinedButton(
-            onClick = onClose,
-            enabled = !busy,
-            modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
-        ) {
-            Text("Back to scanning")
+            Button(
+                onClick = onPost,
+                enabled = !busy && captured.isNotEmpty(),
+                modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget),
+            ) {
+                Text(
+                    when {
+                        busy && shipping -> "Shipping…"
+                        busy -> "Posting…"
+                        shipping -> "Confirm picking"
+                        else -> "Post transfer"
+                    },
+                )
+            }
+            OutlinedButton(
+                onClick = onClose,
+                enabled = !busy,
+                modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget),
+            ) {
+                Text("Back to scanning")
+            }
         }
     }
 }
@@ -646,11 +853,14 @@ private fun CaptureSummary(state: TransferFlowState) {
             )
             Field("Transfer order", capture.transferId)
             Field("Item", capture.line?.let { "${it.itemId} — ${it.itemName}" })
+            // The variant on its own row: the item name alone ("HS test variant item 1") does
+            // not say which colour or size the worker should be holding.
+            Field("Variant", capture.line?.variant?.label)
             Field(
                 "Quantity",
-                capture.quantity?.let { "${plain(it)} ${capture.unitSymbol.orEmpty()}".trimEnd() },
+                capture.quantity?.let { com.d365fo.mobileops.util.Formatters.qtyUnit(it, capture.unitSymbol) },
             )
-            Field("Put away to", capture.locationId)
+            Field("Bin location", capture.locationId)
             Field("Batch", capture.batchId)
             if (capture.serialIds.isNotEmpty()) {
                 val count = capture.serialIds.size
@@ -688,7 +898,7 @@ private fun titleFor(step: TransferStep, mode: TransferMode): String = when (ste
     TransferStep.TRANSFER_ORDER -> if (mode == TransferMode.SHIP) "Ship" else "Receive"
     TransferStep.ITEM -> "Item"
     TransferStep.QUANTITY -> "Quantity"
-    TransferStep.LOCATION -> "Put away"
+    TransferStep.LOCATION -> "Bin location"
     TransferStep.BATCH -> "Batch"
     TransferStep.SERIAL -> "Serial"
     TransferStep.CONFIRM -> "Confirm"
@@ -698,7 +908,7 @@ private fun promptFor(state: TransferFlowState): String = when (state.step) {
     TransferStep.TRANSFER_ORDER -> "Scan transfer order"
     TransferStep.ITEM -> "Scan item"
     TransferStep.QUANTITY -> "Enter quantity"
-    TransferStep.LOCATION -> "Scan put-away location"
+    TransferStep.LOCATION -> "Scan bin location"
     TransferStep.BATCH -> "Scan batch"
     TransferStep.SERIAL -> state.capture.serialsOutstanding
         .takeIf { it > 1 }
@@ -708,37 +918,41 @@ private fun promptFor(state: TransferFlowState): String = when (state.step) {
 }
 
 private fun hintFor(state: TransferFlowState): String? = when (state.step) {
-    TransferStep.TRANSFER_ORDER -> if (state.capture.mode == TransferMode.SHIP) {
-        "Shipping out of this warehouse"
-    } else {
-        "Receiving into this warehouse"
+    // No information lines under the scan card (feedback: "these kind of info not required").
+    TransferStep.TRANSFER_ORDER -> null
+
+    // Nothing under "Scan item" (feedback f77ebd0d): no "n lines outstanding · n scanned" or
+    // "All lines scanned" - the list badge in the top bar already counts what is scanned.
+    TransferStep.ITEM -> null
+
+    // Receiving shows nothing under "Enter quantity" (feedback 65173f62): the "Receive all
+    // outstanding (n)" button already gives the number, and the entry unit shows on its chip.
+    TransferStep.QUANTITY -> state.capture.line?.takeIf { state.capture.mode == TransferMode.SHIP }?.let { line ->
+        "${com.d365fo.mobileops.util.Formatters.qtyUnit(line.remainingQuantity, line.unitId)} still to ship" +
+            (state.entryUnit?.let { unit -> " · entering in $unit" } ?: "")
     }
 
-    TransferStep.ITEM -> state.order?.outstandingLineCount
-        ?.takeIf { it > 0 }
-        ?.let { count ->
-            // The count, never openLines.size: on a large order the lines were not fetched.
-            val lines = if (count == 1) "1 line" else "$count lines"
-            if (state.captured.isEmpty()) {
-                "$lines outstanding"
-            } else {
-                "$lines outstanding · ${state.captured.size} scanned"
-            }
+    TransferStep.LOCATION -> null
+
+    // Receiving: which batch came on the truck is already known from the shipment - it was
+    // only said after a wrong scan ("… Shipped: E0927 (1)"), so it is said up front.
+    // Shipping: the batch the order was created for (TO creation's "which stock?") - asked for
+    // again here with nothing to say which it was (TO-34, 10 Oct).
+    TransferStep.BATCH -> state.capture.line?.let { line ->
+        when {
+            state.capture.mode == TransferMode.RECEIVE && line.shippedBatches.isNotEmpty() ->
+                "Shipped: " + line.shippedBatches.joinToString { "${it.batchId} (${plain(it.quantity)})" }
+            state.capture.mode == TransferMode.SHIP && line.lineBatchId != null ->
+                "Ordered from batch ${line.lineBatchId}"
+            else -> null
         }
-
-    TransferStep.QUANTITY -> state.capture.line?.let { line ->
-        if (state.capture.mode == TransferMode.SHIP) {
-            "${plain(line.remainingQuantity)} ${line.unitId} still to ship"
-        } else {
-            // Says "shipped", not "ordered", because that is the number that bounds this.
-            "${plain(line.shippedQuantity)} shipped · " +
-                "${plain(line.remainingQuantity)} ${line.unitId} still to receive"
-        } + (state.entryUnit?.let { unit -> " · entering in $unit" } ?: "")
     }
 
-    TransferStep.LOCATION -> state.capture.toWarehouseId?.let { "Bulk storage in warehouse $it" }
-
-    TransferStep.SERIAL -> state.capture.quantity?.let { "One serial per unit — ${plain(it)} needed" }
+    TransferStep.SERIAL -> state.capture.quantity?.let {
+        com.d365fo.mobileops.presentation.modules.stepflow.serialPrompt(
+            state.capture.line?.rules?.serialPerUnit != false, state.capture.serialsOutstanding,
+        )
+    }
 
     else -> null
 }
@@ -757,15 +971,46 @@ fun TransferEntryScreen(
     onBack: () -> Unit,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    // The hardware scanner keeps delivering into the flow's ViewModel while this pad is open, so
+    // a scan's refusal or its new step lands on the screen underneath, unseen: a PO scanned at
+    // the quantity pad said '"BSP-PO-000161706" is not a number' behind it (10 Oct). Close the
+    // pad when that happens - once, as onSubmit already pops it too.
+    var closed by remember { mutableStateOf(false) }
+    val close = { if (!closed) { closed = true; onBack() } }
+    // Quick notices too ("… is the batch - enter the quantity first"): they last a moment and
+    // were shown only behind the pad.
+    val openedOn = remember { Triple(state.step, state.error, state.lineNotice?.id) }
+    LaunchedEffect(state.step, state.error, state.lineNotice?.id) {
+        if (state.step != openedOn.first ||
+            (state.error != null && state.error != openedOn.second) ||
+            (state.lineNotice != null && state.lineNotice?.id != openedOn.third)
+        ) close()
+    }
     TextEntryScreen(
         title = promptFor(state),
         hint = hintFor(state),
         keyboardType = if (state.step == TransferStep.QUANTITY) KeyboardType.Decimal else KeyboardType.Text,
         showNumericKeypad = state.step == TransferStep.QUANTITY,
-        onBack = onBack,
+        quickFillLabel = state.suggestedQuantity?.takeIf { state.step == TransferStep.QUANTITY }?.let {
+            (if (state.capture.mode == TransferMode.SHIP) "Ship" else "Receive") + " all outstanding (${plain(it)})"
+        },
+        quickFillValue = state.suggestedQuantity?.takeIf { state.step == TransferStep.QUANTITY }?.let { plain(it) },
+        validate = viewModel::quantityError,
+        keypadExtras = state.capture.line?.takeIf { state.step == TransferStep.QUANTITY && it.units.size > 1 }?.let { line ->
+            {
+                com.d365fo.mobileops.presentation.common.components.UnitChips(
+                    units = line.units,
+                    lineUnit = line.unitId,
+                    selected = state.entryUnit ?: line.unitId,
+                    onSelect = viewModel::selectEntryUnit,
+                )
+            }
+        },
+        // The scanner's phantom back must not close the pad - see TransferFlowScreen.stepBack.
+        onBack = { if (!viewModel.justScanned()) close() },
         onSubmit = { value ->
             viewModel.onManualEntry(value)
-            onBack()
+            close()
         },
     )
 }
@@ -775,7 +1020,7 @@ private fun TransferStep.shortName(): String = when (this) {
     TransferStep.TRANSFER_ORDER -> "Transfer"
     TransferStep.ITEM -> "Item"
     TransferStep.QUANTITY -> "Qty"
-    TransferStep.LOCATION -> "Location"
+    TransferStep.LOCATION -> "Bin"
     TransferStep.BATCH -> "Batch"
     TransferStep.SERIAL -> "Serial"
     TransferStep.CONFIRM -> "Confirm"

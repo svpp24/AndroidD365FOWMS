@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxMenuItemDisplay xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsCountControlCenter</Name>
+	<Label>Stock count control center</Label>
+	<HelpText>Review the stock counts of your stores - each counter's counts, items counted twice - and transfer them into a counting journal.</HelpText>
+	<Object>HSMobileOpsCountControlCenter</Object>
+	<ObjectType>Form</ObjectType>
+</AxMenuItemDisplay>

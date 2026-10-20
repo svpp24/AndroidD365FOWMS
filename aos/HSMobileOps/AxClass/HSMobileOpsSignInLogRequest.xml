@@ -1,0 +1,161 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsSignInLogRequest</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// One worker session for HSMobileOpsSignInLogService::logSession. Times are milliseconds since
+/// 1 Jan 1970 UTC, as the handheld keeps them; SignOutMillis is 0 while the session is open.
+/// </summary>
+[DataContractAttribute]
+class HSMobileOpsSignInLogRequest
+{
+    str sessionId;
+    str dataAreaId;
+    str userName;
+    str deviceId;
+    str deviceName;
+    str warehouseId;
+    str appVersionName;
+    boolean signedInOffline;
+    int64 signInMillis;
+    int64 signOutMillis;
+    str endReason;
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmSessionId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('SessionId')]
+    public str parmSessionId(str _value = sessionId)
+    {
+        sessionId = _value;
+        return sessionId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmDataAreaId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('DataAreaId')]
+    public str parmDataAreaId(str _value = dataAreaId)
+    {
+        dataAreaId = _value;
+        return dataAreaId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmUserName</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('UserName')]
+    public str parmUserName(str _value = userName)
+    {
+        userName = _value;
+        return userName;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmDeviceId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('DeviceId')]
+    public str parmDeviceId(str _value = deviceId)
+    {
+        deviceId = _value;
+        return deviceId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmDeviceName</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('DeviceName')]
+    public str parmDeviceName(str _value = deviceName)
+    {
+        deviceName = _value;
+        return deviceName;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmWarehouseId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('WarehouseId')]
+    public str parmWarehouseId(str _value = warehouseId)
+    {
+        warehouseId = _value;
+        return warehouseId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmAppVersionName</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('AppVersionName')]
+    public str parmAppVersionName(str _value = appVersionName)
+    {
+        appVersionName = _value;
+        return appVersionName;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmSignedInOffline</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('SignedInOffline')]
+    public boolean parmSignedInOffline(boolean _value = signedInOffline)
+    {
+        signedInOffline = _value;
+        return signedInOffline;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmSignInMillis</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('SignInMillis')]
+    public int64 parmSignInMillis(int64 _value = signInMillis)
+    {
+        signInMillis = _value;
+        return signInMillis;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmSignOutMillis</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('SignOutMillis')]
+    public int64 parmSignOutMillis(int64 _value = signOutMillis)
+    {
+        signOutMillis = _value;
+        return signOutMillis;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmEndReason</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('EndReason')]
+    public str parmEndReason(str _value = endReason)
+    {
+        endReason = _value;
+        return endReason;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

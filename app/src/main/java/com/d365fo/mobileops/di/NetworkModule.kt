@@ -30,10 +30,6 @@ import java.util.concurrent.TimeUnit
 import javax.inject.Qualifier
 import javax.inject.Singleton
 
-@Qualifier @Retention(AnnotationRetention.BINARY) annotation class ODataClient
-
-@Qualifier @Retention(AnnotationRetention.BINARY) annotation class ServiceClient
-
 @Qualifier @Retention(AnnotationRetention.BINARY) annotation class AadClient
 
 @Qualifier @Retention(AnnotationRetention.BINARY) annotation class BlobClient
@@ -111,6 +107,7 @@ object NetworkModule {
     @Provides
     @Singleton
     fun provideOkHttpClient(
+        offlineReadCacheInterceptor: com.d365fo.mobileops.data.remote.interceptor.OfflineReadCacheInterceptor,
         aosReachabilityInterceptor: AosReachabilityInterceptor,
         authInterceptor: AuthInterceptor,
         rateLimitInterceptor: RateLimitInterceptor,
@@ -128,6 +125,9 @@ object NetworkModule {
                 maxRequestsPerHost = Constants.MAX_CONCURRENT_REQUESTS
             },
         )
+        // Outermost: answers a lookup from its saved copy when anything below fails to reach
+        // D365FO, the token fetch and the reachability fail-fast included. See its class doc.
+        .addInterceptor(offlineReadCacheInterceptor)
         // Added first so it wraps every other AOS interceptor - see its own class doc for
         // why that ordering is what makes it count one outcome per logical request.
         .addInterceptor(aosReachabilityInterceptor)
@@ -135,6 +135,10 @@ object NetworkModule {
         .addInterceptor(authInterceptor)
         .addInterceptor(retryAfterInterceptor)
         .addInterceptor(crossCompanyInterceptor)
+        .addInterceptor(com.d365fo.mobileops.data.remote.interceptor.LongPostingTimeoutInterceptor)
+        // Debug builds only, innermost so every interceptor above sees the failure as it would
+        // see a real outage: lets offline behaviour be tested over adb - see SimulatedOutage.
+        .apply { if (BuildConfig.DEBUG) addInterceptor(com.d365fo.mobileops.data.remote.interceptor.SimulatedOutage) }
         .apply {
             // HEADERS, not BODY.
             //

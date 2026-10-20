@@ -28,6 +28,7 @@ internal final class HSMobileOpsLicenseStatus
     str     customerId;
     str     tenantId;
     int     daysUntilExpiry;
+    str     integrityVerdict;
 
 }
 ]]></Declaration>
@@ -48,7 +49,10 @@ internal final class HSMobileOpsLicenseStatus
 				<Source><![CDATA[
 
     /// <summary>
-    /// NO_LICENSE, LICENSE_INVALID or LICENSE_EXPIRED. Blank when valid is true.
+    /// NO_LICENSE, LICENSE_INVALID, LICENSE_EXPIRED, LICENSE_REVOKED or INTEGRITY_FAILED. Blank
+    /// when valid is true. The last two are only ever set by
+    /// HSMobileOpsLicense::verifyWithAttestation, after the local certificate/license chain
+    /// below has already passed - see that method's doc comment.
     /// </summary>
     internal str parmErrorCode(str _value = errorCode)
     {
@@ -140,6 +144,23 @@ internal final class HSMobileOpsLicenseStatus
     {
         daysUntilExpiry = _value;
         return daysUntilExpiry;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmIntegrityVerdict</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// PASS / FAIL / UNVERIFIED from the cloud check's Play Integrity evaluation, or blank when
+    /// verify() alone was called (verifyWithAttestation never ran). Informational - errorCode is
+    /// what callers branch on; this is here so a support conversation or a log line can say why
+    /// INTEGRITY_FAILED happened without re-deriving it.
+    /// </summary>
+    internal str parmIntegrityVerdict(str _value = integrityVerdict)
+    {
+        integrityVerdict = _value;
+        return integrityVerdict;
     }
 ]]></Source>
 			</Method>

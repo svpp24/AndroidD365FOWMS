@@ -25,5 +25,9 @@
 			<Name>getQueueStatus</Name>
 			<Method>getQueueStatus</Method>
 		</AxServiceOperation>
+		<AxServiceOperation>
+			<Name>pickTransferLine</Name>
+			<Method>pickTransferLine</Method>
+		</AxServiceOperation>
 	</ServiceOperations>
 </AxService>

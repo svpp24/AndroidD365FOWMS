@@ -26,6 +26,8 @@ class SyncQueueRepository @Inject constructor(
 
     fun observeFailures(): Flow<List<FailedSyncEntity>> = dao.observeFailures()
 
+    fun observeWaiting(): Flow<List<com.d365fo.mobileops.data.local.entity.SyncQueueEntity>> = dao.observeWaiting()
+
     fun observeOldestQueuedAt(): Flow<Long?> = dao.observeOldestQueuedAt()
 
     /**
@@ -59,6 +61,20 @@ class SyncQueueRepository @Inject constructor(
     suspend fun leaseBatch(limit: Int = LEASE_BATCH_SIZE): List<SyncQueueEntity> =
         dao.leaseBatch(limit)
 
+    /**
+     * A worker's "Retry now": the order's entries skip the rest of their backoff wait. Same
+     * entries, same idempotency keys - a retry of work D365FO may already have, never new work.
+     */
+    suspend fun retryNow(aggregateId: String) = dao.makeDue(aggregateId, System.currentTimeMillis())
+
+    /**
+     * The device (or D365FO) is reachable again: whatever was waiting out a backoff because it
+     * could not get through is due now. Without this, an entry that failed while offline sat
+     * out its 1-5-15-60 minute wait after the network came back, and nothing woke the queue
+     * until WorkManager's 15-minute safety net - confirmed live.
+     */
+    suspend fun retryAllNow() = dao.makeAllDue(System.currentTimeMillis())
+
     /** See [SyncQueueDao.leaseOne]. Null means something else (a background worker run) already claimed it. */
     suspend fun leaseOne(queueId: String): SyncQueueEntity? = dao.leaseOne(queueId)
 
@@ -86,7 +102,11 @@ class SyncQueueRepository @Inject constructor(
         now: Long = System.currentTimeMillis(),
     ): Boolean {
         val attempts = entry.retryCount + 1
-        val exhausted = attempts >= Constants.MAX_RETRY_COUNT
+        // No answer from D365FO at all - no connection, DNS, a timeout - never uses up the
+        // budget: an outage longer than the ladder must not turn captured work into a "failed"
+        // posting someone has to resubmit. Only D365FO answering (5xx, 429) counts towards it.
+        val noAnswer = failure is AppFailure.Offline || (failure is AppFailure.Transient && failure.httpCode == null)
+        val exhausted = !noAnswer && attempts >= Constants.MAX_RETRY_COUNT
 
         if (!failure.retryable || exhausted) {
             dao.deadLetter(
@@ -158,11 +178,6 @@ class SyncQueueRepository @Inject constructor(
         )
         dao.resubmit(failureId, entry)
         return true
-    }
-
-    suspend fun clearAll() {
-        dao.clear()
-        dao.clearFailures()
     }
 
     private companion object {

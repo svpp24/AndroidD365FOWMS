@@ -19,4 +19,31 @@ enum class WarehouseWorkflow(val label: String) {
     LOCATION_INQUIRY("Location inquiry"),
     PO_OF_TODAY("PO's of today"),
     PO_LINES("PO lines"),
+    TRANSFER_ORDERS("Transfer orders"),
+    TRANSFERS_BY_STORE("TO's by Store"),
+    PICKED_SERIALS("Picked serials"),
+    PO_CREATE("PO creation"),
+    TO_CREATE("TO creation"),
+    PO_CONFIRM("PO confirmation"),
+    PURCHASE_RETURN("Purchase return"),
+    ;
+
+    /**
+     * Creating orders needs an explicit allow under Menu access: no row means blocked, unlike
+     * every other module (absence-means-allowed). D365FO enforces the same - see
+     * HSMobileOpsOrderCreateService::mayCreate.
+     */
+    val requiresExplicitAllow: Boolean get() = this == PO_CREATE || this == TO_CREATE || this == PO_CONFIRM || this == PURCHASE_RETURN
 }
+
+/**
+ * The modules a worker may not use, from their Menu access rows (Mobile device users in D365FO).
+ *
+ * An allow list: once a worker has any rows, only the modules ticked Allowed show. A worker with
+ * no rows at all keeps every normal module, so nobody loses access before an admin sets them up.
+ * The order modules ([WarehouseWorkflow.requiresExplicitAllow]) always need an Allowed row.
+ */
+fun blockedWorkflows(allowed: Set<WarehouseWorkflow>, hasRows: Boolean): Set<WarehouseWorkflow> =
+    WarehouseWorkflow.entries.filter { workflow ->
+        workflow !in allowed && (hasRows || workflow.requiresExplicitAllow)
+    }.toSet()

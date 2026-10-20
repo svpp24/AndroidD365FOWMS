@@ -1,0 +1,628 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsCountControl</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// The Stock count control center's rules: a store's stock count (HSMobileOpsCountMaster) with one
+/// staging journal per counter (HSMobileOpsCountStage) and their counted lines
+/// (HSMobileOpsCountStageLine); finding items counted more than once, the supervisor's decision
+/// on each, and Transfer into a D365FO counting journal. Used by the handheld's staging service
+/// (HSMobileOpsCountStageService) and by the control center form's buttons.
+/// </summary>
+class HSMobileOpsCountControl
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>openMaster</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The store's open stock count for this journal (blank = a free store count), created when
+    /// there is none. Called inside changecompany and a transaction.
+    /// </summary>
+    public static HSMobileOpsCountMaster openMaster(InventLocationId _store, InventJournalId _sourceJournalId, str _userName)
+    {
+        HSMobileOpsCountMaster master;
+        utcdatetime            now = DateTimeUtil::utcNow();
+
+        select forUpdate firstonly master
+            where master.InventLocationId == _store
+               && master.SourceJournalId  == _sourceJournalId
+               && master.Status           == HSMobileOpsCountMasterStatus::Open;
+        if (master.RecId)
+        {
+            return master;
+        }
+        master.clear();
+        master.MasterId         = HSMobileOpsCountControl::nextMasterId(_store);
+        master.InventLocationId = _store;
+        master.InventSiteId     = InventLocation::find(_store).InventSiteId;
+        master.SourceJournalId  = _sourceJournalId;
+        master.Description      = _sourceJournalId
+            ? subStr(strFmt('Count of journal %1', _sourceJournalId), 1, 60)
+            : subStr(strFmt('Store count %1', _store), 1, 60);
+        master.Status           = HSMobileOpsCountMasterStatus::Open;
+        master.CreatedByUser    = _userName;
+        master.StartedUtc       = now;
+        master.insert();
+        return master;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>nextMasterId</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// STORE-YYYYMMDD-n: the store, today, and the next number for that store today.
+    /// </summary>
+    private static str nextMasterId(InventLocationId _store)
+    {
+        HSMobileOpsCountMaster master;
+        date                   today = DateTimeUtil::getSystemDate(DateTimeUtil::getUserPreferredTimeZone());
+        str                    prefix = strFmt('%1-%2-', _store, date2Str(today, 321, DateDay::Digits2, DateSeparator::None,
+            DateMonth::Digits2, DateSeparator::None, DateYear::Digits4));
+        int                    n;
+
+        select count(RecId) from master where master.MasterId like prefix + '*';
+        n = int642int(master.RecId) + 1;
+        while (HSMobileOpsCountMaster::find(prefix + int2Str(n)).RecId)
+        {
+            n++;
+        }
+        return prefix + int2Str(n);
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>openStage</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The counter's staging journal in the stock count, created when there is none; a submitted
+    /// one opens again when the counter counts more. Called inside changecompany and a transaction.
+    /// </summary>
+    public static HSMobileOpsCountStage openStage(HSMobileOpsCountMaster _master, str _userName, str _deviceId)
+    {
+        HSMobileOpsCountStage stage;
+
+        select forUpdate firstonly stage
+            where stage.MasterRecId == _master.RecId
+               && stage.UserName    == _userName;
+        if (!stage.RecId)
+        {
+            stage.clear();
+            stage.MasterRecId = _master.RecId;
+            stage.UserName    = _userName;
+            stage.DisplayName = HSMobileOpsUser::find(_userName).DisplayName;
+            stage.DeviceId    = _deviceId;
+            stage.Status      = HSMobileOpsCountStageStatus::Counting;
+            stage.StartedUtc  = DateTimeUtil::utcNow();
+            stage.insert();
+            return stage;
+        }
+        if (stage.Status != HSMobileOpsCountStageStatus::Counting || stage.DeviceId != _deviceId)
+        {
+            stage.Status   = HSMobileOpsCountStageStatus::Counting;
+            stage.DeviceId = _deviceId;
+            stage.update();
+        }
+        return stage;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>duplicateKey</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// What makes two counted lines "the same stock": item, product dimensions, batch, serial and
+    /// location.
+    /// </summary>
+    public static str duplicateKey(HSMobileOpsCountStageLine _line)
+    {
+        return strUpr(strFmt('%1|%2|%3|%4|%5|%6|%7|%8', _line.ItemId, _line.ConfigId, _line.InventSizeId,
+            _line.InventColorId, _line.InventStyleId, _line.InventBatchId, _line.InventSerialId, _line.WMSLocationId));
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>applySourceLine</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// A count against a counting journal is of that journal's line: its item, product
+    /// dimensions, batch, serial and location are taken from the line itself, not from the
+    /// device - the device's copy of a journal can lack product dimensions (13 Oct: Dm001 C1, C2
+    /// and C3 arrived without their configuration and looked like one item counted three times).
+    /// Returns whether anything changed. The caller updates the line.
+    /// </summary>
+    public static boolean applySourceLine(HSMobileOpsCountStageLine _line, InventJournalId _journalId)
+    {
+        InventJournalTrans journalTrans;
+        InventDim          inventDim;
+        str                before = HSMobileOpsCountControl::duplicateKey(_line);
+
+        if (!_journalId || !_line.SourceLineNum)
+        {
+            return false;
+        }
+        select firstonly journalTrans
+            where journalTrans.JournalId == _journalId
+               && journalTrans.LineNum   == _line.SourceLineNum;
+        if (!journalTrans.RecId)
+        {
+            return false;
+        }
+        inventDim = InventDim::find(journalTrans.InventDimId);
+        _line.ItemId         = journalTrans.ItemId;
+        _line.ConfigId       = inventDim.configId;
+        _line.InventSizeId   = inventDim.InventSizeId;
+        _line.InventColorId  = inventDim.InventColorId;
+        _line.InventStyleId  = inventDim.InventStyleId;
+        _line.InventBatchId  = inventDim.inventBatchId;
+        _line.InventSerialId = inventDim.inventSerialId;
+        _line.WMSLocationId  = inventDim.wMSLocationId;
+        _line.DuplicateKey   = HSMobileOpsCountControl::duplicateKey(_line);
+        return _line.DuplicateKey != before;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>transferKey</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// What one counting journal line is made of at Transfer: a journal line for a count against
+    /// a journal (each journal line keeps its own count), else the stock itself.
+    /// </summary>
+    private static str transferKey(HSMobileOpsCountStageLine _line, InventJournalId _sourceJournalId)
+    {
+        return _sourceJournalId && _line.SourceLineNum ? strFmt('LINE|%1', _line.SourceLineNum) : _line.DuplicateKey;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>refresh</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Re-checks the stock count for duplicates and updates its counters, lines and undecided
+    /// duplicates. A line that joins an already-decided duplicate makes the whole group undecided
+    /// again - a recount after a rejection is decided anew. Lines counted only once are always
+    /// included.
+    /// </summary>
+    public static void refresh(RefRecId _masterRecId)
+    {
+        HSMobileOpsCountStageLine line;
+        HSMobileOpsCountStageLine sameStock;
+        HSMobileOpsCountStage     stage;
+        HSMobileOpsCountMaster    master;
+        int                       undecided;
+
+        ttsbegin;
+        master = HSMobileOpsCountControl::masterOf(_masterRecId);
+        if (master.SourceJournalId)
+        {
+            while select forUpdate line
+                where line.MasterRecId   == _masterRecId
+                   && line.SourceLineNum != 0
+            {
+                if (HSMobileOpsCountControl::applySourceLine(line, master.SourceJournalId))
+                {
+                    line.update();
+                }
+            }
+        }
+        master.clear();
+        // Single counts: not duplicates, always transferred.
+        while select forUpdate line where line.MasterRecId == _masterRecId
+        {
+            select count(RecId) from sameStock
+                where sameStock.MasterRecId  == _masterRecId
+                   && sameStock.DuplicateKey == line.DuplicateKey;
+            if (sameStock.RecId <= 1)
+            {
+                if (line.IsDuplicate || line.Decision != HSMobileOpsCountDuplicateDecision::None || !line.Included)
+                {
+                    line.IsDuplicate = NoYes::No;
+                    line.Decision    = HSMobileOpsCountDuplicateDecision::None;
+                    line.Included    = NoYes::Yes;
+                    line.update();
+                }
+            }
+            else
+            {
+                if (!line.IsDuplicate)
+                {
+                    line.IsDuplicate = NoYes::Yes;
+                    line.update();
+                }
+            }
+        }
+        // A group with any undecided line is undecided as a whole.
+        while select forUpdate line
+            where line.MasterRecId == _masterRecId
+               && line.IsDuplicate == NoYes::Yes
+               && line.Decision    != HSMobileOpsCountDuplicateDecision::None
+        {
+            select firstonly RecId from sameStock
+                where sameStock.MasterRecId  == _masterRecId
+                   && sameStock.DuplicateKey == line.DuplicateKey
+                   && sameStock.Decision     == HSMobileOpsCountDuplicateDecision::None;
+            if (sameStock.RecId)
+            {
+                line.Decision = HSMobileOpsCountDuplicateDecision::None;
+                line.Included = NoYes::Yes;
+                line.update();
+            }
+        }
+        while select DuplicateKey from line
+            group by DuplicateKey
+            where line.MasterRecId == _masterRecId
+               && line.IsDuplicate == NoYes::Yes
+               && line.Decision    == HSMobileOpsCountDuplicateDecision::None
+        {
+            undecided++;
+        }
+
+        while select forUpdate stage where stage.MasterRecId == _masterRecId
+        {
+            select count(RecId) from line where line.StageRecId == stage.RecId;
+            if (stage.LineCount != int642int(line.RecId))
+            {
+                stage.LineCount = int642int(line.RecId);
+                stage.update();
+            }
+        }
+
+        select forUpdate master where master.RecId == _masterRecId;
+        if (master.RecId)
+        {
+            select count(RecId) from stage where stage.MasterRecId == _masterRecId;
+            master.CounterCount = int642int(stage.RecId);
+            select count(RecId) from line where line.MasterRecId == _masterRecId;
+            master.LineCount      = int642int(line.RecId);
+            master.DuplicateCount = undecided;
+            master.update();
+        }
+        ttscommit;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>decide</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The supervisor's decision on the duplicate the selected line belongs to: KeepThis keeps
+    /// only the selected count, Sum adds every count of it together, Reject keeps none (the item
+    /// is counted again; the recount is a new duplicate to decide).
+    /// </summary>
+    public static void decide(HSMobileOpsCountStageLine _selected, HSMobileOpsCountDuplicateDecision _decision)
+    {
+        HSMobileOpsCountStageLine line;
+        HSMobileOpsCountMaster    master;
+
+        master = HSMobileOpsCountControl::masterOf(_selected.MasterRecId);
+        if (master.Status != HSMobileOpsCountMasterStatus::Open)
+        {
+            throw error(strFmt('%1 is %2 - it can no longer be changed.', master.MasterId, master.Status));
+        }
+        if (!_selected.IsDuplicate)
+        {
+            throw error(strFmt('%1 at %2 was counted once - there is nothing to decide.', _selected.ItemId, _selected.WMSLocationId));
+        }
+        ttsbegin;
+        while select forUpdate line
+            where line.MasterRecId  == _selected.MasterRecId
+               && line.DuplicateKey == _selected.DuplicateKey
+        {
+            line.Decision = _decision;
+            switch (_decision)
+            {
+                case HSMobileOpsCountDuplicateDecision::KeepThis:
+                    line.Included = line.RecId == _selected.RecId ? NoYes::Yes : NoYes::No;
+                    break;
+                case HSMobileOpsCountDuplicateDecision::Sum:
+                    line.Included = NoYes::Yes;
+                    break;
+                default:
+                    line.Included = NoYes::No;
+                    break;
+            }
+            line.update();
+        }
+        ttscommit;
+        HSMobileOpsCountControl::refresh(_selected.MasterRecId);
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>masterOf</Name>
+				<Source><![CDATA[
+
+    public static HSMobileOpsCountMaster masterOf(RefRecId _masterRecId, boolean _forUpdate = false)
+    {
+        HSMobileOpsCountMaster master;
+
+        master.selectForUpdate(_forUpdate);
+        select firstonly master where master.RecId == _masterRecId;
+        return master;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>cancel</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Abandons an open stock count. Its lines stay for the record; nothing goes to a journal.
+    /// </summary>
+    public static void cancel(RefRecId _masterRecId)
+    {
+        HSMobileOpsCountMaster master;
+
+        ttsbegin;
+        master = HSMobileOpsCountControl::masterOf(_masterRecId, true);
+        if (master.Status != HSMobileOpsCountMasterStatus::Open)
+        {
+            throw error(strFmt('%1 is %2 already.', master.MasterId, master.Status));
+        }
+        master.Status = HSMobileOpsCountMasterStatus::Cancelled;
+        master.update();
+        ttscommit;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>transfer</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Moves the reviewed counts into a D365FO counting journal. A free store count gets a new
+    /// counting journal for the store; a count against a counting journal goes into that journal
+    /// - it is the store's journal already, and a second one would count the same stock twice.
+    /// One journal line per item, dimensions and location: the kept count, or the counts added
+    /// together. Refused while a duplicate is undecided. Returns the journal.
+    /// </summary>
+    public static InventJournalId transfer(RefRecId _masterRecId)
+    {
+        HSMobileOpsCountMaster    master;
+        HSMobileOpsCountStageLine line;
+        InventJournalTable        journalTable;
+        InventJournalName         journalName;
+        JournalTableData          journalTableData;
+        InventJournalTrans        journalTrans;
+        InventJournalTrans        lastTrans;
+        Map                       totals = new Map(Types::String, Types::Real);
+        Map                       firstLine = new Map(Types::String, Types::Int64);
+        MapEnumerator             e;
+        HSMobileOpsCountStageLine sample;
+        LineNum                   lineNum;
+        int                       written;
+        str                       groupKey;
+
+        HSMobileOpsCountControl::refresh(_masterRecId);
+        master = HSMobileOpsCountControl::masterOf(_masterRecId);
+        if (master.Status != HSMobileOpsCountMasterStatus::Open)
+        {
+            throw error(strFmt('%1 is %2 - it can only be transferred once.', master.MasterId, master.Status));
+        }
+        if (master.DuplicateCount)
+        {
+            throw error(strFmt('%1 item(s) in %2 were counted more than once and are not decided yet. Keep one count, add them together or reject them first.',
+                master.DuplicateCount, master.MasterId));
+        }
+
+        while select line
+            where line.MasterRecId == _masterRecId
+               && line.Included    == NoYes::Yes
+        {
+            groupKey = HSMobileOpsCountControl::transferKey(line, master.SourceJournalId);
+            totals.insert(groupKey, (totals.exists(groupKey) ? totals.lookup(groupKey) : 0) + line.Qty);
+            if (!firstLine.exists(groupKey))
+            {
+                firstLine.insert(groupKey, line.RecId);
+            }
+        }
+        if (!totals.elements())
+        {
+            throw error(strFmt('%1 has no counts to transfer.', master.MasterId));
+        }
+
+        ttsbegin;
+        if (master.SourceJournalId)
+        {
+            journalTable = InventJournalTable::find(master.SourceJournalId, true);
+            if (!journalTable.RecId || journalTable.Posted)
+            {
+                throw error(strFmt('Counting journal %1 no longer exists or has been posted.', master.SourceJournalId));
+            }
+        }
+        else
+        {
+            select firstonly journalName where journalName.JournalType == InventJournalType::Count;
+            if (!journalName.RecId)
+            {
+                throw error('D365FO has no counting journal name set up.');
+            }
+            journalTable.clear();
+            journalTable.initValue();
+            journalTableData = JournalTableData::newTable(journalTable);
+            journalTable.JournalId = journalTableData.nextJournalId();
+            journalTableData.initFromJournalName(journalName);
+            journalTable.Description = subStr(strFmt('Stock count %1', master.MasterId), 1, 60);
+            journalTable.insert();
+        }
+
+        select maxOf(LineNum) from lastTrans where lastTrans.JournalId == journalTable.JournalId;
+        lineNum = lastTrans.LineNum;
+
+        e = totals.getEnumerator();
+        while (e.moveNext())
+        {
+            sample = HSMobileOpsCountStageLine::findRecId(firstLine.lookup(e.currentKey()));
+            journalTrans.clear();
+            if (master.SourceJournalId && sample.SourceLineNum)
+            {
+                select forUpdate firstonly journalTrans
+                    where journalTrans.JournalId == journalTable.JournalId
+                       && journalTrans.LineNum   == sample.SourceLineNum;
+            }
+            if (journalTrans.RecId)
+            {
+                journalTrans.Counted = e.currentValue();
+                journalTrans.modifiedField(fieldNum(InventJournalTrans, Counted));
+                journalTrans.update();
+            }
+            else
+            {
+                lineNum++;
+                HSMobileOpsCountControl::addLine(journalTable, lineNum, sample, master.InventLocationId, e.currentValue());
+            }
+            written++;
+        }
+
+        select count(RecId) from journalTrans where journalTrans.JournalId == journalTable.JournalId;
+        journalTable.selectForUpdate(true);
+        journalTable.NumOfLines = int642int(journalTrans.RecId);
+        journalTable.update();
+
+        master = HSMobileOpsCountControl::masterOf(_masterRecId, true);
+        master.Status               = HSMobileOpsCountMasterStatus::Transferred;
+        master.TransferredJournalId = journalTable.JournalId;
+        master.TransferredBy        = curUserId();
+        master.TransferredUtc       = DateTimeUtil::utcNow();
+        master.update();
+        ttscommit;
+
+        info(strFmt('%1: %2 counted line(s) transferred to counting journal %3.', master.MasterId, written, journalTable.JournalId));
+        return journalTable.JournalId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>addLine</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// A new counting journal line for stock counted at the store: on the stock record that
+    /// matches (so its inventory status and other dimensions are D365FO's own), with D365FO's
+    /// on-hand; stock D365FO has none of gets a new dimension and on-hand 0.
+    /// </summary>
+    public static void addLine(InventJournalTable _journalTable, LineNum _lineNum, HSMobileOpsCountStageLine _counted,
+        InventLocationId _store, InventQty _qty)
+    {
+        InventJournalTrans journalTrans;
+        InventSum          inventSum;
+        InventDim          inventDim;
+        InventDim          lineDim;
+
+        select firstonly inventSum order by PhysicalInvent desc
+            where inventSum.ItemId == _counted.ItemId
+               && inventSum.Closed == NoYes::No
+            exists join inventDim
+                where inventDim.inventDimId      == inventSum.InventDimId
+                   && inventDim.InventLocationId == _store
+                   && inventDim.wMSLocationId    == _counted.WMSLocationId
+                   && inventDim.inventBatchId    == _counted.InventBatchId
+                   && inventDim.inventSerialId   == _counted.InventSerialId
+                   && inventDim.configId         == _counted.ConfigId
+                   && inventDim.InventSizeId     == _counted.InventSizeId
+                   && inventDim.InventColorId    == _counted.InventColorId
+                   && inventDim.InventStyleId    == _counted.InventStyleId;
+
+        if (inventSum.RecId)
+        {
+            lineDim = InventDim::find(inventSum.InventDimId);
+        }
+        else
+        {
+            lineDim.clear();
+            lineDim.InventSiteId     = InventLocation::find(_store).InventSiteId;
+            lineDim.InventLocationId = _store;
+            lineDim.wMSLocationId    = _counted.WMSLocationId;
+            lineDim.inventBatchId    = _counted.InventBatchId;
+            lineDim.inventSerialId   = _counted.InventSerialId;
+            lineDim.configId         = _counted.ConfigId;
+            lineDim.InventSizeId     = _counted.InventSizeId;
+            lineDim.InventColorId    = _counted.InventColorId;
+            lineDim.InventStyleId    = _counted.InventStyleId;
+            if (lineDim.wMSLocationId
+             && InventDimGroupSetup::newItemId(_counted.ItemId).isDimensionActive(fieldNum(InventDim, InventStatusId)))
+            {
+                lineDim.InventStatusId = InventLocation::find(_store).DefaultStatusId;
+                if (!lineDim.InventStatusId)
+                {
+                    lineDim.InventStatusId = WHSParameters::find().DefaultStatusId;
+                }
+                if (!lineDim.InventStatusId)
+                {
+                    // Neither sets a default (test, 13 Oct: AAC is not WHS-enabled - the line had no
+                    // status): the status the item's own stock carries, at this store first.
+                    lineDim.InventStatusId = HSMobileOpsCountControl::itemStatus(_counted.ItemId, _store);
+                }
+                if (!lineDim.InventStatusId)
+                {
+                    lineDim.InventStatusId = HSMobileOpsCountControl::itemStatus(_counted.ItemId, '');
+                }
+            }
+            lineDim = InventDim::findOrCreate(lineDim);
+        }
+
+        journalTrans.clear();
+        journalTrans.initValue();
+        journalTrans.initFromInventJournalTable(_journalTable);
+        journalTrans.LineNum      = _lineNum;
+        journalTrans.TransDate    = DateTimeUtil::getSystemDate(DateTimeUtil::getUserPreferredTimeZone());
+        journalTrans.ItemId       = _counted.ItemId;
+        journalTrans.initFromInventTable(InventTable::find(_counted.ItemId));
+        journalTrans.InventDimId  = lineDim.inventDimId;
+        journalTrans.InventOnHand = inventSum.RecId ? inventSum.PhysicalInvent : 0;
+        journalTrans.Counted      = _qty;
+        journalTrans.Qty          = _qty - journalTrans.InventOnHand;
+        journalTrans.insert();
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>itemStatus</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// The inventory status the item's stock carries - at <paramref name="_store"/>, or anywhere when blank.
+    /// </summary>
+    private static WHSInventStatusId itemStatus(ItemId _itemId, InventLocationId _store)
+    {
+        InventSum inventSum;
+        InventDim inventDim;
+
+        if (_store)
+        {
+            select firstonly InventStatusId from inventDim
+                where inventDim.InventStatusId   != ''
+                   && inventDim.InventLocationId == _store
+                exists join inventSum
+                    where inventSum.InventDimId == inventDim.inventDimId
+                       && inventSum.ItemId      == _itemId
+                       && inventSum.Closed      == NoYes::No;
+        }
+        else
+        {
+            select firstonly InventStatusId from inventDim
+                where inventDim.InventStatusId != ''
+                exists join inventSum
+                    where inventSum.InventDimId == inventDim.inventDimId
+                       && inventSum.ItemId      == _itemId
+                       && inventSum.Closed      == NoYes::No;
+        }
+        return inventDim.InventStatusId;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

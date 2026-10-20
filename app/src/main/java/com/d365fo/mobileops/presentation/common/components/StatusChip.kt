@@ -40,6 +40,9 @@ fun StatusChip(
             text = text.uppercase(),
             style = MaterialTheme.typography.labelSmall,
             color = color,
+            // A chip is one short label: kept on one line, never broken mid-word ("PROG / RESS").
+            // Where space is tight the layout around it moves the whole chip instead.
+            softWrap = false,
             modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
         )
     }

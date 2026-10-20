@@ -675,6 +675,108 @@ internal final class HSMobileOpsLicense
     }
 ]]></Source>
 			</Method>
+			<Method>
+				<Name>verifyWithAttestation</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The entry point HSMobileOpsUserService::signIn and HSMobileOpsLicenseService::
+    /// getLicense/registerDevice actually call now, in place of verify() directly. Runs verify()
+    /// first, unchanged - if the local certificate/license chain is not already valid, there is
+    /// nothing further to check, and that result is returned as-is. Only on a locally-valid
+    /// license does this go on to ask the vendor's CheckLicense Function (see
+    /// HSMobileOpsLicenseCloudClient) two independent questions: has this customer been revoked
+    /// since the license was signed, and does the calling device's own attestation say this is a
+    /// genuine, unmodified install. See ../../../azure-license-function/function_app.py for what
+    /// that Function actually checks.
+    ///
+    /// **Reachable vs. not is the first branch, before looking at what it said.** A reachable
+    /// answer is trusted immediately and cached (HSMobileOpsLicenseCloudCache::record) for the
+    /// next unreachable moment. An unreachable answer falls back to that cache for a short grace
+    /// period (HSMobileOpsLicenseCloudCache::withinGracePeriod) so a transient Azure/network
+    /// outage does not lock out a whole fleet the instant it happens; outside that grace period it
+    /// fails closed as LICENSE_INVALID, deliberately not reusing LICENSE_REVOKED's wording, which
+    /// would wrongly imply a deliberate vendor action rather than "could not be confirmed."
+    ///
+    /// **licenseStatus other than "Active" is treated as not valid** - Suspended, Revoked, and
+    /// Unknown (no row on file for this customerId yet) are all folded into LICENSE_REVOKED here;
+    /// the Function's own README explains why Unknown belongs in that bucket rather than being
+    /// treated as a pass.
+    ///
+    /// **integrityVerdict "FAIL" blocks sign-in; "UNVERIFIED" does not.** UNVERIFIED covers "no
+    /// token was sent" and "Google's own endpoint could not be reached" - importantly, this is
+    /// the verdict for EVERY call until the Android side ships the Play Integrity token provider
+    /// (see the plan's staged order: AOS changes land before Android ones), so treating it as a
+    /// hard failure would break every sign-in during that entire rollout window. Only a positive
+    /// FAIL - Google actively saying the install looks tampered or the wrong package/certificate -
+    /// blocks sign-in on integrity grounds.
+    /// </summary>
+    internal static HSMobileOpsLicenseStatus verifyWithAttestation(str _deviceId, str _integrityToken)
+    {
+        HSMobileOpsLicenseStatus        status = HSMobileOpsLicense::verify();
+        HSMobileOpsCloudLicenseResult   cloud;
+        HSMobileOpsLicenseCloudCache    cache;
+
+        if (!status.parmValid())
+        {
+            return status;
+        }
+
+        cloud = HSMobileOpsLicenseCloudClient::checkStatus(status.parmCustomerId(), _deviceId, _integrityToken);
+
+        if (cloud.parmReachable())
+        {
+            HSMobileOpsLicenseCloudCache::record(
+                cloud.parmLicenseStatus(), cloud.parmIntegrityVerdict(), cloud.parmReasonsText());
+        }
+        else
+        {
+            cache = HSMobileOpsLicenseCloudCache::find();
+            if (!cache.withinGracePeriod())
+            {
+                status.parmValid(false);
+                status.parmErrorCode('LICENSE_INVALID');
+                status.parmMessage(
+                    'Could not confirm this license with the vendor, and the last successful '
+                  + 'check is too old to fall back on. Check this environment\'s internet access.');
+                return status;
+            }
+
+            // Within grace: fall back to the cached verdict as if it were the live one, so the
+            // same two checks below apply uniformly either way.
+            cloud = new HSMobileOpsCloudLicenseResult();
+            cloud.parmLicenseStatus(cache.LicenseStatus);
+            cloud.parmIntegrityVerdict(cache.IntegrityVerdict);
+            cloud.parmReasonsText(cache.ReasonsText);
+        }
+
+        if (cloud.parmLicenseStatus() != 'Active')
+        {
+            status.parmValid(false);
+            status.parmErrorCode('LICENSE_REVOKED');
+            status.parmMessage(strFmt(
+                "This app's license is no longer active (%1). Contact your administrator.",
+                cloud.parmLicenseStatus() ? cloud.parmLicenseStatus() : 'Unknown'));
+            status.parmIntegrityVerdict(cloud.parmIntegrityVerdict());
+            return status;
+        }
+
+        status.parmIntegrityVerdict(cloud.parmIntegrityVerdict());
+
+        if (cloud.parmIntegrityVerdict() == 'FAIL')
+        {
+            status.parmValid(false);
+            status.parmErrorCode('INTEGRITY_FAILED');
+            status.parmMessage(strFmt(
+                'This install could not be verified as genuine (%1). Reinstall from the Play Store.',
+                cloud.parmReasonsText() ? cloud.parmReasonsText() : 'no further detail'));
+            return status;
+        }
+
+        return status;
+    }
+]]></Source>
+			</Method>
 		</Methods>
 	</SourceCode>
 </AxClass>

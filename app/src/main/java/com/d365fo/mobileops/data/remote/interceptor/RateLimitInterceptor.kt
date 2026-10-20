@@ -51,23 +51,31 @@ object IdempotentRead
  * an interceptor that does not know about that key is a receipt posted twice.
  */
 @Singleton
-class RetryAfterInterceptor @Inject constructor() : Interceptor {
+class RetryAfterInterceptor @Inject constructor(
+    private val router: com.d365fo.mobileops.data.security.CredentialRouter,
+) : Interceptor {
 
     override fun intercept(chain: Interceptor.Chain): Response {
         val request = chain.request()
         val repeatable = request.method == "GET" ||
             request.tag(IdempotentRead::class.java) != null
-        if (!repeatable) return chain.proceed(request)
+        if (!repeatable) {
+            // A posting is never retried here (the sync queue owns that), but a "too many
+            // requests" answer still counts, and still rests this device's app registration.
+            return chain.proceed(request).also { response ->
+                if (response.code == TOO_MANY_REQUESTS) {
+                    router.onThrottledReply()
+                    router.onStillThrottled(retryAfterMs(response) ?: BASE_WAIT_MS)
+                }
+            }
+        }
 
         var attempt = 0
         var response = chain.proceed(request)
 
         while (response.code in THROTTLED_CODES && attempt < MAX_ATTEMPTS) {
-            val waitMs = response.header("Retry-After")
-                ?.toLongOrNull()
-                ?.times(1_000)
-                ?.coerceAtMost(MAX_WAIT_MS)
-                ?: (BASE_WAIT_MS shl attempt)
+            if (response.code == TOO_MANY_REQUESTS) router.onThrottledReply()
+            val waitMs = retryAfterMs(response) ?: (BASE_WAIT_MS shl attempt)
 
             response.close()
             try {
@@ -79,10 +87,20 @@ class RetryAfterInterceptor @Inject constructor() : Interceptor {
             attempt++
             response = chain.proceed(request)
         }
+        // Still throttled after every retry D365FO's own Retry-After allowed: this registration's
+        // allowance is spent for now, so the next token comes from another one (CredentialRouter).
+        if (response.code == TOO_MANY_REQUESTS) {
+            router.onThrottledReply()
+            router.onStillThrottled(retryAfterMs(response) ?: MAX_WAIT_MS)
+        }
         return response
     }
 
+    private fun retryAfterMs(response: Response): Long? =
+        response.header("Retry-After")?.toLongOrNull()?.times(1_000)?.coerceAtMost(MAX_WAIT_MS)
+
     private companion object {
+        const val TOO_MANY_REQUESTS = 429
         val THROTTLED_CODES = setOf(429, 503)
         const val MAX_ATTEMPTS = 3
         const val BASE_WAIT_MS = 1_000L

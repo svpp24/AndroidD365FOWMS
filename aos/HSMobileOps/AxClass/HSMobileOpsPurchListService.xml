@@ -27,6 +27,9 @@ class HSMobileOpsPurchListService
         HSMobileOpsOrderSummaryRow       row;
         List                             orders = new List(Types::Class);
         PurchTable                       purchTable;
+        PurchLine                        purchLine;
+        InventTrans                      inventTrans;
+        InventTransOrigin                inventTransOrigin;
         TransDate                        deliveryDate;
         str                              warehouseId;
         int                              rows;
@@ -59,6 +62,20 @@ class HSMobileOpsPurchListService
                 row.parmPurchId(purchTable.PurchId);
                 row.parmVendorAccount(purchTable.OrderAccount);
                 row.parmStatus(enum2Symbol(enumNum(PurchStatus), purchTable.PurchStatus));
+                // Still Ordered in InventTrans, as HSMobileOpsReceivingService.orderedQtyByLine
+                // reads it. RemainPurchPhysical only falls at product receipt, and this app
+                // registers - so BSP-PO-000161706, fully registered, was offered under "Due
+                // today - tap to start" and then answered "nothing left to receive".
+                select firstonly RecId from purchLine
+                    where purchLine.PurchId     == purchTable.PurchId
+                       && purchLine.PurchStatus != PurchStatus::Canceled
+                       && !purchLine.IsDeleted
+                    exists join inventTransOrigin
+                        where inventTransOrigin.InventTransId == purchLine.InventTransId
+                    exists join inventTrans
+                        where inventTrans.InventTransOrigin == inventTransOrigin.RecId
+                           && inventTrans.StatusReceipt     == StatusReceipt::Ordered;
+                row.parmHasOpenLines(purchLine.RecId != 0);
                 row.parmSiteId(purchTable.InventSiteId);
                 row.parmWarehouseId(purchTable.InventLocationId);
                 row.parmDeliveryDate(date2Str(purchTable.DeliveryDate, 321, DateDay::Digits2,

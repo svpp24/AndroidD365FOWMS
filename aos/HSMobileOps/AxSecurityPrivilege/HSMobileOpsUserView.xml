@@ -1,37 +1,64 @@
 <?xml version="1.0" encoding="utf-8"?>
 <AxSecurityPrivilege xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
 	<Name>HSMobileOpsUserView</Name>
+	<Description>Read handheld logins and their warehouse assignments without being able to change them. For a supervisor who needs to see who is set up, not to set them up.</Description>
 	<Label>View mobile device users</Label>
-	<HelpText>Read handheld logins and their warehouse assignments without being able to change them. For a supervisor who needs to see who is set up, not to set them up.</HelpText>
+	<DirectAccessPermissions>
+		<AxSecurityDataEntityReference>
+			<Grant>
+				<Read>Allow</Read>
+			</Grant>
+			<Name>HSMobileOpsUser</Name>
+			<Fields />
+		</AxSecurityDataEntityReference>
+		<AxSecurityDataEntityReference>
+			<Grant>
+				<Read>Allow</Read>
+			</Grant>
+			<Name>HSMobileOpsUserWarehouse</Name>
+			<Fields />
+		</AxSecurityDataEntityReference>
+		<AxSecurityDataEntityReference>
+			<Grant>
+				<Read>Allow</Read>
+			</Grant>
+			<Name>HSMobileOpsPostLog</Name>
+			<Fields />
+		</AxSecurityDataEntityReference>
+		<AxSecurityDataEntityReference>
+			<Grant>
+				<Read>Allow</Read>
+			</Grant>
+			<Name>HSMobileOpsMenu</Name>
+			<Fields />
+		</AxSecurityDataEntityReference>
+		<AxSecurityDataEntityReference>
+			<Grant>
+				<Read>Allow</Read>
+			</Grant>
+			<Name>HSMobileOpsMenuLine</Name>
+			<Fields />
+		</AxSecurityDataEntityReference>
+	</DirectAccessPermissions>
 	<EntryPoints>
 		<AxSecurityEntryPointReference>
 			<Name>HSMobileOpsUser</Name>
+			<Grant>
+				<Read>Allow</Read>
+			</Grant>
 			<ObjectName>HSMobileOpsUser</ObjectName>
 			<ObjectType>MenuItemDisplay</ObjectType>
-			<AccessLevel>Read</AccessLevel>
+			<Forms />
+		</AxSecurityEntryPointReference>
+		<AxSecurityEntryPointReference>
+			<Name>HSMobileOpsMenu</Name>
+			<Grant>
+				<Read>Allow</Read>
+			</Grant>
+			<ObjectName>HSMobileOpsMenu</ObjectName>
+			<ObjectType>MenuItemDisplay</ObjectType>
+			<Forms />
 		</AxSecurityEntryPointReference>
 	</EntryPoints>
-	<Tables>
-		<AxSecurityPrivilegeTablePermission>
-			<Name>HSMobileOpsUser</Name>
-			<Delete>NoAccess</Delete>
-			<Insert>NoAccess</Insert>
-			<Read>Allow</Read>
-			<Update>NoAccess</Update>
-		</AxSecurityPrivilegeTablePermission>
-		<AxSecurityPrivilegeTablePermission>
-			<Name>HSMobileOpsUserWarehouse</Name>
-			<Delete>NoAccess</Delete>
-			<Insert>NoAccess</Insert>
-			<Read>Allow</Read>
-			<Update>NoAccess</Update>
-		</AxSecurityPrivilegeTablePermission>
-		<AxSecurityPrivilegeTablePermission>
-			<Name>HSMobileOpsPostLog</Name>
-			<Delete>NoAccess</Delete>
-			<Insert>NoAccess</Insert>
-			<Read>Allow</Read>
-			<Update>NoAccess</Update>
-		</AxSecurityPrivilegeTablePermission>
-	</Tables>
+	<FormControlOverrides />
 </AxSecurityPrivilege>

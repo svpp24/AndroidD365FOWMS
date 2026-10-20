@@ -73,8 +73,18 @@ class SyncScheduler @Inject constructor(context: Context) {
             PeriodicWorkRequestBuilder<TransactionPushWorker>(15, TimeUnit.MINUTES)
                 .setConstraints(connectedOnly)
                 .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 1, TimeUnit.MINUTES)
+                // A random start so a fleet's safety-net runs do not line up - see FleetJitter.
+                .setInitialDelay(FleetJitter.millisUpTo(TimeUnit.MINUTES.toMillis(15)), TimeUnit.MILLISECONDS)
                 .build(),
         )
+
+        // Debug builds never sync the SKU master: with the debug and the release app on one
+        // handheld, both ran it - every export was done twice in D365FO, at the same moment.
+        if (com.d365fo.mobileops.BuildConfig.DEBUG) {
+            workManager.cancelUniqueWork(Constants.WORK_SYNC_SKU_MASTER)
+            workManager.cancelUniqueWork(SKU_CONTINUE)
+            return
+        }
 
         // Once a day is enough for master data that changes on the order of days, not minutes -
         // and WorkManager only runs it at all once the Wi-Fi-and-charging constraint above is
@@ -86,10 +96,33 @@ class SyncScheduler @Inject constructor(context: Context) {
             PeriodicWorkRequestBuilder<SkuSyncWorker>(1, TimeUnit.DAYS)
                 .setConstraints(wifiAndCharging)
                 .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 1, TimeUnit.HOURS)
+                // The heaviest call the app makes (a full SKU export): spread over hours, so a
+                // fleet put on charge at the end of a shift does not ask for it all at once.
+                .setInitialDelay(FleetJitter.millisUpTo(TimeUnit.HOURS.toMillis(4)), TimeUnit.MILLISECONDS)
                 .build(),
         )
     }
 
+
+    /**
+     * The SKU sync's next step, a few minutes from now, while its export is still running in
+     * D365FO. Appended, so the run that asks for it finishes first; Wi-Fi-and-charging as the
+     * daily run.
+     */
+    fun scheduleSkuContinuation(delayMs: Long = TimeUnit.MINUTES.toMillis(2), replace: Boolean = false) {
+        if (com.d365fo.mobileops.BuildConfig.DEBUG) return
+        workManager.enqueueUniqueWork(
+            SKU_CONTINUE,
+            // At app start (replace): a fresh attempt instead of queuing behind one still waiting
+            // out a long retry backoff. From the worker itself: appended, so it finishes first.
+            if (replace) ExistingWorkPolicy.REPLACE else ExistingWorkPolicy.APPEND_OR_REPLACE,
+            OneTimeWorkRequestBuilder<SkuSyncWorker>()
+                .setConstraints(wifiAndCharging)
+                .setInitialDelay(delayMs, TimeUnit.MILLISECONDS)
+                .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 10, TimeUnit.MINUTES)
+                .build(),
+        )
+    }
 
     /**
      * Called right after a transaction is enqueued and when connectivity returns.
@@ -114,5 +147,6 @@ class SyncScheduler @Inject constructor(context: Context) {
 
     private companion object {
         const val WORK_PUSH_NOW = "d365.push.now"
+        const val SKU_CONTINUE = "d365.sync.skumaster.continue"
     }
 }

@@ -98,14 +98,20 @@ class HidScannerBridge @Inject constructor() {
         publish(RawScan(value = value, source = ScanSource.CAMERA))
     }
 
-    fun submitManualEntry(value: String) {
-        publish(RawScan(value = value, source = ScanSource.MANUAL_ENTRY))
-    }
-
     private fun publish(scan: RawScan) {
         lastScanAtMs = System.currentTimeMillis()
+        // A dialog on top that is waiting for a scan gets it - not the screen underneath, which
+        // would take a bin for a transfer order ("No transfer order AAC").
+        modalCapture?.let { capture -> capture(scan.value); return }
         _scans.tryEmit(scan)
     }
+
+    /**
+     * Set while a dialog takes scans itself (Report discrepancy's location); null otherwise.
+     * Whoever sets it clears it when the dialog closes.
+     */
+    @Volatile
+    var modalCapture: ((String) -> Unit)? = null
 
     /**
      * True when a scan of any source was published within [withinMs].

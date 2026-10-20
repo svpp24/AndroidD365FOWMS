@@ -1,0 +1,110 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsSessionResponse</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// The answer: SignedInElsewhere when another device has since signed in as this worker - the app then signs out.
+/// OtherDevicePendingJobs / OtherDevicePendingCounts (peekSession): the worker's unfinished work on the device
+/// that last held the session, as it last reported it - the app asks before taking over.
+/// </summary>
+[DataContractAttribute]
+class HSMobileOpsSessionResponse
+{
+    boolean     success;
+    str         errorCode;
+    str         message;
+    boolean     signedInElsewhere;
+    int         otherDevicePendingJobs;
+    int         otherDevicePendingCounts;
+    utcdatetime otherDeviceReportedUtc;
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmSuccess</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Success')]
+    public boolean parmSuccess(boolean _value = success)
+    {
+        success = _value;
+        return success;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmErrorCode</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ErrorCode')]
+    public str parmErrorCode(str _value = errorCode)
+    {
+        errorCode = _value;
+        return errorCode;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmMessage</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Message')]
+    public str parmMessage(str _value = message)
+    {
+        message = _value;
+        return message;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmSignedInElsewhere</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('SignedInElsewhere')]
+    public boolean parmSignedInElsewhere(boolean _value = signedInElsewhere)
+    {
+        signedInElsewhere = _value;
+        return signedInElsewhere;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmOtherDevicePendingJobs</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('OtherDevicePendingJobs')]
+    public int parmOtherDevicePendingJobs(int _value = otherDevicePendingJobs)
+    {
+        otherDevicePendingJobs = _value;
+        return otherDevicePendingJobs;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmOtherDevicePendingCounts</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('OtherDevicePendingCounts')]
+    public int parmOtherDevicePendingCounts(int _value = otherDevicePendingCounts)
+    {
+        otherDevicePendingCounts = _value;
+        return otherDevicePendingCounts;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmOtherDeviceReportedUtc</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('OtherDeviceReportedUtc')]
+    public utcdatetime parmOtherDeviceReportedUtc(utcdatetime _value = otherDeviceReportedUtc)
+    {
+        otherDeviceReportedUtc = _value;
+        return otherDeviceReportedUtc;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

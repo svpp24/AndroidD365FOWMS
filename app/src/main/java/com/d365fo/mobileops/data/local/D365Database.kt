@@ -45,6 +45,8 @@ import com.d365fo.mobileops.data.local.entity.TransferLineEntity
 import com.d365fo.mobileops.data.local.entity.TransferOrderEntity
 import com.d365fo.mobileops.data.local.entity.ValidationAuditEntity
 import com.d365fo.mobileops.data.local.entity.FlowSessionEntity
+import com.d365fo.mobileops.data.local.entity.ReadCacheEntity
+import com.d365fo.mobileops.data.local.dao.ReadCacheDao
 import com.d365fo.mobileops.data.local.entity.WarehouseEntity
 import com.d365fo.mobileops.data.local.entity.WorkerDirectoryEntity
 import com.d365fo.mobileops.data.local.entity.WorkerPermissionEntity
@@ -54,6 +56,7 @@ import com.d365fo.mobileops.data.local.entity.WorkerPermissionEntity
         // master data
         ItemEntity::class,
         BarcodeEntity::class,
+        com.d365fo.mobileops.data.local.entity.ItemVariantEntity::class,
         LocationEntity::class,
         InventDimEntity::class,
         OnHandCacheEntity::class,
@@ -87,8 +90,14 @@ import com.d365fo.mobileops.data.local.entity.WorkerPermissionEntity
         // roles / permissions
         WorkerPermissionEntity::class,
         WorkerDirectoryEntity::class,
+        // offline answers to read calls
+        ReadCacheEntity::class,
+
+        com.d365fo.mobileops.data.local.entity.VendorEntity::class,
+        com.d365fo.mobileops.data.local.entity.CreatedOrderEntity::class,
+        com.d365fo.mobileops.data.local.entity.OrderDraftEntity::class,
     ],
-    version = 13,
+    version = 18,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -110,6 +119,9 @@ abstract class D365Database : RoomDatabase() {
     abstract fun stagedLineDao(): StagedLineDao
     abstract fun permissionDao(): PermissionDao
     abstract fun countingDao(): CountingDao
+    abstract fun readCacheDao(): ReadCacheDao
+    abstract fun orderCreationDao(): com.d365fo.mobileops.data.local.dao.OrderCreationDao
+    abstract fun unsentWorkDao(): com.d365fo.mobileops.data.sync.UnsentWorkDao
 
     companion object {
         /**
@@ -398,10 +410,72 @@ abstract class D365Database : RoomDatabase() {
             }
         }
 
+        /** The offline read cache. Additive: a new table, nothing existing touched. */
+        private val MIGRATION_13_14 = object : androidx.room.migration.Migration(13, 14) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `offline_read_cache` (`key` TEXT NOT NULL, `path` TEXT NOT NULL, " +
+                        "`body` TEXT NOT NULL, `savedAt` INTEGER NOT NULL, PRIMARY KEY(`key`))",
+                )
+            }
+        }
+
+        /** PO and TO creation: the vendor list kept for offline search, orders made here, drafts. */
+        private val MIGRATION_14_15 = object : androidx.room.migration.Migration(14, 15) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `order_vendor` (`accountNum` TEXT NOT NULL, `name` TEXT NOT NULL, " +
+                        "`currencyCode` TEXT NOT NULL, `paymentTerms` TEXT NOT NULL, `deliveryTerms` TEXT NOT NULL, " +
+                        "`deliveryMode` TEXT NOT NULL, `savedAt` INTEGER NOT NULL, PRIMARY KEY(`accountNum`))",
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_order_vendor_name` ON `order_vendor` (`name`)")
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `created_order` (`id` TEXT NOT NULL, `kind` TEXT NOT NULL, " +
+                        "`status` TEXT NOT NULL, `documentNumber` TEXT, `title` TEXT NOT NULL, `lineCount` INTEGER NOT NULL, " +
+                        "`total` REAL, `currencyCode` TEXT, `message` TEXT, `pricedLinesJson` TEXT, `userName` TEXT NOT NULL, " +
+                        "`createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_created_order_createdAt` ON `created_order` (`createdAt`)")
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `order_draft` (`kind` TEXT NOT NULL, `userName` TEXT NOT NULL, " +
+                        "`json` TEXT NOT NULL, `updatedAt` INTEGER NOT NULL, PRIMARY KEY(`kind`, `userName`))",
+                )
+            }
+        }
+
+        /** Released variants, for offline variant choice (SKU sync's VARIANTS feed). */
+        private val MIGRATION_15_16 = object : androidx.room.migration.Migration(15, 16) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `item_variant` (`itemId` TEXT NOT NULL, `configId` TEXT NOT NULL, " +
+                        "`sizeId` TEXT NOT NULL, `colorId` TEXT NOT NULL, `styleId` TEXT NOT NULL, `syncedAt` INTEGER NOT NULL, " +
+                        "PRIMARY KEY(`itemId`, `configId`, `sizeId`, `colorId`, `styleId`))",
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_item_variant_syncedAt` ON `item_variant` (`syncedAt`)")
+            }
+        }
+
+        /** Variant names (feedback: the variant picker showed only "Config C1"). */
+        private val MIGRATION_16_17 = object : androidx.room.migration.Migration(16, 17) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `item_variant` ADD COLUMN `name` TEXT NOT NULL DEFAULT ''")
+            }
+        }
+
+        /** The variant of an item found that is not on a counting journal (14 Oct). */
+        private val MIGRATION_17_18 = object : androidx.room.migration.Migration(17, 18) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                listOf("configId", "sizeId", "colorId", "styleId").forEach {
+                    db.execSQL("ALTER TABLE `count_exception` ADD COLUMN `$it` TEXT")
+                }
+            }
+        }
+
         val MIGRATIONS: Array<androidx.room.migration.Migration> =
             arrayOf(
                 MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7,
                 MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13,
+                MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18,
             )
     }
 }

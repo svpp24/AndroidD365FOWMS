@@ -1,0 +1,210 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxTable xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsSignInLog</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Worker sign-in history: one row per session on a handheld - who, on which device and in which
+/// warehouse, when they signed in, when the session ended and how long it lasted.
+///
+/// Written by the app (HSMobileOpsSignInLogSvc), not by sign-in itself, so a session signed in
+/// offline is recorded too - the app keeps it and sends it once D365FO can be reached. A session
+/// is sent twice: when it starts and again when it ends; SessionId (made on the handheld) ties
+/// the two together, so a resend changes nothing.
+///
+/// One history for the whole environment, like HSMobileOpsDevice.
+/// </summary>
+public class HSMobileOpsSignInLog extends common
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>findBySessionId</Name>
+				<Source><![CDATA[
+
+    public static HSMobileOpsSignInLog findBySessionId(str _sessionId, boolean _forUpdate = false)
+    {
+        HSMobileOpsSignInLog log;
+
+        if (_sessionId)
+        {
+            log.selectForUpdate(_forUpdate);
+            select firstonly log
+                where log.SessionId == _sessionId;
+        }
+        return log;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>setDuration</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Duration from the sign-in and sign-out times, in minutes and as hours:minutes ("7:42").
+    /// Stored, not a display method - those show blank on this environment's forms.
+    /// </summary>
+    public void setDuration()
+    {
+        int64 seconds;
+        int   minutes;
+
+        if (!this.SignInUtc || !this.SignOutUtc || this.SignOutUtc < this.SignInUtc)
+        {
+            this.DurationMinutes = 0;
+            this.DurationText    = '';
+            return;
+        }
+        seconds = DateTimeUtil::getDifference(this.SignOutUtc, this.SignInUtc);
+        this.DurationMinutes = round(seconds / 60.0, 0.01);
+        minutes = real2int(roundDown(seconds / 60.0, 1));
+        this.DurationText = strFmt('%1:%2', minutes div 60, strRFix(int2Str(minutes mod 60), 2, '0'));
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+	<Label>Worker sign-in history</Label>
+	<TitleField1>UserName</TitleField1>
+	<TitleField2>SignInUtc</TitleField2>
+	<CacheLookup>NotInTTS</CacheLookup>
+	<ClusteredIndex>SignInIdx</ClusteredIndex>
+	<ReplacementKey>SessionIdIdx</ReplacementKey>
+	<SaveDataPerCompany>No</SaveDataPerCompany>
+	<Fields>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>SessionId</Name>
+			<AllowEdit>No</AllowEdit>
+			<HelpText>Made on the handheld when the worker signed in.</HelpText>
+			<Label>Session ID</Label>
+			<Mandatory>Yes</Mandatory>
+			<StringSize>64</StringSize>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>UserName</Name>
+			<AllowEdit>No</AllowEdit>
+			<ExtendedDataType>HSMobileOpsUserName</ExtendedDataType>
+			<Label>Worker</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>CompanyId</Name>
+			<AllowEdit>No</AllowEdit>
+			<Label>Company</Label>
+			<StringSize>4</StringSize>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>WarehouseId</Name>
+			<AllowEdit>No</AllowEdit>
+			<ExtendedDataType>InventLocationId</ExtendedDataType>
+			<HelpText>The warehouse the worker signed in to.</HelpText>
+			<Label>Warehouse</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>DeviceId</Name>
+			<AllowEdit>No</AllowEdit>
+			<HelpText>The handheld - see Mobile devices.</HelpText>
+			<Label>Device ID</Label>
+			<StringSize>64</StringSize>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>DeviceName</Name>
+			<AllowEdit>No</AllowEdit>
+			<Label>Device</Label>
+			<StringSize>121</StringSize>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>AppVersionName</Name>
+			<AllowEdit>No</AllowEdit>
+			<Label>App version</Label>
+			<StringSize>32</StringSize>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldUtcDateTime">
+			<Name>SignInUtc</Name>
+			<AllowEdit>No</AllowEdit>
+			<Label>Signed in</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldUtcDateTime">
+			<Name>SignOutUtc</Name>
+			<AllowEdit>No</AllowEdit>
+			<HelpText>Blank while the session is still open, or until the handheld can send its end.</HelpText>
+			<Label>Signed out</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldReal">
+			<Name>DurationMinutes</Name>
+			<AllowEdit>No</AllowEdit>
+			<Label>Duration (minutes)</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>DurationText</Name>
+			<AllowEdit>No</AllowEdit>
+			<HelpText>Hours and minutes, e.g. 7:42. Blank while the session is still open.</HelpText>
+			<Label>Duration</Label>
+			<StringSize>12</StringSize>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>EndReason</Name>
+			<AllowEdit>No</AllowEdit>
+			<HelpText>Signed out, Timed out (the app's inactivity sign-out), or App closed (the app was stopped - the session ends at its last activity).</HelpText>
+			<Label>How it ended</Label>
+			<StringSize>30</StringSize>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldEnum">
+			<Name>SignedInOffline</Name>
+			<AllowEdit>No</AllowEdit>
+			<EnumType>NoYes</EnumType>
+			<HelpText>Signed in on the handheld while D365FO could not be reached.</HelpText>
+			<Label>Offline sign-in</Label>
+		</AxTableField>
+	</Fields>
+	<FullTextIndexes />
+	<Indexes>
+		<AxTableIndex>
+			<Name>SessionIdIdx</Name>
+			<AllowDuplicates>No</AllowDuplicates>
+			<AlternateKey>Yes</AlternateKey>
+			<Fields>
+				<AxTableIndexField>
+					<DataField>SessionId</DataField>
+				</AxTableIndexField>
+			</Fields>
+		</AxTableIndex>
+		<AxTableIndex>
+			<Name>SignInIdx</Name>
+			<AllowDuplicates>Yes</AllowDuplicates>
+			<Fields>
+				<AxTableIndexField>
+					<DataField>SignInUtc</DataField>
+				</AxTableIndexField>
+			</Fields>
+		</AxTableIndex>
+		<AxTableIndex>
+			<Name>UserIdx</Name>
+			<AllowDuplicates>Yes</AllowDuplicates>
+			<Fields>
+				<AxTableIndexField>
+					<DataField>UserName</DataField>
+				</AxTableIndexField>
+				<AxTableIndexField>
+					<DataField>SignInUtc</DataField>
+				</AxTableIndexField>
+			</Fields>
+		</AxTableIndex>
+	</Indexes>
+	<Mappings />
+	<Relations />
+	<StateMachines />
+</AxTable>

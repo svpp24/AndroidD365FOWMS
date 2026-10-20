@@ -15,6 +15,8 @@ interface CountCaptureStore {
     suspend fun saveLocationCheck(check: CountLocationCheckEntity)
     suspend fun saveException(exception: CountExceptionEntity)
     suspend fun deleteUnsentException(clientId: String)
+    suspend fun unsentExceptions(journalId: String): List<CountExceptionEntity>
+    suspend fun unsentExceptionById(clientId: String): CountExceptionEntity?
 }
 
 @Singleton
@@ -25,6 +27,8 @@ class RoomCountCaptureStore @Inject constructor(private val dao: CountingDao) : 
     override suspend fun saveLocationCheck(check: CountLocationCheckEntity) = dao.upsertLocationCheck(check)
     override suspend fun saveException(exception: CountExceptionEntity) = dao.upsertException(exception)
     override suspend fun deleteUnsentException(clientId: String) = dao.deleteUnsentException(clientId)
+    override suspend fun unsentExceptions(journalId: String) = dao.unsentExceptions(journalId)
+    override suspend fun unsentExceptionById(clientId: String) = dao.unsentException(clientId)
 }
 
 sealed interface UnexpectedItemResult {
@@ -76,9 +80,15 @@ class CountCaptureActions @Inject constructor(private val store: CountCaptureSto
         serialId: String?,
         note: String?,
         capturedBy: String?,
+        /** The variant found; required when [variantRequired] - the item has product dimensions. */
+        variant: com.d365fo.mobileops.domain.model.ProductVariant = com.d365fo.mobileops.domain.model.ProductVariant(),
+        variantRequired: Boolean = false,
     ): UnexpectedItemResult {
         val item = itemId.trim()
         if (item.isEmpty()) return UnexpectedItemResult.Invalid("Enter the item number.")
+        if (variantRequired && variant.isEmpty) {
+            return UnexpectedItemResult.Invalid("$item comes in variants - choose the one you found.")
+        }
         val digits = quantityText.trim()
         if (digits.isEmpty() || digits.any { !it.isDigit() }) {
             return UnexpectedItemResult.Invalid("Enter the quantity found, in whole pieces.")
@@ -99,9 +109,62 @@ class CountCaptureActions @Inject constructor(private val store: CountCaptureSto
                 note = note?.trim()?.takeIf { it.isNotEmpty() },
                 capturedBy = capturedBy,
                 capturedAt = clock(),
+                configId = variant.configId?.takeIf { it.isNotBlank() },
+                sizeId = variant.sizeId?.takeIf { it.isNotBlank() },
+                colorId = variant.colorId?.takeIf { it.isNotBlank() },
+                styleId = variant.styleId?.takeIf { it.isNotBlank() },
             ),
         )
         return UnexpectedItemResult.Saved(clientId)
+    }
+
+    /**
+     * A scan of an item not on the journal (user, 14 Oct: no form - it goes in the list): one
+     * more on the unsent row of the same item, variant and location, or a new row of 1.
+     * Returns the row's quantity now.
+     */
+    suspend fun addOneNotOnJournal(
+        journalId: String,
+        itemId: String,
+        locationId: String?,
+        variant: com.d365fo.mobileops.domain.model.ProductVariant,
+        capturedBy: String?,
+    ): String {
+        val location = locationId?.trim()?.takeIf { it.isNotEmpty() }
+        fun String?.n() = this?.trim().orEmpty()
+        val existing = store.unsentExceptions(journalId).firstOrNull {
+            it.itemId.equals(itemId, ignoreCase = true) && it.locationId.n().equals(location.n(), ignoreCase = true) &&
+                it.batchId.isNullOrBlank() && it.serialId.isNullOrBlank() &&
+                it.configId.n() == variant.configId.n() && it.sizeId.n() == variant.sizeId.n() &&
+                it.colorId.n() == variant.colorId.n() && it.styleId.n() == variant.styleId.n()
+        }
+        val quantity = ((existing?.quantity?.toLongOrNull() ?: 0L) + 1).toString()
+        store.saveException(
+            existing?.copy(quantity = quantity, capturedAt = clock(), capturedBy = capturedBy ?: existing.capturedBy)
+                ?: CountExceptionEntity(
+                    clientId = UUID.randomUUID().toString(),
+                    journalId = journalId,
+                    itemId = itemId.trim(),
+                    locationId = location,
+                    quantity = quantity,
+                    batchId = null,
+                    serialId = null,
+                    note = null,
+                    capturedBy = capturedBy,
+                    capturedAt = clock(),
+                    configId = variant.configId?.takeIf { it.isNotBlank() },
+                    sizeId = variant.sizeId?.takeIf { it.isNotBlank() },
+                    colorId = variant.colorId?.takeIf { it.isNotBlank() },
+                    styleId = variant.styleId?.takeIf { it.isNotBlank() },
+                ),
+        )
+        return quantity
+    }
+
+    /** The quantity found of an unsent not-on-the-journal row, as the worker corrected it. */
+    suspend fun setUnexpectedQuantity(clientId: String, quantity: String) {
+        val row = store.unsentExceptionById(clientId) ?: return
+        store.saveException(row.copy(quantity = quantity, capturedAt = clock()))
     }
 
     /** Removes an unexpected item that has not been sent yet. */

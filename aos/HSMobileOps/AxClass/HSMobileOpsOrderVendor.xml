@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsOrderVendor</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// A vendor the worker may order from, with the defaults a new purchase order takes.
+/// </summary>
+[DataContractAttribute]
+class HSMobileOpsOrderVendor
+{
+    str accountNum;
+    str name;
+    str currencyCode;
+    str paymentTerms;
+    str deliveryTerms;
+    str deliveryMode;
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmAccountNum</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('AccountNum')]
+    public str parmAccountNum(str _value = accountNum)
+    {
+        accountNum = _value;
+        return accountNum;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmName</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Name')]
+    public str parmName(str _value = name)
+    {
+        name = _value;
+        return name;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmCurrencyCode</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('CurrencyCode')]
+    public str parmCurrencyCode(str _value = currencyCode)
+    {
+        currencyCode = _value;
+        return currencyCode;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmPaymentTerms</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('PaymentTerms')]
+    public str parmPaymentTerms(str _value = paymentTerms)
+    {
+        paymentTerms = _value;
+        return paymentTerms;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmDeliveryTerms</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('DeliveryTerms')]
+    public str parmDeliveryTerms(str _value = deliveryTerms)
+    {
+        deliveryTerms = _value;
+        return deliveryTerms;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmDeliveryMode</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('DeliveryMode')]
+    public str parmDeliveryMode(str _value = deliveryMode)
+    {
+        deliveryMode = _value;
+        return deliveryMode;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

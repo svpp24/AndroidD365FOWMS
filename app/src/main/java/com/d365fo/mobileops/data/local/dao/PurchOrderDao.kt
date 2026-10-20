@@ -66,14 +66,7 @@ interface PurchOrderDao {
 
     @Transaction
     @Query("SELECT * FROM purch_order WHERE purchId = :purchId")
-    fun observeOrder(purchId: String): Flow<PurchOrderWithLines?>
-
-    @Transaction
-    @Query("SELECT * FROM purch_order WHERE purchId = :purchId")
     suspend fun getOrder(purchId: String): PurchOrderWithLines?
-
-    @Query("SELECT * FROM purch_line WHERE lineId = :lineId")
-    suspend fun getLine(lineId: String): PurchLineEntity?
 
     /** Scan resolution: which lines on this order carry the scanned item and still owe stock. */
     @Query(
@@ -86,9 +79,6 @@ interface PurchOrderDao {
         """,
     )
     suspend fun findOpenLinesForItem(purchId: String, itemId: String): List<PurchLineEntity>
-
-    @Query("SELECT COUNT(*) FROM purch_order WHERE warehouseId = :warehouseId AND status IN ('NONE','BACKORDER')")
-    fun observeOpenOrderCount(warehouseId: String): Flow<Int>
 
     // -- Delta sync ----------------------------------------------------------------------
 
@@ -112,22 +102,6 @@ interface PurchOrderDao {
         deleteLinesFor(order.purchId)
         lines.chunked(Constants.DB_BATCH_SIZE).forEach { upsertLines(it) }
     }
-
-    @Transaction
-    suspend fun upsertOrdersWithLines(
-        orders: List<PurchOrderEntity>,
-        linesByOrder: Map<String, List<PurchLineEntity>>,
-    ) {
-        orders.chunked(Constants.DB_BATCH_SIZE).forEach { upsertOrders(it) }
-        linesByOrder.forEach { (purchId, lines) ->
-            deleteLinesFor(purchId)
-            lines.chunked(Constants.DB_BATCH_SIZE).forEach { upsertLines(it) }
-        }
-    }
-
-    /** Applied after a successful GRN post so the worklist reflects the new remaining qty. */
-    @Query("UPDATE purch_line SET receivedQuantity = :receivedQuantity WHERE lineId = :lineId")
-    suspend fun updateReceivedQuantity(lineId: String, receivedQuantity: String)
 
     @Query("DELETE FROM purch_line WHERE purchId = :purchId")
     suspend fun deleteLinesFor(purchId: String)

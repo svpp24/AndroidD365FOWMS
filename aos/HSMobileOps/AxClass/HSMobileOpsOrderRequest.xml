@@ -1,0 +1,377 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsOrderRequest</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// One request shape for every operation of HSMobileOpsOrderCreateService; each reads the members it needs. Dates are yyyy-MM-dd.
+/// </summary>
+[DataContractAttribute]
+class HSMobileOpsOrderRequest
+{
+    str dataAreaId;
+    str userName;
+    str deviceId;
+    str idempotencyKey;
+    str vendorAccount;
+    str siteId;
+    str warehouseId;
+    str fromWarehouseId;
+    str toWarehouseId;
+    str deliveryDate;
+    str shipDate;
+    str receiveDate;
+    str itemId;
+    str configId;
+    str sizeId;
+    str colorId;
+    str styleId;
+    int skip;
+    int take;
+    str purchId;
+    str returnReasonCode;
+    str rmaNumber;
+    str returnActionId;
+    boolean groupByLocation;
+    str linesJson;
+    List lines;
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmDataAreaId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('DataAreaId')]
+    public str parmDataAreaId(str _value = dataAreaId)
+    {
+        dataAreaId = _value;
+        return dataAreaId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmUserName</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('UserName')]
+    public str parmUserName(str _value = userName)
+    {
+        userName = _value;
+        return userName;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmDeviceId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('DeviceId')]
+    public str parmDeviceId(str _value = deviceId)
+    {
+        deviceId = _value;
+        return deviceId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmIdempotencyKey</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('IdempotencyKey')]
+    public str parmIdempotencyKey(str _value = idempotencyKey)
+    {
+        idempotencyKey = _value;
+        return idempotencyKey;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmVendorAccount</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('VendorAccount')]
+    public str parmVendorAccount(str _value = vendorAccount)
+    {
+        vendorAccount = _value;
+        return vendorAccount;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmSiteId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('SiteId')]
+    public str parmSiteId(str _value = siteId)
+    {
+        siteId = _value;
+        return siteId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmWarehouseId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('WarehouseId')]
+    public str parmWarehouseId(str _value = warehouseId)
+    {
+        warehouseId = _value;
+        return warehouseId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmFromWarehouseId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('FromWarehouseId')]
+    public str parmFromWarehouseId(str _value = fromWarehouseId)
+    {
+        fromWarehouseId = _value;
+        return fromWarehouseId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmToWarehouseId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ToWarehouseId')]
+    public str parmToWarehouseId(str _value = toWarehouseId)
+    {
+        toWarehouseId = _value;
+        return toWarehouseId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmDeliveryDate</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('DeliveryDate')]
+    public str parmDeliveryDate(str _value = deliveryDate)
+    {
+        deliveryDate = _value;
+        return deliveryDate;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmShipDate</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ShipDate')]
+    public str parmShipDate(str _value = shipDate)
+    {
+        shipDate = _value;
+        return shipDate;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmReceiveDate</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ReceiveDate')]
+    public str parmReceiveDate(str _value = receiveDate)
+    {
+        receiveDate = _value;
+        return receiveDate;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmItemId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ItemId')]
+    public str parmItemId(str _value = itemId)
+    {
+        itemId = _value;
+        return itemId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmConfigId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ConfigId')]
+    public str parmConfigId(str _value = configId)
+    {
+        configId = _value;
+        return configId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmSizeId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('SizeId')]
+    public str parmSizeId(str _value = sizeId)
+    {
+        sizeId = _value;
+        return sizeId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmColorId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ColorId')]
+    public str parmColorId(str _value = colorId)
+    {
+        colorId = _value;
+        return colorId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmStyleId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('StyleId')]
+    public str parmStyleId(str _value = styleId)
+    {
+        styleId = _value;
+        return styleId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmSkip</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Skip')]
+    public int parmSkip(int _value = skip)
+    {
+        skip = _value;
+        return skip;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmTake</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Take')]
+    public int parmTake(int _value = take)
+    {
+        take = _value;
+        return take;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmLines</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The lines, read from LinesJson. Not a data member itself: a list of a custom class does
+    /// not bind on the way in (JObject cast failure - see HSMobileOpsPostRequest.parmLinesJson).
+    /// </summary>
+    public List parmLines(List _value = lines)
+    {
+        lines = _value;
+        if (!lines && linesJson)
+        {
+            lines = HSMobileOpsOrderLine::listFromJson(linesJson);
+        }
+        return lines;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmLinesJson</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The order lines as a JSON array of HSMobileOpsOrderLine's members.
+    /// </summary>
+    [DataMemberAttribute('LinesJson')]
+    public str parmLinesJson(str _value = linesJson)
+    {
+        linesJson = _value;
+        return linesJson;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmPurchId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('PurchId')]
+    public str parmPurchId(str _value = purchId)
+    {
+        purchId = _value;
+        return purchId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmReturnReasonCode</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Purchase return: the return reason code (ReturnReasonCode).
+    /// </summary>
+    [DataMemberAttribute('ReturnReasonCode')]
+    public str parmReturnReasonCode(str _value = returnReasonCode)
+    {
+        returnReasonCode = _value;
+        return returnReasonCode;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmRmaNumber</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Purchase return: the vendor's RMA number, when the vendor gave one.
+    /// </summary>
+    [DataMemberAttribute('RmaNumber')]
+    public str parmRmaNumber(str _value = rmaNumber)
+    {
+        rmaNumber = _value;
+        return rmaNumber;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmGroupByLocation</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// getStock: one row per bin as well as batch and serial (purchase return).
+    /// </summary>
+    [DataMemberAttribute('GroupByLocation')]
+    public boolean parmGroupByLocation(boolean _value = groupByLocation)
+    {
+        groupByLocation = _value;
+        return groupByLocation;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmReturnActionId</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Purchase return: the return action (ReturnActionDefaults) every line gets.
+    /// </summary>
+    [DataMemberAttribute('ReturnActionId')]
+    public str parmReturnActionId(str _value = returnActionId)
+    {
+        returnActionId = _value;
+        return returnActionId;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

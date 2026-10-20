@@ -1,0 +1,199 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsProcessPendingBatch</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// The recurring batch job that registers and posts what handhelds have staged: every
+/// [recurrenceMinutes] it works the Pending rows of HSMobileOpsPostQueue in every company, the
+/// same work as "Process pending" on the Activity screen (HSMobileOpsPostingService::
+/// processCompany). Without it a receipt queued on a handheld - offline, or by a worker who signs
+/// out before opening Activity - stays Pending until someone presses the button.
+///
+/// One job per environment, created by [ensureScheduled]: the first press of "Process pending",
+/// or on purpose from ?mi=SysClassRunner&amp;cls=HSMobileOpsProcessPendingBatch. Withholding or
+/// changing it under System administration > Batch jobs is respected - only a job that is gone
+/// (deleted, cancelled, finished) is created again.
+/// </summary>
+class HSMobileOpsProcessPendingBatch extends RunBaseBatch
+{
+    #define.CurrentVersion(1)
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>main</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Schedules the recurring job if it does not exist yet, and says which it was.
+    /// </summary>
+    public static void main(Args _args)
+    {
+        if (HSMobileOpsProcessPendingBatch::ensureScheduled())
+        {
+            info(strFmt('Batch job "%1" scheduled: every %2 minutes.',
+                HSMobileOpsProcessPendingBatch::caption(), HSMobileOpsProcessPendingBatch::recurrenceMinutes()));
+        }
+        else
+        {
+            info(strFmt('Batch job "%1" is already scheduled - see System administration > Batch jobs.',
+                HSMobileOpsProcessPendingBatch::caption()));
+        }
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>caption</Name>
+				<Source><![CDATA[
+
+    public static str caption()
+    {
+        return 'Mobile ops: process pending postings';
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>recurrenceMinutes</Name>
+				<Source><![CDATA[
+
+    public static int recurrenceMinutes()
+    {
+        return 5;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>isScheduled</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Whether a job running this class still exists and has not ended - waiting, executing,
+    /// withheld or in error all count, so a job someone has paused is not doubled.
+    /// </summary>
+    public static boolean isScheduled()
+    {
+        Batch    batch;
+        BatchJob batchJob;
+
+        select firstOnly RecId from batch
+            where batch.ClassNumber == classNum(HSMobileOpsProcessPendingBatch)
+            exists join batchJob
+                where batchJob.RecId  == batch.BatchJobId
+                   && batchJob.Status != BatchStatus::Canceled
+                   && batchJob.Status != BatchStatus::Finished;
+
+        return batch.RecId != 0;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>ensureScheduled</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Creates the recurring job - every [recurrenceMinutes], no end date, starting now - unless
+    /// one exists. Returns true when this call created it.
+    /// </summary>
+    public static boolean ensureScheduled()
+    {
+        BatchHeader       batchHeader;
+        SysRecurrenceData recurrence;
+
+        if (HSMobileOpsProcessPendingBatch::isScheduled())
+        {
+            return false;
+        }
+
+        recurrence = SysRecurrence::defaultRecurrence();
+        recurrence = SysRecurrence::setRecurrenceStartDateTime(recurrence, DateTimeUtil::utcNow());
+        recurrence = SysRecurrence::setRecurrenceNoEnd(recurrence);
+        recurrence = SysRecurrence::setRecurrenceUnit(recurrence, SysRecurrenceUnit::Minute,
+            HSMobileOpsProcessPendingBatch::recurrenceMinutes());
+
+        batchHeader = BatchHeader::construct();
+        batchHeader.parmCaption(HSMobileOpsProcessPendingBatch::caption());
+        batchHeader.parmRecurrenceData(recurrence);
+        batchHeader.addTask(new HSMobileOpsProcessPendingBatch());
+        batchHeader.save();
+
+        return true;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>run</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Every company with rows still to do. Processing rows are included so a run that died
+    /// part way is failed for a person to check (HSMobileOpsPostQueue::failInterrupted), even
+    /// when nothing new has been staged since.
+    /// </summary>
+    public void run()
+    {
+        HSMobileOpsPostQueue postQueue;
+
+        while select crossCompany DataAreaId from postQueue
+            group by DataAreaId
+            where postQueue.Status == HSMobileOpsPostQueue::statusPending()
+               || postQueue.Status == HSMobileOpsPostQueue::statusProcessing()
+        {
+            HSMobileOpsPostingService::processCompany(postQueue.DataAreaId);
+        }
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>pack</Name>
+				<Source><![CDATA[
+
+    public container pack()
+    {
+        return [#CurrentVersion];
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>unpack</Name>
+				<Source><![CDATA[
+
+    public boolean unpack(container _packedClass)
+    {
+        return RunBase::getVersion(_packedClass) == #CurrentVersion;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>canGoBatch</Name>
+				<Source><![CDATA[
+
+    public boolean canGoBatch()
+    {
+        return true;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>runsImpersonated</Name>
+				<Source><![CDATA[
+
+    public boolean runsImpersonated()
+    {
+        return true;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>description</Name>
+				<Source><![CDATA[
+
+    public static ClassDescription description()
+    {
+        return HSMobileOpsProcessPendingBatch::caption();
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

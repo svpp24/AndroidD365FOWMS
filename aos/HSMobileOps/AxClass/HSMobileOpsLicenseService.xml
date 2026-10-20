@@ -86,10 +86,12 @@ class HSMobileOpsLicenseService
 
     /// <summary>
     /// The app's own launch-time device-registration call, before any worker has signed in - see
-    /// the class doc. Re-verifies the license (a device with no valid license should not be able
-    /// to consume a device slot at all), checks the device-limit gate, and on success upserts the
-    /// device row via HSMobileOpsDevice::registerSignIn with a blank user/site/warehouse - those
-    /// three get filled in properly the first time a worker actually signs in on this device.
+    /// the class doc. Re-verifies the license AND the device's own attestation
+    /// (HSMobileOpsLicense::verifyWithAttestation - a device with no valid license, or one the
+    /// vendor has revoked, or a tampered/repackaged install, should not be able to consume a
+    /// device slot at all), checks the device-limit gate, and on success upserts the device row
+    /// via HSMobileOpsDevice::registerSignIn with a blank user/site/warehouse - those three get
+    /// filled in properly the first time a worker actually signs in on this device.
     ///
     /// `[Wrappable(false), Hookable(false)]` and `final` - same reasoning as getLicense.
     /// </summary>
@@ -116,7 +118,7 @@ class HSMobileOpsLicenseService
             return response;
         }
 
-        license = HSMobileOpsLicense::verify();
+        license = HSMobileOpsLicense::verifyWithAttestation(deviceId, _request.parmIntegrityToken());
         if (!license.parmValid())
         {
             response.parmErrorCode(license.parmErrorCode());

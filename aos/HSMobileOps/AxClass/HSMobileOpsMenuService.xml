@@ -1,0 +1,127 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsMenuService</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// The handheld's menus (HSMobileOpsMenuSvc). getMenu returns the worker's Home menu - their
+/// own (HSMobileOpsUser.MenuId) or else the default one - and every menu reachable from it, so
+/// the app can show the whole tree offline. Menu access is not applied here: the app hides the
+/// modules a worker may not use, the same way it does without menus.
+/// </summary>
+class HSMobileOpsMenuService
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>getMenu</Name>
+				<Source><![CDATA[
+
+    public HSMobileOpsMenuResponse getMenu(HSMobileOpsMenuRequest _request)
+    {
+        HSMobileOpsMenuResponse response = new HSMobileOpsMenuResponse();
+        HSMobileOpsUser         user;
+        HSMobileOpsMenu         root;
+        Set                     visited = new Set(Types::String);
+
+        response.parmSuccess(false);
+        response.parmRootMenuId('');
+        response.parmMenus(new List(Types::Class));
+
+        if (!_request || !_request.parmDataAreaId() || !CompanyInfo::findDataArea(_request.parmDataAreaId()).RecId)
+        {
+            response.parmErrorCode('INVALID_REQUEST');
+            return response;
+        }
+
+        changecompany (_request.parmDataAreaId())
+        {
+            if (_request.parmUserName())
+            {
+                user = HSMobileOpsUser::find(_request.parmUserName());
+            }
+            if (user.MenuId)
+            {
+                root = HSMobileOpsMenu::find(user.MenuId);
+            }
+            if (!root.RecId)
+            {
+                root = HSMobileOpsMenu::findDefault();
+            }
+            if (root.RecId)
+            {
+                response.parmRootMenuId(root.MenuId);
+                HSMobileOpsMenuService::addMenu(response, root.MenuId, visited, 0);
+            }
+        }
+
+        response.parmSuccess(true);
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>addMenu</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Adds a menu, then the sub-menus it opens - each once, however often it is opened.
+    /// </summary>
+    private static void addMenu(HSMobileOpsMenuResponse _response, str _menuId, Set _visited, int _depth)
+    {
+        HSMobileOpsMenu        menu = HSMobileOpsMenu::find(_menuId);
+        HSMobileOpsMenuLine    line;
+        HSMobileOpsMenuRow     row;
+        HSMobileOpsMenuLineRow lineRow;
+        List                   subMenus = new List(Types::String);
+        ListEnumerator         subMenuEnumerator;
+
+        if (!menu.RecId || _visited.in(menu.MenuId) || _depth > 20)
+        {
+            return;
+        }
+        _visited.add(menu.MenuId);
+
+        row = new HSMobileOpsMenuRow();
+        row.parmMenuId(menu.MenuId);
+        row.parmName(menu.Name);
+        row.parmLines(new List(Types::Class));
+
+        while select line
+            order by LineNum
+            where line.MenuRecId == menu.RecId
+        {
+            lineRow = new HSMobileOpsMenuLineRow();
+            lineRow.parmModule('');
+            lineRow.parmSubMenuId('');
+            if (line.LineType == HSMobileOpsMenuLineType::SubMenu)
+            {
+                if (!line.SubMenuId)
+                {
+                    continue;
+                }
+                lineRow.parmLineType('MENU');
+                lineRow.parmSubMenuId(line.SubMenuId);
+                subMenus.addEnd(line.SubMenuId);
+            }
+            else
+            {
+                lineRow.parmLineType('MODULE');
+                lineRow.parmModule(enum2Symbol(enumNum(HSMobileOpsModule), line.Module));
+            }
+            row.parmLines().addEnd(lineRow);
+        }
+        _response.parmMenus().addEnd(row);
+
+        subMenuEnumerator = subMenus.getEnumerator();
+        while (subMenuEnumerator.moveNext())
+        {
+            HSMobileOpsMenuService::addMenu(_response, subMenuEnumerator.current(), _visited, _depth + 1);
+        }
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

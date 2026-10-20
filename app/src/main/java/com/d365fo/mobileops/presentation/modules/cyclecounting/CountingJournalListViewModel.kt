@@ -104,7 +104,7 @@ class CountingJournalListViewModel @Inject constructor(
     private val countSubmissions: CountSubmissions,
     private val countTasks: CountTaskRepository,
     private val flags: FeatureFlags,
-    countingDao: CountingDao,
+    private val countingDao: CountingDao,
     private val triggeredAlerts: com.d365fo.mobileops.data.counting.TriggeredCountAlerts,
     private val counterProfiles: com.d365fo.mobileops.data.counting.CounterProfiles,
 ) : ViewModel() {
@@ -227,6 +227,13 @@ class CountingJournalListViewModel @Inject constructor(
     fun refresh() {
         viewModelScope.launch { load(_loaded.value.warehouseId) }
     }
+
+    /** The journal's lines on this device as CSV - Export as CSV on the card (feedback, 12 Oct). */
+    suspend fun csvFor(journalId: String): String =
+        com.d365fo.mobileops.data.counting.CountCsv.of(journalId, countingDao.getCountLines(journalId))
+
+    /** Says how an export went - the dialog the list already uses for messages. */
+    fun exported(message: String) = showMessage(message)
 
     fun dismissMessage() = _loaded.update { it.copy(message = null) }
 

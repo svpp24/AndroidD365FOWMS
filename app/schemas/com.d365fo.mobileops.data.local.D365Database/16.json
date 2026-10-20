@@ -1,0 +1,3565 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 16,
+    "identityHash": "10969bd9324ab1d9904fcb6be9a4cbeb",
+    "entities": [
+      {
+        "tableName": "item",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`itemId` TEXT NOT NULL, `itemName` TEXT NOT NULL, `searchName` TEXT, `inventoryUnit` TEXT NOT NULL, `purchaseUnit` TEXT, `salesUnit` TEXT, `trackingRequirement` TEXT NOT NULL, `locationMandatory` INTEGER NOT NULL, `active` INTEGER NOT NULL, `modifiedAt` INTEGER NOT NULL, PRIMARY KEY(`itemId`))",
+        "fields": [
+          {
+            "fieldPath": "itemId",
+            "columnName": "itemId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "itemName",
+            "columnName": "itemName",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "searchName",
+            "columnName": "searchName",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "inventoryUnit",
+            "columnName": "inventoryUnit",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "purchaseUnit",
+            "columnName": "purchaseUnit",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "salesUnit",
+            "columnName": "salesUnit",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "trackingRequirement",
+            "columnName": "trackingRequirement",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "locationMandatory",
+            "columnName": "locationMandatory",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "active",
+            "columnName": "active",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "modifiedAt",
+            "columnName": "modifiedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "itemId"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_item_itemName",
+            "unique": false,
+            "columnNames": [
+              "itemName"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_item_itemName` ON `${TABLE_NAME}` (`itemName`)"
+          },
+          {
+            "name": "index_item_active",
+            "unique": false,
+            "columnNames": [
+              "active"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_item_active` ON `${TABLE_NAME}` (`active`)"
+          },
+          {
+            "name": "index_item_modifiedAt",
+            "unique": false,
+            "columnNames": [
+              "modifiedAt"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_item_modifiedAt` ON `${TABLE_NAME}` (`modifiedAt`)"
+          }
+        ],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "barcode",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`barcode` TEXT NOT NULL, `itemId` TEXT NOT NULL, `quantityPerScan` TEXT NOT NULL, `unitId` TEXT, `active` INTEGER NOT NULL, `modifiedAt` INTEGER NOT NULL, `configId` TEXT, `sizeId` TEXT, `colorId` TEXT, `styleId` TEXT, PRIMARY KEY(`barcode`))",
+        "fields": [
+          {
+            "fieldPath": "barcode",
+            "columnName": "barcode",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "itemId",
+            "columnName": "itemId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "quantityPerScan",
+            "columnName": "quantityPerScan",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "unitId",
+            "columnName": "unitId",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "active",
+            "columnName": "active",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "modifiedAt",
+            "columnName": "modifiedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "configId",
+            "columnName": "configId",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "sizeId",
+            "columnName": "sizeId",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "colorId",
+            "columnName": "colorId",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "styleId",
+            "columnName": "styleId",
+            "affinity": "TEXT",
+            "notNull": false
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "barcode"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_barcode_itemId",
+            "unique": false,
+            "columnNames": [
+              "itemId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_barcode_itemId` ON `${TABLE_NAME}` (`itemId`)"
+          },
+          {
+            "name": "index_barcode_modifiedAt",
+            "unique": false,
+            "columnNames": [
+              "modifiedAt"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_barcode_modifiedAt` ON `${TABLE_NAME}` (`modifiedAt`)"
+          }
+        ],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "item_variant",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`itemId` TEXT NOT NULL, `configId` TEXT NOT NULL, `sizeId` TEXT NOT NULL, `colorId` TEXT NOT NULL, `styleId` TEXT NOT NULL, `syncedAt` INTEGER NOT NULL, PRIMARY KEY(`itemId`, `configId`, `sizeId`, `colorId`, `styleId`))",
+        "fields": [
+          {
+            "fieldPath": "itemId",
+            "columnName": "itemId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "configId",
+            "columnName": "configId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sizeId",
+            "columnName": "sizeId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "colorId",
+            "columnName": "colorId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "styleId",
+            "columnName": "styleId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "syncedAt",
+            "columnName": "syncedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "itemId",
+            "configId",
+            "sizeId",
+            "colorId",
+            "styleId"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_item_variant_syncedAt",
+            "unique": false,
+            "columnNames": [
+              "syncedAt"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_item_variant_syncedAt` ON `${TABLE_NAME}` (`syncedAt`)"
+          }
+        ],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "location",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`siteId` TEXT NOT NULL, `warehouseId` TEXT NOT NULL, `locationId` TEXT NOT NULL, `locationName` TEXT, `active` INTEGER NOT NULL, `modifiedAt` INTEGER NOT NULL, PRIMARY KEY(`siteId`, `warehouseId`, `locationId`))",
+        "fields": [
+          {
+            "fieldPath": "siteId",
+            "columnName": "siteId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "warehouseId",
+            "columnName": "warehouseId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "locationId",
+            "columnName": "locationId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "locationName",
+            "columnName": "locationName",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "active",
+            "columnName": "active",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "modifiedAt",
+            "columnName": "modifiedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "siteId",
+            "warehouseId",
+            "locationId"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_location_warehouseId",
+            "unique": false,
+            "columnNames": [
+              "warehouseId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_location_warehouseId` ON `${TABLE_NAME}` (`warehouseId`)"
+          },
+          {
+            "name": "index_location_active",
+            "unique": false,
+            "columnNames": [
+              "active"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_location_active` ON `${TABLE_NAME}` (`active`)"
+          },
+          {
+            "name": "index_location_modifiedAt",
+            "unique": false,
+            "columnNames": [
+              "modifiedAt"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_location_modifiedAt` ON `${TABLE_NAME}` (`modifiedAt`)"
+          }
+        ],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "invent_dim",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`inventDimId` TEXT NOT NULL, `itemId` TEXT, `siteId` TEXT, `warehouseId` TEXT, `locationId` TEXT, `batchId` TEXT, `serialId` TEXT, `configId` TEXT, `colorId` TEXT, `sizeId` TEXT, `styleId` TEXT, PRIMARY KEY(`inventDimId`))",
+        "fields": [
+          {
+            "fieldPath": "inventDimId",
+            "columnName": "inventDimId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "itemId",
+            "columnName": "itemId",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "siteId",
+            "columnName": "siteId",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "warehouseId",
+            "columnName": "warehouseId",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "locationId",
+            "columnName": "locationId",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "batchId",
+            "columnName": "batchId",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "serialId",
+            "columnName": "serialId",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "configId",
+            "columnName": "configId",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "colorId",
+            "columnName": "colorId",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "sizeId",
+            "columnName": "sizeId",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "styleId",
+            "columnName": "styleId",
+            "affinity": "TEXT",
+            "notNull": false
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "inventDimId"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_invent_dim_itemId_siteId_warehouseId_locationId_batchId_serialId",
+            "unique": false,
+            "columnNames": [
+              "itemId",
+              "siteId",
+              "warehouseId",
+              "locationId",
+              "batchId",
+              "serialId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_invent_dim_itemId_siteId_warehouseId_locationId_batchId_serialId` ON `${TABLE_NAME}` (`itemId`, `siteId`, `warehouseId`, `locationId`, `batchId`, `serialId`)"
+          }
+        ],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "onhand_cache",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`itemId` TEXT NOT NULL, `inventDimId` TEXT NOT NULL, `siteId` TEXT, `warehouseId` TEXT, `locationId` TEXT, `batchId` TEXT, `serialId` TEXT, `physicalInventory` TEXT NOT NULL, `availablePhysical` TEXT NOT NULL, `reservedPhysical` TEXT NOT NULL, `orderedInTotal` TEXT NOT NULL, `reservedOrdered` TEXT NOT NULL, `availableOrdered` TEXT NOT NULL, `cachedAt` INTEGER NOT NULL, PRIMARY KEY(`itemId`, `inventDimId`))",
+        "fields": [
+          {
+            "fieldPath": "itemId",
+            "columnName": "itemId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "inventDimId",
+            "columnName": "inventDimId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "siteId",
+            "columnName": "siteId",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "warehouseId",
+            "columnName": "warehouseId",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "locationId",
+            "columnName": "locationId",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "batchId",
+            "columnName": "batchId",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "serialId",
+            "columnName": "serialId",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "physicalInventory",
+            "columnName": "physicalInventory",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "availablePhysical",
+            "columnName": "availablePhysical",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "reservedPhysical",
+            "columnName": "reservedPhysical",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "orderedInTotal",
+            "columnName": "orderedInTotal",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "reservedOrdered",
+            "columnName": "reservedOrdered",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "availableOrdered",
+            "columnName": "availableOrdered",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "cachedAt",
+            "columnName": "cachedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "itemId",
+            "inventDimId"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_onhand_cache_itemId_siteId_warehouseId",
+            "unique": false,
+            "columnNames": [
+              "itemId",
+              "siteId",
+              "warehouseId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_onhand_cache_itemId_siteId_warehouseId` ON `${TABLE_NAME}` (`itemId`, `siteId`, `warehouseId`)"
+          },
+          {
+            "name": "index_onhand_cache_cachedAt",
+            "unique": false,
+            "columnNames": [
+              "cachedAt"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_onhand_cache_cachedAt` ON `${TABLE_NAME}` (`cachedAt`)"
+          }
+        ],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "sync_watermark",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`entitySet` TEXT NOT NULL, `lastModifiedAt` INTEGER NOT NULL, `lastSyncAt` INTEGER NOT NULL, `lastRecordCount` INTEGER NOT NULL, PRIMARY KEY(`entitySet`))",
+        "fields": [
+          {
+            "fieldPath": "entitySet",
+            "columnName": "entitySet",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastModifiedAt",
+            "columnName": "lastModifiedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastSyncAt",
+            "columnName": "lastSyncAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastRecordCount",
+            "columnName": "lastRecordCount",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "entitySet"
+          ]
+        },
+        "indices": [],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "warehouse",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`warehouseId` TEXT NOT NULL, `warehouseName` TEXT NOT NULL, `siteId` TEXT NOT NULL, `wmsEnabled` INTEGER NOT NULL, `cachedAt` INTEGER NOT NULL, PRIMARY KEY(`warehouseId`))",
+        "fields": [
+          {
+            "fieldPath": "warehouseId",
+            "columnName": "warehouseId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "warehouseName",
+            "columnName": "warehouseName",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "siteId",
+            "columnName": "siteId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "wmsEnabled",
+            "columnName": "wmsEnabled",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "cachedAt",
+            "columnName": "cachedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "warehouseId"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_warehouse_siteId",
+            "unique": false,
+            "columnNames": [
+              "siteId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_warehouse_siteId` ON `${TABLE_NAME}` (`siteId`)"
+          }
+        ],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "flow_session",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`flowType` TEXT NOT NULL, `orderId` TEXT NOT NULL, `warehouseId` TEXT, `userName` TEXT, `capturedJson` TEXT NOT NULL, `lineCount` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, PRIMARY KEY(`flowType`, `orderId`))",
+        "fields": [
+          {
+            "fieldPath": "flowType",
+            "columnName": "flowType",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "orderId",
+            "columnName": "orderId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "warehouseId",
+            "columnName": "warehouseId",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "userName",
+            "columnName": "userName",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "capturedJson",
+            "columnName": "capturedJson",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lineCount",
+            "columnName": "lineCount",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedAt",
+            "columnName": "updatedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "flowType",
+            "orderId"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_flow_session_updatedAt",
+            "unique": false,
+            "columnNames": [
+              "updatedAt"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_flow_session_updatedAt` ON `${TABLE_NAME}` (`updatedAt`)"
+          },
+          {
+            "name": "index_flow_session_userName",
+            "unique": false,
+            "columnNames": [
+              "userName"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_flow_session_userName` ON `${TABLE_NAME}` (`userName`)"
+          }
+        ],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "validation_audit",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `occurredAt` INTEGER NOT NULL, `workerId` TEXT NOT NULL, `deviceId` TEXT NOT NULL, `module` TEXT NOT NULL, `field` TEXT NOT NULL, `rawValue` TEXT NOT NULL, `reason` TEXT NOT NULL, `overriddenBySupervisor` INTEGER NOT NULL)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "occurredAt",
+            "columnName": "occurredAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "workerId",
+            "columnName": "workerId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "deviceId",
+            "columnName": "deviceId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "module",
+            "columnName": "module",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "field",
+            "columnName": "field",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "rawValue",
+            "columnName": "rawValue",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "reason",
+            "columnName": "reason",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "overriddenBySupervisor",
+            "columnName": "overriddenBySupervisor",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_validation_audit_occurredAt",
+            "unique": false,
+            "columnNames": [
+              "occurredAt"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_validation_audit_occurredAt` ON `${TABLE_NAME}` (`occurredAt`)"
+          },
+          {
+            "name": "index_validation_audit_workerId",
+            "unique": false,
+            "columnNames": [
+              "workerId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_validation_audit_workerId` ON `${TABLE_NAME}` (`workerId`)"
+          }
+        ],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "purch_order",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`purchId` TEXT NOT NULL, `vendorAccount` TEXT NOT NULL, `vendorName` TEXT NOT NULL, `status` TEXT NOT NULL, `siteId` TEXT, `warehouseId` TEXT, `deliveryDate` INTEGER, `currencyCode` TEXT, `approved` INTEGER NOT NULL, `overDeliveryPercent` TEXT, `underDeliveryPercent` TEXT, `modifiedAt` INTEGER NOT NULL, `sync_state` TEXT NOT NULL DEFAULT 'SYNCED', `local_modified_at` INTEGER NOT NULL, `server_rec_id` INTEGER, `etag` TEXT, `retry_count` INTEGER NOT NULL DEFAULT 0, `last_error` TEXT, PRIMARY KEY(`purchId`))",
+        "fields": [
+          {
+            "fieldPath": "purchId",
+            "columnName": "purchId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "vendorAccount",
+            "columnName": "vendorAccount",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "vendorName",
+            "columnName": "vendorName",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "status",
+            "columnName": "status",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "siteId",
+            "columnName": "siteId",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "warehouseId",
+            "columnName": "warehouseId",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "deliveryDate",
+            "columnName": "deliveryDate",
+            "affinity": "INTEGER",
+            "notNull": false
+          },
+          {
+            "fieldPath": "currencyCode",
+            "columnName": "currencyCode",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "approved",
+            "columnName": "approved",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "overDeliveryPercent",
+            "columnName": "overDeliveryPercent",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "underDeliveryPercent",
+            "columnName": "underDeliveryPercent",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "modifiedAt",
+            "columnName": "modifiedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sync.syncState",
+            "columnName": "sync_state",
+            "affinity": "TEXT",
+            "notNull": true,
+            "defaultValue": "'SYNCED'"
+          },
+          {
+            "fieldPath": "sync.localModifiedAt",
+            "columnName": "local_modified_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sync.serverRecId",
+            "columnName": "server_rec_id",
+            "affinity": "INTEGER",
+            "notNull": false
+          },
+          {
+            "fieldPath": "sync.eTag",
+            "columnName": "etag",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "sync.retryCount",
+            "columnName": "retry_count",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "0"
+          },
+          {
+            "fieldPath": "sync.lastError",
+            "columnName": "last_error",
+            "affinity": "TEXT",
+            "notNull": false
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "purchId"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_purch_order_vendorAccount",
+            "unique": false,
+            "columnNames": [
+              "vendorAccount"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_purch_order_vendorAccount` ON `${TABLE_NAME}` (`vendorAccount`)"
+          },
+          {
+            "name": "index_purch_order_status",
+            "unique": false,
+            "columnNames": [
+              "status"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_purch_order_status` ON `${TABLE_NAME}` (`status`)"
+          },
+          {
+            "name": "index_purch_order_warehouseId",
+            "unique": false,
+            "columnNames": [
+              "warehouseId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_purch_order_warehouseId` ON `${TABLE_NAME}` (`warehouseId`)"
+          },
+          {
+            "name": "index_purch_order_deliveryDate",
+            "unique": false,
+            "columnNames": [
+              "deliveryDate"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_purch_order_deliveryDate` ON `${TABLE_NAME}` (`deliveryDate`)"
+          },
+          {
+            "name": "index_purch_order_modifiedAt",
+            "unique": false,
+            "columnNames": [
+              "modifiedAt"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_purch_order_modifiedAt` ON `${TABLE_NAME}` (`modifiedAt`)"
+          }
+        ],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "purch_line",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`lineId` TEXT NOT NULL, `purchId` TEXT NOT NULL, `lineNumber` REAL NOT NULL, `itemId` TEXT NOT NULL, `itemName` TEXT NOT NULL, `purchaseUnit` TEXT NOT NULL, `inventoryUnit` TEXT NOT NULL, `unitConversionFactor` TEXT NOT NULL, `orderedQuantity` TEXT NOT NULL, `receivedQuantity` TEXT NOT NULL, `siteId` TEXT, `warehouseId` TEXT, `locationId` TEXT, `overDeliveryPercent` TEXT, `underDeliveryPercent` TEXT, `lineStatus` TEXT NOT NULL, `serverRecId` INTEGER, `modifiedAt` INTEGER NOT NULL, PRIMARY KEY(`lineId`), FOREIGN KEY(`purchId`) REFERENCES `purch_order`(`purchId`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "lineId",
+            "columnName": "lineId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "purchId",
+            "columnName": "purchId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lineNumber",
+            "columnName": "lineNumber",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "itemId",
+            "columnName": "itemId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "itemName",
+            "columnName": "itemName",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "purchaseUnit",
+            "columnName": "purchaseUnit",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "inventoryUnit",
+            "columnName": "inventoryUnit",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "unitConversionFactor",
+            "columnName": "unitConversionFactor",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "orderedQuantity",
+            "columnName": "orderedQuantity",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "receivedQuantity",
+            "columnName": "receivedQuantity",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "siteId",
+            "columnName": "siteId",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "warehouseId",
+            "columnName": "warehouseId",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "locationId",
+            "columnName": "locationId",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "overDeliveryPercent",
+            "columnName": "overDeliveryPercent",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "underDeliveryPercent",
+            "columnName": "underDeliveryPercent",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "lineStatus",
+            "columnName": "lineStatus",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "serverRecId",
+            "columnName": "serverRecId",
+            "affinity": "INTEGER",
+            "notNull": false
+          },
+          {
+            "fieldPath": "modifiedAt",
+            "columnName": "modifiedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "lineId"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_purch_line_purchId",
+            "unique": false,
+            "columnNames": [
+              "purchId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_purch_line_purchId` ON `${TABLE_NAME}` (`purchId`)"
+          },
+          {
+            "name": "index_purch_line_itemId",
+            "unique": false,
+            "columnNames": [
+              "itemId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_purch_line_itemId` ON `${TABLE_NAME}` (`itemId`)"
+          },
+          {
+            "name": "index_purch_line_purchId_lineNumber",
+            "unique": true,
+            "columnNames": [
+              "purchId",
+              "lineNumber"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_purch_line_purchId_lineNumber` ON `${TABLE_NAME}` (`purchId`, `lineNumber`)"
+          },
+          {
+            "name": "index_purch_line_warehouseId",
+            "unique": false,
+            "columnNames": [
+              "warehouseId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_purch_line_warehouseId` ON `${TABLE_NAME}` (`warehouseId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "purch_order",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "purchId"
+            ],
+            "referencedColumns": [
+              "purchId"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "invent_journal",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`journalId` TEXT NOT NULL, `type` TEXT NOT NULL, `journalNameId` TEXT NOT NULL, `serverJournalNumber` TEXT, `description` TEXT, `journalDate` INTEGER NOT NULL, `siteId` TEXT, `warehouseId` TEXT, `workerId` TEXT NOT NULL, `deviceId` TEXT NOT NULL, `status` TEXT NOT NULL, `blindCount` INTEGER NOT NULL, `varianceThresholdPercent` TEXT, `postedAt` INTEGER, `countStartedAt` INTEGER, `transferMode` TEXT NOT NULL, `originType` TEXT NOT NULL, `passNumber` INTEGER NOT NULL, `locationFirst` INTEGER NOT NULL, `zeroStockCheck` INTEGER NOT NULL, `countMode` TEXT NOT NULL, `recountOf` TEXT, `priority` INTEGER NOT NULL, `toleranceInfo` TEXT, `abcClass` TEXT, `freezeState` TEXT NOT NULL, `snapshotAt` INTEGER, `sync_state` TEXT NOT NULL DEFAULT 'SYNCED', `local_modified_at` INTEGER NOT NULL, `server_rec_id` INTEGER, `etag` TEXT, `retry_count` INTEGER NOT NULL DEFAULT 0, `last_error` TEXT, PRIMARY KEY(`journalId`))",
+        "fields": [
+          {
+            "fieldPath": "journalId",
+            "columnName": "journalId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "type",
+            "columnName": "type",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "journalNameId",
+            "columnName": "journalNameId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "serverJournalNumber",
+            "columnName": "serverJournalNumber",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "description",
+            "columnName": "description",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "journalDate",
+            "columnName": "journalDate",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "siteId",
+            "columnName": "siteId",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "warehouseId",
+            "columnName": "warehouseId",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "workerId",
+            "columnName": "workerId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "deviceId",
+            "columnName": "deviceId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "status",
+            "columnName": "status",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "blindCount",
+            "columnName": "blindCount",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "varianceThresholdPercent",
+            "columnName": "varianceThresholdPercent",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "postedAt",
+            "columnName": "postedAt",
+            "affinity": "INTEGER",
+            "notNull": false
+          },
+          {
+            "fieldPath": "countStartedAt",
+            "columnName": "countStartedAt",
+            "affinity": "INTEGER",
+            "notNull": false
+          },
+          {
+            "fieldPath": "transferMode",
+            "columnName": "transferMode",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "originType",
+            "columnName": "originType",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "passNumber",
+            "columnName": "passNumber",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "locationFirst",
+            "columnName": "locationFirst",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "zeroStockCheck",
+            "columnName": "zeroStockCheck",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "countMode",
+            "columnName": "countMode",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "recountOf",
+            "columnName": "recountOf",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "priority",
+            "columnName": "priority",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "toleranceInfo",
+            "columnName": "toleranceInfo",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "abcClass",
+            "columnName": "abcClass",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "freezeState",
+            "columnName": "freezeState",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "snapshotAt",
+            "columnName": "snapshotAt",
+            "affinity": "INTEGER",
+            "notNull": false
+          },
+          {
+            "fieldPath": "sync.syncState",
+            "columnName": "sync_state",
+            "affinity": "TEXT",
+            "notNull": true,
+            "defaultValue": "'SYNCED'"
+          },
+          {
+            "fieldPath": "sync.localModifiedAt",
+            "columnName": "local_modified_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sync.serverRecId",
+            "columnName": "server_rec_id",
+            "affinity": "INTEGER",
+            "notNull": false
+          },
+          {
+            "fieldPath": "sync.eTag",
+            "columnName": "etag",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "sync.retryCount",
+            "columnName": "retry_count",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "0"
+          },
+          {
+            "fieldPath": "sync.lastError",
+            "columnName": "last_error",
+            "affinity": "TEXT",
+            "notNull": false
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "journalId"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_invent_journal_type",
+            "unique": false,
+            "columnNames": [
+              "type"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_invent_journal_type` ON `${TABLE_NAME}` (`type`)"
+          },
+          {
+            "name": "index_invent_journal_status",
+            "unique": false,
+            "columnNames": [
+              "status"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_invent_journal_status` ON `${TABLE_NAME}` (`status`)"
+          },
+          {
+            "name": "index_invent_journal_sync_state",
+            "unique": false,
+            "columnNames": [
+              "sync_state"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_invent_journal_sync_state` ON `${TABLE_NAME}` (`sync_state`)"
+          },
+          {
+            "name": "index_invent_journal_warehouseId",
+            "unique": false,
+            "columnNames": [
+              "warehouseId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_invent_journal_warehouseId` ON `${TABLE_NAME}` (`warehouseId`)"
+          },
+          {
+            "name": "index_invent_journal_local_modified_at",
+            "unique": false,
+            "columnNames": [
+              "local_modified_at"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_invent_journal_local_modified_at` ON `${TABLE_NAME}` (`local_modified_at`)"
+          }
+        ],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "invent_journal_line",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`journalLineId` TEXT NOT NULL, `journalId` TEXT NOT NULL, `lineNumber` INTEGER NOT NULL, `itemId` TEXT NOT NULL, `itemName` TEXT NOT NULL, `quantity` TEXT NOT NULL, `unitId` TEXT NOT NULL, `countedQuantity` TEXT, `expectedQuantity` TEXT, `siteId` TEXT, `warehouseId` TEXT, `locationId` TEXT, `batchId` TEXT, `serialId` TEXT, `inventDimId` TEXT, `configId` TEXT, `sizeId` TEXT, `colorId` TEXT, `styleId` TEXT, `reasonCode` TEXT, `offsetAccount` TEXT, `toSiteId` TEXT, `toWarehouseId` TEXT, `toLocationId` TEXT, `varianceOverridden` INTEGER NOT NULL, `markedCounted` INTEGER NOT NULL, `capturedAt` INTEGER NOT NULL, `countedBy` TEXT, `countedAt` INTEGER, `lineCountStartedAt` INTEGER, `recount` INTEGER NOT NULL, `locationType` TEXT NOT NULL, `locationOwner` TEXT, `verifyOnly` INTEGER NOT NULL, `confirmedBy` TEXT, `confirmedAt` INTEGER, `confirmationSentAt` INTEGER, PRIMARY KEY(`journalLineId`), FOREIGN KEY(`journalId`) REFERENCES `invent_journal`(`journalId`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "journalLineId",
+            "columnName": "journalLineId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "journalId",
+            "columnName": "journalId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lineNumber",
+            "columnName": "lineNumber",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "itemId",
+            "columnName": "itemId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "itemName",
+            "columnName": "itemName",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "quantity",
+            "columnName": "quantity",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "unitId",
+            "columnName": "unitId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "countedQuantity",
+            "columnName": "countedQuantity",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "expectedQuantity",
+            "columnName": "expectedQuantity",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "siteId",
+            "columnName": "siteId",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "warehouseId",
+            "columnName": "warehouseId",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "locationId",
+            "columnName": "locationId",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "batchId",
+            "columnName": "batchId",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "serialId",
+            "columnName": "serialId",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "inventDimId",
+            "columnName": "inventDimId",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "configId",
+            "columnName": "configId",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "sizeId",
+            "columnName": "sizeId",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "colorId",
+            "columnName": "colorId",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "styleId",
+            "columnName": "styleId",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "reasonCode",
+            "columnName": "reasonCode",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "offsetAccount",
+            "columnName": "offsetAccount",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "toSiteId",
+            "columnName": "toSiteId",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "toWarehouseId",
+            "columnName": "toWarehouseId",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "toLocationId",
+            "columnName": "toLocationId",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "varianceOverridden",
+            "columnName": "varianceOverridden",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "markedCounted",
+            "columnName": "markedCounted",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "capturedAt",
+            "columnName": "capturedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "countedBy",
+            "columnName": "countedBy",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "countedAt",
+            "columnName": "countedAt",
+            "affinity": "INTEGER",
+            "notNull": false
+          },
+          {
+            "fieldPath": "lineCountStartedAt",
+            "columnName": "lineCountStartedAt",
+            "affinity": "INTEGER",
+            "notNull": false
+          },
+          {
+            "fieldPath": "recount",
+            "columnName": "recount",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "locationType",
+            "columnName": "locationType",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "locationOwner",
+            "columnName": "locationOwner",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "verifyOnly",
+            "columnName": "verifyOnly",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "confirmedBy",
+            "columnName": "confirmedBy",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "confirmedAt",
+            "columnName": "confirmedAt",
+            "affinity": "INTEGER",
+            "notNull": false
+          },
+          {
+            "fieldPath": "confirmationSentAt",
+            "columnName": "confirmationSentAt",
+            "affinity": "INTEGER",
+            "notNull": false
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "journalLineId"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_invent_journal_line_journalId",
+            "unique": false,
+            "columnNames": [
+              "journalId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_invent_journal_line_journalId` ON `${TABLE_NAME}` (`journalId`)"
+          },
+          {
+            "name": "index_invent_journal_line_itemId",
+            "unique": false,
+            "columnNames": [
+              "itemId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_invent_journal_line_itemId` ON `${TABLE_NAME}` (`itemId`)"
+          },
+          {
+            "name": "index_invent_journal_line_journalId_lineNumber",
+            "unique": true,
+            "columnNames": [
+              "journalId",
+              "lineNumber"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_invent_journal_line_journalId_lineNumber` ON `${TABLE_NAME}` (`journalId`, `lineNumber`)"
+          },
+          {
+            "name": "index_invent_journal_line_locationId",
+            "unique": false,
+            "columnNames": [
+              "locationId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_invent_journal_line_locationId` ON `${TABLE_NAME}` (`locationId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "invent_journal",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "journalId"
+            ],
+            "referencedColumns": [
+              "journalId"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "counting_line_reference",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`journalLineId` TEXT NOT NULL, `journalId` TEXT NOT NULL, `onHandQuantity` TEXT, PRIMARY KEY(`journalLineId`), FOREIGN KEY(`journalId`) REFERENCES `invent_journal`(`journalId`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "journalLineId",
+            "columnName": "journalLineId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "journalId",
+            "columnName": "journalId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "onHandQuantity",
+            "columnName": "onHandQuantity",
+            "affinity": "TEXT",
+            "notNull": false
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "journalLineId"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_counting_line_reference_journalId",
+            "unique": false,
+            "columnNames": [
+              "journalId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_counting_line_reference_journalId` ON `${TABLE_NAME}` (`journalId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "invent_journal",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "journalId"
+            ],
+            "referencedColumns": [
+              "journalId"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "count_claim",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`journalId` TEXT NOT NULL, `claimToken` TEXT NOT NULL, `rangeId` TEXT, `locationFrom` TEXT, `locationTo` TEXT, `claimedBy` TEXT NOT NULL, `claimedAt` INTEGER NOT NULL, `expiresAt` INTEGER, `heartbeatSeconds` INTEGER NOT NULL, `lastHeartbeatAt` INTEGER, `lost` INTEGER NOT NULL, `lostReason` TEXT, PRIMARY KEY(`journalId`))",
+        "fields": [
+          {
+            "fieldPath": "journalId",
+            "columnName": "journalId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "claimToken",
+            "columnName": "claimToken",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "rangeId",
+            "columnName": "rangeId",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "locationFrom",
+            "columnName": "locationFrom",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "locationTo",
+            "columnName": "locationTo",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "claimedBy",
+            "columnName": "claimedBy",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "claimedAt",
+            "columnName": "claimedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "expiresAt",
+            "columnName": "expiresAt",
+            "affinity": "INTEGER",
+            "notNull": false
+          },
+          {
+            "fieldPath": "heartbeatSeconds",
+            "columnName": "heartbeatSeconds",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastHeartbeatAt",
+            "columnName": "lastHeartbeatAt",
+            "affinity": "INTEGER",
+            "notNull": false
+          },
+          {
+            "fieldPath": "lost",
+            "columnName": "lost",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lostReason",
+            "columnName": "lostReason",
+            "affinity": "TEXT",
+            "notNull": false
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "journalId"
+          ]
+        },
+        "indices": [],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "count_submission",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`journalId` TEXT NOT NULL, `submissionId` TEXT NOT NULL, `transferMode` TEXT NOT NULL, `state` TEXT NOT NULL, `error` TEXT, `message` TEXT, `executionId` TEXT, `percent` INTEGER, `userId` TEXT NOT NULL, `deviceId` TEXT NOT NULL, `originType` TEXT NOT NULL, `passNumber` INTEGER NOT NULL, `startedAt` INTEGER, `submittedAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, `attempts` INTEGER NOT NULL, `countsDone` INTEGER NOT NULL, `countsWarning` TEXT, `exceptionsOnly` INTEGER NOT NULL, `resultNote` TEXT, `thirdCountNeeded` INTEGER NOT NULL, PRIMARY KEY(`journalId`))",
+        "fields": [
+          {
+            "fieldPath": "journalId",
+            "columnName": "journalId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "submissionId",
+            "columnName": "submissionId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "transferMode",
+            "columnName": "transferMode",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "state",
+            "columnName": "state",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "error",
+            "columnName": "error",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "message",
+            "columnName": "message",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "executionId",
+            "columnName": "executionId",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "percent",
+            "columnName": "percent",
+            "affinity": "INTEGER",
+            "notNull": false
+          },
+          {
+            "fieldPath": "userId",
+            "columnName": "userId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "deviceId",
+            "columnName": "deviceId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "originType",
+            "columnName": "originType",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "passNumber",
+            "columnName": "passNumber",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "startedAt",
+            "columnName": "startedAt",
+            "affinity": "INTEGER",
+            "notNull": false
+          },
+          {
+            "fieldPath": "submittedAt",
+            "columnName": "submittedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedAt",
+            "columnName": "updatedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "attempts",
+            "columnName": "attempts",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "countsDone",
+            "columnName": "countsDone",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "countsWarning",
+            "columnName": "countsWarning",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "exceptionsOnly",
+            "columnName": "exceptionsOnly",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "resultNote",
+            "columnName": "resultNote",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "thirdCountNeeded",
+            "columnName": "thirdCountNeeded",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "journalId"
+          ]
+        },
+        "indices": [],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "count_exception",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`clientId` TEXT NOT NULL, `journalId` TEXT NOT NULL, `itemId` TEXT NOT NULL, `locationId` TEXT, `quantity` TEXT NOT NULL, `batchId` TEXT, `serialId` TEXT, `note` TEXT, `capturedBy` TEXT, `capturedAt` INTEGER NOT NULL, `sentAt` INTEGER, `sendError` TEXT, PRIMARY KEY(`clientId`), FOREIGN KEY(`journalId`) REFERENCES `invent_journal`(`journalId`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "clientId",
+            "columnName": "clientId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "journalId",
+            "columnName": "journalId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "itemId",
+            "columnName": "itemId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "locationId",
+            "columnName": "locationId",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "quantity",
+            "columnName": "quantity",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "batchId",
+            "columnName": "batchId",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "serialId",
+            "columnName": "serialId",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "note",
+            "columnName": "note",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "capturedBy",
+            "columnName": "capturedBy",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "capturedAt",
+            "columnName": "capturedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sentAt",
+            "columnName": "sentAt",
+            "affinity": "INTEGER",
+            "notNull": false
+          },
+          {
+            "fieldPath": "sendError",
+            "columnName": "sendError",
+            "affinity": "TEXT",
+            "notNull": false
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "clientId"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_count_exception_journalId",
+            "unique": false,
+            "columnNames": [
+              "journalId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_count_exception_journalId` ON `${TABLE_NAME}` (`journalId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "invent_journal",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "journalId"
+            ],
+            "referencedColumns": [
+              "journalId"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "count_location_check",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`journalId` TEXT NOT NULL, `locationId` TEXT NOT NULL, `verifiedEmpty` INTEGER NOT NULL, `verifiedBy` TEXT, `verifiedAt` INTEGER NOT NULL, `sentAt` INTEGER, PRIMARY KEY(`journalId`, `locationId`), FOREIGN KEY(`journalId`) REFERENCES `invent_journal`(`journalId`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "journalId",
+            "columnName": "journalId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "locationId",
+            "columnName": "locationId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "verifiedEmpty",
+            "columnName": "verifiedEmpty",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "verifiedBy",
+            "columnName": "verifiedBy",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "verifiedAt",
+            "columnName": "verifiedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sentAt",
+            "columnName": "sentAt",
+            "affinity": "INTEGER",
+            "notNull": false
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "journalId",
+            "locationId"
+          ]
+        },
+        "indices": [],
+        "foreignKeys": [
+          {
+            "table": "invent_journal",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "journalId"
+            ],
+            "referencedColumns": [
+              "journalId"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "count_line_attempt",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`journalLineId` TEXT NOT NULL, `attemptNo` INTEGER NOT NULL, `journalId` TEXT NOT NULL, `countedBy` TEXT, `countedAt` INTEGER, `quantity` TEXT, `markedOnly` INTEGER NOT NULL, PRIMARY KEY(`journalLineId`, `attemptNo`), FOREIGN KEY(`journalId`) REFERENCES `invent_journal`(`journalId`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "journalLineId",
+            "columnName": "journalLineId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "attemptNo",
+            "columnName": "attemptNo",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "journalId",
+            "columnName": "journalId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "countedBy",
+            "columnName": "countedBy",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "countedAt",
+            "columnName": "countedAt",
+            "affinity": "INTEGER",
+            "notNull": false
+          },
+          {
+            "fieldPath": "quantity",
+            "columnName": "quantity",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "markedOnly",
+            "columnName": "markedOnly",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "journalLineId",
+            "attemptNo"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_count_line_attempt_journalId",
+            "unique": false,
+            "columnNames": [
+              "journalId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_count_line_attempt_journalId` ON `${TABLE_NAME}` (`journalId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "invent_journal",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "journalId"
+            ],
+            "referencedColumns": [
+              "journalId"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "transfer_order",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`transferId` TEXT NOT NULL, `fromSiteId` TEXT, `fromWarehouseId` TEXT NOT NULL, `toSiteId` TEXT, `toWarehouseId` TEXT NOT NULL, `status` TEXT NOT NULL, `shipDate` INTEGER, `receiveDate` INTEGER, `modifiedAt` INTEGER NOT NULL, `sync_state` TEXT NOT NULL DEFAULT 'SYNCED', `local_modified_at` INTEGER NOT NULL, `server_rec_id` INTEGER, `etag` TEXT, `retry_count` INTEGER NOT NULL DEFAULT 0, `last_error` TEXT, PRIMARY KEY(`transferId`))",
+        "fields": [
+          {
+            "fieldPath": "transferId",
+            "columnName": "transferId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "fromSiteId",
+            "columnName": "fromSiteId",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "fromWarehouseId",
+            "columnName": "fromWarehouseId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "toSiteId",
+            "columnName": "toSiteId",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "toWarehouseId",
+            "columnName": "toWarehouseId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "status",
+            "columnName": "status",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "shipDate",
+            "columnName": "shipDate",
+            "affinity": "INTEGER",
+            "notNull": false
+          },
+          {
+            "fieldPath": "receiveDate",
+            "columnName": "receiveDate",
+            "affinity": "INTEGER",
+            "notNull": false
+          },
+          {
+            "fieldPath": "modifiedAt",
+            "columnName": "modifiedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sync.syncState",
+            "columnName": "sync_state",
+            "affinity": "TEXT",
+            "notNull": true,
+            "defaultValue": "'SYNCED'"
+          },
+          {
+            "fieldPath": "sync.localModifiedAt",
+            "columnName": "local_modified_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sync.serverRecId",
+            "columnName": "server_rec_id",
+            "affinity": "INTEGER",
+            "notNull": false
+          },
+          {
+            "fieldPath": "sync.eTag",
+            "columnName": "etag",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "sync.retryCount",
+            "columnName": "retry_count",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "0"
+          },
+          {
+            "fieldPath": "sync.lastError",
+            "columnName": "last_error",
+            "affinity": "TEXT",
+            "notNull": false
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "transferId"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_transfer_order_status",
+            "unique": false,
+            "columnNames": [
+              "status"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_transfer_order_status` ON `${TABLE_NAME}` (`status`)"
+          },
+          {
+            "name": "index_transfer_order_fromWarehouseId",
+            "unique": false,
+            "columnNames": [
+              "fromWarehouseId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_transfer_order_fromWarehouseId` ON `${TABLE_NAME}` (`fromWarehouseId`)"
+          },
+          {
+            "name": "index_transfer_order_toWarehouseId",
+            "unique": false,
+            "columnNames": [
+              "toWarehouseId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_transfer_order_toWarehouseId` ON `${TABLE_NAME}` (`toWarehouseId`)"
+          },
+          {
+            "name": "index_transfer_order_sync_state",
+            "unique": false,
+            "columnNames": [
+              "sync_state"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_transfer_order_sync_state` ON `${TABLE_NAME}` (`sync_state`)"
+          },
+          {
+            "name": "index_transfer_order_modifiedAt",
+            "unique": false,
+            "columnNames": [
+              "modifiedAt"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_transfer_order_modifiedAt` ON `${TABLE_NAME}` (`modifiedAt`)"
+          }
+        ],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "transfer_line",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`transferLineId` TEXT NOT NULL, `transferId` TEXT NOT NULL, `lineNumber` REAL NOT NULL, `itemId` TEXT NOT NULL, `itemName` TEXT NOT NULL, `unitId` TEXT NOT NULL, `quantity` TEXT NOT NULL, `shippedQuantity` TEXT NOT NULL, `receivedQuantity` TEXT NOT NULL, `pendingShipQuantity` TEXT, `pendingReceiveQuantity` TEXT, `batchId` TEXT, `serialId` TEXT, `fromLocationId` TEXT, `toLocationId` TEXT, `serverRecId` INTEGER, `modifiedAt` INTEGER NOT NULL, `sync_state` TEXT NOT NULL DEFAULT 'SYNCED', `local_modified_at` INTEGER NOT NULL, `server_rec_id` INTEGER, `etag` TEXT, `retry_count` INTEGER NOT NULL DEFAULT 0, `last_error` TEXT, PRIMARY KEY(`transferLineId`), FOREIGN KEY(`transferId`) REFERENCES `transfer_order`(`transferId`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "transferLineId",
+            "columnName": "transferLineId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "transferId",
+            "columnName": "transferId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lineNumber",
+            "columnName": "lineNumber",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "itemId",
+            "columnName": "itemId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "itemName",
+            "columnName": "itemName",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "unitId",
+            "columnName": "unitId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "quantity",
+            "columnName": "quantity",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "shippedQuantity",
+            "columnName": "shippedQuantity",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "receivedQuantity",
+            "columnName": "receivedQuantity",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "pendingShipQuantity",
+            "columnName": "pendingShipQuantity",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "pendingReceiveQuantity",
+            "columnName": "pendingReceiveQuantity",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "batchId",
+            "columnName": "batchId",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "serialId",
+            "columnName": "serialId",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "fromLocationId",
+            "columnName": "fromLocationId",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "toLocationId",
+            "columnName": "toLocationId",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "serverRecId",
+            "columnName": "serverRecId",
+            "affinity": "INTEGER",
+            "notNull": false
+          },
+          {
+            "fieldPath": "modifiedAt",
+            "columnName": "modifiedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sync.syncState",
+            "columnName": "sync_state",
+            "affinity": "TEXT",
+            "notNull": true,
+            "defaultValue": "'SYNCED'"
+          },
+          {
+            "fieldPath": "sync.localModifiedAt",
+            "columnName": "local_modified_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sync.serverRecId",
+            "columnName": "server_rec_id",
+            "affinity": "INTEGER",
+            "notNull": false
+          },
+          {
+            "fieldPath": "sync.eTag",
+            "columnName": "etag",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "sync.retryCount",
+            "columnName": "retry_count",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "0"
+          },
+          {
+            "fieldPath": "sync.lastError",
+            "columnName": "last_error",
+            "affinity": "TEXT",
+            "notNull": false
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "transferLineId"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_transfer_line_transferId",
+            "unique": false,
+            "columnNames": [
+              "transferId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_transfer_line_transferId` ON `${TABLE_NAME}` (`transferId`)"
+          },
+          {
+            "name": "index_transfer_line_itemId",
+            "unique": false,
+            "columnNames": [
+              "itemId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_transfer_line_itemId` ON `${TABLE_NAME}` (`itemId`)"
+          },
+          {
+            "name": "index_transfer_line_transferId_lineNumber",
+            "unique": true,
+            "columnNames": [
+              "transferId",
+              "lineNumber"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_transfer_line_transferId_lineNumber` ON `${TABLE_NAME}` (`transferId`, `lineNumber`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "transfer_order",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "transferId"
+            ],
+            "referencedColumns": [
+              "transferId"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "sales_order",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`salesId` TEXT NOT NULL, `customerAccount` TEXT NOT NULL, `customerName` TEXT NOT NULL, `status` TEXT NOT NULL, `confirmed` INTEGER NOT NULL, `siteId` TEXT, `warehouseId` TEXT, `deliveryDate` INTEGER, `modifiedAt` INTEGER NOT NULL, `sync_state` TEXT NOT NULL DEFAULT 'SYNCED', `local_modified_at` INTEGER NOT NULL, `server_rec_id` INTEGER, `etag` TEXT, `retry_count` INTEGER NOT NULL DEFAULT 0, `last_error` TEXT, PRIMARY KEY(`salesId`))",
+        "fields": [
+          {
+            "fieldPath": "salesId",
+            "columnName": "salesId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "customerAccount",
+            "columnName": "customerAccount",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "customerName",
+            "columnName": "customerName",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "status",
+            "columnName": "status",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "confirmed",
+            "columnName": "confirmed",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "siteId",
+            "columnName": "siteId",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "warehouseId",
+            "columnName": "warehouseId",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "deliveryDate",
+            "columnName": "deliveryDate",
+            "affinity": "INTEGER",
+            "notNull": false
+          },
+          {
+            "fieldPath": "modifiedAt",
+            "columnName": "modifiedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sync.syncState",
+            "columnName": "sync_state",
+            "affinity": "TEXT",
+            "notNull": true,
+            "defaultValue": "'SYNCED'"
+          },
+          {
+            "fieldPath": "sync.localModifiedAt",
+            "columnName": "local_modified_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sync.serverRecId",
+            "columnName": "server_rec_id",
+            "affinity": "INTEGER",
+            "notNull": false
+          },
+          {
+            "fieldPath": "sync.eTag",
+            "columnName": "etag",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "sync.retryCount",
+            "columnName": "retry_count",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "0"
+          },
+          {
+            "fieldPath": "sync.lastError",
+            "columnName": "last_error",
+            "affinity": "TEXT",
+            "notNull": false
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "salesId"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_sales_order_customerAccount",
+            "unique": false,
+            "columnNames": [
+              "customerAccount"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_sales_order_customerAccount` ON `${TABLE_NAME}` (`customerAccount`)"
+          },
+          {
+            "name": "index_sales_order_status",
+            "unique": false,
+            "columnNames": [
+              "status"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_sales_order_status` ON `${TABLE_NAME}` (`status`)"
+          },
+          {
+            "name": "index_sales_order_warehouseId",
+            "unique": false,
+            "columnNames": [
+              "warehouseId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_sales_order_warehouseId` ON `${TABLE_NAME}` (`warehouseId`)"
+          },
+          {
+            "name": "index_sales_order_modifiedAt",
+            "unique": false,
+            "columnNames": [
+              "modifiedAt"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_sales_order_modifiedAt` ON `${TABLE_NAME}` (`modifiedAt`)"
+          }
+        ],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "sales_line",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`salesLineId` TEXT NOT NULL, `salesId` TEXT NOT NULL, `lineNumber` REAL NOT NULL, `itemId` TEXT NOT NULL, `itemName` TEXT NOT NULL, `salesUnit` TEXT NOT NULL, `inventoryUnit` TEXT NOT NULL, `unitConversionFactor` TEXT NOT NULL, `orderedQuantity` TEXT NOT NULL, `remainingQuantity` TEXT NOT NULL, `deliveredQuantity` TEXT NOT NULL, `pickedQuantity` TEXT, `siteId` TEXT, `warehouseId` TEXT, `locationId` TEXT, `batchId` TEXT, `serialId` TEXT, `serverRecId` INTEGER, `modifiedAt` INTEGER NOT NULL, `sync_state` TEXT NOT NULL DEFAULT 'SYNCED', `local_modified_at` INTEGER NOT NULL, `server_rec_id` INTEGER, `etag` TEXT, `retry_count` INTEGER NOT NULL DEFAULT 0, `last_error` TEXT, PRIMARY KEY(`salesLineId`), FOREIGN KEY(`salesId`) REFERENCES `sales_order`(`salesId`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "salesLineId",
+            "columnName": "salesLineId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "salesId",
+            "columnName": "salesId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lineNumber",
+            "columnName": "lineNumber",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "itemId",
+            "columnName": "itemId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "itemName",
+            "columnName": "itemName",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "salesUnit",
+            "columnName": "salesUnit",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "inventoryUnit",
+            "columnName": "inventoryUnit",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "unitConversionFactor",
+            "columnName": "unitConversionFactor",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "orderedQuantity",
+            "columnName": "orderedQuantity",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "remainingQuantity",
+            "columnName": "remainingQuantity",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "deliveredQuantity",
+            "columnName": "deliveredQuantity",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "pickedQuantity",
+            "columnName": "pickedQuantity",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "siteId",
+            "columnName": "siteId",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "warehouseId",
+            "columnName": "warehouseId",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "locationId",
+            "columnName": "locationId",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "batchId",
+            "columnName": "batchId",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "serialId",
+            "columnName": "serialId",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "serverRecId",
+            "columnName": "serverRecId",
+            "affinity": "INTEGER",
+            "notNull": false
+          },
+          {
+            "fieldPath": "modifiedAt",
+            "columnName": "modifiedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sync.syncState",
+            "columnName": "sync_state",
+            "affinity": "TEXT",
+            "notNull": true,
+            "defaultValue": "'SYNCED'"
+          },
+          {
+            "fieldPath": "sync.localModifiedAt",
+            "columnName": "local_modified_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sync.serverRecId",
+            "columnName": "server_rec_id",
+            "affinity": "INTEGER",
+            "notNull": false
+          },
+          {
+            "fieldPath": "sync.eTag",
+            "columnName": "etag",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "sync.retryCount",
+            "columnName": "retry_count",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "0"
+          },
+          {
+            "fieldPath": "sync.lastError",
+            "columnName": "last_error",
+            "affinity": "TEXT",
+            "notNull": false
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "salesLineId"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_sales_line_salesId",
+            "unique": false,
+            "columnNames": [
+              "salesId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_sales_line_salesId` ON `${TABLE_NAME}` (`salesId`)"
+          },
+          {
+            "name": "index_sales_line_itemId",
+            "unique": false,
+            "columnNames": [
+              "itemId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_sales_line_itemId` ON `${TABLE_NAME}` (`itemId`)"
+          },
+          {
+            "name": "index_sales_line_salesId_lineNumber",
+            "unique": true,
+            "columnNames": [
+              "salesId",
+              "lineNumber"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_sales_line_salesId_lineNumber` ON `${TABLE_NAME}` (`salesId`, `lineNumber`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "sales_order",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "salesId"
+            ],
+            "referencedColumns": [
+              "salesId"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "sync_queue",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`queueId` TEXT NOT NULL, `operation` TEXT NOT NULL, `aggregateId` TEXT NOT NULL, `payloadJson` TEXT NOT NULL, `workerId` TEXT NOT NULL, `deviceId` TEXT NOT NULL, `createdAt` INTEGER NOT NULL, `retryCount` INTEGER NOT NULL, `nextAttemptAt` INTEGER NOT NULL, `lastError` TEXT, `leasedUntil` INTEGER NOT NULL, `dedupeKey` TEXT NOT NULL, PRIMARY KEY(`queueId`))",
+        "fields": [
+          {
+            "fieldPath": "queueId",
+            "columnName": "queueId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "operation",
+            "columnName": "operation",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "aggregateId",
+            "columnName": "aggregateId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "payloadJson",
+            "columnName": "payloadJson",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "workerId",
+            "columnName": "workerId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "deviceId",
+            "columnName": "deviceId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "createdAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "retryCount",
+            "columnName": "retryCount",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "nextAttemptAt",
+            "columnName": "nextAttemptAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastError",
+            "columnName": "lastError",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "leasedUntil",
+            "columnName": "leasedUntil",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "dedupeKey",
+            "columnName": "dedupeKey",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "queueId"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_sync_queue_createdAt",
+            "unique": false,
+            "columnNames": [
+              "createdAt"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_sync_queue_createdAt` ON `${TABLE_NAME}` (`createdAt`)"
+          },
+          {
+            "name": "index_sync_queue_operation",
+            "unique": false,
+            "columnNames": [
+              "operation"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_sync_queue_operation` ON `${TABLE_NAME}` (`operation`)"
+          },
+          {
+            "name": "index_sync_queue_aggregateId",
+            "unique": false,
+            "columnNames": [
+              "aggregateId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_sync_queue_aggregateId` ON `${TABLE_NAME}` (`aggregateId`)"
+          },
+          {
+            "name": "index_sync_queue_dedupeKey",
+            "unique": true,
+            "columnNames": [
+              "dedupeKey"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_sync_queue_dedupeKey` ON `${TABLE_NAME}` (`dedupeKey`)"
+          },
+          {
+            "name": "index_sync_queue_nextAttemptAt",
+            "unique": false,
+            "columnNames": [
+              "nextAttemptAt"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_sync_queue_nextAttemptAt` ON `${TABLE_NAME}` (`nextAttemptAt`)"
+          }
+        ],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "failed_sync",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`failureId` TEXT NOT NULL, `operation` TEXT NOT NULL, `aggregateId` TEXT NOT NULL, `payloadJson` TEXT NOT NULL, `workerId` TEXT NOT NULL, `deviceId` TEXT NOT NULL, `originallyQueuedAt` INTEGER NOT NULL, `failedAt` INTEGER NOT NULL, `attempts` INTEGER NOT NULL, `errorCode` TEXT, `errorMessage` TEXT NOT NULL, `serverDetail` TEXT, `acknowledged` INTEGER NOT NULL, `resubmittedAt` INTEGER, PRIMARY KEY(`failureId`))",
+        "fields": [
+          {
+            "fieldPath": "failureId",
+            "columnName": "failureId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "operation",
+            "columnName": "operation",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "aggregateId",
+            "columnName": "aggregateId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "payloadJson",
+            "columnName": "payloadJson",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "workerId",
+            "columnName": "workerId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "deviceId",
+            "columnName": "deviceId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "originallyQueuedAt",
+            "columnName": "originallyQueuedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "failedAt",
+            "columnName": "failedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "attempts",
+            "columnName": "attempts",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "errorCode",
+            "columnName": "errorCode",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "errorMessage",
+            "columnName": "errorMessage",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "serverDetail",
+            "columnName": "serverDetail",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "acknowledged",
+            "columnName": "acknowledged",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "resubmittedAt",
+            "columnName": "resubmittedAt",
+            "affinity": "INTEGER",
+            "notNull": false
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "failureId"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_failed_sync_failedAt",
+            "unique": false,
+            "columnNames": [
+              "failedAt"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_failed_sync_failedAt` ON `${TABLE_NAME}` (`failedAt`)"
+          },
+          {
+            "name": "index_failed_sync_operation",
+            "unique": false,
+            "columnNames": [
+              "operation"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_failed_sync_operation` ON `${TABLE_NAME}` (`operation`)"
+          },
+          {
+            "name": "index_failed_sync_acknowledged",
+            "unique": false,
+            "columnNames": [
+              "acknowledged"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_failed_sync_acknowledged` ON `${TABLE_NAME}` (`acknowledged`)"
+          }
+        ],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "staged_line",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`flowType` TEXT NOT NULL, `orderId` TEXT NOT NULL, `lineNumber` REAL NOT NULL, `quantity` TEXT NOT NULL, `queueId` TEXT NOT NULL, `stagedAtEpochMs` INTEGER NOT NULL, PRIMARY KEY(`flowType`, `orderId`, `lineNumber`, `queueId`))",
+        "fields": [
+          {
+            "fieldPath": "flowType",
+            "columnName": "flowType",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "orderId",
+            "columnName": "orderId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lineNumber",
+            "columnName": "lineNumber",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "quantity",
+            "columnName": "quantity",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "queueId",
+            "columnName": "queueId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "stagedAtEpochMs",
+            "columnName": "stagedAtEpochMs",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "flowType",
+            "orderId",
+            "lineNumber",
+            "queueId"
+          ]
+        },
+        "indices": [],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "worker_permission",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`userName` TEXT NOT NULL, `workflow` TEXT NOT NULL, `allowed` INTEGER NOT NULL, PRIMARY KEY(`userName`, `workflow`))",
+        "fields": [
+          {
+            "fieldPath": "userName",
+            "columnName": "userName",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "workflow",
+            "columnName": "workflow",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "allowed",
+            "columnName": "allowed",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "userName",
+            "workflow"
+          ]
+        },
+        "indices": [],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "worker_directory",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`userName` TEXT NOT NULL, `displayName` TEXT NOT NULL, `isSupervisor` INTEGER NOT NULL, `cachedAt` INTEGER NOT NULL, PRIMARY KEY(`userName`))",
+        "fields": [
+          {
+            "fieldPath": "userName",
+            "columnName": "userName",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "displayName",
+            "columnName": "displayName",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "isSupervisor",
+            "columnName": "isSupervisor",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "cachedAt",
+            "columnName": "cachedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "userName"
+          ]
+        },
+        "indices": [],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "offline_read_cache",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`key` TEXT NOT NULL, `path` TEXT NOT NULL, `body` TEXT NOT NULL, `savedAt` INTEGER NOT NULL, PRIMARY KEY(`key`))",
+        "fields": [
+          {
+            "fieldPath": "key",
+            "columnName": "key",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "path",
+            "columnName": "path",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "body",
+            "columnName": "body",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "savedAt",
+            "columnName": "savedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "key"
+          ]
+        },
+        "indices": [],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "order_vendor",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`accountNum` TEXT NOT NULL, `name` TEXT NOT NULL, `currencyCode` TEXT NOT NULL, `paymentTerms` TEXT NOT NULL, `deliveryTerms` TEXT NOT NULL, `deliveryMode` TEXT NOT NULL, `savedAt` INTEGER NOT NULL, PRIMARY KEY(`accountNum`))",
+        "fields": [
+          {
+            "fieldPath": "accountNum",
+            "columnName": "accountNum",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "currencyCode",
+            "columnName": "currencyCode",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "paymentTerms",
+            "columnName": "paymentTerms",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "deliveryTerms",
+            "columnName": "deliveryTerms",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "deliveryMode",
+            "columnName": "deliveryMode",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "savedAt",
+            "columnName": "savedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "accountNum"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_order_vendor_name",
+            "unique": false,
+            "columnNames": [
+              "name"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_order_vendor_name` ON `${TABLE_NAME}` (`name`)"
+          }
+        ],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "created_order",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `kind` TEXT NOT NULL, `status` TEXT NOT NULL, `documentNumber` TEXT, `title` TEXT NOT NULL, `lineCount` INTEGER NOT NULL, `total` REAL, `currencyCode` TEXT, `message` TEXT, `pricedLinesJson` TEXT, `userName` TEXT NOT NULL, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "kind",
+            "columnName": "kind",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "status",
+            "columnName": "status",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "documentNumber",
+            "columnName": "documentNumber",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "title",
+            "columnName": "title",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lineCount",
+            "columnName": "lineCount",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "total",
+            "columnName": "total",
+            "affinity": "REAL",
+            "notNull": false
+          },
+          {
+            "fieldPath": "currencyCode",
+            "columnName": "currencyCode",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "message",
+            "columnName": "message",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "pricedLinesJson",
+            "columnName": "pricedLinesJson",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "userName",
+            "columnName": "userName",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "createdAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedAt",
+            "columnName": "updatedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_created_order_createdAt",
+            "unique": false,
+            "columnNames": [
+              "createdAt"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_created_order_createdAt` ON `${TABLE_NAME}` (`createdAt`)"
+          }
+        ],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "order_draft",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`kind` TEXT NOT NULL, `userName` TEXT NOT NULL, `json` TEXT NOT NULL, `updatedAt` INTEGER NOT NULL, PRIMARY KEY(`kind`, `userName`))",
+        "fields": [
+          {
+            "fieldPath": "kind",
+            "columnName": "kind",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "userName",
+            "columnName": "userName",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "json",
+            "columnName": "json",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedAt",
+            "columnName": "updatedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "kind",
+            "userName"
+          ]
+        },
+        "indices": [],
+        "foreignKeys": []
+      }
+    ],
+    "views": [],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '10969bd9324ab1d9904fcb6be9a4cbeb')"
+    ]
+  }
+}

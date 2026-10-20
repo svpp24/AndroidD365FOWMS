@@ -1,23 +1,30 @@
 <?xml version="1.0" encoding="utf-8"?>
 <AxSecurityPrivilege xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
 	<Name>HSMobileOpsCountToleranceMaintain</Name>
+	<Description>Set how large a counting variance may be before a supervisor has to decide it.</Description>
 	<Label>Maintain mobile count tolerance</Label>
-	<HelpText>Set how large a counting variance may be before a supervisor has to decide it.</HelpText>
+	<DirectAccessPermissions>
+		<AxSecurityDataEntityReference>
+			<Grant>
+				<Create>Allow</Create>
+				<Read>Allow</Read>
+				<Update>Allow</Update>
+			</Grant>
+			<Name>HSMobileOpsCountTolerance</Name>
+			<Fields />
+		</AxSecurityDataEntityReference>
+	</DirectAccessPermissions>
 	<EntryPoints>
 		<AxSecurityEntryPointReference>
 			<Name>HSMobileOpsCountTolerance</Name>
+			<Grant>
+				<Read>Allow</Read>
+				<Update>Allow</Update>
+			</Grant>
 			<ObjectName>HSMobileOpsCountTolerance</ObjectName>
 			<ObjectType>MenuItemDisplay</ObjectType>
-			<AccessLevel>Update</AccessLevel>
+			<Forms />
 		</AxSecurityEntryPointReference>
 	</EntryPoints>
-	<Tables>
-		<AxSecurityPrivilegeTablePermission>
-			<Name>HSMobileOpsCountTolerance</Name>
-			<Delete>NoAccess</Delete>
-			<Insert>Allow</Insert>
-			<Read>Allow</Read>
-			<Update>Allow</Update>
-		</AxSecurityPrivilegeTablePermission>
-	</Tables>
+	<FormControlOverrides />
 </AxSecurityPrivilege>

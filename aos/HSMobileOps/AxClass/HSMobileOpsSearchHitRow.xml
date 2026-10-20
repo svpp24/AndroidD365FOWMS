@@ -1,0 +1,147 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsSearchHitRow</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// One search hit. Kind is PO, TO or JOURNAL; Match is ORDER when the query was the record's own number, ITEM when the record holds the searched item. Direction is IN or OUT for orders.
+/// </summary>
+[DataContractAttribute]
+class HSMobileOpsSearchHitRow
+{
+    str        kind;
+    str        match;
+    str        reference;
+    str        title;
+    str        detail;
+    str        status;
+    str        hitDate;
+    real       quantity;
+    str        unitId;
+    str        direction;
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmKind</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Kind')]
+    public str parmKind(str _value = kind)
+    {
+        kind = _value;
+        return kind;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmMatch</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Match')]
+    public str parmMatch(str _value = match)
+    {
+        match = _value;
+        return match;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmReference</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Reference')]
+    public str parmReference(str _value = reference)
+    {
+        reference = _value;
+        return reference;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmTitle</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Title')]
+    public str parmTitle(str _value = title)
+    {
+        title = _value;
+        return title;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmDetail</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Detail')]
+    public str parmDetail(str _value = detail)
+    {
+        detail = _value;
+        return detail;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmStatus</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Status')]
+    public str parmStatus(str _value = status)
+    {
+        status = _value;
+        return status;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmDate</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Date')]
+    public str parmDate(str _value = hitDate)
+    {
+        hitDate = _value;
+        return hitDate;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmQuantity</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Quantity')]
+    public real parmQuantity(real _value = quantity)
+    {
+        quantity = _value;
+        return quantity;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmUnitId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('UnitId')]
+    public str parmUnitId(str _value = unitId)
+    {
+        unitId = _value;
+        return unitId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmDirection</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Direction')]
+    public str parmDirection(str _value = direction)
+    {
+        direction = _value;
+        return direction;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

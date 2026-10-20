@@ -9,6 +9,7 @@ import com.d365fo.mobileops.data.local.entity.CountSubmissionError
 import com.d365fo.mobileops.data.local.entity.CountSubmissionState
 import com.d365fo.mobileops.data.local.entity.TransferMode
 import com.d365fo.mobileops.domain.model.ImportJobStatus
+import com.d365fo.mobileops.util.AppFailure
 import com.google.common.truth.Truth.assertThat
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Test
@@ -121,6 +122,48 @@ class CountSubmitRunnerTest {
         runner.run("CNT-1")
 
         assertThat(store.rows["CNT-1"]!!.error).isEqualTo(CountSubmissionError.CLAIM_LOST)
+    }
+
+    @Test
+    fun `another device holding the journal marks this device's claim lost, naming the holder`() = runTest {
+        claims.claim("CNT-1", null)
+        store.queue("CNT-1")
+        transport.start = AppFailure.BusinessRule(
+            "CNT-1 is being counted by Asha (001) on another device",
+            d365ErrorCode = "CLAIM_LOST",
+        ).toTransport()
+
+        runner.run("CNT-1")
+
+        assertThat(store.rows["CNT-1"]!!.message).contains("being counted by Asha (001) on another device")
+        val claim = claimStore.get("CNT-1")!!
+        assertThat(claim.lost).isTrue()
+        assertThat(claim.lostReason).isEqualTo("CNT-1 is being counted by Asha (001) on another device.")
+    }
+
+    @Test
+    fun `a store that reviews journal counts sends them to the control center, not the journal`() = runTest {
+        store.queue("CNT-1")
+        transport.staged = TransportResult.Ok(com.d365fo.mobileops.data.counting.StagedCount("AAC-20261012-1", accepted = 3, duplicates = 1))
+
+        assertThat(runner.run("CNT-1")).isEqualTo(RunResult.DONE)
+
+        assertThat(transport.startCalls).isEqualTo(0)
+        val row = store.rows["CNT-1"]!!
+        assertThat(row.state).isEqualTo(CountSubmissionState.SUCCEEDED)
+        assertThat(row.resultNote).contains("Sent to the supervisor for review in AAC-20261012-1")
+        assertThat(row.resultNote).contains("1 item(s)")
+    }
+
+    @Test
+    fun `staging refused by the supervisor's decision ends the submission`() = runTest {
+        store.queue("CNT-1")
+        transport.staged = TransportResult.Fail(CountSubmissionError.OTHER, "AAC-20261012-1 has been transferred by the supervisor")
+
+        runner.run("CNT-1")
+
+        assertThat(store.rows["CNT-1"]!!.state).isEqualTo(CountSubmissionState.FAILED)
+        assertThat(transport.startCalls).isEqualTo(0)
     }
 
     @Test

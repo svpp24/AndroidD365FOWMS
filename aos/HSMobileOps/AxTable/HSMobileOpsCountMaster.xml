@@ -1,0 +1,174 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxTable xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsCountMaster</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// A store's stock count in the Stock count control center: the master journal holding one
+/// staging journal per counter (HSMobileOpsCountStage), each with its counted lines
+/// (HSMobileOpsCountStageLine). Opened by the first counter who starts counting the store - a
+/// free store count, or one counting journal (SourceJournalId) - and Transferred once the
+/// supervisor moves the reviewed counts into a D365FO counting journal. Counters, lines and
+/// duplicates are stored figures kept current by HSMobileOpsCountControl::refresh - display
+/// methods render blank on this environment's forms.
+/// </summary>
+public class HSMobileOpsCountMaster extends common
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>find</Name>
+				<Source><![CDATA[
+    public static HSMobileOpsCountMaster find(str _masterId, boolean _forUpdate = false)
+    {
+        HSMobileOpsCountMaster master;
+
+        master.selectForUpdate(_forUpdate);
+        if (_masterId)
+        {
+            select firstonly master where master.MasterId == _masterId;
+        }
+        return master;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+	<Label>Stock count</Label>
+	<TitleField1>MasterId</TitleField1>
+	<TitleField2>InventLocationId</TitleField2>
+	<CacheLookup>NotInTTS</CacheLookup>
+	<ClusteredIndex>MasterIdIdx</ClusteredIndex>
+	<PrimaryIndex>MasterIdIdx</PrimaryIndex>
+	<Fields>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>MasterId</Name>
+			<AllowEdit>No</AllowEdit>
+			<HelpText>The stock count's number: warehouse, date and a sequence.</HelpText>
+			<Label>Stock count</Label>
+			<Mandatory>Yes</Mandatory>
+			<StringSize>30</StringSize>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>InventSiteId</Name>
+			<AllowEdit>No</AllowEdit>
+			<ExtendedDataType>InventSiteId</ExtendedDataType>
+			<Label>Site</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>InventLocationId</Name>
+			<AllowEdit>No</AllowEdit>
+			<ExtendedDataType>InventLocationId</ExtendedDataType>
+			<HelpText>The warehouse being counted.</HelpText>
+			<Label>Store</Label>
+			<Mandatory>Yes</Mandatory>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>SourceJournalId</Name>
+			<AllowEdit>No</AllowEdit>
+			<ExtendedDataType>InventJournalId</ExtendedDataType>
+			<HelpText>The D365FO counting journal the counters counted against; blank for a free store count.</HelpText>
+			<Label>Counting journal</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>Description</Name>
+			<Label>Description</Label>
+			<StringSize>60</StringSize>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldEnum">
+			<Name>Status</Name>
+			<AllowEdit>No</AllowEdit>
+			<Label>Status</Label>
+			<EnumType>HSMobileOpsCountMasterStatus</EnumType>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>CreatedByUser</Name>
+			<AllowEdit>No</AllowEdit>
+			<ExtendedDataType>HSMobileOpsUserName</ExtendedDataType>
+			<HelpText>The counter who started the count.</HelpText>
+			<Label>Started by</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldUtcDateTime">
+			<Name>StartedUtc</Name>
+			<AllowEdit>No</AllowEdit>
+			<Label>Started</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldInt">
+			<Name>CounterCount</Name>
+			<AllowEdit>No</AllowEdit>
+			<Label>Counters</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldInt">
+			<Name>LineCount</Name>
+			<AllowEdit>No</AllowEdit>
+			<Label>Counted lines</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldInt">
+			<Name>DuplicateCount</Name>
+			<AllowEdit>No</AllowEdit>
+			<HelpText>Items counted more than once and not yet decided. Transfer waits for none.</HelpText>
+			<Label>Duplicates to decide</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>TransferredJournalId</Name>
+			<AllowEdit>No</AllowEdit>
+			<ExtendedDataType>InventJournalId</ExtendedDataType>
+			<HelpText>The D365FO counting journal the reviewed counts went into.</HelpText>
+			<Label>Transferred to</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>TransferredBy</Name>
+			<AllowEdit>No</AllowEdit>
+			<ExtendedDataType>UserId</ExtendedDataType>
+			<Label>Transferred by</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldUtcDateTime">
+			<Name>TransferredUtc</Name>
+			<AllowEdit>No</AllowEdit>
+			<Label>Transferred</Label>
+		</AxTableField>
+	</Fields>
+	<FullTextIndexes />
+	<Indexes>
+		<AxTableIndex>
+			<Name>MasterIdIdx</Name>
+			<AllowDuplicates>No</AllowDuplicates>
+			<Fields>
+				<AxTableIndexField>
+					<DataField>MasterId</DataField>
+				</AxTableIndexField>
+			</Fields>
+		</AxTableIndex>
+		<AxTableIndex>
+			<Name>StoreStatusIdx</Name>
+			<AllowDuplicates>Yes</AllowDuplicates>
+			<Fields>
+				<AxTableIndexField>
+					<DataField>InventLocationId</DataField>
+				</AxTableIndexField>
+				<AxTableIndexField>
+					<DataField>Status</DataField>
+				</AxTableIndexField>
+			</Fields>
+		</AxTableIndex>
+	</Indexes>
+	<Mappings />
+	<Relations>
+	</Relations>
+	<StateMachines />
+</AxTable>

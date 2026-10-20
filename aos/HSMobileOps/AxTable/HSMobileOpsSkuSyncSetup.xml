@@ -86,15 +86,15 @@ public class HSMobileOpsSkuSyncSetup extends common
 		<AxTableField xmlns=""
 			i:type="AxTableFieldString">
 			<Name>ItemEntityName</Name>
-			<Label>Item master entity (AOT name)</Label>
 			<HelpText>The AOT name of the data entity item master data exports from - blank uses the built-in default (EcoResReleasedProductV2Entity, the entity behind the ReleasedProductsV2 OData collection this app's on-demand item lookup already uses live). Override only if this environment's item master entity is named differently.</HelpText>
+			<Label>Item master entity (AOT name)</Label>
 			<StringSize>100</StringSize>
 		</AxTableField>
 		<AxTableField xmlns=""
 			i:type="AxTableFieldString">
 			<Name>BarcodeEntityName</Name>
-			<Label>Barcode entity (AOT name)</Label>
 			<HelpText>The AOT name of the data entity barcode data exports from - blank uses the built-in default (EcoResProductBarcodeV3Entity, the entity behind the ProductBarcodesV3 OData collection this app's on-demand barcode lookup already uses live). Override only if this environment's barcode entity is named differently.</HelpText>
+			<Label>Barcode entity (AOT name)</Label>
 			<StringSize>100</StringSize>
 		</AxTableField>
 	</Fields>

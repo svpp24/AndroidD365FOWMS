@@ -36,6 +36,7 @@ import argparse
 import base64
 import datetime
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -377,6 +378,53 @@ def cmd_verify(args: argparse.Namespace) -> None:
     print("Full chain verifies end to end.")
 
 
+def cmd_azure_register(args: argparse.Namespace) -> None:
+    """Sets one customer's row in the CheckLicense Function's LicenseStatus table - see
+    ../azure-license-function/README.md for what that Function does with it. This is the
+    operational lever for "revoke this customer right now": one command, no app rebuild, no
+    root-key rotation, no per-device reactivation - see that README's own PartitionKey/RowKey
+    shape, which this mirrors exactly (PartitionKey=customerId, RowKey='status').
+
+    Deliberately a separate command from sign-certificate/sign-license, not folded into either -
+    this writes to the VENDOR's own Azure subscription, a completely different trust boundary
+    from the customer-specific signing operations above, and needs its own explicit
+    --connection-string (or AZURE_TABLE_CONNECTION_STRING) to run at all.
+    """
+    try:
+        from azure.data.tables import TableServiceClient
+    except ImportError:
+        print("ERROR: azure-data-tables is not installed. pip install azure-data-tables")
+        print("(only needed for this one command - see requirements.txt)")
+        sys.exit(1)
+
+    connection_string = args.connection_string or os.environ.get("AZURE_TABLE_CONNECTION_STRING")
+    if not connection_string:
+        print("ERROR: no connection string given. Pass --connection-string or set AZURE_TABLE_CONNECTION_STRING.")
+        sys.exit(1)
+
+    if args.status not in ("Active", "Suspended", "Revoked"):
+        print(f"ERROR: --status must be Active, Suspended or Revoked, got {args.status!r}")
+        sys.exit(1)
+
+    entity = {
+        "PartitionKey": args.client,
+        "RowKey": "status",
+        "Status": args.status,
+        "Notes": args.notes or "",
+    }
+
+    with TableServiceClient.from_connection_string(connection_string) as service:
+        table_client = service.get_table_client("LicenseStatus")
+        table_client.upsert_entity(entity)
+
+    print(f"customerId '{args.client}' set to Status={args.status} in the LicenseStatus table.")
+    if args.notes:
+        print(f"  notes: {args.notes}")
+    if args.status != "Active":
+        print("The next sign-in or license check for this customer will be refused within a few")
+        print("minutes (once AOS's own short grace-period cache, if any, expires).")
+
+
 # -- CLI wiring -------------------------------------------------------------------------
 
 def main() -> None:
@@ -412,6 +460,13 @@ def main() -> None:
     p.add_argument("--certificate", required=True, help="Path to a certificate.txt file.")
     p.add_argument("--license", required=True, help="Path to a license .txt file.")
     p.set_defaults(func=cmd_verify)
+
+    p = sub.add_parser("azure-register", help="Set a customer's live status (Active/Suspended/Revoked) in the CheckLicense Azure Table.")
+    p.add_argument("--client", required=True, help="customerId - same value used in sign-certificate/sign-license.")
+    p.add_argument("--status", required=True, choices=["Active", "Suspended", "Revoked"])
+    p.add_argument("--notes", help="Free-text reason, shown in HSMobileOpsLicenseCloudCache's ReasonsText.")
+    p.add_argument("--connection-string", help="Storage account connection string. Defaults to $AZURE_TABLE_CONNECTION_STRING.")
+    p.set_defaults(func=cmd_azure_register)
 
     args = parser.parse_args()
     args.func(args)

@@ -1,0 +1,108 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsFeedbackItem</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// One piece of feedback as the worker sees it again: what they sent, and the team's status and reply.
+/// </summary>
+[DataContractAttribute]
+class HSMobileOpsFeedbackItem
+{
+    str feedbackId;
+    str submittedUtc;
+    str screen;
+    str feedbackType;
+    str message;
+    str status;
+    str response;
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmFeedbackId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('FeedbackId')]
+    public str parmFeedbackId(str _value = feedbackId)
+    {
+        feedbackId = _value;
+        return feedbackId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmSubmittedUtc</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('SubmittedUtc')]
+    public str parmSubmittedUtc(str _value = submittedUtc)
+    {
+        submittedUtc = _value;
+        return submittedUtc;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmScreen</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Screen')]
+    public str parmScreen(str _value = screen)
+    {
+        screen = _value;
+        return screen;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmFeedbackType</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('FeedbackType')]
+    public str parmFeedbackType(str _value = feedbackType)
+    {
+        feedbackType = _value;
+        return feedbackType;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmMessage</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Message')]
+    public str parmMessage(str _value = message)
+    {
+        message = _value;
+        return message;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmStatus</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Status')]
+    public str parmStatus(str _value = status)
+    {
+        status = _value;
+        return status;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmResponse</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Response')]
+    public str parmResponse(str _value = response)
+    {
+        response = _value;
+        return response;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

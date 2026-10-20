@@ -2,6 +2,7 @@ package com.d365fo.mobileops.data.remote.interceptor
 
 import com.d365fo.mobileops.data.security.CompanyProvider
 import com.d365fo.mobileops.data.security.TokenProvider
+import com.d365fo.mobileops.util.AppFailure
 import com.d365fo.mobileops.util.NetworkResult
 import kotlinx.coroutines.runBlocking
 import okhttp3.Interceptor
@@ -33,8 +34,13 @@ class AuthInterceptor @Inject constructor(
         // a message that points at the URL when the actual problem is that nobody is signed
         // in. Refusing here turns a 38-second red herring into an immediate, accurate error.
         if (token !is NetworkResult.Success) {
-            val reason = (token as? NetworkResult.Error)?.failure?.message ?: "not signed in"
-            throw NotAuthenticatedException("Not signed in to D365FO ($reason)")
+            val failure = (token as? NetworkResult.Error)?.failure
+            // No connection to Azure AD: an outage, not a sign-in problem, so callers can fall
+            // back to what works offline.
+            if (failure is AppFailure.Offline || failure is AppFailure.Transient) {
+                throw TokenUnreachableException(failure.message)
+            }
+            throw NotAuthenticatedException("Not signed in to D365FO (${failure?.message ?: "not signed in"})")
         }
 
         val request = chain.request().newBuilder().apply {
@@ -64,3 +70,6 @@ class AuthInterceptor @Inject constructor(
  * instead of being handled. D365ErrorMapper maps it to AppFailure.Authentication.
  */
 class NotAuthenticatedException(message: String) : java.io.IOException(message)
+
+/** Thrown by [AuthInterceptor] when Azure AD can't be reached for a token. */
+class TokenUnreachableException(message: String) : java.io.IOException(message)

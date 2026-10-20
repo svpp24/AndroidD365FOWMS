@@ -13,9 +13,9 @@
 /// load; an operator standing at a scanner should never wait that out. Both methods now do one
 /// thing only - validate the shape, check idempotency, insert a HSMobileOpsPostQueue row, return
 /// - and are back in well under a second regardless of how slow the real work would have been.
-/// The real work happens in processPending, called separately (from the Activity screen's
-/// "Process pending" action, not automatically - see the class doc on HSMobileOpsPostQueue for
-/// why there is deliberately no timer here) and reported back through getQueueStatus.
+/// The real work happens in processCompany - every few minutes from the recurring batch job
+/// HSMobileOpsProcessPendingBatch, and at once from the Activity screen's "Process pending"
+/// action (processPending) - and is reported back through getQueueStatus.
 ///
 /// **Every posting is idempotent, and that is not optional.** A handheld on warehouse wifi loses
 /// responses routinely — the request lands, the reply never arrives, the queue retries. Without
@@ -74,7 +74,9 @@ class HSMobileOpsPostingService
         if (problem)
         {
             response.parmErrorCode(problem);
-            response.parmMessage('The posting request was incomplete');
+            response.parmMessage(problem == 'SERIAL_COUNT'
+                ? 'The serial numbers scanned do not match the quantity'
+                : 'The posting request was incomplete');
             return response;
         }
 
@@ -90,6 +92,7 @@ class HSMobileOpsPostingService
             {
                 response.parmSuccess(true);
                 response.parmDocumentNumber('');
+                HSMobileOpsPostingService::processNow(_request, response);
                 return response;
             }
 
@@ -137,6 +140,7 @@ class HSMobileOpsPostingService
 
             response.parmSuccess(true);
             response.parmDocumentNumber('');
+            HSMobileOpsPostingService::processNow(_request, response);
         }
 
         return response;
@@ -179,29 +183,57 @@ class HSMobileOpsPostingService
 				<Source><![CDATA[
 
     /// <summary>
-    /// Works every Pending row for one company, oldest received first, and reports what each
-    /// one became. Called from the Activity screen's "Process pending" action - see the class
-    /// doc on HSMobileOpsPostQueue for why this is operator-triggered rather than automatic.
+    /// "Process pending" on the Activity screen: works every Pending row for one company now,
+    /// rather than waiting for the batch job, and reports what each one became. Also makes sure
+    /// the recurring batch job exists, so an environment sets itself up the first time someone
+    /// presses it.
     /// </summary>
     public HSMobileOpsPostQueueResponse processPending(HSMobileOpsPostQueueRequest _request)
     {
         HSMobileOpsPostQueueResponse response = new HSMobileOpsPostQueueResponse();
-        HSMobileOpsPostQueue         postQueue;
-        HSMobileOpsPostQueue         processed;
-        List                         rows = new List(Types::Class);
-        DataAreaId                   company;
 
         if (!_request || !_request.parmDataAreaId())
         {
             response.parmSuccess(false);
-            response.parmRows(rows);
+            response.parmRows(new List(Types::Class));
             return response;
         }
 
-        company = _request.parmDataAreaId();
-
-        changecompany (company)
+        try
         {
+            HSMobileOpsProcessPendingBatch::ensureScheduled();
+        }
+        catch
+        {
+            // Scheduling is a convenience here - pressing the button still processes the rows.
+            exceptionTextFallThrough();
+        }
+
+        response.parmSuccess(true);
+        response.parmRows(HSMobileOpsPostingService::processCompany(_request.parmDataAreaId()));
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>processCompany</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Works every Pending row of one company, oldest received first, and returns what each
+    /// became. Shared by the batch job and the "Process pending" button; each row is claimed
+    /// first (HSMobileOpsPostQueue::claim), so the two never work the same row.
+    /// </summary>
+    public static List processCompany(DataAreaId _company)
+    {
+        HSMobileOpsPostQueue postQueue;
+        HSMobileOpsPostQueue processed;
+        List                 rows = new List(Types::Class);
+
+        changecompany (_company)
+        {
+            HSMobileOpsPostQueue::failInterrupted();
+
             while select RecId, DocumentType from postQueue
                 order by ReceivedUtc asc
                 where postQueue.Status == HSMobileOpsPostQueue::statusPending()
@@ -232,9 +264,51 @@ class HSMobileOpsPostingService
             }
         }
 
-        response.parmSuccess(true);
-        response.parmRows(rows);
-        return response;
+        return rows;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>processNow</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// "Post immediately" on the handheld (Settings > Posting, feedback 301e5d0e): the request
+    /// just staged - or staged before, for a resend - is worked now instead of waiting for the
+    /// batch job or "Process pending", and the response says what it became. Called inside the
+    /// company of the request. Without ProcessNow nothing changes: the row stays Pending.
+    /// </summary>
+    private static void processNow(HSMobileOpsPostRequest _request, HSMobileOpsPostResponse _response)
+    {
+        HSMobileOpsPostQueue postQueue;
+
+        if (!_request.parmProcessNow())
+        {
+            return;
+        }
+        postQueue = HSMobileOpsPostQueue::findByKey(_request.parmIdempotencyKey());
+        if (!postQueue.RecId)
+        {
+            return;
+        }
+        if (postQueue.Status == HSMobileOpsPostQueue::statusPending())
+        {
+            switch (postQueue.DocumentType)
+            {
+                case 'Registration':
+                    HSMobileOpsPostingService::processReceiptQueueEntry(postQueue.RecId);
+                    break;
+                case 'TransferShipment':
+                    HSMobileOpsPostingService::processTransferQueueEntry(postQueue.RecId, true);
+                    break;
+                case 'TransferReceipt':
+                    HSMobileOpsPostingService::processTransferQueueEntry(postQueue.RecId, false);
+                    break;
+            }
+            postQueue = HSMobileOpsPostQueue::findByKey(_request.parmIdempotencyKey());
+        }
+        _response.parmQueueStatus(postQueue.Status);
+        _response.parmQueueMessage(postQueue.ErrorMessage);
     }
 ]]></Source>
 			</Method>
@@ -330,7 +404,8 @@ class HSMobileOpsPostingService
         select firstOnly postQueue
             where postQueue.RecId == _queueRecId;
 
-        if (!postQueue.RecId || postQueue.Status != HSMobileOpsPostQueue::statusPending())
+        // Claimed, not just checked: the batch job and the button may both have selected it.
+        if (!postQueue.RecId || !HSMobileOpsPostQueue::claim(postQueue.RecId))
         {
             return;
         }
@@ -360,7 +435,12 @@ class HSMobileOpsPostingService
                     postLine  = enumerator.current();
                     purchLine = null;
 
-                    select forUpdate firstOnly purchLine
+                    // Locked (pessimisticLock - it implies forUpdate), not optimistic: two devices'
+                    // registrations of the same line ran 2 s apart (BSP-PO-000161712, 10 Oct),
+                    // both read 2 still Ordered, and the second registered nothing yet was
+                    // reported Registered. Locked, the second waits for the first to commit and
+                    // then reads what is really left.
+                    select pessimisticLock firstOnly purchLine
                         where purchLine.PurchId    == purchTable.PurchId
                            && purchLine.LineNumber == postLine.parmLineNumber();
 
@@ -373,7 +453,11 @@ class HSMobileOpsPostingService
                     else
                     {
                         requested = postLine.parmQuantity();
-                        available = purchLine.RemainPurchPhysical;
+                        // What is still Ordered in InventTrans - registration converts Ordered to
+                        // Registered, while RemainPurchPhysical only falls at product receipt. With
+                        // RemainPurchPhysical two devices each registered all of a 2-piece line
+                        // (BSP-PO-000161711, 10 Oct: 4 registered).
+                        available = HSMobileOpsPostingService::orderedQty(purchLine);
 
                         // Checked again here, not only on the device or at staging time - the
                         // request may have sat Pending a while, and someone else may have
@@ -472,8 +556,13 @@ class HSMobileOpsPostingService
     {
         InventTrans              inventTrans;
         InventDim                inventDim;
+        InventDim                serialDim;
         TmpInventTransWMS        tmpInventTransWMS;
         InventTransWMS_Register  register;
+        List                     serials = _postLine.parmSerialIds();
+        ListEnumerator           serialEnumerator;
+        InventSerialId           serialId;
+        boolean                  perUnit;
 
         inventTrans = InventTrans::findTransId(_purchLine.InventTransId, true);
         if (!inventTrans.RecId)
@@ -496,6 +585,14 @@ class HSMobileOpsPostingService
         {
             inventDim.wMSLocationId = _postLine.parmLocationId();
         }
+        // Where the item's storage dimension group has inventory status active, D365FO refuses a
+        // location without one ("Inventory status cannot be left blank if dimension Location is
+        // set"). An order line from an import or integration may carry none; see defaultStatus.
+        if (!inventDim.InventStatusId && inventDim.wMSLocationId
+         && InventDimGroupSetup::newItemId(inventTrans.ItemId).isDimensionActive(fieldNum(InventDim, InventStatusId)))
+        {
+            inventDim.InventStatusId = HSMobileOpsPostingService::defaultStatus(inventDim.InventLocationId);
+        }
 
         inventDim = InventDim::findOrCreate(inventDim);
 
@@ -503,14 +600,99 @@ class HSMobileOpsPostingService
 
         inventTrans.InventDimId = inventDim.InventDimId;
 
-        tmpInventTransWMS.clear();
-        tmpInventTransWMS.initFromInventTrans(inventTrans);
-        tmpInventTransWMS.ItemId    = inventTrans.ItemId;
-        tmpInventTransWMS.InventQty = _quantity;
-        tmpInventTransWMS.insert();
+        if (serials && serials.elements())
+        {
+            // The serials the operator scanned. With serial number control each one is a unit
+            // of its own (validate has checked one per unit); without it, one serial covers the
+            // whole line. Each new serial number gets its master record first, as batches do.
+            perUnit = HSMobileOpsDimensionRules::serialPerUnit(InventDimGroupSetup::newItemId(inventTrans.ItemId));
+            serialEnumerator = serials.getEnumerator();
+            while (serialEnumerator.moveNext())
+            {
+                serialId = serialEnumerator.current();
+                HSMobileOpsPostingService::ensureSerial(inventTrans.ItemId, serialId);
+                serialDim.data(inventDim);
+                serialDim.InventSerialId = serialId;
+                serialDim = InventDim::findOrCreate(serialDim);
 
-        register.writeTmpInventTransWMS(tmpInventTransWMS, inventTrans, inventDim);
+                tmpInventTransWMS.clear();
+                tmpInventTransWMS.initFromInventTrans(inventTrans);
+                tmpInventTransWMS.ItemId      = inventTrans.ItemId;
+                tmpInventTransWMS.InventQty   = perUnit ? 1 : _quantity;
+                tmpInventTransWMS.InventDimId = serialDim.InventDimId;
+                tmpInventTransWMS.insert();
+                register.writeTmpInventTransWMS(tmpInventTransWMS, inventTrans, serialDim);
+            }
+        }
+        else
+        {
+            tmpInventTransWMS.clear();
+            tmpInventTransWMS.initFromInventTrans(inventTrans);
+            tmpInventTransWMS.ItemId    = inventTrans.ItemId;
+            tmpInventTransWMS.InventQty = _quantity;
+            tmpInventTransWMS.insert();
+            register.writeTmpInventTransWMS(tmpInventTransWMS, inventTrans, inventDim);
+        }
         register.updateInvent(inventTrans);
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>defaultStatus</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The inventory status a receipt takes when its line has none: the warehouse's default,
+    /// then the warehouse management parameters' default, then - only when there is exactly one
+    /// non-blocking status in the company, so the choice is not a guess - that one. Blank
+    /// otherwise, and D365FO's own message then says what is missing.
+    /// </summary>
+    private static WHSInventStatusId defaultStatus(InventLocationId _warehouse)
+    {
+        WHSInventStatusId statusId = InventLocation::find(_warehouse).DefaultStatusId;
+        WHSInventStatus   status;
+
+        if (!statusId)
+        {
+            statusId = WHSParameters::find().DefaultStatusId;
+        }
+        if (!statusId)
+        {
+            select count(RecId) from status where status.InventStatusBlocking == NoYes::No;
+            if (status.RecId == 1)
+            {
+                select firstonly InventStatusId from status where status.InventStatusBlocking == NoYes::No;
+                statusId = status.InventStatusId;
+            }
+        }
+        return statusId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>ensureSerial</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Creates the serial number's master record when the item has never had it - the same
+    /// reason as ensureBatch: a dimension cannot reference a serial with no InventSerial row.
+    /// </summary>
+    private static void ensureSerial(ItemId _itemId, InventSerialId _serialId)
+    {
+        InventSerial inventSerial;
+
+        select firstOnly RecId from inventSerial
+            where inventSerial.ItemId         == _itemId
+               && inventSerial.InventSerialId == _serialId;
+
+        if (!inventSerial.RecId)
+        {
+            inventSerial.clear();
+            inventSerial.ItemId         = _itemId;
+            inventSerial.InventSerialId = _serialId;
+            inventSerial.ProdDate       = DateTimeUtil::getSystemDate(DateTimeUtil::getUserPreferredTimeZone());
+            inventSerial.insert();
+        }
     }
 ]]></Source>
 			</Method>
@@ -666,7 +848,9 @@ class HSMobileOpsPostingService
         if (problem)
         {
             response.parmErrorCode(problem);
-            response.parmMessage('The posting request was incomplete');
+            response.parmMessage(problem == 'SERIAL_COUNT'
+                ? 'The serial numbers scanned do not match the quantity'
+                : 'The posting request was incomplete');
             return response;
         }
 
@@ -680,6 +864,7 @@ class HSMobileOpsPostingService
             {
                 response.parmSuccess(true);
                 response.parmDocumentNumber('');
+                HSMobileOpsPostingService::processNow(_request, response);
                 return response;
             }
 
@@ -725,6 +910,7 @@ class HSMobileOpsPostingService
 
             response.parmSuccess(true);
             response.parmDocumentNumber('');
+            HSMobileOpsPostingService::processNow(_request, response);
         }
 
         return response;
@@ -749,24 +935,37 @@ class HSMobileOpsPostingService
         InventTransferUpdReceive updReceive;
         TransDate                postingDate;
         boolean                  posted;
-        boolean                  partial;
         HSMobileOpsPostLine      postLine;
         List                     lines;
         ListEnumerator           enumerator;
         InventQty                requested;
+        InventQty                shortfall;
         InventQty                available;
         str                      failMessage;
+        InventDim                lineDim;
+        // Several scans of one line (two batches, two bins) add up: what each line has taken so
+        // far in this posting, and - shipping - the batch each line carries and the line each
+        // further batch was moved onto.
+        Map                      takenByLine   = new Map(Types::Real, Types::Real);
+        Map                      batchOfLine   = new Map(Types::Real, Types::String);
+        Map                      lineOfBatch   = new Map(Types::String, Types::Real);
+        InventQty                taken;
+        str                      lineDimKey;
+        str                      dimKey;
+        str                      batchKey;
+        InventSerialId           lineSerial;
+        str                      batchProblem;
 
         select firstOnly postQueue
             where postQueue.RecId == _queueRecId;
 
-        if (!postQueue.RecId || postQueue.Status != HSMobileOpsPostQueue::statusPending())
+        // Claimed, not just checked: the batch job and the button may both have selected it.
+        if (!postQueue.RecId || !HSMobileOpsPostQueue::claim(postQueue.RecId))
         {
             return;
         }
 
         failMessage = '';
-        partial     = false;
         posted      = false;
         postingDate = DateTimeUtil::date(DateTimeUtil::utcNow());
 
@@ -800,9 +999,10 @@ class HSMobileOpsPostingService
                         where transferLine.TransferId == transferTable.TransferId;
                 }
 
-                // Batch is deliberately not applied here from postLine.parmBatchId(), unlike
-                // processReceiptQueueEntry - see the identical note this carries over from the
-                // inline version. Tracked as a known gap, not silently skipped.
+                // Shipping: the batch and serials the worker scanned are picked on the line before
+                // posting (pickLine) - a batch or serial that is a primary dimension otherwise
+                // refuses the shipment ("must consequently be specified"). Receiving takes the
+                // shipped batch and serial over from transit, as D365FO does.
                 lines      = HSMobileOpsPostingService::parseLines(postQueue.LinesJson);
                 enumerator = lines.getEnumerator();
 
@@ -824,44 +1024,76 @@ class HSMobileOpsPostingService
                     else
                     {
                         requested = postLine.parmQuantity();
+                        taken     = takenByLine.exists(transferLine.LineNum) ? takenByLine.lookup(transferLine.LineNum) : 0;
+                        // What the line had outstanding before this posting: quantity already
+                        // moved onto a new line for another batch still counts against it.
                         available = _shipping
-                            ? transferLine.QtyRemainShip
+                            ? transferLine.QtyRemainShip + HSMobileOpsPostingService::movedOff(lineOfBatch, transferLine.LineNum, transferTable.TransferId)
                             : transferLine.QtyShipped - transferLine.QtyReceived;
 
-                        if (requested > available)
+                        // Receiving: the scanned batch must be one shipped on the line.
+                        batchProblem = !_shipping && postLine.parmBatchId()
+                            ? HSMobileOpsPostingService::unshippedBatch(transferLine, postLine.parmBatchId(), requested)
+                            : '';
+
+                        if (taken + requested > available)
                         {
                             failMessage = strFmt(
                                 'Line %1: %2 requested but only %3 outstanding',
-                                postLine.parmLineNumber(), requested, available);
+                                postLine.parmLineNumber(), taken + requested, available);
+                        }
+                        else if (batchProblem)
+                        {
+                            failMessage = batchProblem;
                         }
                         else
                         {
-                            if (requested < available)
-                            {
-                                partial = true;
-                            }
+                            takenByLine.insert(transferLine.LineNum, taken + requested);
 
+                            // Less than the outstanding quantity is a normal partial shipment
+                            // or receipt: "Ship now" / "Receive now" below post exactly the
+                            // quantity set here and leave the rest open on the line. Added, not
+                            // set: the same line can come several times in one posting.
                             if (_shipping)
                             {
-                                transferLine.QtyShipNow = requested;
+                                // The line's own dimensions are left as they are: batch, serial
+                                // and bin go only on the inventory transactions, through the pick
+                                // (user, 8 Oct 2026) - the shipment ships what is picked. Several
+                                // batches of one line are several picks of that line, not new lines.
+                                transferLine.QtyShipNow += requested;
                             }
                             else
                             {
-                                transferLine.QtyReceiveNow = requested;
+                                transferLine.QtyReceiveNow += requested;
                             }
 
                             transferLine.update();
+
+                            // Picked already when it was scanned (pickTransferLine): not again -
+                            // unless the line is not in fact picked that far (a pick that found
+                            // no stock does nothing), then as before.
+                            if (_shipping)
+                            {
+                                // Only what is not picked yet is picked now - whether the app picked
+                                // it when scanned or an earlier session did (one lost on the device
+                                // with its picks still in D365FO, BSP-TO-000000026).
+                                shortfall = (takenByLine.exists(transferLine.LineNum) ? takenByLine.lookup(transferLine.LineNum) : requested)
+                                          - HSMobileOpsPostingService::pickedQty(transferLine);
+                                if (shortfall > 0)
+                                {
+                                    HSMobileOpsPostingService::pickLine(transferLine, postLine, min(shortfall, requested));
+                                }
+                                // Picked already: the shipment ships the pick as it is. (Falling
+                                // through to the receipt registration here registered the receive
+                                // side before anything was shipped - "Total received quantity
+                                // exceeds shipped quantity", BSP-TO-000000026.)
+                            }
+                            else
+                            {
+                                HSMobileOpsPostingService::registerTransferReceipt(transferLine, postLine, requested);
+                            }
                         }
                     }
-                }
-
-                if (!failMessage && partial)
-                {
-                    // Partial quantities are refused rather than silently rounded up - see the
-                    // identical note this carries over from the inline version.
-                    failMessage =
-                        'This transfer can only be posted for the full outstanding quantity on '
-                      + 'every line. Adjust the transfer order instead.';
                 }
 
                 if (!failMessage)
@@ -876,13 +1108,16 @@ class HSMobileOpsPostingService
                                          : InventTransferUpdateType::Receive;
                     parmTable.TransDate  = postingDate;
 
+                    // "Ship now" / "Receive now": only the quantities set on the lines above.
+                    // "All" ships or receives everything outstanding on the order - one
+                    // scanned line of a 520-line transfer shipped all 520 lines.
                     if (_shipping)
                     {
-                        parmTable.ShipUpdateQty = InventTransferShipUpdateQty::All;
+                        parmTable.ShipUpdateQty = InventTransferShipUpdateQty::ShipNow;
                     }
                     else
                     {
-                        parmTable.ReceiveUpdateQty = InventTransferReceiveUpdateQty::All;
+                        parmTable.ReceiveUpdateQty = InventTransferReceiveUpdateQty::ReceiveNow;
                     }
 
                     parmTable.insert();
@@ -946,6 +1181,660 @@ class HSMobileOpsPostingService
 ]]></Source>
 			</Method>
 			<Method>
+				<Name>splitForBatch</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Moves _quantity of a transfer line onto the line for another batch (or single serial) in
+    /// this posting - a new line of the same order, created the first time that batch comes up
+    /// (same item, warehouses and dimensions, with that batch) - and returns that line, selected
+    /// for update. The
+    /// original line's ordered and outstanding quantities go down by the same amount.
+    /// </summary>
+    private static InventTransferLine splitForBatch(
+        InventTransferLine _line,
+        Map                _lineOfBatch,
+        str                _batchKey,
+        InventBatchId      _batchId,
+        InventSerialId     _serialId,
+        InventQty          _quantity)
+    {
+        InventTransferLine original;
+        InventTransferLine splitLine;
+        InventTransferLine last;
+        InventDim          splitDim;
+        RecId              splitRecId;
+
+        select forUpdate firstOnly original
+            where original.RecId == _line.RecId;
+        original.QtyTransfer      -= _quantity;
+        original.QtyRemainShip    -= _quantity;
+        original.QtyRemainReceive -= _quantity;
+        original.update();
+
+        if (_lineOfBatch.exists(_batchKey))
+        {
+            select forUpdate firstOnly splitLine
+                where splitLine.TransferId == original.TransferId
+                   && splitLine.LineNum    == _lineOfBatch.lookup(_batchKey);
+            splitLine.QtyTransfer      += _quantity;
+            splitLine.QtyRemainShip    += _quantity;
+            splitLine.QtyRemainReceive += _quantity;
+            splitLine.update();
+        }
+        else
+        {
+            select maxOf(LineNum) from last
+                where last.TransferId == original.TransferId;
+
+            splitDim               = original.inventDim();
+            if (_batchId)
+            {
+                splitDim.InventBatchId = _batchId;
+            }
+            if (_serialId)
+            {
+                splitDim.InventSerialId = _serialId;
+            }
+
+            splitLine.clear();
+            splitLine.initValue();
+            splitLine.initFromInventTransferTable(InventTransferTable::find(original.TransferId), NoYes::Yes);
+            splitLine.ItemId = original.ItemId;
+            splitLine.initFromInventTable(InventTable::find(splitLine.ItemId));
+            splitLine.UnitId           = original.UnitId;
+            splitLine.InventDimId      = InventDim::findOrCreate(splitDim).inventDimId;
+            splitLine.QtyTransfer      = _quantity;
+            splitLine.QtyRemainShip    = _quantity;
+            splitLine.QtyRemainReceive = _quantity;
+            splitLine.LineNum          = real2int(last.LineNum) + 1;
+            splitLine.insert();
+            _lineOfBatch.insert(_batchKey, splitLine.LineNum);
+
+            splitRecId = splitLine.RecId;
+            select forUpdate firstOnly splitLine
+                where splitLine.RecId == splitRecId;
+        }
+        return splitLine;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>movedOff</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// How much of a transfer line this posting has already moved onto lines of other batches
+    /// (splitForBatch) - still part of what the line had outstanding when the posting began.
+    /// </summary>
+    private static InventQty movedOff(Map _lineOfBatch, LineNum _lineNum, InventTransferId _transferId)
+    {
+        MapEnumerator      enumerator = _lineOfBatch.getEnumerator();
+        InventTransferLine splitLine;
+        InventQty          moved;
+        str                prefix = strFmt('%1|', _lineNum);
+
+        while (enumerator.moveNext())
+        {
+            if (subStr(enumerator.currentKey(), 1, strLen(prefix)) == prefix)
+            {
+                select firstOnly QtyTransfer from splitLine
+                    where splitLine.TransferId == _transferId
+                       && splitLine.LineNum    == enumerator.currentValue();
+                moved += splitLine.QtyTransfer;
+            }
+        }
+        return moved;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>pickTransferLine</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Picks a transfer line the moment the worker scans it on Transfer - Ship, so its issue
+    /// transaction is Picked in D365FO before the shipment is posted (feedback 8b3daea2): a
+    /// positive Quantity picks that much from the bin, batch and serial scanned; a negative one
+    /// unpicks it again (the worker removed the line or lowered its quantity). The shipment
+    /// posting later skips lines sent with Picked. Runs now, not through HSMobileOpsPostQueue -
+    /// the worker is waiting on it - and leaves the line as it was when D365FO refuses.
+    /// </summary>
+    public HSMobileOpsPostResponse pickTransferLine(HSMobileOpsPostRequest _request)
+    {
+        HSMobileOpsPostResponse response = new HSMobileOpsPostResponse();
+        InventTransferLine      transferLine;
+        HSMobileOpsPostLine     postLine;
+        ListEnumerator          enumerator;
+        InventDim               lineDim;
+        List                    lines;
+        InventQty               pickedBefore;
+        boolean                 alreadyPicked;
+
+        response.parmSuccess(false);
+        if (!_request || !_request.parmDataAreaId() || !_request.parmSourceId())
+        {
+            response.parmErrorCode('INVALID_REQUEST');
+            return response;
+        }
+        lines = HSMobileOpsPostingService::parseLines(_request.parmLinesJson());
+        if (!lines.elements())
+        {
+            response.parmErrorCode('INVALID_REQUEST');
+            return response;
+        }
+
+        changecompany (_request.parmDataAreaId())
+        {
+            try
+            {
+                ttsbegin;
+                enumerator = lines.getEnumerator();
+                while (enumerator.moveNext())
+                {
+                    postLine = enumerator.current();
+                    select forupdate firstonly transferLine
+                        where transferLine.TransferId == _request.parmSourceId()
+                           && transferLine.LineNum    == postLine.parmLineNumber();
+                    if (!transferLine.RecId)
+                    {
+                        throw error(strFmt('Line %1 is not on %2', postLine.parmLineNumber(), _request.parmSourceId()));
+                    }
+                    if (postLine.parmQuantity() > 0)
+                    {
+                        // The line is not changed: the batch, serial and bin go on the picked
+                        // inventory transactions only.
+                        pickedBefore = HSMobileOpsPostingService::pickedQty(transferLine);
+                        if (pickedBefore > 0 && HSMobileOpsPostingService::unpickedQty(transferLine) <= 0)
+                        {
+                            alreadyPicked = true;
+                            throw error(strFmt('%1 on line %2 is all picked in D365FO already - confirm picking to ship it',
+                                transferLine.ItemId, transferLine.LineNum));
+                        }
+                        HSMobileOpsPostingService::pickLine(transferLine, postLine, postLine.parmQuantity(), true);
+                        // D365FO's pick does nothing - without an error - when there is no stock
+                        // to pick from (negative physical inventory, BSP-TO-000000025: batch
+                        // E0927 at -4 in AAC). Said so, rather than reported as picked.
+                        if (HSMobileOpsPostingService::pickedQty(transferLine) - pickedBefore < postLine.parmQuantity())
+                        {
+                            throw error(strFmt('No stock of %1%2%3 in %4 to pick from - it is shipped from the order when the transfer is posted',
+                                transferLine.ItemId,
+                                postLine.parmBatchId() ? ' batch ' + postLine.parmBatchId() : '',
+                                postLine.parmLocationId() ? ' in bin ' + postLine.parmLocationId() : '',
+                                transferLine.inventDim().InventLocationId));
+                        }
+                    }
+                    else if (postLine.parmQuantity() < 0)
+                    {
+                        HSMobileOpsPostingService::unpickLine(transferLine, postLine, -postLine.parmQuantity());
+                    }
+                }
+                ttscommit;
+                response.parmSuccess(true);
+                response.parmDocumentNumber(_request.parmSourceId());
+            }
+            catch (Exception::Error)
+            {
+                // ALREADY_PICKED: the app counts the line as picked - it ships as it is.
+                response.parmErrorCode(alreadyPicked ? 'ALREADY_PICKED' : 'NOT_PICKED');
+                response.parmMessage(HSMobileOpsPostingService::lastError());
+            }
+            catch (Exception::Deadlock)
+            {
+                response.parmErrorCode('RETRY');
+                response.parmMessage('D365FO was busy - try again');
+            }
+        }
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>pickedQty</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// How much of a transfer line's shipment is Picked in D365FO now.
+    /// </summary>
+    private static InventQty pickedQty(InventTransferLine _transferLine)
+    {
+        InventTrans inventTrans;
+
+        select sum(Qty) from inventTrans
+            where inventTrans.InventTransOrigin == InventTransOrigin::findByInventTransId(_transferLine.InventTransId).RecId
+               && inventTrans.StatusReceipt     == StatusReceipt::None
+               && inventTrans.StatusIssue       == StatusIssue::Picked;
+
+        return -inventTrans.Qty;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>unpickedQty</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// How much of a transfer line's shipment is still open and not Picked in D365FO.
+    /// </summary>
+    private static InventQty unpickedQty(InventTransferLine _transferLine)
+    {
+        InventTrans inventTrans;
+
+        select sum(Qty) from inventTrans
+            where inventTrans.InventTransOrigin == InventTransOrigin::findByInventTransId(_transferLine.InventTransId).RecId
+               && inventTrans.StatusReceipt     == StatusReceipt::None
+               && inventTrans.StatusIssue       >  StatusIssue::Picked;
+
+        return -inventTrans.Qty;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>unpickLine</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Takes _quantity off what is picked on a transfer line's shipment - of the batch, serials
+    /// and bin given, when given - back to its earlier status, as D365FO's Pick form does with a
+    /// negative quantity.
+    /// </summary>
+    private static void unpickLine(InventTransferLine _transferLine, HSMobileOpsPostLine _postLine, InventQty _quantity)
+    {
+        InventTransOriginId  originId = InventTransOrigin::findByInventTransId(_transferLine.InventTransId).RecId;
+        InventTrans          inventTrans;
+        InventDim            dim;
+        TmpInventTransWMS    tmpInventTransWMS;
+        InventTransWMS_Pick  pick;
+        Query                query;
+        QueryBuildDataSource qbds;
+        List                 serials = _postLine.parmSerialIds();
+        Set                  wanted  = new Set(Types::String);
+        ListEnumerator       serialEnumerator;
+        InventQty            remaining = _quantity;
+        InventQty            qty;
+
+        if (serials)
+        {
+            serialEnumerator = serials.getEnumerator();
+            while (serialEnumerator.moveNext())
+            {
+                wanted.add(serialEnumerator.current());
+            }
+        }
+
+        query = new Query();
+        qbds  = query.addDataSource(tableNum(InventTrans));
+        qbds.addRange(fieldNum(InventTrans, StatusReceipt)).value(SysQuery::value(StatusReceipt::None));
+        qbds.addRange(fieldNum(InventTrans, StatusIssue)).value(SysQuery::value(StatusIssue::Picked));
+        qbds.addRange(fieldNum(InventTrans, InventTransOrigin)).value(SysQuery::value(originId));
+        pick = InventTransWMS_Pick::newStandard(tmpInventTransWMS, query);
+
+        while select inventTrans
+            where inventTrans.InventTransOrigin == originId
+               && inventTrans.StatusReceipt     == StatusReceipt::None
+               && inventTrans.StatusIssue       == StatusIssue::Picked
+        {
+            if (remaining <= 0)
+            {
+                break;
+            }
+            dim = inventTrans.inventDim();
+            if ((_postLine.parmBatchId() && dim.InventBatchId != _postLine.parmBatchId())
+             || (wanted.elements() && !wanted.in(dim.InventSerialId))
+             || (_postLine.parmLocationId() && dim.wMSLocationId && dim.wMSLocationId != _postLine.parmLocationId()))
+            {
+                continue;
+            }
+            qty = min(remaining, -inventTrans.Qty);
+            if (qty <= 0)
+            {
+                continue;
+            }
+            // A negative quantity on a picked issue: an unpick.
+            HSMobileOpsPostingService::addPick(pick, tmpInventTransWMS, inventTrans, dim, -qty);
+            remaining -= qty;
+        }
+        if (remaining > 0)
+        {
+            throw error(strFmt('Only %1 of %2 is picked on line %3 to unpick',
+                _quantity - remaining, _quantity, _transferLine.LineNum));
+        }
+        if (!pick.updateInvent())
+        {
+            throw error(strFmt('D365FO did not unpick %1 on line %2', _transferLine.ItemId, _transferLine.LineNum));
+        }
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>pickLine</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Picks a transfer line's shipment from the batch and serials the worker scanned - the
+    /// issue-side twin of registerLine, with InventTransWMS_Pick in place of
+    /// InventTransWMS_Register. Lines with neither are left to D365FO's own choice, as before.
+    ///
+    /// The ship flow asks the bin first (feedback 46890e91): each pick takes stock from that bin
+    /// when one was scanned and the item tracks location, else from wherever physical stock holds
+    /// that batch or serial in the shipping warehouse - with its location and inventory status.
+    /// With serial number control each serial is one unit; without it the single serial covers
+    /// the line. A line with only a bin scanned is picked from that bin too.
+    /// </summary>
+    private static void pickLine(InventTransferLine _transferLine, HSMobileOpsPostLine _postLine, InventQty _quantity,
+        boolean _always = false)
+    {
+        InventTransOriginId  originId = InventTransOrigin::findByInventTransId(_transferLine.InventTransId).RecId;
+        InventTrans          inventTrans;
+        InventDim            lineDim;
+        InventDim            pickDim;
+        TmpInventTransWMS    tmpInventTransWMS;
+        InventTransWMS_Pick  pick;
+        Query                query;
+        QueryBuildDataSource qbds;
+        List                 serials = _postLine.parmSerialIds();
+        ListEnumerator       serialEnumerator;
+        boolean              perUnit;
+        WMSLocationId        bin = _postLine.parmLocationId();
+
+        if (bin && !InventDimGroupSetup::newItemId(_transferLine.ItemId).isDimensionActive(fieldNum(InventDim, wMSLocationId)))
+        {
+            bin = '';
+        }
+        // At posting a line with neither is left to D365FO's own choice; picked when scanned
+        // (_always) it is picked too, from wherever its stock is.
+        if (!_always && !_postLine.parmBatchId() && !(serials && serials.elements()) && !bin)
+        {
+            return;
+        }
+
+        // The shipment's issue transaction - the line's origin also holds the transit receipt.
+        select firstonly inventTrans
+            where inventTrans.InventTransOrigin == originId
+               && inventTrans.StatusReceipt     == StatusReceipt::None
+               && inventTrans.StatusIssue       >= StatusIssue::Picked
+               && inventTrans.StatusIssue       <= StatusIssue::OnOrder;
+        if (!inventTrans.RecId)
+        {
+            return;
+        }
+
+        lineDim = inventTrans.inventDim();
+        if (_postLine.parmBatchId())
+        {
+            lineDim.InventBatchId = _postLine.parmBatchId();
+        }
+
+        // The same query D365FO's own Pick form (InventTransPick) hands InventTransWMS_Pick.
+        query = new Query();
+        qbds  = query.addDataSource(tableNum(InventTrans));
+        qbds.addRange(fieldNum(InventTrans, StatusReceipt)).value(SysQuery::value(StatusReceipt::None));
+        qbds.addRange(fieldNum(InventTrans, StatusIssue)).value(SysQuery::range(StatusIssue::Picked, StatusIssue::OnOrder));
+        qbds.addRange(fieldNum(InventTrans, InventTransOrigin)).value(SysQuery::value(originId));
+        pick = InventTransWMS_Pick::newStandard(tmpInventTransWMS, query);
+
+        if (serials && serials.elements())
+        {
+            perUnit = HSMobileOpsDimensionRules::serialPerUnit(InventDimGroupSetup::newItemId(inventTrans.ItemId));
+            serialEnumerator = serials.getEnumerator();
+            while (serialEnumerator.moveNext())
+            {
+                lineDim.InventSerialId = serialEnumerator.current();
+                pickDim = HSMobileOpsPostingService::stockDim(inventTrans.ItemId, lineDim, bin);
+                HSMobileOpsPostingService::addPick(pick, tmpInventTransWMS, inventTrans, pickDim, perUnit ? 1 : _quantity);
+            }
+        }
+        else
+        {
+            pickDim = HSMobileOpsPostingService::stockDim(inventTrans.ItemId, lineDim, bin);
+            HSMobileOpsPostingService::addPick(pick, tmpInventTransWMS, inventTrans, pickDim, _quantity);
+        }
+        if (!pick.updateInvent())
+        {
+            throw error(strFmt('D365FO did not pick %1 on line %2', _transferLine.ItemId, _transferLine.LineNum));
+        }
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>unshippedBatch</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Why a scanned batch cannot be received on a transfer line, or '' when it can: it must be
+    /// a batch shipped on the line, in no more than is still to receive of it. Without this the
+    /// receipt registers the scanned batch whatever left the source warehouse - BSP-TO-000000020
+    /// shipped 4S2MK and was received as 3S6NC (feedback 0c8c65da), and with physical negative
+    /// inventory nothing else in posting refuses it.
+    ///
+    /// The app checks the same list when the batch is scanned; this catches postings from an
+    /// app without that check, or queued before the shipment changed. A line shipped without
+    /// batches has no list, and is not checked. Earlier scans of this posting are already
+    /// registered (registerTransferReceipt), so the list has them deducted.
+    /// </summary>
+    private static str unshippedBatch(InventTransferLine _transferLine, InventBatchId _batchId, InventQty _quantity)
+    {
+        List                        shipped = HSMobileOpsTransferService::shippedBatchesOf(
+                                        _transferLine.InventTransId, _transferLine.InventTransIdReceive);
+        ListEnumerator              enumerator = shipped.getEnumerator();
+        HSMobileOpsTransferBatchRow row;
+        str                         list;
+
+        if (!shipped.elements())
+        {
+            return '';
+        }
+        while (enumerator.moveNext())
+        {
+            row = enumerator.current();
+            if (row.parmBatchId() == _batchId)
+            {
+                return _quantity > row.parmQty()
+                    ? strFmt('Line %1: only %2 of batch %3 is left to receive', _transferLine.LineNum, row.parmQty(), _batchId)
+                    : '';
+            }
+            list += (list ? ', ' : '') + strFmt('%1 (%2)', row.parmBatchId(), row.parmQty());
+        }
+        return strFmt('Line %1: batch %2 was not shipped on %3. Shipped: %4',
+            _transferLine.LineNum, _batchId, _transferLine.TransferId, list);
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>registerTransferReceipt</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Registers what the worker received of a transfer line at the put-away location, before
+    /// the receipt is posted. Items whose model group requires registration otherwise refuse the
+    /// receipt ("cannot be received because inventory transactions with status Registered are
+    /// insufficient"); for the rest it is the same registration a receiving clerk does in
+    /// D365FO. The batch and serial come over from the shipment on each in-transit transaction -
+    /// one per shipped batch or serial - so each is registered as it stands, with the location
+    /// (and a default inventory status where the item uses one) added, and the scanned batch when
+    /// one was scanned without serials.
+    ///
+    /// Only [_quantity] is registered, so a partial receipt leaves the rest in transit: the
+    /// scanned serials when the shipment carries serials, otherwise the scanned batch first and
+    /// then whatever else is in transit. A transaction larger than what is left is split.
+    /// </summary>
+    private static void registerTransferReceipt(InventTransferLine _transferLine, HSMobileOpsPostLine _postLine, InventQty _quantity)
+    {
+        InventTransOriginId     originId = InventTransOrigin::findByInventTransId(_transferLine.InventTransIdReceive).RecId;
+        InventTrans             inventTrans;
+        InventDim               inventDim;
+        TmpInventTransWMS       tmpInventTransWMS;
+        InventTransWMS_Register register;
+        boolean                 statusActive = InventDimGroupSetup::newItemId(_transferLine.ItemId)
+                                    .isDimensionActive(fieldNum(InventDim, InventStatusId));
+        WMSLocationId           location = _postLine.parmLocationId();
+        InventBatchId           batchId  = _postLine.parmBatchId();
+        List                    serials  = _postLine.parmSerialIds();
+        Set                     scanned  = new Set(Types::String);
+        ListEnumerator          serialEnumerator;
+        boolean                 shippedWithSerials;
+        container               matching;
+        container               others;
+        container               recIds;
+        InventQty               remaining = _quantity;
+        InventQty               qty;
+        int                     i;
+
+        if (serials)
+        {
+            serialEnumerator = serials.getEnumerator();
+            while (serialEnumerator.moveNext())
+            {
+                scanned.add(serialEnumerator.current());
+            }
+        }
+
+        // Collected first: registering splits and updates these same rows.
+        while select RecId, InventDimId from inventTrans
+            where inventTrans.InventTransOrigin == originId
+               && inventTrans.StatusIssue       == StatusIssue::None
+               && inventTrans.StatusReceipt     == StatusReceipt::Ordered
+        {
+            inventDim = InventDim::find(inventTrans.InventDimId);
+            if (inventDim.InventSerialId)
+            {
+                shippedWithSerials = true;
+            }
+
+            if ((scanned.elements() && scanned.in(inventDim.InventSerialId))
+             || (!scanned.elements() && batchId && inventDim.InventBatchId == batchId))
+            {
+                matching += inventTrans.RecId;
+            }
+            else
+            {
+                others += inventTrans.RecId;
+            }
+        }
+
+        // Scanned serials that were shipped: exactly those. Otherwise by quantity, the scanned
+        // batch first.
+        recIds = (scanned.elements() && shippedWithSerials) ? matching : matching + others;
+
+        for (i = 1; i <= conLen(recIds) && remaining > 0; i++)
+        {
+            select forupdate firstonly inventTrans where inventTrans.RecId == conPeek(recIds, i);
+            qty = min(remaining, inventTrans.Qty);
+            if (qty <= 0)
+            {
+                continue;
+            }
+
+            inventDim = inventTrans.inventDim();
+            if (location)
+            {
+                inventDim.wMSLocationId = location;
+            }
+            // The batch the worker scanned, checked on the handheld against what left the source
+            // warehouse (ShippedBatches). The in-transit transaction can carry another one: on
+            // BSP-TO-000000017 0.58 left as 4S2MK but was in transit as 3S6NC, and receiving it
+            // as 3S6NC failed with "Total received quantity exceeds shipped quantity".
+            if (batchId && !scanned.elements())
+            {
+                inventDim.InventBatchId = batchId;
+            }
+            if (statusActive && !inventDim.InventStatusId && inventDim.wMSLocationId)
+            {
+                inventDim.InventStatusId = HSMobileOpsPostingService::defaultStatus(inventDim.InventLocationId);
+            }
+            inventDim = InventDim::findOrCreate(inventDim);
+
+            register = InventTransWMS_Register::newStandard(tmpInventTransWMS);
+            // As in registerLine: the registration line takes its dimension from the
+            // transaction it is built from, so the put-away location goes on that first.
+            inventTrans.InventDimId = inventDim.InventDimId;
+            tmpInventTransWMS.clear();
+            tmpInventTransWMS.initFromInventTrans(inventTrans);
+            tmpInventTransWMS.ItemId    = inventTrans.ItemId;
+            tmpInventTransWMS.InventQty = qty;
+            tmpInventTransWMS.insert();
+            register.writeTmpInventTransWMS(tmpInventTransWMS, inventTrans, inventDim);
+            register.updateInvent(inventTrans);
+
+            remaining -= qty;
+        }
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>firstSerial</Name>
+				<Source><![CDATA[
+
+    private static InventSerialId firstSerial(List _serials)
+    {
+        ListEnumerator enumerator = _serials.getEnumerator();
+        return enumerator.moveNext() ? enumerator.current() : '';
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>addPick</Name>
+				<Source><![CDATA[
+
+    private static void addPick(InventTransWMS_Pick _pick, TmpInventTransWMS _tmp, InventTrans _inventTrans,
+        InventDim _pickDim, InventQty _quantity)
+    {
+        TmpInventTransWMS line;
+
+        // Built the way InventTransWMS_Pick builds its own lines, and handed over uninserted: the
+        // class records it then (setSelectedQty). Inserted first, as this did, the class took it
+        // for an edit of an existing line with nothing changed - and picked nothing, silently.
+        line.initFromInventTrans(_inventTrans);
+        line.initFromInventTransOrigin(_inventTrans.inventTransOrigin());
+        // In the class's own sign: the quantity to pick, negative to unpick.
+        line.InventQty   = _quantity;
+        // Where it is picked from: the bin, batch and status of the stock taken.
+        line.InventDimId = _pickDim.InventDimId;
+        if (!_pick.writeTmpInventTransWMS(line))
+        {
+            throw error(strFmt('D365FO would not %1 %2 of %3', _quantity < 0 ? 'unpick' : 'pick', abs(_quantity), _inventTrans.ItemId));
+        }
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>stockDim</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The full dimension of physical stock matching _wanted's warehouse, product dimensions,
+    /// batch and serial - so its location and status come from where the goods actually are.
+    /// _wanted itself when nothing matches, and D365FO then says what is missing.
+    /// </summary>
+    private static InventDim stockDim(ItemId _itemId, InventDim _wanted, WMSLocationId _bin = '')
+    {
+        InventSum inventSum;
+        InventDim stock;
+
+        select firstonly inventSum
+            where inventSum.ItemId         == _itemId
+               && inventSum.Closed         == NoYes::No
+               && inventSum.PhysicalInvent >  0
+            join stock
+                where stock.inventDimId      == inventSum.InventDimId
+                   && stock.InventLocationId == _wanted.InventLocationId
+                   && stock.ConfigId         == _wanted.ConfigId
+                   && stock.InventSizeId     == _wanted.InventSizeId
+                   && stock.InventColorId    == _wanted.InventColorId
+                   && stock.InventStyleId    == _wanted.InventStyleId
+                   && (!_wanted.InventBatchId  || stock.InventBatchId  == _wanted.InventBatchId)
+                   && (!_wanted.InventSerialId || stock.InventSerialId == _wanted.InventSerialId)
+                   && (!_bin                   || stock.wMSLocationId  == _bin);
+
+        if (!stock.RecId && _bin)
+        {
+            _wanted.wMSLocationId = _bin;
+        }
+        return stock.RecId ? stock : InventDim::findOrCreate(_wanted);
+    }
+]]></Source>
+			</Method>
+			<Method>
 				<Name>validate</Name>
 				<Source><![CDATA[
 
@@ -955,12 +1844,17 @@ class HSMobileOpsPostingService
     /// The serial count check earns its place: a serial identifies exactly one physical unit, so
     /// three serials against a quantity of five is not a rounding difference, it is two units
     /// nobody can ever trace. Refusing beats posting something that cannot be unpicked.
+    ///
+    /// One per unit only where the item's tracking group has serial number control. Without it
+    /// D365FO itself lets one serial cover the line, and the device asks for exactly one
+    /// (SerialPerUnit on the line) - requiring one per unit here refused every such receipt.
     /// </summary>
     private static str validate(HSMobileOpsPostRequest _request, boolean _referenceRequired)
     {
         HSMobileOpsPostLine postLine;
         List                 lines;
         ListEnumerator      enumerator;
+        boolean             perUnit;
 
         if (!_request
          || !_request.parmDataAreaId()
@@ -998,7 +1892,12 @@ class HSMobileOpsPostingService
 
             if (postLine.parmSerialIds() && postLine.parmSerialIds().elements())
             {
-                if (postLine.parmSerialIds().elements() != postLine.parmQuantity())
+                changecompany (_request.parmDataAreaId())
+                {
+                    perUnit = HSMobileOpsDimensionRules::serialPerUnit(InventDimGroupSetup::newItemId(postLine.parmItemId()));
+                }
+                if (perUnit ? postLine.parmSerialIds().elements() != postLine.parmQuantity()
+                            : postLine.parmSerialIds().elements() != 1)
                 {
                     return 'SERIAL_COUNT';
                 }
@@ -1006,6 +1905,37 @@ class HSMobileOpsPostingService
         }
 
         return '';
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>orderedQty</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The quantity of a purchase line still Ordered in InventTrans, in the purchase unit - what
+    /// can still be registered. The same reading as HSMobileOpsReceivingService.orderedQtyByLine.
+    /// </summary>
+    private static PurchQty orderedQty(PurchLine _purchLine)
+    {
+        InventTrans        inventTrans;
+        InventTransOrigin  inventTransOrigin;
+        InventQty          inventQty;
+
+        select sum(Qty) from inventTrans
+            where inventTrans.StatusReceipt == StatusReceipt::Ordered
+            exists join inventTransOrigin
+                where inventTransOrigin.RecId         == inventTrans.InventTransOrigin
+                   && inventTransOrigin.InventTransId == _purchLine.InventTransId;
+        inventQty = inventTrans.Qty;
+
+        // InventTrans is in the inventory unit; the line and the request are in the purchase unit.
+        // QtyOrdered is the line in the inventory unit, PurchQty in the purchase unit.
+        if (_purchLine.QtyOrdered && _purchLine.QtyOrdered != _purchLine.PurchQty)
+        {
+            return inventQty * _purchLine.PurchQty / _purchLine.QtyOrdered;
+        }
+        return inventQty;
     }
 ]]></Source>
 			</Method>
@@ -1102,6 +2032,7 @@ class HSMobileOpsPostingService
                 }
             }
             postLine.parmSerialIds(serialIds);
+            postLine.parmPicked(strLwr(HSMobileOpsPostingService::jsonStr(jLine, 'Picked')) == 'true');
 
             result.addEnd(postLine);
         }
@@ -1230,9 +2161,12 @@ class HSMobileOpsPostingService
         // Every Error line, joined - a DB failure logs the operation, then "The SQL database
         // has issued an error", then often a lock/session line, and keeping only the last one
         // (as this did) threw away the part that actually says what went wrong.
+        // Warnings too: validation (checkFailed) logs the actual reason as a warning, and the
+        // error after it is only "Update has been canceled" - on its own, nothing to act on.
         while (enumerator.moveNext())
         {
-            if (enumerator.currentException() == Exception::Error)
+            if (enumerator.currentException() == Exception::Error
+             || enumerator.currentException() == Exception::Warning)
             {
                 message += (message ? ' | ' : '') + enumerator.currentMessage();
             }

@@ -15,8 +15,21 @@ enum class SyncOperation {
     TRANSFER_ORDER_RECEIVE,
     POST_PACKING_SLIP,
     POST_INVENTORY_JOURNAL,
-    /** An admin's own device pushing a permission toggle back to AOS - see AdminCenterRepository. */
+    /**
+     * A permission toggle from the removed on-device Admin Center. Nothing queues it any more;
+     * kept so an entry queued by an older version still posts (see PostingDispatcher).
+     */
     SET_WORKER_PERMISSION,
+    /** A purchase order made on the handheld - created (and priced) by D365FO when it syncs. */
+    CREATE_PURCHASE_ORDER,
+    /** A transfer order made on the handheld - created by D365FO when it syncs. */
+    CREATE_TRANSFER_ORDER,
+    /** A purchase order confirmed on the handheld - confirmed by D365FO when it syncs. */
+    CONFIRM_PURCHASE_ORDER,
+    /** Feedback (problem, idea, question) sent from the app, with an optional screenshot. */
+    SEND_FEEDBACK,
+    /** Stock returned to a vendor - D365FO creates the return order and posts its packing slip. */
+    CREATE_PURCHASE_RETURN,
 }
 
 /**

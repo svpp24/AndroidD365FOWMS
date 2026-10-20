@@ -1,0 +1,811 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxForm xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns="Microsoft.Dynamics.AX.Metadata.V6">
+	<Name>HSMobileOpsCountControlCenter</Name>
+	<SourceCode>
+		<Methods xmlns="">
+			<Method>
+				<Name>classDeclaration</Name>
+				<Source><![CDATA[
+/// <summary>
+/// Stock count control center: every store's stock counts (master journals) with one staging
+/// journal per counter and their counted lines. Items counted more than once - by the same
+/// counter or another - are flagged; the supervisor keeps one count, adds them together or
+/// rejects them, then transfers the stock count into a D365FO counting journal. A supervisor
+/// with stores in Stock count stores sees only those stores. Rules: HSMobileOpsCountControl.
+/// </summary>
+[Form]
+public class HSMobileOpsCountControlCenter extends FormRun
+{
+}
+]]></Source>
+			</Method>
+		</Methods>
+		<DataSources xmlns="">
+			<DataSource>
+				<Name>HSMobileOpsCountMaster</Name>
+				<Methods>
+					<Method>
+						<Name>init</Name>
+						<Source><![CDATA[
+        /// <summary>
+        /// Only the stores this supervisor manages, newest count first. Nobody set up in Stock
+        /// count stores sees every store.
+        /// </summary>
+        public void init()
+        {
+            HSMobileOpsCountStore store;
+
+            super();
+            while select InventLocationId from store where store.SupervisorUserId == curUserId()
+            {
+                this.queryBuildDataSource().addRange(fieldNum(HSMobileOpsCountMaster, InventLocationId)).value(queryValue(store.InventLocationId));
+            }
+            this.queryBuildDataSource().addSortField(fieldNum(HSMobileOpsCountMaster, StartedUtc), SortOrder::Descending);
+        }
+
+]]></Source>
+					</Method>
+					<Method>
+						<Name>active</Name>
+						<Source><![CDATA[
+        public int active()
+        {
+            int ret = super();
+
+            HSMobileOpsCountStage_ds.executeQuery();
+            HSMobileOpsCountStageLine_ds.executeQuery();
+            return ret;
+        }
+
+]]></Source>
+					</Method>
+				</Methods>
+			</DataSource>
+			<DataSource>
+				<Name>HSMobileOpsCountStage</Name>
+				<Methods>
+					<Method>
+						<Name>init</Name>
+						<Source><![CDATA[
+        public void init()
+        {
+            super();
+            this.queryBuildDataSource().clearDynalinks();
+            this.queryBuildDataSource().addDynalink(fieldNum(HSMobileOpsCountStage, MasterRecId), HSMobileOpsCountMaster, fieldNum(HSMobileOpsCountMaster, RecId));
+        }
+
+]]></Source>
+					</Method>
+				</Methods>
+			</DataSource>
+			<DataSource>
+				<Name>HSMobileOpsCountStageLine</Name>
+				<Methods>
+					<Method>
+						<Name>init</Name>
+						<Source><![CDATA[
+        /// <summary>
+        /// The selected stock count's lines, duplicates together (same stock, then counter).
+        /// </summary>
+        public void init()
+        {
+            super();
+            this.queryBuildDataSource().clearDynalinks();
+            this.queryBuildDataSource().addDynalink(fieldNum(HSMobileOpsCountStageLine, MasterRecId), HSMobileOpsCountMaster, fieldNum(HSMobileOpsCountMaster, RecId));
+            this.queryBuildDataSource().addSortField(fieldNum(HSMobileOpsCountStageLine, DuplicateKey));
+            this.queryBuildDataSource().addSortField(fieldNum(HSMobileOpsCountStageLine, UserName));
+        }
+
+]]></Source>
+					</Method>
+					<Method>
+						<Name>executeQuery</Name>
+						<Source><![CDATA[
+        /// <summary>
+        /// Duplicates only, when that box is ticked.
+        /// </summary>
+        public void executeQuery()
+        {
+            QueryBuildRange duplicateRange = SysQuery::findOrCreateRange(this.queryBuildDataSource(), fieldNum(HSMobileOpsCountStageLine, IsDuplicate));
+
+            duplicateRange.value(DuplicatesOnly.value() ? queryValue(NoYes::Yes) : '');
+            super();
+        }
+
+]]></Source>
+					</Method>
+				</Methods>
+			</DataSource>
+		</DataSources>
+		<DataControls xmlns="">
+			<Control>
+				<Name>DuplicatesOnly</Name>
+				<Type>CheckBox</Type>
+				<Methods>
+					<Method>
+						<Name>modified</Name>
+						<Source><![CDATA[
+        public boolean modified()
+        {
+            boolean ret = super();
+
+            HSMobileOpsCountStageLine_ds.executeQuery();
+            return ret;
+        }
+
+]]></Source>
+					</Method>
+				</Methods>
+			</Control>
+		</DataControls>
+		<Members xmlns="" />
+	</SourceCode>
+	<DataSources>
+		<AxFormDataSource xmlns="">
+			<Name>HSMobileOpsCountMaster</Name>
+			<Table>HSMobileOpsCountMaster</Table>
+			<Fields />
+			<ReferencedDataSources />
+			<AllowCreate>No</AllowCreate>
+			<AllowDelete>No</AllowDelete>
+			<InsertIfEmpty>No</InsertIfEmpty>
+			<DataSourceLinks />
+			<DerivedDataSources />
+		</AxFormDataSource>
+		<AxFormDataSource xmlns="">
+			<Name>HSMobileOpsCountStage</Name>
+			<Table>HSMobileOpsCountStage</Table>
+			<Fields />
+			<ReferencedDataSources />
+			<AllowCreate>No</AllowCreate>
+			<AllowDelete>No</AllowDelete>
+			<AllowEdit>No</AllowEdit>
+			<InsertIfEmpty>No</InsertIfEmpty>
+			<JoinSource>HSMobileOpsCountMaster</JoinSource>
+			<DataSourceLinks />
+			<DerivedDataSources />
+		</AxFormDataSource>
+		<AxFormDataSource xmlns="">
+			<Name>HSMobileOpsCountStageLine</Name>
+			<Table>HSMobileOpsCountStageLine</Table>
+			<Fields />
+			<ReferencedDataSources />
+			<AllowCreate>No</AllowCreate>
+			<AllowDelete>No</AllowDelete>
+			<AllowEdit>No</AllowEdit>
+			<InsertIfEmpty>No</InsertIfEmpty>
+			<JoinSource>HSMobileOpsCountMaster</JoinSource>
+			<DataSourceLinks />
+			<DerivedDataSources />
+		</AxFormDataSource>
+	</DataSources>
+	<Design>
+		<Caption xmlns="">Stock count control center</Caption>
+		<DataSource xmlns="">HSMobileOpsCountMaster</DataSource>
+		<Pattern xmlns="">SimpleListDetails</Pattern>
+		<PatternVersion xmlns="">1.3</PatternVersion>
+		<Style xmlns="">SimpleListDetails</Style>
+		<TitleDataSource xmlns="">HSMobileOpsCountMaster</TitleDataSource>
+		<Controls xmlns="">
+			<AxFormControl xmlns=""
+				i:type="AxFormActionPaneControl">
+				<Name>ActionPane</Name>
+				<Type>ActionPane</Type>
+				<FormControlExtension
+					i:nil="true" />
+				<Controls>
+					<AxFormControl xmlns=""
+						i:type="AxFormButtonGroupControl">
+						<Name>CountGroup</Name>
+						<Type>ButtonGroup</Type>
+						<FormControlExtension
+							i:nil="true" />
+						<Controls>
+									<AxFormControl xmlns=""
+										i:type="AxFormMenuFunctionButtonControl">
+										<Name>TransferButton</Name>
+										<HelpText>Move the reviewed counts into a D365FO counting journal: a new one for the store, or the counting journal they were counted against. Waits until every duplicate is decided.</HelpText>
+										<Type>MenuFunctionButton</Type>
+										<FormControlExtension
+											i:nil="true" />
+										<ButtonDisplay>TextOnly</ButtonDisplay>
+										<DataSource>HSMobileOpsCountMaster</DataSource>
+										<MenuItemName>HSMobileOpsCountTransfer</MenuItemName>
+										<MenuItemType>Action</MenuItemType>
+										<Text>Transfer to counting journal</Text>
+									</AxFormControl>
+									<AxFormControl xmlns=""
+										i:type="AxFormMenuFunctionButtonControl">
+										<Name>RefreshButton</Name>
+										<HelpText>Look again for items counted more than once in this stock count.</HelpText>
+										<Type>MenuFunctionButton</Type>
+										<FormControlExtension
+											i:nil="true" />
+										<ButtonDisplay>TextOnly</ButtonDisplay>
+										<DataSource>HSMobileOpsCountMaster</DataSource>
+										<MenuItemName>HSMobileOpsCountRefresh</MenuItemName>
+										<MenuItemType>Action</MenuItemType>
+										<Text>Check for duplicates</Text>
+									</AxFormControl>
+									<AxFormControl xmlns=""
+										i:type="AxFormMenuFunctionButtonControl">
+										<Name>CancelButton</Name>
+										<HelpText>Abandon this stock count. Nothing is transferred.</HelpText>
+										<Type>MenuFunctionButton</Type>
+										<FormControlExtension
+											i:nil="true" />
+										<ButtonDisplay>TextOnly</ButtonDisplay>
+										<DataSource>HSMobileOpsCountMaster</DataSource>
+										<MenuItemName>HSMobileOpsCountCancel</MenuItemName>
+										<MenuItemType>Action</MenuItemType>
+										<Text>Cancel count</Text>
+									</AxFormControl>
+						</Controls>
+						<ArrangeMethod>Vertical</ArrangeMethod>
+						<Caption>Stock count</Caption>
+					</AxFormControl>
+				</Controls>
+				<AlignChild>No</AlignChild>
+				<AlignChildren>No</AlignChildren>
+				<ArrangeMethod>Vertical</ArrangeMethod>
+			</AxFormControl>
+			<AxFormControl xmlns=""
+				i:type="AxFormGroupControl">
+				<Name>GridContainer</Name>
+				<HeightMode>SizeToAvailable</HeightMode>
+				<Type>Group</Type>
+				<FormControlExtension
+					i:nil="true" />
+				<Controls>
+					<AxFormControl>
+						<Name>QuickFilterControl1</Name>
+						<WidthMode>SizeToAvailable</WidthMode>
+						<FormControlExtension>
+							<Name>QuickFilterControl</Name>
+							<ExtensionComponents />
+							<ExtensionProperties>
+								<AxFormControlExtensionProperty>
+									<Name>targetControlName</Name>
+									<Type>String</Type>
+									<Value>MasterGrid</Value>
+								</AxFormControlExtensionProperty>
+								<AxFormControlExtensionProperty>
+									<Name>placeholderText</Name>
+									<Type>String</Type>
+								</AxFormControlExtensionProperty>
+								<AxFormControlExtensionProperty>
+									<Name>defaultColumnName</Name>
+									<Type>String</Type>
+								</AxFormControlExtensionProperty>
+							</ExtensionProperties>
+						</FormControlExtension>
+					</AxFormControl>
+					<AxFormControl xmlns=""
+						i:type="AxFormGridControl">
+						<Name>MasterGrid</Name>
+						<AllowEdit>No</AllowEdit>
+						<Type>Grid</Type>
+						<WidthMode>SizeToContent</WidthMode>
+						<FormControlExtension
+							i:nil="true" />
+						<Controls>
+							<AxFormControl xmlns=""
+								i:type="AxFormStringControl">
+								<Name>List_MasterId</Name>
+								<Type>String</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<DataField>MasterId</DataField>
+								<DataSource>HSMobileOpsCountMaster</DataSource>
+							</AxFormControl>
+							<AxFormControl xmlns=""
+								i:type="AxFormStringControl">
+								<Name>List_InventLocationId</Name>
+								<Type>String</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<DataField>InventLocationId</DataField>
+								<DataSource>HSMobileOpsCountMaster</DataSource>
+							</AxFormControl>
+							<AxFormControl xmlns=""
+								i:type="AxFormComboBoxControl">
+								<Name>List_Status</Name>
+								<Type>ComboBox</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<DataField>Status</DataField>
+								<DataSource>HSMobileOpsCountMaster</DataSource>
+								<Items />
+							</AxFormControl>
+							<AxFormControl xmlns=""
+								i:type="AxFormIntegerControl">
+								<Name>List_DuplicateCount</Name>
+								<Type>Integer</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<DataField>DuplicateCount</DataField>
+								<DataSource>HSMobileOpsCountMaster</DataSource>
+							</AxFormControl>
+						</Controls>
+						<DataSource>HSMobileOpsCountMaster</DataSource>
+						<MultiSelect>No</MultiSelect>
+						<ShowRowLabels>No</ShowRowLabels>
+						<Style>List</Style>
+					</AxFormControl>
+				</Controls>
+				<FrameType>None</FrameType>
+				<Style>SidePanel</Style>
+			</AxFormControl>
+			<AxFormControl xmlns=""
+				i:type="AxFormGroupControl">
+				<Name>DetailsHeader</Name>
+				<Type>Group</Type>
+				<WidthMode>SizeToAvailable</WidthMode>
+				<FormControlExtension
+					i:nil="true" />
+				<Controls>
+							<AxFormControl xmlns=""
+								i:type="AxFormStringControl">
+								<Name>Head_MasterId</Name>
+								<Type>String</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<DataField>MasterId</DataField>
+								<DataSource>HSMobileOpsCountMaster</DataSource>
+							</AxFormControl>
+							<AxFormControl xmlns=""
+								i:type="AxFormStringControl">
+								<Name>Head_InventLocationId</Name>
+								<Type>String</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<DataField>InventLocationId</DataField>
+								<DataSource>HSMobileOpsCountMaster</DataSource>
+							</AxFormControl>
+							<AxFormControl xmlns=""
+								i:type="AxFormComboBoxControl">
+								<Name>Head_Status</Name>
+								<Type>ComboBox</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<DataField>Status</DataField>
+								<DataSource>HSMobileOpsCountMaster</DataSource>
+								<Items />
+							</AxFormControl>
+							<AxFormControl xmlns=""
+								i:type="AxFormStringControl">
+								<Name>Head_SourceJournalId</Name>
+								<Type>String</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<DataField>SourceJournalId</DataField>
+								<DataSource>HSMobileOpsCountMaster</DataSource>
+							</AxFormControl>
+							<AxFormControl xmlns=""
+								i:type="AxFormStringControl">
+								<Name>Head_Description</Name>
+								<Type>String</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<DataField>Description</DataField>
+								<DataSource>HSMobileOpsCountMaster</DataSource>
+							</AxFormControl>
+							<AxFormControl xmlns=""
+								i:type="AxFormStringControl">
+								<Name>Head_CreatedByUser</Name>
+								<Type>String</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<DataField>CreatedByUser</DataField>
+								<DataSource>HSMobileOpsCountMaster</DataSource>
+							</AxFormControl>
+							<AxFormControl xmlns=""
+								i:type="AxFormDateTimeControl">
+								<Name>Head_StartedUtc</Name>
+								<Type>DateTime</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<DataField>StartedUtc</DataField>
+								<DataSource>HSMobileOpsCountMaster</DataSource>
+							</AxFormControl>
+							<AxFormControl xmlns=""
+								i:type="AxFormIntegerControl">
+								<Name>Head_CounterCount</Name>
+								<Type>Integer</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<DataField>CounterCount</DataField>
+								<DataSource>HSMobileOpsCountMaster</DataSource>
+							</AxFormControl>
+							<AxFormControl xmlns=""
+								i:type="AxFormIntegerControl">
+								<Name>Head_LineCount</Name>
+								<Type>Integer</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<DataField>LineCount</DataField>
+								<DataSource>HSMobileOpsCountMaster</DataSource>
+							</AxFormControl>
+							<AxFormControl xmlns=""
+								i:type="AxFormIntegerControl">
+								<Name>Head_DuplicateCount</Name>
+								<Type>Integer</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<DataField>DuplicateCount</DataField>
+								<DataSource>HSMobileOpsCountMaster</DataSource>
+							</AxFormControl>
+							<AxFormControl xmlns=""
+								i:type="AxFormStringControl">
+								<Name>Head_TransferredJournalId</Name>
+								<Type>String</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<DataField>TransferredJournalId</DataField>
+								<DataSource>HSMobileOpsCountMaster</DataSource>
+							</AxFormControl>
+							<AxFormControl xmlns=""
+								i:type="AxFormStringControl">
+								<Name>Head_TransferredBy</Name>
+								<Type>String</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<DataField>TransferredBy</DataField>
+								<DataSource>HSMobileOpsCountMaster</DataSource>
+							</AxFormControl>
+							<AxFormControl xmlns=""
+								i:type="AxFormDateTimeControl">
+								<Name>Head_TransferredUtc</Name>
+								<Type>DateTime</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<DataField>TransferredUtc</DataField>
+								<DataSource>HSMobileOpsCountMaster</DataSource>
+							</AxFormControl>
+				</Controls>
+				<ColumnsMode>Fill</ColumnsMode>
+				<FrameType>None</FrameType>
+			</AxFormControl>
+			<AxFormControl xmlns=""
+				i:type="AxFormTabControl">
+				<Name>Tab</Name>
+				<AlignControl>No</AlignControl>
+				<Type>Tab</Type>
+				<FormControlExtension
+					i:nil="true" />
+				<Controls>
+					<AxFormControl xmlns=""
+						i:type="AxFormTabPageControl">
+						<Name>LinesPage</Name>
+						<HelpText>Everything counted in this stock count. Lines marked Duplicate were counted more than once - decide each with the buttons above the grid.</HelpText>
+						<Type>TabPage</Type>
+						<FormControlExtension
+							i:nil="true" />
+						<Controls>
+							<AxFormControl xmlns=""
+								i:type="AxFormActionPaneControl">
+								<Name>LineActions</Name>
+								<Type>ActionPane</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<Controls>
+									<AxFormControl xmlns=""
+										i:type="AxFormButtonGroupControl">
+										<Name>DecisionGroup</Name>
+										<Type>ButtonGroup</Type>
+										<FormControlExtension
+											i:nil="true" />
+										<Controls>
+										<AxFormControl xmlns=""
+											i:type="AxFormMenuFunctionButtonControl">
+											<Name>KeepButton</Name>
+											<HelpText>Use only the selected count for this item and location; the other counts of it are not transferred.</HelpText>
+											<Type>MenuFunctionButton</Type>
+											<FormControlExtension
+												i:nil="true" />
+											<ButtonDisplay>TextOnly</ButtonDisplay>
+											<DataSource>HSMobileOpsCountStageLine</DataSource>
+											<MenuItemName>HSMobileOpsCountKeepLine</MenuItemName>
+											<MenuItemType>Action</MenuItemType>
+											<Text>Keep this count</Text>
+										</AxFormControl>
+										<AxFormControl xmlns=""
+											i:type="AxFormMenuFunctionButtonControl">
+											<Name>SumButton</Name>
+											<HelpText>The counts of this item and location were of different stock - transfer them added together.</HelpText>
+											<Type>MenuFunctionButton</Type>
+											<FormControlExtension
+												i:nil="true" />
+											<ButtonDisplay>TextOnly</ButtonDisplay>
+											<DataSource>HSMobileOpsCountStageLine</DataSource>
+											<MenuItemName>HSMobileOpsCountSumLines</MenuItemName>
+											<MenuItemType>Action</MenuItemType>
+											<Text>Add together</Text>
+										</AxFormControl>
+										<AxFormControl xmlns=""
+											i:type="AxFormMenuFunctionButtonControl">
+											<Name>RejectButton</Name>
+											<HelpText>None of these counts is transferred; count the item again. The recount is a new duplicate to decide.</HelpText>
+											<Type>MenuFunctionButton</Type>
+											<FormControlExtension
+												i:nil="true" />
+											<ButtonDisplay>TextOnly</ButtonDisplay>
+											<DataSource>HSMobileOpsCountStageLine</DataSource>
+											<MenuItemName>HSMobileOpsCountRejectLines</MenuItemName>
+											<MenuItemType>Action</MenuItemType>
+											<Text>Reject - recount</Text>
+										</AxFormControl>
+										</Controls>
+										<ArrangeMethod>Vertical</ArrangeMethod>
+										<DataSource>HSMobileOpsCountStageLine</DataSource>
+									</AxFormControl>
+								</Controls>
+								<AlignChild>No</AlignChild>
+								<AlignChildren>No</AlignChildren>
+								<ArrangeMethod>Vertical</ArrangeMethod>
+								<Style>Strip</Style>
+							</AxFormControl>
+							<AxFormControl xmlns=""
+								i:type="AxFormCheckBoxControl">
+								<Name>DuplicatesOnly</Name>
+								<AutoDeclaration>Yes</AutoDeclaration>
+								<HelpText>Show only items counted more than once.</HelpText>
+								<Type>CheckBox</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<ExtendedDataType>NoYesId</ExtendedDataType>
+								<Label>Duplicates only</Label>
+							</AxFormControl>
+							<AxFormControl xmlns=""
+								i:type="AxFormGridControl">
+								<Name>LineGrid</Name>
+								<Type>Grid</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<Controls>
+									<AxFormControl xmlns=""
+										i:type="AxFormCheckBoxControl">
+										<Name>Line_IsDuplicate</Name>
+										<Type>CheckBox</Type>
+										<FormControlExtension
+											i:nil="true" />
+										<DataField>IsDuplicate</DataField>
+										<DataSource>HSMobileOpsCountStageLine</DataSource>
+									</AxFormControl>
+									<AxFormControl xmlns=""
+										i:type="AxFormComboBoxControl">
+										<Name>Line_Decision</Name>
+										<Type>ComboBox</Type>
+										<FormControlExtension
+											i:nil="true" />
+										<DataField>Decision</DataField>
+										<DataSource>HSMobileOpsCountStageLine</DataSource>
+										<Items />
+									</AxFormControl>
+									<AxFormControl xmlns=""
+										i:type="AxFormCheckBoxControl">
+										<Name>Line_Included</Name>
+										<Type>CheckBox</Type>
+										<FormControlExtension
+											i:nil="true" />
+										<DataField>Included</DataField>
+										<DataSource>HSMobileOpsCountStageLine</DataSource>
+									</AxFormControl>
+									<AxFormControl xmlns=""
+										i:type="AxFormStringControl">
+										<Name>Line_UserName</Name>
+										<Type>String</Type>
+										<FormControlExtension
+											i:nil="true" />
+										<DataField>UserName</DataField>
+										<DataSource>HSMobileOpsCountStageLine</DataSource>
+									</AxFormControl>
+									<AxFormControl xmlns=""
+										i:type="AxFormStringControl">
+										<Name>Line_ItemId</Name>
+										<Type>String</Type>
+										<FormControlExtension
+											i:nil="true" />
+										<DataField>ItemId</DataField>
+										<DataSource>HSMobileOpsCountStageLine</DataSource>
+									</AxFormControl>
+									<AxFormControl xmlns=""
+										i:type="AxFormStringControl">
+										<Name>Line_ConfigId</Name>
+										<Type>String</Type>
+										<FormControlExtension
+											i:nil="true" />
+										<DataField>ConfigId</DataField>
+										<DataSource>HSMobileOpsCountStageLine</DataSource>
+									</AxFormControl>
+									<AxFormControl xmlns=""
+										i:type="AxFormStringControl">
+										<Name>Line_InventSizeId</Name>
+										<Type>String</Type>
+										<FormControlExtension
+											i:nil="true" />
+										<DataField>InventSizeId</DataField>
+										<DataSource>HSMobileOpsCountStageLine</DataSource>
+									</AxFormControl>
+									<AxFormControl xmlns=""
+										i:type="AxFormStringControl">
+										<Name>Line_InventColorId</Name>
+										<Type>String</Type>
+										<FormControlExtension
+											i:nil="true" />
+										<DataField>InventColorId</DataField>
+										<DataSource>HSMobileOpsCountStageLine</DataSource>
+									</AxFormControl>
+									<AxFormControl xmlns=""
+										i:type="AxFormStringControl">
+										<Name>Line_InventStyleId</Name>
+										<Type>String</Type>
+										<FormControlExtension
+											i:nil="true" />
+										<DataField>InventStyleId</DataField>
+										<DataSource>HSMobileOpsCountStageLine</DataSource>
+									</AxFormControl>
+									<AxFormControl xmlns=""
+										i:type="AxFormStringControl">
+										<Name>Line_InventBatchId</Name>
+										<Type>String</Type>
+										<FormControlExtension
+											i:nil="true" />
+										<DataField>InventBatchId</DataField>
+										<DataSource>HSMobileOpsCountStageLine</DataSource>
+									</AxFormControl>
+									<AxFormControl xmlns=""
+										i:type="AxFormStringControl">
+										<Name>Line_InventSerialId</Name>
+										<Type>String</Type>
+										<FormControlExtension
+											i:nil="true" />
+										<DataField>InventSerialId</DataField>
+										<DataSource>HSMobileOpsCountStageLine</DataSource>
+									</AxFormControl>
+									<AxFormControl xmlns=""
+										i:type="AxFormStringControl">
+										<Name>Line_WMSLocationId</Name>
+										<Type>String</Type>
+										<FormControlExtension
+											i:nil="true" />
+										<DataField>WMSLocationId</DataField>
+										<DataSource>HSMobileOpsCountStageLine</DataSource>
+									</AxFormControl>
+									<AxFormControl xmlns=""
+										i:type="AxFormRealControl">
+										<Name>Line_Qty</Name>
+										<Type>Real</Type>
+										<FormControlExtension
+											i:nil="true" />
+										<DataField>Qty</DataField>
+										<DataSource>HSMobileOpsCountStageLine</DataSource>
+									</AxFormControl>
+									<AxFormControl xmlns=""
+										i:type="AxFormStringControl">
+										<Name>Line_UnitId</Name>
+										<Type>String</Type>
+										<FormControlExtension
+											i:nil="true" />
+										<DataField>UnitId</DataField>
+										<DataSource>HSMobileOpsCountStageLine</DataSource>
+									</AxFormControl>
+									<AxFormControl xmlns=""
+										i:type="AxFormDateTimeControl">
+										<Name>Line_CountedUtc</Name>
+										<Type>DateTime</Type>
+										<FormControlExtension
+											i:nil="true" />
+										<DataField>CountedUtc</DataField>
+										<DataSource>HSMobileOpsCountStageLine</DataSource>
+									</AxFormControl>
+									<AxFormControl xmlns=""
+										i:type="AxFormRealControl">
+										<Name>Line_SourceLineNum</Name>
+										<Type>Real</Type>
+										<FormControlExtension
+											i:nil="true" />
+										<DataField>SourceLineNum</DataField>
+										<DataSource>HSMobileOpsCountStageLine</DataSource>
+									</AxFormControl>
+								</Controls>
+								<DataSource>HSMobileOpsCountStageLine</DataSource>
+							</AxFormControl>
+						</Controls>
+						<Caption>Counted lines</Caption>
+					</AxFormControl>
+					<AxFormControl xmlns=""
+						i:type="AxFormTabPageControl">
+						<Name>CountersPage</Name>
+						<HelpText>One staging journal per counter: who counted, on which device, and whether they have ended their count.</HelpText>
+						<Type>TabPage</Type>
+						<FormControlExtension
+							i:nil="true" />
+						<Controls>
+							<AxFormControl xmlns=""
+								i:type="AxFormGridControl">
+								<Name>StageGrid</Name>
+								<Type>Grid</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<Controls>
+									<AxFormControl xmlns=""
+										i:type="AxFormStringControl">
+										<Name>Stage_UserName</Name>
+										<Type>String</Type>
+										<FormControlExtension
+											i:nil="true" />
+										<DataField>UserName</DataField>
+										<DataSource>HSMobileOpsCountStage</DataSource>
+									</AxFormControl>
+									<AxFormControl xmlns=""
+										i:type="AxFormStringControl">
+										<Name>Stage_DisplayName</Name>
+										<Type>String</Type>
+										<FormControlExtension
+											i:nil="true" />
+										<DataField>DisplayName</DataField>
+										<DataSource>HSMobileOpsCountStage</DataSource>
+									</AxFormControl>
+									<AxFormControl xmlns=""
+										i:type="AxFormStringControl">
+										<Name>Stage_DeviceId</Name>
+										<Type>String</Type>
+										<FormControlExtension
+											i:nil="true" />
+										<DataField>DeviceId</DataField>
+										<DataSource>HSMobileOpsCountStage</DataSource>
+									</AxFormControl>
+									<AxFormControl xmlns=""
+										i:type="AxFormComboBoxControl">
+										<Name>Stage_Status</Name>
+										<Type>ComboBox</Type>
+										<FormControlExtension
+											i:nil="true" />
+										<DataField>Status</DataField>
+										<DataSource>HSMobileOpsCountStage</DataSource>
+										<Items />
+									</AxFormControl>
+									<AxFormControl xmlns=""
+										i:type="AxFormDateTimeControl">
+										<Name>Stage_StartedUtc</Name>
+										<Type>DateTime</Type>
+										<FormControlExtension
+											i:nil="true" />
+										<DataField>StartedUtc</DataField>
+										<DataSource>HSMobileOpsCountStage</DataSource>
+									</AxFormControl>
+									<AxFormControl xmlns=""
+										i:type="AxFormDateTimeControl">
+										<Name>Stage_SubmittedUtc</Name>
+										<Type>DateTime</Type>
+										<FormControlExtension
+											i:nil="true" />
+										<DataField>SubmittedUtc</DataField>
+										<DataSource>HSMobileOpsCountStage</DataSource>
+									</AxFormControl>
+									<AxFormControl xmlns=""
+										i:type="AxFormIntegerControl">
+										<Name>Stage_LineCount</Name>
+										<Type>Integer</Type>
+										<FormControlExtension
+											i:nil="true" />
+										<DataField>LineCount</DataField>
+										<DataSource>HSMobileOpsCountStage</DataSource>
+									</AxFormControl>
+								</Controls>
+								<DataSource>HSMobileOpsCountStage</DataSource>
+							</AxFormControl>
+						</Controls>
+						<Caption>Counters</Caption>
+					</AxFormControl>
+				</Controls>
+				<AlignChild>No</AlignChild>
+				<ArrangeMethod>Vertical</ArrangeMethod>
+				<DataSource>HSMobileOpsCountMaster</DataSource>
+				<Style>FastTabs</Style>
+			</AxFormControl>
+		</Controls>
+	</Design>
+	<Parts />
+</AxForm>

@@ -4,6 +4,7 @@ import com.d365fo.mobileops.data.remote.api.MobileOpsServiceApi
 import com.d365fo.mobileops.data.remote.dto.ItemUnitsKeyDto
 import com.d365fo.mobileops.data.remote.dto.ItemUnitsRequestBody
 import com.d365fo.mobileops.data.remote.dto.ItemUnitsServiceRequest
+import com.d365fo.mobileops.data.remote.dto.rowsJson
 import com.d365fo.mobileops.data.remote.dto.toItemUnits
 import com.d365fo.mobileops.data.remote.error.D365ErrorMapper
 import com.d365fo.mobileops.data.security.CompanyProvider
@@ -59,9 +60,12 @@ class ItemUnitRepository @Inject constructor(
                 ItemUnitsServiceRequest(
                     ItemUnitsRequestBody(
                         dataAreaId = companyProvider()?.lowercase().orEmpty(),
-                        items = items.map { (id, v) ->
-                            ItemUnitsKeyDto(id, v.configId.orEmpty(), v.sizeId.orEmpty(), v.colorId.orEmpty(), v.styleId.orEmpty())
-                        },
+                        itemsJson = rowsJson(
+                            ItemUnitsKeyDto.serializer(),
+                            items.map { (id, v) ->
+                                ItemUnitsKeyDto(id, v.configId.orEmpty(), v.sizeId.orEmpty(), v.colorId.orEmpty(), v.styleId.orEmpty())
+                            },
+                        ),
                     ),
                 ),
             )

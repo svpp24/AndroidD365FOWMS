@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsFeedbackResponse</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// One response shape for HSMobileOpsFeedbackService.
+/// </summary>
+[DataContractAttribute]
+class HSMobileOpsFeedbackResponse
+{
+    boolean success;
+    str errorCode;
+    str message;
+    boolean alreadyCreated;
+    List items;
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmSuccess</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Success')]
+    public boolean parmSuccess(boolean _value = success)
+    {
+        success = _value;
+        return success;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmErrorCode</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ErrorCode')]
+    public str parmErrorCode(str _value = errorCode)
+    {
+        errorCode = _value;
+        return errorCode;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmMessage</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Message')]
+    public str parmMessage(str _value = message)
+    {
+        message = _value;
+        return message;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmAlreadyCreated</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('AlreadyCreated')]
+    public boolean parmAlreadyCreated(boolean _value = alreadyCreated)
+    {
+        alreadyCreated = _value;
+        return alreadyCreated;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmItems</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Items'),
+     DataCollectionAttribute(Types::Class, classStr(HSMobileOpsFeedbackItem))]
+    public List parmItems(List _value = items)
+    {
+        items = _value;
+        return items;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

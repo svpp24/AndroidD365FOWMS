@@ -97,8 +97,8 @@ public class HSMobileOpsUserWarehouse extends common
 		<AxTableField xmlns=""
 			i:type="AxTableFieldInt64">
 			<Name>UserRecId</Name>
-			<Label>Mobile user</Label>
 			<ExtendedDataType>RefRecId</ExtendedDataType>
+			<Label>Mobile user</Label>
 			<Mandatory>Yes</Mandatory>
 		</AxTableField>
 		<AxTableField xmlns=""
@@ -115,8 +115,8 @@ public class HSMobileOpsUserWarehouse extends common
 		<AxTableField xmlns=""
 			i:type="AxTableFieldEnum">
 			<Name>IsDefault</Name>
-			<Label>Default</Label>
 			<EnumType>NoYes</EnumType>
+			<Label>Default</Label>
 		</AxTableField>
 	</Fields>
 	<FullTextIndexes />

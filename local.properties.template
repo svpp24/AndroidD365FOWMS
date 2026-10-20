@@ -31,6 +31,11 @@ LICENSE_ROOT_PUBLIC_KEY_B64=
 # the SHA256 line) - what the app checks its own installed signature against at startup.
 RELEASE_SIGNING_CERT_SHA256=
 
+# --- Play Integrity (server-verified device/app attestation, azure-license-function) ---
+# The Google Cloud project number linked to this app in Play Console - Play Console > App
+# integrity > Play Integrity API. Blank skips the attestation check (PlayIntegrityTokenProvider).
+INTEGRITY_CLOUD_PROJECT_NUMBER=
+
 # --- Inventory count extensions (true/false, default false) - turn on once the X++ side exists ---
 FEATURE_COUNT_CLAIMS=
 FEATURE_COUNT_DIRECT=
@@ -53,3 +58,7 @@ DEV_DISPLAY_NAME=
 DEV_WAREHOUSE_ID=
 DEV_SITE_ID=
 DEV_SUPERVISOR=
+
+# Licensing check - leave true for any build that goes to devices. false skips license
+# activation and the per-launch license check (testing a build before it has a certificate).
+LICENSE_CHECK=true

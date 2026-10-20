@@ -49,30 +49,72 @@ class PoLinesViewModel @Inject constructor(
         val purchId = scanned.trim()
         if (purchId.isEmpty()) return
 
-        pending?.cancel()
-        pending = viewModelScope.launch {
-            _state.update { it.copy(busy = true, error = null) }
+        // A large order's lines come per item (see OrderLookup.linesInline): with one of those
+        // open, a scan is first tried as an item on it, and only then as another order.
+        val open = _state.value
+        if (open.purchId != null && !open.linesInline && open.outstandingLineCount > 0) {
+            pending?.cancel()
+            pending = viewModelScope.launch {
+                _state.update { it.copy(busy = true, error = null) }
+                val forItem = lookups.lookupLinesForItem(open.purchId, purchId)
+                when {
+                    forItem is NetworkResult.Success && forItem.data.isNotEmpty() -> {
+                        scanFeedback.success()
+                        _state.update { it.copy(busy = false, lines = forItem.data, itemFilter = purchId) }
+                    }
+                    // No connection: keep the order open rather than trying the scan as a PO.
+                    forItem is NetworkResult.Error && forItem.failure.retryable -> {
+                        scanFeedback.error()
+                        _state.update {
+                            it.copy(
+                                busy = false,
+                                error = "Can't reach D365FO to look up $purchId. An item's lines are kept on this " +
+                                    "device once they have been looked up while connected.",
+                            )
+                        }
+                    }
+                    else -> lookUpOrder(purchId)
+                }
+            }
+            return
+        }
 
-            when (val result = lookups.lookupOrder(purchId)) {
-                is NetworkResult.Error -> {
-                    scanFeedback.error()
-                    _state.update {
-                        it.copy(busy = false, error = result.failure.message, purchId = null, lines = emptyList())
-                    }
+        pending?.cancel()
+        pending = viewModelScope.launch { lookUpOrder(purchId) }
+    }
+
+    private suspend fun lookUpOrder(purchId: String) {
+        _state.update { it.copy(busy = true, error = null) }
+
+        when (val result = lookups.lookupOrder(purchId)) {
+            is NetworkResult.Error -> {
+                scanFeedback.error()
+                _state.update {
+                    it.copy(
+                        busy = false,
+                        error = result.failure.message,
+                        purchId = null,
+                        lines = emptyList(),
+                        blockNotice = null,
+                    )
                 }
-                NetworkResult.Loading -> _state.update {
-                    it.copy(busy = false, error = "Lookup did not complete")
-                }
-                is NetworkResult.Success -> {
-                    scanFeedback.success()
-                    _state.update {
-                        it.copy(
-                            busy = false,
-                            purchId = purchId,
-                            vendorAccount = result.data.order.vendorAccount,
-                            lines = result.data.order.lines,
-                        )
-                    }
+            }
+            NetworkResult.Loading -> _state.update {
+                it.copy(busy = false, error = "Lookup did not complete")
+            }
+            is NetworkResult.Success -> {
+                scanFeedback.success()
+                _state.update {
+                    it.copy(
+                        busy = false,
+                        purchId = purchId,
+                        vendorAccount = result.data.order.vendorAccount,
+                        lines = result.data.order.lines,
+                        outstandingLineCount = result.data.outstandingLineCount,
+                        linesInline = result.data.linesInline,
+                        blockNotice = result.data.blockReason?.let(::blockNotice),
+                        itemFilter = null,
+                    )
                 }
             }
         }
@@ -83,6 +125,29 @@ data class PoLinesState(
     val purchId: String? = null,
     val vendorAccount: String? = null,
     val lines: List<PurchaseOrderLine> = emptyList(),
+    /** Open lines on the order, whether or not [lines] holds them. */
+    val outstandingLineCount: Int = 0,
+    /**
+     * False when the order's lines were not sent with it: they are shown per scanned item,
+     * [itemFilter]. Usually a large order - but an older AOS also withholds them from a blocked
+     * order of any size, so with [blockNotice] set this says nothing about size.
+     */
+    val linesInline: Boolean = true,
+    /**
+     * Why the order cannot be received yet, in words, or null when it can. Shown alongside the
+     * lines: this screen only reads, but an operator looking at an unconfirmed order should not
+     * come away thinking the goods can go in against it.
+     */
+    val blockNotice: String? = null,
+    val itemFilter: String? = null,
     val busy: Boolean = false,
     val error: String? = null,
 )
+
+/** [com.d365fo.mobileops.domain.repository.OrderLookup.blockReason], for the operator. */
+internal fun blockNotice(reason: String): String = when (reason) {
+    "NOT_CONFIRMED" -> "Not confirmed yet - purchasing has not sent it to the vendor, so it can't be received."
+    "NOT_APPROVED" -> "Not approved yet - it can't be received until a manager approves it."
+    "NOT_OPEN" -> "Not open for receiving."
+    else -> "Can't be received yet ($reason)."
+}

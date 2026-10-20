@@ -52,6 +52,10 @@ class D365ErrorMapper @Inject constructor(
             Timber.w("D365 %s %s failed: %s", request.method, request.url, failure.message)
             NetworkResult.Error(failure)
         }
+    } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+        // The caller went away (screen closed, a newer lookup replaced this one): not a D365FO
+        // failure, and the coroutine must stop rather than carry on with an error result.
+        throw e
     } catch (e: Throwable) {
         val failure = fromThrowable(e)
         Timber.e(e, "D365 call threw: %s", failure.message)
@@ -59,9 +63,14 @@ class D365ErrorMapper @Inject constructor(
     }
 
     fun fromThrowable(e: Throwable): AppFailure = when (e) {
+        // A lookup with no saved offline copy - see OfflineReadCacheInterceptor.
+        is com.d365fo.mobileops.data.remote.interceptor.NotSavedOfflineException -> AppFailure.Offline(
+            "D365FO can't be reached, and this hasn't been looked up on this device while connected, " +
+                "so there is no saved copy. Try again when the cloud at the top turns green.",
+        )
         is UnknownHostException -> AppFailure.Offline("No connection - check Wi-Fi and try again.")
         is com.d365fo.mobileops.data.remote.interceptor.AosUnreachableException ->
-            AppFailure.Offline("D365FO can't be reached right now. Your work is saved - try again when the orange banner clears.")
+            AppFailure.Offline("D365FO can't be reached right now. Try again when the cloud at the top turns green.")
         is SocketTimeoutException -> AppFailure.Transient("D365FO took too long to answer. Try again in a moment.")
         // A pinning failure is never retried: it means the chain we got is not the one we
         // trust, and retrying only repeats the exposure.
@@ -71,6 +80,8 @@ class D365ErrorMapper @Inject constructor(
         // classifying it as Transient would retry a request that can never succeed until a
         // human signs in.
         is NotAuthenticatedException -> AppFailure.Authentication(e.message ?: "not signed in")
+        is com.d365fo.mobileops.data.remote.interceptor.TokenUnreachableException ->
+            AppFailure.Offline("No connection to D365FO - check Wi-Fi and try again.")
         is IOException -> AppFailure.Transient(e.message ?: "network error")
         else -> AppFailure.Fatal(e.message ?: "unexpected error", e)
     }

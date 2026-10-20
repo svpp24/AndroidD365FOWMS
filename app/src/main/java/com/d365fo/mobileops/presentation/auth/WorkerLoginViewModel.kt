@@ -27,8 +27,29 @@ class WorkerLoginViewModel @Inject constructor(
     private val workerContextRepository: WorkerContextRepository,
 ) : ViewModel() {
 
+    /**
+     * The user name of the last worker who signed in here, filled in so the next sign-in only
+     * needs the PIN (feedback, 10 Oct). Kept in the encrypted store; never the PIN.
+     */
     private val _state = MutableStateFlow(WorkerLoginState())
+
+    /**
+     * Fills in the last worker's name each time the screen opens - this ViewModel outlives a
+     * sign-in (it belongs to the activity), and a successful sign-in empties its state, so the
+     * name read at creation was gone by the next sign-out (seen 10 Oct, 1.0.82).
+     * True when a name is filled in: the screen then starts in the PIN field.
+     */
+    fun prefill(): Boolean {
+        val name = sessions.lastUserName()
+        if (name.isNotBlank() && _state.value.userName.isBlank()) {
+            _state.update { it.copy(userName = name, password = "", error = null) }
+        }
+        return _state.value.userName.isNotBlank()
+    }
     val state: StateFlow<WorkerLoginState> = _state.asStateFlow()
+
+    /** "You signed in on another device" after a takeover, until the next sign-in. */
+    val signOutNotice: StateFlow<String?> = sessions.signOutNotice
 
     fun onUserNameChange(value: String) =
         _state.update { it.copy(userName = value, error = null) }

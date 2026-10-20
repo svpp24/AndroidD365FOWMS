@@ -47,18 +47,44 @@ class TransferStepSequenceTest {
     )
 
     @Test
-    fun `shipping never asks where to put the goods`() {
+    fun `shipping asks the bin first, then item, quantity and batch`() {
+        // Feedback 46890e91: picking is bin, item, qty, batch - the worker stands at the bin.
         val steps = stepsForTransfer(
-            TransferCapture(mode = TransferMode.SHIP, line = line(location = true)),
+            TransferCapture(mode = TransferMode.SHIP, line = line(location = true, batch = true)),
         )
 
-        // Even for a location-tracked item. The stock is leaving; there is no destination bin to
-        // record, and prompting would be asking the operator to invent an answer.
-        assertThat(steps).doesNotContain(TransferStep.LOCATION)
+        assertThat(steps).containsExactly(
+            TransferStep.TRANSFER_ORDER,
+            TransferStep.LOCATION,
+            TransferStep.ITEM,
+            TransferStep.QUANTITY,
+            TransferStep.BATCH,
+            TransferStep.CONFIRM,
+        ).inOrder()
+    }
+
+    @Test
+    fun `shipping asks the bin before the item is known, and drops it for an untracked item`() {
+        assertThat(stepsForTransfer(TransferCapture(mode = TransferMode.SHIP)))
+            .containsAtLeast(TransferStep.LOCATION, TransferStep.ITEM).inOrder()
+        assertThat(stepsForTransfer(TransferCapture(mode = TransferMode.SHIP, line = line(location = false))))
+            .doesNotContain(TransferStep.LOCATION)
+    }
+
+    @Test
+    fun `receiving asks item, quantity and batch, then the bin last`() {
+        // Feedback 46890e91: receiving is item, qty, batch, bin - put away after reading the carton.
+        val steps = stepsForTransfer(
+            TransferCapture(mode = TransferMode.RECEIVE, line = line(location = true, batch = true, serial = true)),
+        )
+
         assertThat(steps).containsExactly(
             TransferStep.TRANSFER_ORDER,
             TransferStep.ITEM,
             TransferStep.QUANTITY,
+            TransferStep.BATCH,
+            TransferStep.SERIAL,
+            TransferStep.LOCATION,
             TransferStep.CONFIRM,
         ).inOrder()
     }
@@ -109,13 +135,15 @@ class TransferStepSequenceTest {
     }
 
     @Test
-    fun `a ship with a quantity is ready to confirm`() {
+    fun `a ship with a bin and a quantity is ready to confirm`() {
         val capture = TransferCapture(
             transferId = "TR-1",
             mode = TransferMode.SHIP,
             line = line(),
             quantity = BigDecimal("4"),
+            locationId = "BULK-01",
         )
+        assertThat(nextIncompleteTransferStep(capture.copy(locationId = null))).isEqualTo(TransferStep.LOCATION)
 
         assertThat(nextIncompleteTransferStep(capture)).isEqualTo(TransferStep.CONFIRM)
     }
@@ -150,6 +178,7 @@ class TransferStepSequenceTest {
             mode = TransferMode.SHIP,
             line = line(serial = true),
             quantity = BigDecimal("3"),
+            locationId = "BULK-01",
         )
 
         assertThat(base.serialsOutstanding).isEqualTo(3)

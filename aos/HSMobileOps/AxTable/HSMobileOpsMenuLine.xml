@@ -1,0 +1,265 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxTable xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsMenuLine</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// One line of a handheld menu (HSMobileOpsMenu), in LineNum order: an app module, or another
+/// menu opened as a sub-menu. Menu access (HSMobileOpsUserModulePermission) still decides which
+/// modules a worker sees; a sub-menu with nothing left in it is not shown.
+///
+/// SubMenuId deliberately has no table relation to HSMobileOpsMenu: with two relations to the
+/// same table, the form's line grid joined on both and showed nothing. The form's control
+/// supplies the lookup instead (HSMobileOpsMenu form, Line_SubMenuId.lookup).
+/// </summary>
+public class HSMobileOpsMenuLine extends common
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>insert</Name>
+				<Source><![CDATA[
+
+    public void insert()
+    {
+        HSMobileOpsMenuLine last;
+
+        if (!this.Sequence)
+        {
+            select maxOf(LineNum) from last
+                where last.MenuRecId == this.MenuRecId;
+            this.Sequence = real2int(last.LineNum) + 10;
+        }
+        this.LineNum = this.Sequence;
+        if (this.LineType == HSMobileOpsMenuLineType::Module)
+        {
+            this.SubMenuId = '';
+        }
+        this.setOpens();
+        super();
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>update</Name>
+				<Source><![CDATA[
+
+    public void update()
+    {
+        this.LineNum = this.Sequence;
+        if (this.LineType == HSMobileOpsMenuLineType::Module)
+        {
+            this.SubMenuId = '';
+        }
+        this.setOpens();
+        super();
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>setOpens</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Opens, for the form's grid: the module's name, or the sub-menu's ID and name. Stored
+    /// rather than a display method, which shows blank on this environment's forms.
+    /// </summary>
+    public void setOpens()
+    {
+        HSMobileOpsMenu subMenu;
+
+        if (this.LineType == HSMobileOpsMenuLineType::SubMenu)
+        {
+            subMenu = HSMobileOpsMenu::find(this.SubMenuId);
+            this.Opens = subMenu.RecId ? strFmt('%1 - %2', subMenu.MenuId, subMenu.Name) : this.SubMenuId;
+        }
+        else
+        {
+            this.Opens = enum2Str(this.Module);
+        }
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>validateWrite</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// A sub-menu line must open an existing menu that does not lead back to this one (the
+    /// handheld would loop), and a module is listed once per menu.
+    /// </summary>
+    public boolean validateWrite()
+    {
+        HSMobileOpsMenu     parent = HSMobileOpsMenu::findRecId(this.MenuRecId);
+        HSMobileOpsMenuLine duplicate;
+        boolean             ok = super();
+
+        if (ok && this.LineType == HSMobileOpsMenuLineType::SubMenu)
+        {
+            if (!this.SubMenuId)
+            {
+                ok = checkFailed('Select the menu this line opens.');
+            }
+            else if (!HSMobileOpsMenu::find(this.SubMenuId).RecId)
+            {
+                ok = checkFailed(strFmt('Menu %1 does not exist.', this.SubMenuId));
+            }
+            else if (this.SubMenuId == parent.MenuId || HSMobileOpsMenuLine::leadsTo(this.SubMenuId, parent.MenuId, 0))
+            {
+                ok = checkFailed(strFmt('Menu %1 leads back to %2, so it cannot be a sub-menu of it.', this.SubMenuId, parent.MenuId));
+            }
+        }
+        if (ok && this.Sequence)
+        {
+            select firstOnly RecId from duplicate
+                where duplicate.MenuRecId == this.MenuRecId
+                   && duplicate.LineNum   == this.Sequence
+                   && duplicate.RecId     != this.RecId;
+            if (duplicate.RecId)
+            {
+                ok = checkFailed(strFmt('Sequence %1 is already used on this menu.', this.Sequence));
+            }
+        }
+        if (ok && this.LineType == HSMobileOpsMenuLineType::Module)
+        {
+            select firstOnly RecId from duplicate
+                where duplicate.MenuRecId == this.MenuRecId
+                   && duplicate.LineType  == HSMobileOpsMenuLineType::Module
+                   && duplicate.Module    == this.Module
+                   && duplicate.RecId     != this.RecId;
+            if (duplicate.RecId)
+            {
+                ok = checkFailed(strFmt('%1 is already on this menu.', this.Module));
+            }
+        }
+        return ok;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>leadsTo</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Whether menu _fromMenuId opens _targetMenuId, directly or through its sub-menus.
+    /// </summary>
+    public static boolean leadsTo(str _fromMenuId, str _targetMenuId, int _depth)
+    {
+        HSMobileOpsMenu     fromMenu = HSMobileOpsMenu::find(_fromMenuId);
+        HSMobileOpsMenuLine line;
+
+        if (_depth > 20)
+        {
+            return true;
+        }
+        if (!fromMenu.RecId)
+        {
+            return false;
+        }
+        while select SubMenuId from line
+            where line.MenuRecId == fromMenu.RecId
+               && line.LineType  == HSMobileOpsMenuLineType::SubMenu
+        {
+            if (line.SubMenuId == _targetMenuId || HSMobileOpsMenuLine::leadsTo(line.SubMenuId, _targetMenuId, _depth + 1))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+	<Label>Mobile device menu line</Label>
+	<TitleField1>LineNum</TitleField1>
+	<TitleField2>LineType</TitleField2>
+	<CacheLookup>NotInTTS</CacheLookup>
+	<ClusteredIndex>MenuLineIdx</ClusteredIndex>
+	<PrimaryIndex>MenuLineIdx</PrimaryIndex>
+	<Fields>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldInt64">
+			<Name>MenuRecId</Name>
+			<ExtendedDataType>RefRecId</ExtendedDataType>
+			<Label>Menu</Label>
+			<Mandatory>Yes</Mandatory>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldReal">
+			<Name>LineNum</Name>
+			<ExtendedDataType>LineNum</ExtendedDataType>
+			<HelpText>Kept equal to Sequence; its unique index stops two lines sharing a place.</HelpText>
+			<Label>Line number</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldInt">
+			<Name>Sequence</Name>
+			<HelpText>The order on the handheld, lowest first. Left blank, a new line goes last.</HelpText>
+			<Label>Sequence</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>Opens</Name>
+			<AllowEdit>No</AllowEdit>
+			<HelpText>The module this line opens, or the sub-menu's ID and name. Set from Menu item or Sub-menu.</HelpText>
+			<Label>Opens</Label>
+			<StringSize>100</StringSize>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldEnum">
+			<Name>LineType</Name>
+			<EnumType>HSMobileOpsMenuLineType</EnumType>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldEnum">
+			<Name>Module</Name>
+			<HelpText>The app module this line opens, when it is a menu item.</HelpText>
+			<Label>Menu item</Label>
+			<EnumType>HSMobileOpsModule</EnumType>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>SubMenuId</Name>
+			<HelpText>The menu this line opens, when it is a sub-menu.</HelpText>
+			<Label>Sub-menu</Label>
+			<StringSize>20</StringSize>
+		</AxTableField>
+	</Fields>
+	<FullTextIndexes />
+	<Indexes>
+		<AxTableIndex>
+			<Name>MenuLineIdx</Name>
+			<AllowDuplicates>No</AllowDuplicates>
+			<Fields>
+				<AxTableIndexField>
+					<DataField>MenuRecId</DataField>
+				</AxTableIndexField>
+				<AxTableIndexField>
+					<DataField>LineNum</DataField>
+				</AxTableIndexField>
+			</Fields>
+		</AxTableIndex>
+	</Indexes>
+	<Mappings />
+	<Relations>
+		<AxTableRelation xmlns=""
+			i:type="AxTableRelationForeignKey">
+			<Name>HSMobileOpsMenu</Name>
+			<Cardinality>ZeroMore</Cardinality>
+			<RelatedTable>HSMobileOpsMenu</RelatedTable>
+			<RelatedTableCardinality>ExactlyOne</RelatedTableCardinality>
+			<RelationshipType>Association</RelationshipType>
+			<Constraints>
+				<AxTableRelationConstraint xmlns=""
+					i:type="AxTableRelationConstraintField">
+					<Name>MenuRecId</Name>
+					<Field>MenuRecId</Field>
+					<RelatedField>RecId</RelatedField>
+				</AxTableRelationConstraint>
+			</Constraints>
+		</AxTableRelation>
+	</Relations>
+	<StateMachines />
+</AxTable>

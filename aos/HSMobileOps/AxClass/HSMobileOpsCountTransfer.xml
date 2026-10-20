@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsCountTransfer</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Stock count control center: Transfer to counting journal (see HSMobileOpsCountControl::transfer).
+/// </summary>
+class HSMobileOpsCountTransfer
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>main</Name>
+				<Source><![CDATA[
+    public static void main(Args _args)
+    {
+        HSMobileOpsCountMaster master = _args ? _args.record() : null;
+        HSMobileOpsCountStage  stage;
+
+        if (!master || !master.RecId)
+        {
+            throw error('Select a stock count first.');
+        }
+        select count(RecId) from stage
+            where stage.MasterRecId == master.RecId
+               && stage.Status      == HSMobileOpsCountStageStatus::Counting;
+        if (stage.RecId
+         && Box::yesNo(strFmt('%1 counter(s) have not ended their count yet. Transfer what has been counted so far?', stage.RecId),
+                DialogButton::No, 'Transfer to counting journal') != DialogButton::Yes)
+        {
+            return;
+        }
+        HSMobileOpsCountControl::transfer(master.RecId);
+        if (_args && _args.caller() is FormRun)
+        {
+            FormRun callerForm = _args.caller() as FormRun;
+            int     i;
+            for (i = 1; i <= callerForm.dataSourceCount(); i++)
+            {
+                callerForm.dataSource(i).research(true);
+            }
+        }
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

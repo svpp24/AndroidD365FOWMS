@@ -26,7 +26,6 @@ import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
-import net.sqlcipher.database.SupportFactory
 import javax.inject.Singleton
 
 @Module
@@ -38,18 +37,19 @@ object DatabaseModule {
     fun provideDatabase(
         @ApplicationContext context: Context,
         secureStore: SecureStore,
-    ): D365Database = Room
-        .databaseBuilder(context, D365Database::class.java, Constants.DATABASE_NAME)
-        // SQLCipher with a Keystore-held passphrase. A handheld left in a yard is a
-        // realistic threat, and the database holds vendor prices, order books and worker
-        // identity — none of which should be readable by pulling the file off the device.
-        .openHelperFactory(SupportFactory(secureStore.databasePassphrase()))
-        .addMigrations(*D365Database.MIGRATIONS)
-        // No fallbackToDestructiveMigration. Wiping the database on a version bump would
-        // silently discard captured, unposted transactions — the one thing this app must
-        // never lose. A missing migration should fail loudly in CI, not quietly on a dock.
-        .setJournalMode(androidx.room.RoomDatabase.JournalMode.WRITE_AHEAD_LOGGING)
-        .build()
+    ): D365Database {
+        // Plain SQLite: only the connection settings and the login accounts are encrypted, in
+        // SecureStore (decision, 11 Oct). See DatabaseFileCheck for the one-off SQLCipher legacy.
+        com.d365fo.mobileops.data.local.DatabaseFileCheck.ensureReadable(context, Constants.DATABASE_NAME)
+        secureStore.forgetDatabaseKey()
+        return Room.databaseBuilder(context, D365Database::class.java, Constants.DATABASE_NAME)
+            .addMigrations(*D365Database.MIGRATIONS)
+            // No fallbackToDestructiveMigration. Wiping the database on a version bump would
+            // silently discard captured, unposted transactions — the one thing this app must
+            // never lose. A missing migration should fail loudly in CI, not quietly on a dock.
+            .setJournalMode(androidx.room.RoomDatabase.JournalMode.WRITE_AHEAD_LOGGING)
+            .build()
+    }
 
     @Provides fun providePurchOrderDao(db: D365Database): PurchOrderDao = db.purchOrderDao()
     @Provides fun provideItemDao(db: D365Database): ItemDao = db.itemDao()
@@ -67,4 +67,6 @@ object DatabaseModule {
     @Provides fun provideStagedLineDao(db: D365Database): StagedLineDao = db.stagedLineDao()
     @Provides fun providePermissionDao(db: D365Database): PermissionDao = db.permissionDao()
     @Provides fun provideCountingDao(db: D365Database): CountingDao = db.countingDao()
+    @Provides fun provideReadCacheDao(db: D365Database): com.d365fo.mobileops.data.local.dao.ReadCacheDao = db.readCacheDao()
+    @Provides fun provideOrderCreationDao(db: D365Database): com.d365fo.mobileops.data.local.dao.OrderCreationDao = db.orderCreationDao()
 }

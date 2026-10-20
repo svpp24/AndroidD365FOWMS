@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxMenuItemAction xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsCountRefresh</Name>
+	<Label>Check for duplicates</Label>
+	<HelpText>Look again for items counted more than once.</HelpText>
+	<Object>HSMobileOpsCountRefresh</Object>
+	<ObjectType>Class</ObjectType>
+</AxMenuItemAction>

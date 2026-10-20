@@ -1,0 +1,186 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsOrderSummary</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// One purchase order as PO confirmation lists it: header, line count and total, approval and order status, and the latest confirmation number once confirmed.
+/// </summary>
+[DataContractAttribute]
+class HSMobileOpsOrderSummary
+{
+    str purchId;
+    str vendorAccount;
+    str vendorName;
+    str warehouseId;
+    str deliveryDate;
+    int lineCount;
+    real orderTotal;
+    str currencyCode;
+    str approvalStatus;
+    str purchStatus;
+    str createdBy;
+    str createdDate;
+    str confirmationNumber;
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmPurchId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('PurchId')]
+    public str parmPurchId(str _value = purchId)
+    {
+        purchId = _value;
+        return purchId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmVendorAccount</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('VendorAccount')]
+    public str parmVendorAccount(str _value = vendorAccount)
+    {
+        vendorAccount = _value;
+        return vendorAccount;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmVendorName</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('VendorName')]
+    public str parmVendorName(str _value = vendorName)
+    {
+        vendorName = _value;
+        return vendorName;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmWarehouseId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('WarehouseId')]
+    public str parmWarehouseId(str _value = warehouseId)
+    {
+        warehouseId = _value;
+        return warehouseId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmDeliveryDate</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('DeliveryDate')]
+    public str parmDeliveryDate(str _value = deliveryDate)
+    {
+        deliveryDate = _value;
+        return deliveryDate;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmLineCount</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('LineCount')]
+    public int parmLineCount(int _value = lineCount)
+    {
+        lineCount = _value;
+        return lineCount;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmOrderTotal</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('OrderTotal')]
+    public real parmOrderTotal(real _value = orderTotal)
+    {
+        orderTotal = _value;
+        return orderTotal;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmCurrencyCode</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('CurrencyCode')]
+    public str parmCurrencyCode(str _value = currencyCode)
+    {
+        currencyCode = _value;
+        return currencyCode;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmApprovalStatus</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ApprovalStatus')]
+    public str parmApprovalStatus(str _value = approvalStatus)
+    {
+        approvalStatus = _value;
+        return approvalStatus;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmPurchStatus</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('PurchStatus')]
+    public str parmPurchStatus(str _value = purchStatus)
+    {
+        purchStatus = _value;
+        return purchStatus;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmCreatedBy</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('CreatedBy')]
+    public str parmCreatedBy(str _value = createdBy)
+    {
+        createdBy = _value;
+        return createdBy;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmCreatedDate</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('CreatedDate')]
+    public str parmCreatedDate(str _value = createdDate)
+    {
+        createdDate = _value;
+        return createdDate;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmConfirmationNumber</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ConfirmationNumber')]
+    public str parmConfirmationNumber(str _value = confirmationNumber)
+    {
+        confirmationNumber = _value;
+        return confirmationNumber;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

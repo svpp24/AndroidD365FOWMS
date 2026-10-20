@@ -86,11 +86,13 @@ class HSMobileOpsUserService
         // SaveDataPerCompany=No; HSMobileOpsDevice's own methods query crossCompany) - checked here,
         // ahead of changecompany and ahead of touching HSMobileOpsUser at all, so a license problem
         // is never confused with a wrong password and blocks every company alike. See
-        // HSMobileOpsLicense for the certificate/license chain and HSMobileOpsDevice::checkDeviceLimit
-        // for why this only ever turns away a device D365FO has never seen before - a device already
-        // in the fleet always passes, exactly the same "never kicks someone already in" spirit as the
-        // account-lockout and inactive-account checks below.
-        license = HSMobileOpsLicense::verify();
+        // HSMobileOpsLicense::verifyWithAttestation for the full chain this now runs - the local
+        // certificate/license signature check, then a live revocation + device-attestation check
+        // against the vendor's own CheckLicense Azure Function - and HSMobileOpsDevice::
+        // checkDeviceLimit for why this only ever turns away a device D365FO has never seen before -
+        // a device already in the fleet always passes, exactly the same "never kicks someone already
+        // in" spirit as the account-lockout and inactive-account checks below.
+        license = HSMobileOpsLicense::verifyWithAttestation(deviceId, _request.parmIntegrityToken());
         if (!license.parmValid())
         {
             response.parmErrorCode(license.parmErrorCode());
@@ -287,6 +289,9 @@ class HSMobileOpsUserService
             case HSMobileOpsModule::LOCATION_INQUIRY: return 'LOCATION_INQUIRY';
             case HSMobileOpsModule::PO_OF_TODAY:     return 'PO_OF_TODAY';
             case HSMobileOpsModule::PO_LINES:        return 'PO_LINES';
+            case HSMobileOpsModule::TRANSFER_ORDERS: return 'TRANSFER_ORDERS';
+            case HSMobileOpsModule::TRANSFERS_BY_STORE: return 'TRANSFERS_BY_STORE';
+            case HSMobileOpsModule::PICKED_SERIALS: return 'PICKED_SERIALS';
             default: return '';
         }
     }
@@ -312,6 +317,9 @@ class HSMobileOpsUserService
             case 'LOCATION_INQUIRY': return HSMobileOpsModule::LOCATION_INQUIRY;
             case 'PO_OF_TODAY':      return HSMobileOpsModule::PO_OF_TODAY;
             case 'PO_LINES':         return HSMobileOpsModule::PO_LINES;
+            case 'TRANSFER_ORDERS': return HSMobileOpsModule::TRANSFER_ORDERS;
+            case 'TRANSFERS_BY_STORE': return HSMobileOpsModule::TRANSFERS_BY_STORE;
+            case 'PICKED_SERIALS': return HSMobileOpsModule::PICKED_SERIALS;
             default: return -1;
         }
     }

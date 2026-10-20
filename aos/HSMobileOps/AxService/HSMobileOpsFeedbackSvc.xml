@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxService xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsFeedbackSvc</Name>
+	<Class>HSMobileOpsFeedbackService</Class>
+	<ExternalName>FeedbackService</ExternalName>
+	<Namespace>http://schemas.hs.com/mobileops</Namespace>
+	<ServiceOperations>
+		<AxServiceOperation>
+			<Name>submitFeedback</Name>
+			<Method>submitFeedback</Method>
+		</AxServiceOperation>
+		<AxServiceOperation>
+			<Name>listMyFeedback</Name>
+			<Method>listMyFeedback</Method>
+		</AxServiceOperation>
+		<AxServiceOperation>
+			<Name>updateFeedback</Name>
+			<Method>updateFeedback</Method>
+		</AxServiceOperation>
+	</ServiceOperations>
+</AxService>

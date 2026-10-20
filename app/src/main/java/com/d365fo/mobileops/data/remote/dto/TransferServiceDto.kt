@@ -68,6 +68,10 @@ data class TransferServiceResponse(
      * behaviour.
      */
     @SerialName("RequireLocationCapture") val requireLocationCapture: Boolean = true,
+    /** The From warehouse's default issue location (warehouse master) - blank when none. */
+    @SerialName("DefaultIssueLocation") val defaultIssueLocation: String = "",
+    /** The To warehouse's default receipt location (warehouse master) - blank when none. */
+    @SerialName("DefaultReceiptLocation") val defaultReceiptLocation: String = "",
 )
 
 @Serializable
@@ -93,6 +97,8 @@ data class TransferLineDto(
     @SerialName("ToWarehouseId") val toWarehouseId: String? = null,
     /** The line's own location on the source side. A hint when shipping; never an answer. */
     @SerialName("LocationId") val locationId: String? = null,
+    /** The batch on the line itself (created for a chosen batch); blank for any batch. */
+    @SerialName("LineBatchId") val lineBatchId: String? = null,
     @SerialName("ConfigId") val configId: String? = null,
     @SerialName("SizeId") val sizeId: String? = null,
     @SerialName("ColorId") val colorId: String? = null,
@@ -106,4 +112,12 @@ data class TransferLineDto(
     @SerialName("SerialPerUnit") val serialPerUnit: Boolean = true,
     /** Units the quantity can be entered in, to UnitId - empty from a server without UoM support. */
     @SerialName("Units") val units: List<ItemUnitDto> = emptyList(),
+    /** Receive direction: the batches in transit on the line, with quantities. */
+    @SerialName("ShippedBatches") val shippedBatches: List<TransferBatchDto> = emptyList(),
+)
+
+@Serializable
+data class TransferBatchDto(
+    @SerialName("BatchId") val batchId: String = "",
+    @SerialName("Qty") val qty: Double = 0.0,
 )

@@ -110,8 +110,8 @@ public class HSMobileOpsUser extends common
 		<AxTableField xmlns=""
 			i:type="AxTableFieldEnum">
 			<Name>IsActive</Name>
-			<Label>Active</Label>
 			<EnumType>NoYes</EnumType>
+			<Label>Active</Label>
 		</AxTableField>
 		<AxTableField xmlns=""
 			i:type="AxTableFieldString">
@@ -126,49 +126,56 @@ public class HSMobileOpsUser extends common
 		<AxTableField xmlns=""
 			i:type="AxTableFieldEnum">
 			<Name>IsSupervisor</Name>
-			<Label>Supervisor</Label>
 			<EnumType>NoYes</EnumType>
+			<Label>Supervisor</Label>
 		</AxTableField>
 		<AxTableField xmlns=""
 			i:type="AxTableFieldEnum">
 			<Name>IsCycleCountSupervisor</Name>
-			<Label>Cycle count supervisor</Label>
-			<HelpText>May review and approve inventory count variances. Distinct from Supervisor above - a worker can hold either, both, or neither.</HelpText>
 			<EnumType>NoYes</EnumType>
+			<HelpText>May review and approve inventory count variances. Distinct from Supervisor above - a worker can hold either, both, or neither.</HelpText>
+			<Label>Cycle count supervisor</Label>
 		</AxTableField>
 		<AxTableField xmlns=""
 			i:type="AxTableFieldEnum">
 			<Name>IsExternalCounter</Name>
-			<Label>External counter</Label>
-			<HelpText>A third-party counter: sees only counting journals assigned to their counter team, never prices, values or supervisor screens. Enforced by the counting services.</HelpText>
 			<EnumType>NoYes</EnumType>
+			<HelpText>A third-party counter: sees only counting journals assigned to their counter team, never prices, values or supervisor screens. Enforced by the counting services.</HelpText>
+			<Label>External counter</Label>
 		</AxTableField>
 		<AxTableField xmlns=""
 			i:type="AxTableFieldString">
 			<Name>CounterTeam</Name>
-			<Label>Counter team</Label>
 			<HelpText>The external counting team this worker belongs to. Counting journals are assigned to a team.</HelpText>
+			<Label>Counter team</Label>
 			<StringSize>30</StringSize>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>MenuId</Name>
+			<HelpText>The handheld menu this worker sees as Home. Blank uses the default menu (Mobile device menus).</HelpText>
+			<Label>Handheld menu</Label>
+			<StringSize>20</StringSize>
 		</AxTableField>
 		<AxTableField xmlns=""
 			i:type="AxTableFieldReal">
 			<Name>MaxOverPercent</Name>
-			<Label>Maximum over-delivery percent</Label>
-			<HelpText>This worker's personal over-delivery allowance, as a percentage of ordered quantity. Zero means no personal override - the purchase order line's own D365FO-configured tolerance still applies unchanged. Only ever widens what a line already allows, never narrows it.</HelpText>
 			<ExtendedDataType>Percent</ExtendedDataType>
+			<HelpText>This worker's personal over-delivery allowance, as a percentage of ordered quantity. Zero means no personal override - the purchase order line's own D365FO-configured tolerance still applies unchanged. Only ever widens what a line already allows, never narrows it.</HelpText>
+			<Label>Maximum over-delivery percent</Label>
 		</AxTableField>
 		<AxTableField xmlns=""
 			i:type="AxTableFieldReal">
 			<Name>MaxOverQty</Name>
-			<Label>Maximum over-delivery quantity</Label>
-			<HelpText>This worker's personal over-delivery allowance, as an absolute quantity above ordered. See Maximum over-delivery percent - the same "zero means unconfigured, only ever widens" rule.</HelpText>
 			<ExtendedDataType>Qty</ExtendedDataType>
+			<HelpText>This worker's personal over-delivery allowance, as an absolute quantity above ordered. See Maximum over-delivery percent - the same "zero means unconfigured, only ever widens" rule.</HelpText>
+			<Label>Maximum over-delivery quantity</Label>
 		</AxTableField>
 		<AxTableField xmlns=""
 			i:type="AxTableFieldEnum">
 			<Name>MustChangePassword</Name>
-			<Label>Must change password</Label>
 			<EnumType>NoYes</EnumType>
+			<Label>Must change PIN</Label>
 		</AxTableField>
 		<AxTableField xmlns=""
 			i:type="AxTableFieldInt">
@@ -207,6 +214,23 @@ public class HSMobileOpsUser extends common
 		</AxTableIndex>
 	</Indexes>
 	<Mappings />
-	<Relations />
+	<Relations>
+		<AxTableRelation xmlns=""
+			i:type="AxTableRelationForeignKey">
+			<Name>HSMobileOpsMenu</Name>
+			<Cardinality>ZeroMore</Cardinality>
+			<RelatedTable>HSMobileOpsMenu</RelatedTable>
+			<RelatedTableCardinality>ZeroOne</RelatedTableCardinality>
+			<RelationshipType>Association</RelationshipType>
+			<Constraints>
+				<AxTableRelationConstraint xmlns=""
+					i:type="AxTableRelationConstraintField">
+					<Name>MenuId</Name>
+					<Field>MenuId</Field>
+					<RelatedField>MenuId</RelatedField>
+				</AxTableRelationConstraint>
+			</Constraints>
+		</AxTableRelation>
+	</Relations>
 	<StateMachines />
 </AxTable>

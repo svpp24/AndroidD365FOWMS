@@ -10,10 +10,16 @@
 ///
 /// The app only renders and captures. Every rule - claim TTL, who may hold which range, when a
 /// claim is lost, which transfer mode a journal uses, how a direct count is written to
-/// InventJournalTrans - belongs here, in X++. The operations marked TODO below validate their
-/// request and the journal's state for real, then return NOT_IMPLEMENTED until the claim table
-/// and the direct-count write are built. The app treats NOT_IMPLEMENTED as "feature not
-/// available on this server" and keeps every local count.
+/// InventJournalTrans - belongs here, in X++. The operations still marked TODO below validate
+/// their request and the journal's state for real, then return NOT_IMPLEMENTED. The app treats
+/// NOT_IMPLEMENTED as "feature not available on this server" and keeps every local count.
+///
+/// Claims: one row per journal in HSMobileOpsLineClaim (ProcessType COUNT, LineNumber 0), held
+/// by one user on one device - the same login on two handhelds is two holders. A claim lives
+/// claimTtlSeconds past its last heartbeat; the app heartbeats every claimHeartbeatSeconds.
+/// The token is the claim row's RecId, checked together with the user and device. Submits
+/// (submitCounts here, importCounts on HSMobileOpsCountingService) are refused with CLAIM_LOST
+/// while another device holds a live claim, so a second device can no longer overwrite counts.
 ///
 /// Registered as HSMobileOpsCountTaskSvc in HSMobileOpsServiceGroup - needs a full service
 /// group build, not a class-only build (see aos/README.md, Installing).
@@ -53,10 +59,67 @@ class HSMobileOpsCountTaskService
             return response;
         }
 
-        // TODO (X++ owner): write the claim row (claim table, TTL, one holder per range), set
-        // ClaimToken/ClaimedBy/ExpiresUtc/HeartbeatSeconds, and return CLAIMED_BY_OTHER with
-        // ClaimedBy filled in when someone else already holds the journal or range.
-        response.parmErrorCode('NOT_IMPLEMENTED');
+        // The whole journal is claimed; location ranges are not offered yet (Ranges is empty
+        // in the journal list), so a RangeId in the request is ignored.
+        changecompany (_request.parmDataAreaId())
+        {
+            HSMobileOpsLineClaim claim;
+            utcdatetime          now = DateTimeUtil::utcNow();
+
+            try
+            {
+                ttsbegin;
+                select forUpdate firstOnly claim
+                    where claim.ProcessType == HSMobileOpsCountTaskService::claimProcess()
+                       && claim.SourceId    == _request.parmJournalId()
+                       && claim.LineNumber  == 0;
+
+                if (claim.RecId && claim.ClaimExpiresUtc > now
+                    && !HSMobileOpsCountTaskService::isClaimHolder(claim, _request.parmUserId(), _request.parmDeviceId()))
+                {
+                    ttscommit;
+                    response.parmErrorCode('CLAIMED_BY_OTHER');
+                    response.parmClaimedBy(HSMobileOpsCountTaskService::claimedByLabel(claim, _request.parmDeviceId()));
+                    response.parmExpiresUtc(claim.ClaimExpiresUtc);
+                    return response;
+                }
+
+                if (!claim.RecId)
+                {
+                    claim.clear();
+                    claim.ProcessType = HSMobileOpsCountTaskService::claimProcess();
+                    claim.SourceId    = _request.parmJournalId();
+                    claim.LineNumber  = 0;
+                }
+                claim.ClaimedByUserName    = _request.parmUserId();
+                claim.ClaimedByDisplayName = HSMobileOpsUser::find(_request.parmUserId()).DisplayName;
+                claim.DeviceId             = _request.parmDeviceId();
+                claim.ClaimedAtUtc         = now;
+                claim.ClaimExpiresUtc      = DateTimeUtil::addSeconds(now, HSMobileOpsCountTaskService::claimTtlSeconds());
+                if (claim.RecId)
+                {
+                    claim.update();
+                }
+                else
+                {
+                    claim.insert();
+                }
+                ttscommit;
+            }
+            catch (Exception::DuplicateKeyException)
+            {
+                // Two devices claimed the same journal at the same moment; the other one won.
+                response.parmErrorCode('CLAIMED_BY_OTHER');
+                return response;
+            }
+            catch (Exception::UpdateConflict)
+            {
+                response.parmErrorCode('CLAIMED_BY_OTHER');
+                return response;
+            }
+
+            HSMobileOpsCountTaskService::grantClaim(response, claim);
+        }
         return response;
     }
 ]]></Source>
@@ -81,9 +144,45 @@ class HSMobileOpsCountTaskService
             return response;
         }
 
-        // TODO (X++ owner): look up the claim by token, extend ExpiresUtc, return it; or
-        // CLAIM_EXPIRED / CLAIM_LOST.
-        response.parmErrorCode('NOT_IMPLEMENTED');
+        // An expired claim that nobody has taken since is still this holder's: it is renewed,
+        // not refused - the device was only out of reach for a while.
+        changecompany (_request.parmDataAreaId())
+        {
+            HSMobileOpsLineClaim claim;
+            utcdatetime          now = DateTimeUtil::utcNow();
+
+            ttsbegin;
+            select forUpdate firstOnly claim
+                where claim.ProcessType == HSMobileOpsCountTaskService::claimProcess()
+                   && claim.SourceId    == _request.parmJournalId()
+                   && claim.LineNumber  == 0;
+
+            if (!claim.RecId || int642Str(claim.RecId) != _request.parmClaimToken())
+            {
+                ttscommit;
+                response.parmErrorCode('CLAIM_EXPIRED');
+                return response;
+            }
+            if (!HSMobileOpsCountTaskService::isClaimHolder(claim, _request.parmUserId(), _request.parmDeviceId()))
+            {
+                ttscommit;
+                if (claim.ClaimExpiresUtc > now)
+                {
+                    response.parmErrorCode('CLAIM_LOST');
+                    response.parmClaimedBy(HSMobileOpsCountTaskService::claimedByLabel(claim, _request.parmDeviceId()));
+                }
+                else
+                {
+                    response.parmErrorCode('CLAIM_EXPIRED');
+                }
+                return response;
+            }
+            claim.ClaimExpiresUtc = DateTimeUtil::addSeconds(now, HSMobileOpsCountTaskService::claimTtlSeconds());
+            claim.update();
+            ttscommit;
+
+            HSMobileOpsCountTaskService::grantClaim(response, claim);
+        }
         return response;
     }
 ]]></Source>
@@ -109,8 +208,27 @@ class HSMobileOpsCountTaskService
             return response;
         }
 
-        // TODO (X++ owner): delete/close the claim row for this token.
-        response.parmErrorCode('NOT_IMPLEMENTED');
+        // Only the holder's own claim is removed; someone else's is left to speak for itself. The
+        // device and the claim's token are enough - no user: End count's submit can run in the
+        // background before anyone has signed in again (11 Oct: the release was sent with no
+        // user, refused, and the claim stayed until it expired).
+        changecompany (_request.parmDataAreaId())
+        {
+            HSMobileOpsLineClaim claim;
+
+            ttsbegin;
+            select forUpdate firstOnly claim
+                where claim.ProcessType == HSMobileOpsCountTaskService::claimProcess()
+                   && claim.SourceId    == _request.parmJournalId()
+                   && claim.LineNumber  == 0;
+            if (claim.RecId && int642Str(claim.RecId) == _request.parmClaimToken()
+                && _request.parmDeviceId() && claim.DeviceId == _request.parmDeviceId())
+            {
+                claim.delete();
+            }
+            ttscommit;
+        }
+        response.parmSuccess(true);
         return response;
     }
 ]]></Source>
@@ -267,12 +385,104 @@ class HSMobileOpsCountTaskService
             return response;
         }
 
-        // TODO (X++ owner): validate ClaimToken; dedupe on SubmissionId; write each line's
-        // counted quantity to InventJournalTrans the way the standard counting form does;
-        // store the audit fields (UserId, DeviceId, StartedAtUtc, SubmittedAtUtc, PassNumber,
-        // OriginType, per-line CountedBy/CountedAtUtc); decide what MarkedOnly means.
-        response.parmErrorCode('NOT_IMPLEMENTED');
+        // Each counted line's quantity goes on its journal line the way the counting form puts
+        // it there - Counted, and modifiedField works out the quantity to adjust. Setting a
+        // count is the same however often it is sent, so a repeated SubmissionId changes
+        // nothing. A line only marked (no quantity) is left as it is. Refused while another
+        // device holds a live claim on the journal; with no claim at all the counts go in.
+        str holder = HSMobileOpsCountTaskService::otherClaimHolder(
+            _request.parmDataAreaId(), _request.parmJournalId(), _request.parmUserId(), _request.parmDeviceId());
+        if (holder)
+        {
+            response.parmErrorCode('CLAIM_LOST');
+            response.parmMessage(strFmt('%1 is being counted by %2', _request.parmJournalId(), holder));
+            return response;
+        }
+
+        changecompany (_request.parmDataAreaId())
+        {
+            List                           lines = _request.parmLines();
+            ListEnumerator                 enumerator;
+            HSMobileOpsCountDirectCountRow row;
+            InventJournalTrans             journalTrans;
+            int                            accepted;
+            int                            unknown;
+
+            if (!lines || !lines.elements())
+            {
+                response.parmErrorCode('INVALID_REQUEST');
+                response.parmMessage('No counted lines were sent');
+                return response;
+            }
+            try
+            {
+                ttsbegin;
+                enumerator = lines.getEnumerator();
+                while (enumerator.moveNext())
+                {
+                    row = enumerator.current();
+                    if (row.parmMarkedOnly())
+                    {
+                        continue;
+                    }
+                    if (row.parmCountedQuantity() < 0)
+                    {
+                        throw error(strFmt('Line %1: a count cannot be negative', row.parmLineNumber()));
+                    }
+                    select forupdate firstonly journalTrans
+                        where journalTrans.JournalId == _request.parmJournalId()
+                           && journalTrans.LineNum   == row.parmLineNumber();
+                    if (!journalTrans.RecId)
+                    {
+                        unknown++;
+                        continue;
+                    }
+                    journalTrans.Counted = row.parmCountedQuantity();
+                    journalTrans.modifiedField(fieldNum(InventJournalTrans, Counted));
+                    journalTrans.update();
+                    accepted++;
+                }
+                if (unknown && !accepted)
+                {
+                    throw error(strFmt('None of the %1 counted lines is on %2', unknown, _request.parmJournalId()));
+                }
+                ttscommit;
+                response.parmSuccess(true);
+                response.parmAcceptedLines(accepted);
+                response.parmPassResult('ACCEPTED');
+                response.parmMessage(unknown
+                    ? strFmt('%1 lines counted; %2 are no longer on the journal', accepted, unknown)
+                    : strFmt('%1 lines counted', accepted));
+            }
+            catch (Exception::Error)
+            {
+                response.parmErrorCode('REJECTED');
+                response.parmMessage(infolog.text(infologLine()));
+            }
+        }
         return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>jsonStr</Name>
+				<Source><![CDATA[
+
+    /// <summary>A property of a JSON row as text; blank when missing or null.</summary>
+    private static str jsonStr(Newtonsoft.Json.Linq.JObject _obj, str _property)
+    {
+        Newtonsoft.Json.Linq.JToken token;
+
+        if (_obj == null)
+        {
+            return '';
+        }
+        token = _obj.get_Item(_property);
+        if (token == null)
+        {
+            return '';
+        }
+        return token.ToString();
     }
 ]]></Source>
 			</Method>
@@ -307,9 +517,157 @@ class HSMobileOpsCountTaskService
             return response;
         }
 
-        // TODO (X++ owner): store each exception (dedupe on ClientId) and each verified-empty
-        // location (LocationId, VerifiedBy, VerifiedAtUtc) for the planner to resolve.
-        response.parmErrorCode('NOT_IMPLEMENTED');
+        // An unexpected item becomes a line of this journal, the way the counting form adds one
+        // (feedback, 12 Oct: "1 unexpected item could not be sent" - this was never built): on
+        // the matching stock record, or a new dimension with on-hand 0. A resend sets the same
+        // count again rather than adding a second line; items scanned twice in one submission
+        // are added together. Empty locations and verified lines need nothing stored.
+        // An item with product dimensions cannot be placed - the device does not capture them.
+        changecompany (_request.parmDataAreaId())
+        {
+            System.Object                 parsedObj;
+            Newtonsoft.Json.Linq.JArray   jArray;
+            Newtonsoft.Json.Linq.JObject  jRow;
+            Map                           qtys = new Map(Types::String, Types::Real);
+            Map                           samples = new Map(Types::String, Types::Record);
+            MapEnumerator                 e;
+            HSMobileOpsCountStageLine     counted;
+            InventJournalTable            journalTable;
+            InventJournalTrans            journalTrans;
+            InventJournalTrans            lastTrans;
+            InventDim                     inventDim;
+            InventDimGroupSetup           dimSetup;
+            InventLocationId              store;
+            LineNum                       lineNum;
+            str                           key;
+            str                           skipped;
+            int                           i;
+            int                           accepted;
+            int                           notPlaced;
+
+            if (!_request.parmExceptionsJson() || _request.parmExceptionsJson() == '[]')
+            {
+                response.parmSuccess(true);
+                return response;
+            }
+            try
+            {
+                parsedObj = Newtonsoft.Json.Linq.JArray::Parse(_request.parmExceptionsJson());
+            }
+            catch (Exception::CLRError)
+            {
+                response.parmErrorCode('INVALID_REQUEST');
+                response.parmMessage('The unexpected items could not be read.');
+                return response;
+            }
+            jArray = parsedObj;
+
+            // The journal's store: where its lines are.
+            select firstonly InventLocationId from inventDim
+                exists join journalTrans
+                    where journalTrans.InventDimId == inventDim.inventDimId
+                       && journalTrans.JournalId   == _request.parmJournalId();
+            store = inventDim.InventLocationId;
+
+            for (i = 0; jArray != null && i < jArray.get_Count(); i++)
+            {
+                jRow = jArray.get_Item(i);
+                counted.clear();
+                counted.ItemId         = HSMobileOpsCountTaskService::jsonStr(jRow, 'ItemNumber');
+                counted.WMSLocationId  = HSMobileOpsCountTaskService::jsonStr(jRow, 'LocationId');
+                counted.InventBatchId  = HSMobileOpsCountTaskService::jsonStr(jRow, 'BatchId');
+                counted.InventSerialId = HSMobileOpsCountTaskService::jsonStr(jRow, 'SerialId');
+                counted.ConfigId       = HSMobileOpsCountTaskService::jsonStr(jRow, 'ConfigId');
+                counted.InventSizeId   = HSMobileOpsCountTaskService::jsonStr(jRow, 'SizeId');
+                counted.InventColorId  = HSMobileOpsCountTaskService::jsonStr(jRow, 'ColorId');
+                counted.InventStyleId  = HSMobileOpsCountTaskService::jsonStr(jRow, 'StyleId');
+                if (!counted.ItemId || !InventTable::find(counted.ItemId).RecId)
+                {
+                    notPlaced++;
+                    skipped += (skipped ? ', ' : '') + (counted.ItemId ? counted.ItemId : '(no item)');
+                    continue;
+                }
+                dimSetup = InventDimGroupSetup::newItemId(counted.ItemId);
+                // The device sends the variant found (14 Oct); one that is missing cannot be placed.
+                if ((dimSetup.isDimensionActive(fieldNum(InventDim, ConfigId)) && !counted.ConfigId)
+                 || (dimSetup.isDimensionActive(fieldNum(InventDim, InventSizeId)) && !counted.InventSizeId)
+                 || (dimSetup.isDimensionActive(fieldNum(InventDim, InventColorId)) && !counted.InventColorId)
+                 || (dimSetup.isDimensionActive(fieldNum(InventDim, InventStyleId)) && !counted.InventStyleId))
+                {
+                    notPlaced++;
+                    skipped += (skipped ? ', ' : '') + counted.ItemId;
+                    continue;
+                }
+                key = strFmt('%1|%2|%3|%4|%5|%6|%7|%8', counted.ItemId, counted.WMSLocationId, counted.InventBatchId, counted.InventSerialId,
+                    counted.ConfigId, counted.InventSizeId, counted.InventColorId, counted.InventStyleId);
+                qtys.insert(key, (qtys.exists(key) ? qtys.lookup(key) : 0)
+                    + str2num(HSMobileOpsCountTaskService::jsonStr(jRow, 'Quantity')));
+                samples.insert(key, counted.data());
+            }
+
+            try
+            {
+                ttsbegin;
+                journalTable = InventJournalTable::find(_request.parmJournalId(), true);
+                select maxOf(LineNum) from lastTrans where lastTrans.JournalId == journalTable.JournalId;
+                lineNum = lastTrans.LineNum;
+
+                e = qtys.getEnumerator();
+                while (e.moveNext())
+                {
+                    counted = samples.lookup(e.currentKey());
+                    journalTrans.clear();
+                    select forUpdate firstonly journalTrans
+                        where journalTrans.JournalId == journalTable.JournalId
+                           && journalTrans.ItemId    == counted.ItemId
+                        exists join inventDim
+                            where inventDim.inventDimId      == journalTrans.InventDimId
+                               && inventDim.InventLocationId == store
+                               && inventDim.wMSLocationId    == counted.WMSLocationId
+                               && inventDim.inventBatchId    == counted.InventBatchId
+                               && inventDim.inventSerialId   == counted.InventSerialId
+                               && inventDim.configId         == counted.ConfigId
+                               && inventDim.InventSizeId     == counted.InventSizeId
+                               && inventDim.InventColorId    == counted.InventColorId
+                               && inventDim.InventStyleId    == counted.InventStyleId;
+                    if (journalTrans.RecId)
+                    {
+                        journalTrans.Counted = e.currentValue();
+                        journalTrans.modifiedField(fieldNum(InventJournalTrans, Counted));
+                        journalTrans.update();
+                    }
+                    else
+                    {
+                        lineNum++;
+                        HSMobileOpsCountControl::addLine(journalTable, lineNum, counted, store, e.currentValue());
+                    }
+                    accepted++;
+                }
+
+                select count(RecId) from journalTrans where journalTrans.JournalId == journalTable.JournalId;
+                journalTable.NumOfLines = int642int(journalTrans.RecId);
+                journalTable.update();
+                ttscommit;
+            }
+            catch (Exception::Error)
+            {
+                response.parmErrorCode('REJECTED');
+                response.parmMessage(infolog.text(infologLine()));
+                return response;
+            }
+
+            response.parmAccepted(accepted);
+            if (notPlaced)
+            {
+                // Kept on the device as not sent, so the counter sees which and can send again.
+                response.parmErrorCode('NOT_PLACED');
+                response.parmMessage(strFmt('%1 added to the journal; %2 could not be (%3) - items without their configuration, size, colour or style, or not known to D365FO, need to be added in D365FO',
+                    accepted, notPlaced, skipped));
+                return response;
+            }
+            response.parmSuccess(true);
+            response.parmMessage(strFmt('%1 unexpected item(s) added to the journal', accepted));
+        }
         return response;
     }
 ]]></Source>
@@ -341,12 +699,190 @@ class HSMobileOpsCountTaskService
             return response;
         }
 
-        // TODO (X++ owner): check the user may create spot counts (supervisor, or a worker with
-        // the permission - else NOT_ALLOWED); create the counting journal (journal name, origin
-        // SPOT, transfer mode DIRECT) with lines for the item / location's on-hand dimensions;
-        // return its JournalId and JournalNameId.
-        response.parmErrorCode('NOT_IMPLEMENTED');
+        changecompany (_request.parmDataAreaId())
+        {
+            try
+            {
+                HSMobileOpsCountTaskService::createSpotJournal(response, _request.parmUserId(), _request.parmWarehouseId(),
+                    _request.parmItemNumber(), _request.parmLocationId(), 'Spot count');
+            }
+            catch (Exception::Error)
+            {
+                response.parmErrorCode('FAILED');
+                response.parmMessage(infolog.text(infologLine()));
+            }
+        }
         return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>createSpotJournal</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// A counting journal for one item, one location, or one item in one location, in a
+    /// warehouse: a line per on-hand dimension there, with D365FO's on-hand quantity. An item
+    /// named at a location where D365FO has none of it still gets its line (on-hand 0), so stock
+    /// found where the system has none can be counted in. Counted in the app like any other
+    /// counting journal - it is in the warehouse's journal list.
+    ///
+    /// Counted starts equal to the on-hand: a line nobody counted posts no adjustment, rather
+    /// than writing the stock off.
+    /// </summary>
+    private static void createSpotJournal(HSMobileOpsCountSpotResponse _response, str _userId, InventLocationId _warehouseId,
+        ItemId _itemId, WMSLocationId _locationId, str _purpose)
+    {
+        HSMobileOpsUser     user = HSMobileOpsUser::find(_userId);
+        InventJournalName   journalName;
+        InventJournalTable  journalTable;
+        JournalTableData    journalTableData;
+        InventSum           inventSum;
+        InventDim           inventDim;
+        InventDim           lineDim;
+        LineNum             lineNum;
+
+        if (!user.RecId || !user.IsActive)
+        {
+            _response.parmErrorCode('NOT_ALLOWED');
+            _response.parmMessage(strFmt('%1 is not an active mobile user', _userId));
+            return;
+        }
+        if (!InventLocation::find(_warehouseId).RecId)
+        {
+            _response.parmErrorCode('INVALID_REQUEST');
+            _response.parmMessage(strFmt('No warehouse %1', _warehouseId));
+            return;
+        }
+        if (_itemId && !InventTable::find(_itemId).RecId)
+        {
+            _response.parmErrorCode('UNKNOWN_ITEM');
+            _response.parmMessage(strFmt('No item %1', _itemId));
+            return;
+        }
+        if (_locationId && !WMSLocation::find(_locationId, _warehouseId).RecId)
+        {
+            _response.parmErrorCode('UNKNOWN_LOCATION');
+            _response.parmMessage(strFmt('No location %1 in warehouse %2', _locationId, _warehouseId));
+            return;
+        }
+
+        // A spot count is a few lines, not a stock take: a whole bulk location without an item
+        // (AAC: 3,011 stock lines) would be one enormous journal no worker can count, and a
+        // heavy insert on D365FO. Counted first - nothing is created when it is too many.
+        select count(RecId) from inventSum
+            where (!_itemId || inventSum.ItemId == _itemId)
+               && inventSum.Closed         == NoYes::No
+               && inventSum.PhysicalInvent != 0
+            exists join inventDim
+                where inventDim.inventDimId      == inventSum.InventDimId
+                   && inventDim.InventLocationId == _warehouseId
+                   && (!_locationId || inventDim.wMSLocationId == _locationId);
+        if (inventSum.RecId > HSMobileOpsCountTaskService::maxSpotLines())
+        {
+            _response.parmErrorCode('TOO_MANY_LINES');
+            _response.parmMessage(strFmt('%1 holds %2 stock lines - too many for a spot count. Name the item to count%3',
+                _locationId ? _locationId : _warehouseId, inventSum.RecId, _locationId ? '' : ', or a location'));
+            return;
+        }
+        inventSum.clear();
+
+        select firstonly journalName
+            where journalName.JournalType == InventJournalType::Count;
+        if (!journalName.RecId)
+        {
+            _response.parmErrorCode('NO_JOURNAL_NAME');
+            _response.parmMessage('D365FO has no counting journal name set up');
+            return;
+        }
+
+        ttsbegin;
+        journalTable.clear();
+        journalTable.initValue();
+        journalTableData = JournalTableData::newTable(journalTable);
+        journalTable.JournalId = journalTableData.nextJournalId();
+        journalTableData.initFromJournalName(journalName);
+        journalTable.Description = subStr(strFmt('%1 - %2%3%4 by %5', _purpose, _itemId,
+            (_itemId && _locationId) ? ' at ' : '', _locationId, _userId), 1, 60);
+        journalTable.insert();
+
+        while select inventSum
+            where (!_itemId || inventSum.ItemId == _itemId)
+               && inventSum.Closed         == NoYes::No
+               && inventSum.PhysicalInvent != 0
+            join inventDim
+                where inventDim.inventDimId      == inventSum.InventDimId
+                   && inventDim.InventLocationId == _warehouseId
+                   && (!_locationId || inventDim.wMSLocationId == _locationId)
+        {
+            lineNum++;
+            HSMobileOpsCountTaskService::addSpotLine(journalTable, lineNum, inventSum.ItemId, inventSum.InventDimId, inventSum.PhysicalInvent);
+        }
+
+        if (!lineNum && _itemId && _locationId)
+        {
+            lineDim.clear();
+            lineDim.InventSiteId     = InventLocation::find(_warehouseId).InventSiteId;
+            lineDim.InventLocationId = _warehouseId;
+            lineDim.wMSLocationId    = _locationId;
+            lineDim = InventDim::findOrCreate(lineDim);
+            lineNum++;
+            HSMobileOpsCountTaskService::addSpotLine(journalTable, lineNum, _itemId, lineDim.inventDimId, 0);
+        }
+
+        if (!lineNum)
+        {
+            ttsabort;
+            _response.parmErrorCode('NOTHING_TO_COUNT');
+            _response.parmMessage(strFmt('D365FO has no stock of %1 in %2 - name an item and a location to count one in',
+                _itemId ? _itemId : 'anything', _locationId ? _locationId : _warehouseId));
+            return;
+        }
+
+        journalTable.selectForUpdate(true);
+        journalTable.NumOfLines = lineNum;
+        journalTable.update();
+        ttscommit;
+
+        _response.parmSuccess(true);
+        _response.parmJournalId(journalTable.JournalId);
+        _response.parmJournalNameId(journalTable.JournalNameId);
+        _response.parmMessage(strFmt('%1 - %2 lines to count', journalTable.JournalId, lineNum));
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>maxSpotLines</Name>
+				<Source><![CDATA[
+
+    /// <summary>The most lines a spot count (or a discrepancy's count) may have.</summary>
+    private static int maxSpotLines()
+    {
+        return 200;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>addSpotLine</Name>
+				<Source><![CDATA[
+
+    private static void addSpotLine(InventJournalTable _journalTable, LineNum _lineNum, ItemId _itemId,
+        InventDimId _inventDimId, InventQty _onHand)
+    {
+        InventJournalTrans journalTrans;
+
+        journalTrans.clear();
+        journalTrans.initValue();
+        journalTrans.initFromInventJournalTable(_journalTable);
+        journalTrans.LineNum      = _lineNum;
+        journalTrans.TransDate    = DateTimeUtil::getSystemDate(DateTimeUtil::getUserPreferredTimeZone());
+        journalTrans.ItemId       = _itemId;
+        journalTrans.initFromInventTable(InventTable::find(_itemId));
+        journalTrans.InventDimId  = _inventDimId;
+        journalTrans.InventOnHand = _onHand;
+        journalTrans.Counted      = _onHand;
+        journalTrans.Qty          = 0;
+        journalTrans.insert();
     }
 ]]></Source>
 			</Method>
@@ -402,9 +938,28 @@ class HSMobileOpsCountTaskService
             return response;
         }
 
-        // TODO (X++ owner): record the discrepancy (user, device, warehouse, location, item,
-        // reason, note) and, by your rules, create a TRIGGERED counting journal.
-        response.parmErrorCode('NOT_IMPLEMENTED');
+        // Every report becomes a count of that spot: a counting journal for the location (and the
+        // item, when one was named), described with who reported what - the counting supervisor
+        // sees the reason on the journal.
+        changecompany (_request.parmDataAreaId())
+        {
+            HSMobileOpsCountSpotResponse spot = new HSMobileOpsCountSpotResponse();
+            try
+            {
+                HSMobileOpsCountTaskService::createSpotJournal(spot, _request.parmUserId(), _request.parmWarehouseId(),
+                    _request.parmItemNumber(), _request.parmLocationId(),
+                    strFmt('Discrepancy %1%2', _request.parmReason(), _request.parmNote() ? ': ' + _request.parmNote() : ''));
+            }
+            catch (Exception::Error)
+            {
+                spot.parmErrorCode('FAILED');
+                spot.parmMessage(infolog.text(infologLine()));
+            }
+            response.parmSuccess(spot.parmSuccess());
+            response.parmErrorCode(spot.parmErrorCode());
+            response.parmMessage(spot.parmMessage());
+            response.parmTriggeredJournalId(spot.parmJournalId());
+        }
         return response;
     }
 ]]></Source>
@@ -479,6 +1034,142 @@ class HSMobileOpsCountTaskService
         // in a journal at all is decided when the journal is generated.
         response.parmSuccess(true);
         return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>claimProcess</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// HSMobileOpsLineClaim.ProcessType of a counting journal claim.
+    /// </summary>
+    public static str claimProcess()
+    {
+        return 'COUNT';
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>claimTtlSeconds</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// How long a claim lives past its last heartbeat. Twenty minutes: several missed two-minute
+    /// heartbeats, and longer than the 15-minute background check-in the app falls back to when
+    /// its process is stopped - so a pocketed handheld keeps its journal.
+    /// </summary>
+    public static int claimTtlSeconds()
+    {
+        return 20 * 60;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>claimHeartbeatSeconds</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// How often the app is asked to heartbeat a claim.
+    /// </summary>
+    public static int claimHeartbeatSeconds()
+    {
+        return 120;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>isClaimHolder</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Whether the claim belongs to this user on this device. Both must match: the same login
+    /// on a second handheld is someone else.
+    /// </summary>
+    public static boolean isClaimHolder(HSMobileOpsLineClaim _claim, str _userId, str _deviceId)
+    {
+        return _userId && _deviceId
+            && strUpr(_claim.ClaimedByUserName) == strUpr(_userId)
+            && _claim.DeviceId == _deviceId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>claimedByLabel</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Who holds a claim, as the app shows it: "Asha Rao (001)", plus "on another device" when
+    /// the holder is on a different handheld from the one asking.
+    /// </summary>
+    public static str claimedByLabel(HSMobileOpsLineClaim _claim, str _deviceId = '')
+    {
+        str label = _claim.ClaimedByDisplayName
+            ? strFmt('%1 (%2)', _claim.ClaimedByDisplayName, _claim.ClaimedByUserName)
+            : _claim.ClaimedByUserName;
+
+        if (_deviceId && _claim.DeviceId != _deviceId)
+        {
+            label += ' on another device';
+        }
+        return label;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>activeClaim</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The live claim on a journal, or an empty buffer.
+    /// </summary>
+    public static HSMobileOpsLineClaim activeClaim(DataAreaId _company, InventJournalId _journalId)
+    {
+        HSMobileOpsLineClaim claim;
+
+        changecompany (_company)
+        {
+            claim = HSMobileOpsLineClaim::findActive(HSMobileOpsCountTaskService::claimProcess(), _journalId, 0);
+        }
+        return claim;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>otherClaimHolder</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Who else holds a live claim on the journal - the label of a claim that is not this user
+    /// on this device - or '' when the counts may go in.
+    /// </summary>
+    public static str otherClaimHolder(DataAreaId _company, InventJournalId _journalId, str _userId, str _deviceId)
+    {
+        HSMobileOpsLineClaim claim = HSMobileOpsCountTaskService::activeClaim(_company, _journalId);
+
+        if (claim.RecId && !HSMobileOpsCountTaskService::isClaimHolder(claim, _userId, _deviceId))
+        {
+            return HSMobileOpsCountTaskService::claimedByLabel(claim, _deviceId);
+        }
+        return '';
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>grantClaim</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Fills a successful claim or heartbeat answer.
+    /// </summary>
+    private static void grantClaim(HSMobileOpsCountClaimResponse _response, HSMobileOpsLineClaim _claim)
+    {
+        _response.parmSuccess(true);
+        _response.parmErrorCode('');
+        _response.parmClaimToken(int642Str(_claim.RecId));
+        _response.parmClaimedBy(_claim.ClaimedByDisplayName ? _claim.ClaimedByDisplayName : _claim.ClaimedByUserName);
+        _response.parmExpiresUtc(_claim.ClaimExpiresUtc);
+        _response.parmHeartbeatSeconds(HSMobileOpsCountTaskService::claimHeartbeatSeconds());
     }
 ]]></Source>
 			</Method>

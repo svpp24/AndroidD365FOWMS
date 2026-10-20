@@ -1,0 +1,12 @@
+{
+  "IsEncrypted": false,
+  "Values": {
+    "AzureWebJobsStorage": "UseDevelopmentStorage=true",
+    "FUNCTIONS_WORKER_RUNTIME": "python",
+
+    "AZURE_TABLE_CONNECTION_STRING": "<connection string for the storage account holding the LicenseStatus table>",
+    "ANDROID_PACKAGE_NAME": "com.d365fo.mobileops",
+    "RELEASE_SIGNING_CERT_SHA256": "<same value as the Android app's BuildConfig.RELEASE_SIGNING_CERT_SHA256 - see app/build.gradle.kts>",
+    "GOOGLE_SERVICE_ACCOUNT_JSON": "<paste the service account's JSON key as a single-line string, or omit and rely on GOOGLE_APPLICATION_CREDENTIALS / Workload Identity instead>"
+  }
+}

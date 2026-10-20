@@ -20,6 +20,7 @@ class HSMobileOpsRegisterDeviceRequest
     str        platform;
     str        platformVersion;
     str        appVersionName;
+    str        integrityToken;
 
 }
 ]]></Declaration>
@@ -105,6 +106,25 @@ class HSMobileOpsRegisterDeviceRequest
     {
         appVersionName = _value;
         return appVersionName;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmIntegrityToken</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// A Play Integrity Standard API token from the calling device, or blank on a build that
+    /// predates this field / a device that could not obtain one - see
+    /// HSMobileOpsLicense::verifyWithAttestation for how a blank token is handled (UNVERIFIED,
+    /// not a hard failure). Opaque to this class - only the vendor's CheckLicense Azure Function
+    /// can actually decode it.
+    /// </summary>
+    [DataMemberAttribute('IntegrityToken')]
+    public str parmIntegrityToken(str _value = integrityToken)
+    {
+        integrityToken = _value;
+        return integrityToken;
     }
 ]]></Source>
 			</Method>

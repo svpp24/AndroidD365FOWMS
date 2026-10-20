@@ -213,31 +213,31 @@ public class HSMobileOpsProcessSetup extends common
 		<AxTableField xmlns=""
 			i:type="AxTableFieldString">
 			<Name>ProcessType</Name>
-			<Label>Process</Label>
 			<HelpText>Receiving, TransferShip or TransferReceive.</HelpText>
-			<StringSize>30</StringSize>
+			<Label>Process</Label>
 			<Mandatory>Yes</Mandatory>
+			<StringSize>30</StringSize>
 		</AxTableField>
 		<AxTableField xmlns=""
 			i:type="AxTableFieldString">
 			<Name>ConcurrencyMode</Name>
-			<Label>Mode</Label>
 			<HelpText>None, LineClaim or LicensePlate.</HelpText>
-			<StringSize>20</StringSize>
+			<Label>Mode</Label>
 			<Mandatory>Yes</Mandatory>
+			<StringSize>20</StringSize>
 		</AxTableField>
 		<AxTableField xmlns=""
 			i:type="AxTableFieldInt">
 			<Name>ClaimTimeoutMinutes</Name>
-			<Label>Claim timeout (minutes)</Label>
 			<HelpText>Only used in LineClaim mode. How long a claim survives with no activity.</HelpText>
+			<Label>Claim timeout (minutes)</Label>
 		</AxTableField>
 		<AxTableField xmlns=""
 			i:type="AxTableFieldEnum">
 			<Name>RequireLocationCapture</Name>
-			<Label>Require location capture</Label>
-			<HelpText>When a line does not already carry a put-away location, whether this process still asks the operator to scan one. Ignored for a line that already has one - see HSMobileOpsPurchOrderResponse.RequireLocationCapture.</HelpText>
 			<EnumType>NoYes</EnumType>
+			<HelpText>When a line does not already carry a put-away location, whether this process still asks the operator to scan one. Ignored for a line that already has one - see HSMobileOpsPurchOrderResponse.RequireLocationCapture.</HelpText>
+			<Label>Require location capture</Label>
 		</AxTableField>
 	</Fields>
 	<FullTextIndexes />

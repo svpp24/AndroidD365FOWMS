@@ -141,7 +141,12 @@ class HSMobileOpsReceivingService
             {
                 response.parmErrorCode('NOTHING_OUTSTANDING');
             }
-            else if (outstanding <= HSMobileOpsReceivingService::inlineLineLimit())
+
+            // A small order's lines are sent even when it is blocked. Receiving refuses on
+            // Receivable before it ever reads a line, so this changes nothing there - but the
+            // read-only PO lines inquiry can then show what is on an unconfirmed order instead
+            // of mistaking withheld lines for a large order's.
+            if (outstanding && outstanding <= HSMobileOpsReceivingService::inlineLineLimit())
             {
                 HSMobileOpsReceivingService::appendLines(
                     response, purchId, '', setup.ConcurrencyMode);
@@ -377,6 +382,7 @@ class HSMobileOpsReceivingService
         PurchLine                    purchLine;
         InventDim                    inventDim;
         HSMobileOpsPurchLineContract line;
+        WHSInventTable               whsItem;
         InventDimGroupSetup          dimSetup;
         HSMobileOpsLineClaim         activeClaim;
         List                         lines = _response.parmLines();
@@ -434,6 +440,11 @@ class HSMobileOpsReceivingService
             line.parmLineNumber(purchLine.LineNumber);
             line.parmItemId(purchLine.ItemId);
             line.parmItemName(purchLine.Name);
+            // Shown on the handheld when filled in (Released products > Warehouse mobile device
+            // description lines).
+            whsItem = WHSInventTable::find(purchLine.ItemId);
+            line.parmMobileDescription1(whsItem.RFDescription1);
+            line.parmMobileDescription2(whsItem.RFDescription2);
             line.parmPurchUnit(purchLine.PurchUnit);
             line.parmInventUnit(
                 HSMobileOpsReceivingService::inventUnitOf(purchLine.ItemId, unitByItem));
@@ -569,7 +580,8 @@ class HSMobileOpsReceivingService
             index hint SourceIdx
             where postQueue.SourceId     == _purchId
                && postQueue.DocumentType == 'Registration'
-               && postQueue.Status       == HSMobileOpsPostQueue::statusPending()
+               && (postQueue.Status      == HSMobileOpsPostQueue::statusPending()
+                || postQueue.Status      == HSMobileOpsPostQueue::statusProcessing())
         {
             lines    = HSMobileOpsPostingService::parseLines(postQueue.LinesJson);
             lineEnum = lines.getEnumerator();

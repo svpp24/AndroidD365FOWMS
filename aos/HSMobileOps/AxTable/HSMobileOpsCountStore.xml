@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxTable xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsCountStore</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Which stores (warehouses) a supervisor manages in the Stock count control center - the form
+/// shows a supervisor only those stores' counts; a user with no row here sees every store.
+/// StageJournalCounts sends counts against D365FO counting journals in that store through the
+/// control center too, instead of straight into the journal.
+/// </summary>
+public class HSMobileOpsCountStore extends common
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>stagesJournalCounts</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Whether counts against counting journals in this store are reviewed in the control center.
+    /// </summary>
+    public static boolean stagesJournalCounts(InventLocationId _store)
+    {
+        HSMobileOpsCountStore store;
+
+        select firstonly RecId from store
+            where store.InventLocationId   == _store
+               && store.StageJournalCounts == NoYes::Yes;
+        return store.RecId != 0;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+	<Label>Stock count store</Label>
+	<TitleField1>InventLocationId</TitleField1>
+	<TitleField2>SupervisorUserId</TitleField2>
+	<CacheLookup>NotInTTS</CacheLookup>
+	<ClusteredIndex>StoreSupervisorIdx</ClusteredIndex>
+	<PrimaryIndex>StoreSupervisorIdx</PrimaryIndex>
+	<Fields>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>InventLocationId</Name>
+			<ExtendedDataType>InventLocationId</ExtendedDataType>
+			<Label>Store</Label>
+			<Mandatory>Yes</Mandatory>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>SupervisorUserId</Name>
+			<ExtendedDataType>UserId</ExtendedDataType>
+			<HelpText>The D365FO user who reviews this store's counts.</HelpText>
+			<Label>Supervisor</Label>
+			<Mandatory>Yes</Mandatory>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldEnum">
+			<Name>StageJournalCounts</Name>
+			<HelpText>Counts against a D365FO counting journal in this store go to the control center for review first, instead of straight into the journal.</HelpText>
+			<Label>Review journal counts</Label>
+			<EnumType>NoYes</EnumType>
+		</AxTableField>
+	</Fields>
+	<FullTextIndexes />
+	<Indexes>
+		<AxTableIndex>
+			<Name>StoreSupervisorIdx</Name>
+			<AllowDuplicates>No</AllowDuplicates>
+			<Fields>
+				<AxTableIndexField>
+					<DataField>InventLocationId</DataField>
+				</AxTableIndexField>
+				<AxTableIndexField>
+					<DataField>SupervisorUserId</DataField>
+				</AxTableIndexField>
+			</Fields>
+		</AxTableIndex>
+	</Indexes>
+	<Mappings />
+	<Relations>
+	</Relations>
+	<StateMachines />
+</AxTable>

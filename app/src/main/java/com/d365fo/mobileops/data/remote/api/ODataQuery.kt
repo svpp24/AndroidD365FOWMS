@@ -32,10 +32,6 @@ object ODataFilter {
     fun contains(field: String, value: String): String =
         "contains($field, ${literal(value)})"
 
-    /** `field in ('A','B')` — expands to an `or` chain, which D365FO plans more reliably. */
-    fun anyOf(field: String, values: Collection<String>): String =
-        values.joinToString(prefix = "(", separator = " or ", postfix = ")") { eq(field, it) }
-
     fun and(vararg clauses: String?): String =
         clauses.filterNotNull().filter { it.isNotBlank() }.joinToString(" and ") { "($it)" }
 
@@ -107,28 +103,3 @@ object ODataSelect {
     ).joinToString(",")
 }
 
-/**
- * Entity set names, every one verified against a live instance.
- *
- * Six of the ten originally used here did not exist — they were plausible, documented-looking
- * names that simply are not what this deployment publishes. Do not add a name to this list
- * without querying `/data/` and confirming it appears in the service document.
- */
-object ODataEntitySet {
-    const val PURCHASE_ORDER_HEADERS = "PurchaseOrderHeadersV2"
-    const val PURCHASE_ORDER_LINES = "PurchaseOrderLinesV2"
-    const val PRODUCT_RECEIPT_LINES = "ProductReceiptLinesV2"
-    const val RELEASED_PRODUCTS = "ReleasedProductsV2"
-    const val TRACKING_DIMENSION_GROUPS = "TrackingDimensionGroups"
-    const val BARCODES = "ProductBarcodesV3"
-    const val WAREHOUSES = "Warehouses"
-    const val LOCATIONS = "WarehouseLocations"
-    const val ON_HAND = "WarehousesOnHand"
-    const val SERIAL_NUMBERS = "ItemSerialNumbers"
-    const val TRANSFER_ORDER_HEADERS = "InventoryTransferOrderHeaders"
-    const val TRANSFER_ORDER_LINES = "InventoryTransferOrderLines"
-    const val SALES_ORDER_HEADERS = "SalesOrderHeadersV2"
-    const val SALES_ORDER_LINES = "SalesOrderLines"
-    const val INVENTORY_JOURNAL_HEADERS = "InventoryJournalHeaders"
-    const val INVENTORY_JOURNAL_LINES = "InventoryJournalLines"
-}

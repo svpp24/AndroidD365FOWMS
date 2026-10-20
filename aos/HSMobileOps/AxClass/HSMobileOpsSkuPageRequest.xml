@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsSkuPageRequest</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// One page of a handheld master-data feed - see HSMobileOpsSkuPageService::getSkuPage.
+/// </summary>
+[DataContractAttribute]
+class HSMobileOpsSkuPageRequest
+{
+    str dataAreaId;
+    str feed;
+    str afterKey;
+    str changedSinceUtc;
+    int pageSize;
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmDataAreaId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('DataAreaId')]
+    public str parmDataAreaId(str _value = dataAreaId)
+    {
+        dataAreaId = _value;
+        return dataAreaId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmFeed</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Feed')]
+    public str parmFeed(str _value = feed)
+    {
+        feed = _value;
+        return feed;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmAfterKey</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('AfterKey')]
+    public str parmAfterKey(str _value = afterKey)
+    {
+        afterKey = _value;
+        return afterKey;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmChangedSinceUtc</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ChangedSinceUtc')]
+    public str parmChangedSinceUtc(str _value = changedSinceUtc)
+    {
+        changedSinceUtc = _value;
+        return changedSinceUtc;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmPageSize</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('PageSize')]
+    public int parmPageSize(int _value = pageSize)
+    {
+        pageSize = _value;
+        return pageSize;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

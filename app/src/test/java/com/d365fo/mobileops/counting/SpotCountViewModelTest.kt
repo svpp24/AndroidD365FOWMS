@@ -32,6 +32,7 @@ class SpotCountViewModelTest {
     private val tracker = mockk<CountingDownloadTracker>(relaxed = true)
     private val session = mockk<WorkerSessionRepository>()
     private val scanner = mockk<HidScannerBridge>()
+    private val claimStore = FakeClaimStore()
     private lateinit var viewModel: SpotCountViewModel
 
     @BeforeEach
@@ -43,21 +44,26 @@ class SpotCountViewModelTest {
         every { worker.selected } returns warehouse
         every { session.session } returns MutableStateFlow(worker)
         every { scanner.scans } returns MutableSharedFlow()
-        viewModel = SpotCountViewModel(remote, tracker, session, scanner)
+        val flags = mockk<com.d365fo.mobileops.domain.FeatureFlags>()
+        every { flags.countClaims } returns true
+        viewModel = SpotCountViewModel(
+            remote, tracker, com.d365fo.mobileops.data.counting.CountClaimManager(remote, claimStore), flags, session, scanner,
+        )
     }
 
     @AfterEach
     fun tearDown() = Dispatchers.resetMain()
 
     @Test
-    fun `spot creation asks the server, then fetches the new journal in direct mode`() {
+    fun `spot creation asks the server, claims the new journal, then fetches it in direct mode`() {
         viewModel.setItem("ITEM-A")
         viewModel.setLocation("A-01")
         viewModel.create()
 
         assertThat(remote.spotCalls.single()).isEqualTo(Triple("WH1", "ITEM-A", "A-01"))
         val summary = slot<CountingJournalSummary>()
-        verify { tracker.start(capture(summary), "WH1", null, null) }
+        verify { tracker.start(capture(summary), "WH1", null, any()) }
+        assertThat(kotlinx.coroutines.runBlocking { claimStore.get(summary.captured.journalId) }).isNotNull()
         assertThat(summary.captured.journalId).isEqualTo("SPOT-1")
         assertThat(summary.captured.transferMode).isEqualTo(TransferMode.DIRECT)
         assertThat(summary.captured.originType).isEqualTo("SPOT")

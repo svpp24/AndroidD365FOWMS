@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -105,7 +106,8 @@ fun OnHandInquiryScreen(
                 .padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            if (state.busy) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+            // A fixed slot, so the bar never moves the scan card below it.
+            androidx.compose.foundation.layout.Box(Modifier.fillMaxWidth().height(4.dp)) { if (state.busy) LinearProgressIndicator(modifier = Modifier.fillMaxWidth()) }
 
             // Read-only tap target, not an editable field - a scan lands straight in the
             // ViewModel (see HidScannerBridge), and typing now happens on a dedicated screen
@@ -137,32 +139,28 @@ fun OnHandInquiryScreen(
                         .clickable(onClick = onManualEntryRequested),
                 )
             }
+            // Inside the card, as on the creation screens and Counting.
+            com.d365fo.mobileops.presentation.common.components.HeroCameraButton(onClick = { showCamera = true })
             }
 
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(
-                    onClick = { showCamera = true },
-                    modifier = Modifier.weight(1f).heightIn(min = 56.dp),
-                ) {
-                    Icon(Icons.Default.PhotoCamera, contentDescription = null)
-                    Text("Scan with camera", modifier = Modifier.padding(start = 8.dp))
-                }
-            }
 
+            // Label left, switch right - as "Count by location" and Settings' switches.
             Row(
+                modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
             ) {
-                Switch(
-                    checked = state.thisWarehouseOnly,
-                    onCheckedChange = viewModel::setThisWarehouseOnly,
-                    enabled = state.homeWarehouseId != null,
-                )
                 Text(
                     text = state.homeWarehouseId
                         ?.let { "This warehouse only ($it)" }
                         ?: "No warehouse assigned",
                     style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.weight(1f),
+                )
+                Switch(
+                    checked = state.thisWarehouseOnly,
+                    onCheckedChange = viewModel::setThisWarehouseOnly,
+                    enabled = state.homeWarehouseId != null,
                 )
             }
 
@@ -170,17 +168,12 @@ fun OnHandInquiryScreen(
             // hundred rows to find one. "All warehouses" stays available because "where is
             // this stock?" is a real question the enquiry is for.
             if (!state.thisWarehouseOnly) {
-                OutlinedButton(
+                // The app's dropdown look; the list itself is a searchable dialog (many warehouses).
+                com.d365fo.mobileops.presentation.common.components.DropdownTrigger(
+                    text = if (state.loadingWarehouses) null else "Warehouse: ${state.scopeLabel}",
+                    placeholder = "Loading warehouses…",
                     onClick = viewModel::openWarehousePicker,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = 56.dp),
-                ) {
-                    Text(
-                        if (state.loadingWarehouses) "Loading warehouses…"
-                        else "Warehouse: ${state.scopeLabel}",
-                    )
-                }
+                )
             }
 
             if (state.pickerOpen) {
@@ -392,7 +385,10 @@ private fun WarehousePickerDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
+            com.d365fo.mobileops.presentation.common.components.DialogButtonRow(
+                dismiss = null,
+                confirm = { com.d365fo.mobileops.presentation.common.components.CancelOutlinedButton(onClick = onDismiss, modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget)) { Text("Cancel") } },
+            )
         },
     )
 }

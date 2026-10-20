@@ -46,6 +46,10 @@ class TriggeredCountAlerts @Inject constructor(
             ExistingPeriodicWorkPolicy.KEEP,
             PeriodicWorkRequestBuilder<TriggeredCountWorker>(15, TimeUnit.MINUTES)
                 .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
+                .setInitialDelay(
+                    com.d365fo.mobileops.data.sync.FleetJitter.millisUpTo(TimeUnit.MINUTES.toMillis(15)),
+                    TimeUnit.MILLISECONDS,
+                )
                 .build(),
         )
     }

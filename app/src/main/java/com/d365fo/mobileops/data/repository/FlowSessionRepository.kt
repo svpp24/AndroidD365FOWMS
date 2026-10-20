@@ -37,6 +37,8 @@ data class StoredLine(
     val batchManufacturingDate: String? = null,
     val batchExpiryDate: String? = null,
     val serialIds: List<String> = emptyList(),
+    /** Transfer shipment: already picked in D365FO - kept so a resumed session does not pick it twice. */
+    val picked: Boolean = false,
 ) {
     val quantityValue: BigDecimal get() = runCatching { BigDecimal(quantity) }.getOrDefault(BigDecimal.ZERO)
 }

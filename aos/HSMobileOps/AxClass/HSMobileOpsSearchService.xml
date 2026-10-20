@@ -1,0 +1,218 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsSearchService</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// The app's Home search ("Search items, orders, journals") - reads only, registered as
+/// HSMobileOpsSearchSvc. A query that is a PO, transfer or counting journal number finds that
+/// record; one that is an item number or barcode finds the item and the open work holding it at
+/// the warehouse: PO lines still to receive, transfer lines to ship or receive, and counting
+/// journal lines not yet posted.
+/// </summary>
+class HSMobileOpsSearchService
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>search</Name>
+				<Source><![CDATA[
+
+    [Wrappable(false), Hookable(false)]
+    public HSMobileOpsSearchResponse search(HSMobileOpsSearchRequest _request)
+    {
+        HSMobileOpsSearchResponse response = new HSMobileOpsSearchResponse();
+        List                      hits = new List(Types::Class);
+        PurchTable                purchTable;
+        PurchLine                 purchLine;
+        InventTransferTable       transferTable;
+        InventTransferLine        transferLine;
+        InventJournalTable        journalTable;
+        InventJournalTrans        journalTrans;
+        InventItemBarcode         barcode;
+        InventTable               inventTable;
+        InventDim                 inventDim;
+        InventLocationId          warehouseId;
+        str                       query;
+        ItemId                    itemId;
+        str                       unitId;
+        boolean                   outbound;
+
+        response.parmSuccess(false);
+        response.parmHits(hits);
+
+        if (!_request || !_request.parmDataAreaId() || !_request.parmWarehouseId()
+         || !CompanyInfo::findDataArea(_request.parmDataAreaId()).RecId)
+        {
+            response.parmErrorCode('INVALID_REQUEST');
+            return response;
+        }
+        warehouseId = _request.parmWarehouseId();
+        query       = strLRTrim(_request.parmQuery());
+        if (strLen(query) < 2)
+        {
+            response.parmSuccess(true);
+            return response;
+        }
+
+        changecompany (_request.parmDataAreaId())
+        {
+            // The record's own number.
+            purchTable = PurchTable::find(query);
+            if (purchTable.RecId)
+            {
+                hits.addEnd(HSMobileOpsSearchService::hit('PO', 'ORDER', purchTable.PurchId, purchTable.PurchName,
+                    purchTable.OrderAccount, enum2Symbol(enumNum(PurchStatus), purchTable.PurchStatus),
+                    purchTable.DeliveryDate, 0, '', 'IN'));
+            }
+            transferTable = InventTransferTable::find(query);
+            if (transferTable.RecId)
+            {
+                outbound = transferTable.InventLocationIdFrom == warehouseId;
+                hits.addEnd(HSMobileOpsSearchService::hit('TO', 'ORDER', transferTable.TransferId,
+                    outbound ? strFmt('To %1', transferTable.InventLocationIdTo) : strFmt('From %1', transferTable.InventLocationIdFrom),
+                    strFmt('%1 to %2', transferTable.InventLocationIdFrom, transferTable.InventLocationIdTo),
+                    enum2Symbol(enumNum(InventTransferStatus), transferTable.TransferStatus),
+                    outbound ? transferTable.ShipDate : transferTable.ReceiveDate, 0, '', outbound ? 'OUT' : 'IN'));
+            }
+            journalTable = InventJournalTable::find(query);
+            if (journalTable.RecId && journalTable.JournalType == InventJournalType::Count)
+            {
+                hits.addEnd(HSMobileOpsSearchService::hit('JOURNAL', 'ORDER', journalTable.JournalId, journalTable.Description,
+                    strFmt('%1 lines', journalTable.NumOfLines), journalTable.Posted ? 'Posted' : 'Open',
+                    DateTimeUtil::date(journalTable.CreatedDateTime), 0, '', ''));
+            }
+
+            // An item: its number, else a barcode.
+            inventTable = InventTable::find(query);
+            if (!inventTable.RecId)
+            {
+                select firstonly itemId from barcode where barcode.itemBarCode == query;
+                if (barcode.itemId)
+                {
+                    inventTable = InventTable::find(barcode.itemId);
+                }
+            }
+            if (inventTable.RecId)
+            {
+                itemId = inventTable.ItemId;
+                unitId = inventTable.inventUnitId();
+                response.parmItemId(itemId);
+                response.parmItemName(inventTable.defaultProductName());
+                response.parmUnitId(unitId);
+
+                // PO lines still to receive here.
+                while select PurchId, LineNumber, RemainPurchPhysical, PurchUnit, DeliveryDate from purchLine
+                    order by DeliveryDate, PurchId
+                    where purchLine.ItemId              == itemId
+                       && purchLine.PurchStatus         == PurchStatus::Backorder
+                       && purchLine.RemainPurchPhysical > 0
+                       && purchLine.IsDeleted           == NoYes::No
+                    join InventLocationId from inventDim
+                        where inventDim.inventDimId      == purchLine.InventDimId
+                           && inventDim.InventLocationId == warehouseId
+                    join PurchName from purchTable
+                        where purchTable.PurchId == purchLine.PurchId
+                {
+                    hits.addEnd(HSMobileOpsSearchService::hit('PO', 'ITEM', purchLine.PurchId, purchTable.PurchName,
+                        strFmt('Line %1', purchLine.LineNumber), 'To receive', purchLine.DeliveryDate,
+                        purchLine.RemainPurchPhysical, purchLine.PurchUnit, 'IN'));
+                    if (hits.elements() >= HSMobileOpsSearchService::maxRows())
+                    {
+                        break;
+                    }
+                }
+
+                // Transfer lines to ship from here, or shipped to here and not yet received.
+                while select TransferId, QtyRemainShip, QtyRemainReceive from transferLine
+                    where transferLine.ItemId == itemId
+                    join InventLocationIdFrom, InventLocationIdTo, TransferStatus, ShipDate, ReceiveDate from transferTable
+                        order by ShipDate, TransferId
+                        where transferTable.TransferId == transferLine.TransferId
+                           && ((transferTable.InventLocationIdFrom == warehouseId
+                                && transferTable.TransferStatus == InventTransferStatus::Created)
+                            || (transferTable.InventLocationIdTo == warehouseId
+                                && transferTable.TransferStatus == InventTransferStatus::Shipped))
+                {
+                    outbound = transferTable.InventLocationIdFrom == warehouseId;
+                    if ((outbound ? transferLine.QtyRemainShip : transferLine.QtyRemainReceive) <= 0)
+                    {
+                        continue;
+                    }
+                    hits.addEnd(HSMobileOpsSearchService::hit('TO', 'ITEM', transferLine.TransferId,
+                        outbound ? strFmt('To %1', transferTable.InventLocationIdTo) : strFmt('From %1', transferTable.InventLocationIdFrom),
+                        outbound ? 'To ship' : 'To receive',
+                        enum2Symbol(enumNum(InventTransferStatus), transferTable.TransferStatus),
+                        outbound ? transferTable.ShipDate : transferTable.ReceiveDate,
+                        outbound ? transferLine.QtyRemainShip : transferLine.QtyRemainReceive, unitId, outbound ? 'OUT' : 'IN'));
+                    if (hits.elements() >= HSMobileOpsSearchService::maxRows())
+                    {
+                        break;
+                    }
+                }
+
+                // Counting journal lines not yet posted, at this warehouse.
+                while select JournalId, Counted, InventDimId from journalTrans
+                    where journalTrans.ItemId == itemId
+                    join Description, CreatedDateTime from journalTable
+                        where journalTable.JournalId   == journalTrans.JournalId
+                           && journalTable.JournalType == InventJournalType::Count
+                           && journalTable.Posted      == NoYes::No
+                    join InventLocationId, wMSLocationId from inventDim
+                        where inventDim.inventDimId      == journalTrans.InventDimId
+                           && inventDim.InventLocationId == warehouseId
+                {
+                    hits.addEnd(HSMobileOpsSearchService::hit('JOURNAL', 'ITEM', journalTrans.JournalId, journalTable.Description,
+                        inventDim.wMSLocationId ? strFmt('Location %1', inventDim.wMSLocationId) : '', 'Open',
+                        DateTimeUtil::date(journalTable.CreatedDateTime), journalTrans.Counted, unitId, ''));
+                    if (hits.elements() >= HSMobileOpsSearchService::maxRows())
+                    {
+                        break;
+                    }
+                }
+            }
+        }
+
+        response.parmHits(hits);
+        response.parmSuccess(true);
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>hit</Name>
+				<Source><![CDATA[
+
+    private static HSMobileOpsSearchHitRow hit(str _kind, str _match, str _reference, str _title, str _detail,
+        str _status, TransDate _date, real _quantity, str _unitId, str _direction)
+    {
+        HSMobileOpsSearchHitRow row = new HSMobileOpsSearchHitRow();
+        row.parmKind(_kind);
+        row.parmMatch(_match);
+        row.parmReference(_reference);
+        row.parmTitle(_title);
+        row.parmDetail(_detail);
+        row.parmStatus(_status);
+        row.parmDate(_date ? date2Str(_date, 321, DateDay::Digits2, DateSeparator::Hyphen,
+            DateMonth::Digits2, DateSeparator::Hyphen, DateYear::Digits4) : '');
+        row.parmQuantity(_quantity);
+        row.parmUnitId(_unitId);
+        row.parmDirection(_direction);
+        return row;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>maxRows</Name>
+				<Source><![CDATA[
+
+    private static int maxRows()
+    {
+        return 100;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

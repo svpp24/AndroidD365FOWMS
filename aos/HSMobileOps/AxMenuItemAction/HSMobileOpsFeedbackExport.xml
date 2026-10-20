@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxMenuItemAction xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsFeedbackExport</Name>
+	<Label>Export feedback</Label>
+	<HelpText>Download the feedback shown (with the current filter) as one Markdown file plus screenshots, in a zip - ready to give to an AI assistant or a developer.</HelpText>
+	<Object>HSMobileOpsFeedbackExport</Object>
+	<ObjectType>Class</ObjectType>
+</AxMenuItemAction>

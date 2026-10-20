@@ -1,3 +1,4 @@
+import java.time.LocalDate
 import java.util.Properties
 
 plugins {
@@ -26,9 +27,25 @@ fun secret(key: String, default: String = ""): String =
         ?: System.getenv(key)?.takeIf { it.isNotBlank() }
         ?: default
 
+/** The release version, from version.properties - see the notes in that file. */
+val appVersion = Properties().apply { rootProject.file("version.properties").inputStream().use { load(it) } }
+fun versionPart(key: String): Int = appVersion.getProperty(key).trim().toInt().also {
+    require(it in 0..99) { "$key in version.properties must be 0-99 (got $it)" }
+}
+val versionMajor = versionPart("VERSION_MAJOR")
+val versionMinor = versionPart("VERSION_MINOR")
+val versionPatch = versionPart("VERSION_PATCH")
+
+/**
+ * The commit the build came from, so a device in the field can be traced to its exact source -
+ * "-dirty" when it was built with uncommitted changes, which a release build should never be.
+ */
+val gitCommit: String = runCatching {
+    providers.exec { commandLine("git", "describe", "--always", "--dirty", "--abbrev=7") }.standardOutput.asText.get().trim()
+}.getOrDefault("").ifBlank { "unknown" }
+val buildDate: String = LocalDate.now().toString()
+
 android {
-    // The AI-count model is memory-mapped from the APK; compressed it would be copied out first.
-    androidResources { noCompress += "tflite" }
     namespace = "com.d365fo.mobileops"
     compileSdk = 35
 
@@ -47,8 +64,11 @@ android {
         applicationId = "com.d365fo.mobileops"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = versionMajor * 10_000 + versionMinor * 100 + versionPatch
+        versionName = "$versionMajor.$versionMinor.$versionPatch"
+        // Shown with the version on the sign-in screen and in Settings.
+        buildConfigField("String", "GIT_COMMIT", "\"$gitCommit\"")
+        buildConfigField("String", "BUILD_DATE", "\"$buildDate\"")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -59,6 +79,9 @@ android {
         // day to day (admin consent, the public-client-flow toggle, slow AAD polling). Back to
         // compiling in a device-identity client secret, same as before that removal.
         buildConfigField("String", "AAD_CLIENT_SECRET", "\"${secret("AAD_CLIENT_SECRET")}\"")
+        // Developer builds only: more app registrations, "clientId,secret;clientId,secret".
+        // A fleet is configured by scanning the connection QR code instead (ConnectionQr).
+        buildConfigField("String", "AAD_CLIENT_POOL", "\"${secret("AAD_CLIENT_POOL")}\"")
 
         // Certificate pins (applied to whichever AOS host is active)
         buildConfigField("String", "CERT_PIN_PRIMARY", "\"${secret("D365_CERT_PIN_PRIMARY")}\"")
@@ -76,6 +99,14 @@ android {
         // compares its installed signature against — see D365MobileApp.onCreate.
         buildConfigField("String", "LICENSE_ROOT_PUBLIC_KEY_B64", "\"${secret("LICENSE_ROOT_PUBLIC_KEY_B64")}\"")
         buildConfigField("String", "RELEASE_SIGNING_CERT_SHA256", "\"${secret("RELEASE_SIGNING_CERT_SHA256")}\"")
+        // LICENSE_CHECK=false in local.properties skips license activation and the per-launch
+        // license check (LicenseRepository.validate) - for testing a build before a device has
+        // a license certificate. On unless set; a build for the fleet must leave it on.
+        buildConfigField("boolean", "LICENSE_CHECK", secret("LICENSE_CHECK", "true").toBoolean().toString())
+        // The Google Cloud project number linked to this app in Play Console - required by the
+        // Play Integrity Standard API (PlayIntegrityTokenProvider). Blank/non-numeric skips the
+        // check rather than crashing - see that class's own "never throws" doc comment.
+        buildConfigField("String", "INTEGRITY_CLOUD_PROJECT_NUMBER", "\"${secret("INTEGRITY_CLOUD_PROJECT_NUMBER")}\"")
 
         // Inventory count extensions - each off until its X++ side exists. See FeatureFlags.kt.
         listOf(
@@ -111,6 +142,8 @@ android {
     buildTypes {
         debug {
             applicationIdSuffix = ".debug"
+            // Tells a test build apart wherever the version is shown, including D365FO's device list.
+            versionNameSuffix = "-debug"
             isMinifyEnabled = false
             buildConfigField("boolean", "ALLOW_SENSITIVE_LOGGING", "true")
             // Pinning off in debug so Charles/Fiddler can be used against sandboxes.
@@ -123,6 +156,13 @@ android {
             buildConfigField("boolean", "DEV_SUPERVISOR", secret("DEV_SUPERVISOR", "false").toBoolean().toString())
         }
         release {
+            // Nothing from a developer's local.properties ships: a release device is set up by
+            // scanning a connection QR code (ConnectionQr), so the secret, the registrations, the
+            // tenant and the environment URLs are compiled in blank - an APK can be unpacked.
+            listOf(
+                "AAD_TENANT_ID", "AAD_CLIENT_ID", "AAD_CLIENT_SECRET", "AAD_CLIENT_POOL",
+                "D365_COMPANY", "D365_DEV_RESOURCE", "D365_UAT_RESOURCE", "D365_PROD_RESOURCE",
+            ).forEach { key -> buildConfigField("String", key, "\"\"") }
             // Never skips sign-in, whatever local.properties says.
             buildConfigField("boolean", "DEV_SKIP_SIGN_IN", "false")
             listOf("DEV_USER_NAME", "DEV_DISPLAY_NAME", "DEV_WAREHOUSE_ID", "DEV_SITE_ID").forEach { key ->
@@ -136,7 +176,23 @@ android {
             buildConfigField("boolean", "ALLOW_SENSITIVE_LOGGING", "false")
             buildConfigField("boolean", "CERT_PINNING_ENABLED", "true")
         }
+        // For measuring UI performance on a device: the debug app's package, signing key and
+        // settings (so it installs over a debug build and keeps its sign-in and downloaded
+        // journals), but compiled like release - not debuggable, R8-shrunk. Debug-build frame
+        // times are several times worse than what workers see. Never distributed.
+        create("perf") {
+            initWith(getByName("debug"))
+            isDebuggable = false
+            isMinifyEnabled = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            matchingFallbacks += listOf("debug")
+            signingConfig = signingConfigs.getByName("debug")
+            // Debug-signed, so the release-key self-check would refuse it; blank = skip.
+            buildConfigField("String", "RELEASE_SIGNING_CERT_SHA256", "\"\"")
+        }
     }
+    // perf takes release's no-op HTTP logging, so request logging doesn't skew its timings.
+    sourceSets.getByName("perf").java.srcDir("src/release/java")
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -157,6 +213,10 @@ android {
     }
 
     packaging {
+        // Native libs stay uncompressed in the apk, where AGP aligns them to 16 KB so they load
+        // in place on 16 KB-page devices (Google Play requires it). The default since minSdk 23;
+        // pinned so nothing flips it back to extracting compressed libs.
+        jniLibs.useLegacyPackaging = false
         resources.excludes += setOf(
             "/META-INF/{AL2.0,LGPL2.1}",
             "META-INF/LICENSE.md",
@@ -214,16 +274,14 @@ dependencies {
     implementation(libs.kotlinx.serialization)
     implementation(libs.kotlinx.coroutines)
     implementation(libs.security.crypto)
-    implementation(libs.sqlcipher)
     implementation(libs.sqlite.ktx)
 
     implementation(libs.mlkit.barcode)
+    implementation(libs.play.integrity)
     implementation(libs.camerax.core)
     implementation(libs.camerax.camera2)
     implementation(libs.camerax.lifecycle)
     implementation(libs.camerax.view)
-    // On-device object detection for AI counting (model in assets/count_detector.tflite).
-    implementation(libs.mediapipe.tasks.vision)
 
     implementation(libs.timber)
 

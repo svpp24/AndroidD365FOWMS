@@ -64,7 +64,7 @@ class HSMobileOpsUserAdmin
         ttscommit;
 
         info(strFmt(
-            'Password set for %1. They must change it at their next sign-in.', user.UserName));
+            'PIN set for %1. They must change it at their next sign-in.', user.UserName));
     }
 ]]></Source>
 			</Method>

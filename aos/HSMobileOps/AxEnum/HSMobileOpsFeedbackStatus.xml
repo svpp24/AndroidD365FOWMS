@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxEnum xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsFeedbackStatus</Name>
+	<Label>Feedback status</Label>
+	<HelpText>Where the team stands on a piece of handheld feedback - shown back to the worker in the app.</HelpText>
+	<EnumValues>
+		<AxEnumValue>
+			<Name>New</Name>
+			<Label>New</Label>
+			<Value>0</Value>
+		</AxEnumValue>
+		<AxEnumValue>
+			<Name>InProgress</Name>
+			<Label>In progress</Label>
+			<Value>1</Value>
+		</AxEnumValue>
+		<AxEnumValue>
+			<Name>Done</Name>
+			<Label>Done</Label>
+			<Value>2</Value>
+		</AxEnumValue>
+		<AxEnumValue>
+			<Name>WontDo</Name>
+			<Label>Won't do</Label>
+			<Value>3</Value>
+		</AxEnumValue>
+	</EnumValues>
+	<UseEnumValueForDisplayValue>No</UseEnumValueForDisplayValue>
+</AxEnum>

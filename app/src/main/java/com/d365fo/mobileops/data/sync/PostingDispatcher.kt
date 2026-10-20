@@ -48,9 +48,22 @@ class PostingDispatcher @Inject constructor(
     private val flowSessions: FlowSessionRepository,
     private val queue: SyncQueueRepository,
     private val json: Json,
+    private val connectionSettings: com.d365fo.mobileops.data.security.ConnectionSettings,
+    private val orderSender: OrderSender,
+    private val networkPreferences: com.d365fo.mobileops.data.security.NetworkPreferences,
+    private val reachability: AosReachabilityMonitor,
 ) {
 
+    /** Settings > Data posting. Off: captures are queued but never sent - see TransactionPushWorker. */
+    fun postingAllowed(): Boolean = connectionSettings.postingEnabled.value
+
     suspend fun dispatch(entry: SyncQueueEntity): NetworkResult<Unit> {
+        // D365FO already known to be down: stays queued at once, rather than the worker watching
+        // "Shipping..." for the 15 s connect timeout. The background probe notices it is back, and
+        // the queue is pushed then.
+        if (!reachability.reachable.value) {
+            return NetworkResult.Error(AppFailure.Offline("D365FO can't be reached right now"))
+        }
         val payload = runCatching { queue.decodePayload(entry) }.getOrElse {
             // A payload we cannot parse will never parse. Fail it permanently rather than
             // retrying a corrupt row forever.
@@ -71,6 +84,21 @@ class PostingDispatcher @Inject constructor(
 
             SyncOperation.SET_WORKER_PERMISSION ->
                 setWorkerPermission(payload as SetWorkerPermissionPayload)
+
+            SyncOperation.CREATE_PURCHASE_ORDER ->
+                orderSender.sendPurchase(payload as com.d365fo.mobileops.data.sync.payload.CreatePurchaseOrderPayload)
+
+            SyncOperation.CREATE_TRANSFER_ORDER ->
+                orderSender.sendTransfer(payload as com.d365fo.mobileops.data.sync.payload.CreateTransferOrderPayload)
+
+            SyncOperation.CONFIRM_PURCHASE_ORDER ->
+                orderSender.sendConfirmation(payload as com.d365fo.mobileops.data.sync.payload.ConfirmPurchaseOrderPayload)
+
+            SyncOperation.CREATE_PURCHASE_RETURN ->
+                orderSender.sendReturn(payload as com.d365fo.mobileops.data.sync.payload.CreatePurchaseReturnPayload)
+
+            SyncOperation.SEND_FEEDBACK ->
+                orderSender.sendFeedback(payload as com.d365fo.mobileops.data.sync.payload.SendFeedbackPayload)
 
             // Journals and packing slips have no HSMobileOps endpoint yet — that is a
             // different X++ service, not written. Failing loudly here beats silently
@@ -172,6 +200,7 @@ class PostingDispatcher @Inject constructor(
                     locationId = it.locationId.orEmpty(),
                     batchId = it.batchNumber.orEmpty(),
                     serialIds = it.serialNumbers,
+                    picked = it.picked,
                 )
             },
             onPosted = { flowSessions.clear(flowType, transferId) },
@@ -236,6 +265,7 @@ class PostingDispatcher @Inject constructor(
                 userName = userName,
                 personnelNumber = personnelNumber,
                 deviceId = deviceId,
+                processNow = networkPreferences.postImmediately.value,
                 // Serialized here, once, rather than carried as a nested array — see
                 // PostRequestBody.linesJson for why.
                 linesJson = json.encodeToString(ListSerializer(PostLineDto.serializer()), lines),
@@ -249,7 +279,17 @@ class PostingDispatcher @Inject constructor(
                 // attempt reached D365FO and only the response was lost in transit. Treating
                 // it as a failure would strand a receipt that is already in the ledger and
                 // retry it forever against a service that will keep saying the same thing.
-                if (body.success || body.alreadyPosted) {
+                if ((body.success || body.alreadyPosted) && body.queueStatus == FAILED) {
+                    // Post immediately: D365FO took it and then could not post it. The row stays
+                    // Failed there (Activity); the worker is told now, with D365FO's reason.
+                    onPosted()
+                    NetworkResult.Error(
+                        AppFailure.BusinessRule(
+                            body.queueMessage.ifBlank { "D365FO could not post it" },
+                            d365ErrorCode = "POSTING_FAILED",
+                        ),
+                    )
+                } else if (body.success || body.alreadyPosted) {
                     onPosted()
                     NetworkResult.Success(Unit)
                 } else {
@@ -302,4 +342,9 @@ class PostingDispatcher @Inject constructor(
         userName = userName,
         linesJson = linesJson,
     )
+
+    private companion object {
+        /** HSMobileOpsPostQueue::statusFailed. */
+        const val FAILED = "Failed"
+    }
 }

@@ -37,6 +37,41 @@
 			<Label>PO lines</Label>
 			<Value>6</Value>
 		</AxEnumValue>
+		<AxEnumValue>
+			<Name>TRANSFER_ORDERS</Name>
+			<Label>Transfer orders</Label>
+			<Value>7</Value>
+		</AxEnumValue>
+		<AxEnumValue>
+			<Name>TRANSFERS_BY_STORE</Name>
+			<Label>TO's by Store</Label>
+			<Value>8</Value>
+		</AxEnumValue>
+		<AxEnumValue>
+			<Name>PICKED_SERIALS</Name>
+			<Label>Picked serials</Label>
+			<Value>9</Value>
+		</AxEnumValue>
+		<AxEnumValue>
+			<Name>PO_CREATE</Name>
+			<Label>PO creation</Label>
+			<Value>10</Value>
+		</AxEnumValue>
+		<AxEnumValue>
+			<Name>TO_CREATE</Name>
+			<Label>TO creation</Label>
+			<Value>11</Value>
+		</AxEnumValue>
+		<AxEnumValue>
+			<Name>PO_CONFIRM</Name>
+			<Label>PO confirmation</Label>
+			<Value>12</Value>
+		</AxEnumValue>
+		<AxEnumValue>
+			<Name>PURCHASE_RETURN</Name>
+			<Label>Purchase return</Label>
+			<Value>13</Value>
+		</AxEnumValue>
 	</EnumValues>
 	<UseEnumValueForDisplayValue>No</UseEnumValueForDisplayValue>
 </AxEnum>

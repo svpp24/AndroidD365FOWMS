@@ -139,7 +139,8 @@ data class DirectSubmitRequestBody(
     @SerialName("SubmittedAtUtc") val submittedAtUtc: String,
     @SerialName("PassNumber") val passNumber: Int,
     @SerialName("OriginType") val originType: String,
-    @SerialName("Lines") val lines: List<DirectCountRowDto>,
+    /** The counted lines: [rowsJson] of [DirectCountRowDto]s. */
+    @SerialName("LinesJson") val linesJson: String,
 )
 
 @Serializable
@@ -173,9 +174,12 @@ data class CountExceptionsRequestBody(
     @SerialName("SubmissionId") val submissionId: String,
     @SerialName("UserId") val userId: String,
     @SerialName("DeviceId") val deviceId: String,
-    @SerialName("Exceptions") val exceptions: List<CountExceptionRowDto>,
-    @SerialName("EmptyLocations") val emptyLocations: List<CountEmptyLocationRowDto>,
-    @SerialName("Confirmations") val confirmations: List<CountConfirmationRowDto> = emptyList(),
+    /** [rowsJson] of [CountExceptionRowDto]s. */
+    @SerialName("ExceptionsJson") val exceptionsJson: String,
+    /** [rowsJson] of [CountEmptyLocationRowDto]s. */
+    @SerialName("EmptyLocationsJson") val emptyLocationsJson: String,
+    /** [rowsJson] of [CountConfirmationRowDto]s. */
+    @SerialName("ConfirmationsJson") val confirmationsJson: String = "[]",
 )
 
 @Serializable
@@ -189,6 +193,10 @@ data class CountConfirmationRowDto(
 data class CountExceptionRowDto(
     @SerialName("ClientId") val clientId: String,
     @SerialName("ItemNumber") val itemNumber: String,
+    @SerialName("ConfigId") val configId: String? = null,
+    @SerialName("SizeId") val sizeId: String? = null,
+    @SerialName("ColorId") val colorId: String? = null,
+    @SerialName("StyleId") val styleId: String? = null,
     @SerialName("LocationId") val locationId: String? = null,
     @SerialName("Quantity") val quantity: Double,
     @SerialName("BatchId") val batchId: String? = null,

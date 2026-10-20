@@ -17,7 +17,6 @@ fun String.toQuantityOrNull(): BigDecimal? =
 
 fun BigDecimal.normalizeQty(): BigDecimal = setScale(6, RoundingMode.HALF_UP).stripTrailingZeros()
 
-fun BigDecimal.isPositive(): Boolean = signum() > 0
 fun BigDecimal.isZero(): Boolean = signum() == 0
 
 /** Percentage deviation of [this] from [expected]; zero expected yields zero deviation. */

@@ -50,7 +50,18 @@ data class LocationChoice(val locationId: String, val counted: Int, val total: I
 data class EmptyLocationPrompt(val locationId: String, val lines: Int, val alreadyCounted: Int)
 
 /** The "Not on this journal" form, prefilled from the scan. */
-data class UnexpectedItemPrompt(val itemId: String, val locationId: String?, val error: String? = null)
+/** An item not on the journal that comes in variants, waiting for the one found. */
+data class UnexpectedVariantChoice(val itemId: String, val variants: List<com.d365fo.mobileops.domain.model.ProductVariant>, val locationId: String?)
+
+data class UnexpectedItemPrompt(
+    val itemId: String,
+    val locationId: String?,
+    val error: String? = null,
+    /** The item's variants (offline copy) - one must be chosen when there are any. */
+    val variants: List<com.d365fo.mobileops.domain.model.ProductVariant> = emptyList(),
+    /** Preselected: the variant the scanned barcode belongs to. */
+    val variant: com.d365fo.mobileops.domain.model.ProductVariant? = null,
+)
 
 /**
  * The "Start counting" page: the journal's items in a light list, a scan box, and a quantity
@@ -101,6 +112,10 @@ class CountingScanViewModel @Inject constructor(
         val selectedLocation: String? = null,
         val emptyPrompt: EmptyLocationPrompt? = null,
         val unexpected: UnexpectedItemPrompt? = null,
+        /** An item not on the journal that comes in variants: which one was found. */
+        val variantChoice: UnexpectedVariantChoice? = null,
+        /** The not-on-the-journal row being edited (its quantity), by client id. */
+        val editingException: String? = null,
         /** Show only lines of this location type (null = all). */
         val typeFilter: String? = null,
         /** A verify-only line waiting for "Confirm present". */
@@ -161,6 +176,8 @@ class CountingScanViewModel @Inject constructor(
             exceptions = b.exceptions,
             emptyPrompt = o.ui.emptyPrompt,
             unexpected = o.ui.unexpected,
+            variantChoice = o.ui.variantChoice,
+            editingException = b.exceptions.firstOrNull { it.clientId == o.ui.editingException },
             freezeBanner = b.journal?.let { j ->
                 com.d365fo.mobileops.domain.model.freezeBanner(j.freezeState, j.snapshotAt) {
                     com.d365fo.mobileops.util.Formatters.clockTime(it)
@@ -209,6 +226,7 @@ class CountingScanViewModel @Inject constructor(
     private suspend fun handleScan(value: String, typed: Boolean) {
         val lines = countingDao.getCountLines(journalId)
         val current = state.value
+        soleLocation = lines.mapNotNull { it.locationId?.takeIf { l -> l.isNotBlank() } }.distinct().singleOrNull()
 
         // Location-first: a scan that is one of this journal's locations selects it - first thing
         // in a location, or to move on to the next one.
@@ -229,6 +247,24 @@ class CountingScanViewModel @Inject constructor(
             return handleGs1(gs1, lines, current, typed)
         }
 
+        // A serial number identifies exactly one unit, so its line: straight there. Serial-tracked
+        // goods are often labelled with the serial alone - scanning it said "not an item on this
+        // journal" although the line was right there (seen live).
+        val bySerial = lines.filter { !it.serialId.isNullOrBlank() && it.serialId.equals(value, ignoreCase = true) }
+        if (bySerial.isNotEmpty() && lines.none { it.itemId.equals(value, ignoreCase = true) }) {
+            if (current.locked) {
+                _message.value = ScanMessage("Counts have been submitted, so ${bySerial.first().itemId} can't be changed.", isError = true)
+                scanFeedback.warning()
+                return
+            }
+            val location = current.selectedLocation
+            val here = bySerial.filter { location == null || it.locationId.equals(location, ignoreCase = true) }
+            if (here.isEmpty()) {
+                return miss("Serial $value is not expected at $location", typed, unexpectedItemId = bySerial.first().itemId)
+            }
+            return routeToLine(here, BigDecimal.ONE, scanned = !typed)
+        }
+
         // Item number first: by far the common scan, and needs no network.
         var itemId = lines.firstOrNull { it.itemId.equals(value, ignoreCase = true) }?.itemId
         var perScan = BigDecimal.ONE
@@ -239,7 +275,17 @@ class CountingScanViewModel @Inject constructor(
             // Barcodes resolve against the on-device SKU cache (SkuSyncWorker) - never OData, so a
             // scan is instant and works offline.
             val resolved = itemDao.resolveBarcode(value)
-                ?: return miss("$value is not an item on this journal", typed, unexpectedItemId = value)
+            if (resolved == null) {
+                // Neither a barcode nor a line here: added as not on this journal only when it
+                // is a real item - a mis-scan or typo became a "Not on this journal" line (seen
+                // 20 Oct: "ddgter122"). With no item cache yet there is nothing to check against.
+                val known = itemDao.getItem(value) ?: itemDao.getItem(value.uppercase())
+                return when {
+                    known != null -> miss("${known.itemId} is not on this journal", typed, unexpectedItemId = known.itemId)
+                    itemDao.itemCount() == 0 -> miss("$value is not on this journal", typed, unexpectedItemId = value)
+                    else -> miss("$value is not an item in D365FO - nothing added.", typed, always = true)
+                }
+            }
             perScan = inInventoryUnit(
                 resolved,
                 resolved.quantityPerScan.toBigDecimalOrNull()?.takeIf { it.signum() > 0 } ?: BigDecimal.ONE,
@@ -251,6 +297,7 @@ class CountingScanViewModel @Inject constructor(
                     "${resolved.itemId} (barcode $value) is not on this journal",
                     typed,
                     unexpectedItemId = resolved.itemId,
+                    unexpectedVariant = resolved.variant,
                 )
         }
 
@@ -270,7 +317,7 @@ class CountingScanViewModel @Inject constructor(
         }
         val ofVariant = matching.filter { it.variant.acceptsScanOf(scannedVariant) }
         if (ofVariant.isEmpty()) {
-            return miss("$itemId ${scannedVariant.label} is not on this journal", typed, unexpectedItemId = itemId)
+            return miss("$itemId ${scannedVariant.label} is not on this journal", typed, unexpectedItemId = itemId, unexpectedVariant = scannedVariant)
         }
         return routeToLine(ofVariant, perScan, scanned = !typed)
     }
@@ -299,16 +346,26 @@ class CountingScanViewModel @Inject constructor(
     }
 
     private fun addScanned(line: CountLine, perScan: BigDecimal) {
-        viewModelScope.launch {
+        // ATOMIC + NonCancellable around the writes - see ReceivingFlowViewModel.persist.
+        viewModelScope.launch(start = kotlinx.coroutines.CoroutineStart.ATOMIC) {
             val before = line.countedQuantity
             val now = (before?.toBigDecimalOrNull() ?: BigDecimal.ZERO) + perScan
             val text = now.stripTrailingZeros().toPlainString()
             val by = workerSession.session.value?.userName
-            countingDao.markLineStarted(line.journalLineId, System.currentTimeMillis())
-            countingDao.recordCount(line.journalLineId, text, by, System.currentTimeMillis())
+            kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) {
+                countingDao.markLineStarted(line.journalLineId, System.currentTimeMillis())
+                countingDao.recordCount(line.journalLineId, text, by, System.currentTimeMillis())
+            }
             lastScan = LastScan(line.journalLineId, before)
             scanFeedback.success()
-            val what = listOfNotNull(line.itemId, line.variant.label.takeIf { it.isNotBlank() }, line.locationId)
+            val what = listOfNotNull(
+                line.itemId,
+                line.variant.label.takeIf { it.isNotBlank() },
+                line.locationId?.takeIf { it.isNotBlank() },
+                // Lines of one item can differ only by batch (spot count BSP-JN-000552013).
+                line.batchId?.takeIf { it.isNotBlank() }?.let { "Batch $it" },
+                line.serialId?.takeIf { it.isNotBlank() }?.let { "Serial $it" },
+            )
                 .joinToString(" \u00B7 ")
             _message.value = ScanMessage("$what: $text counted. Tap the line to type a number.", isError = false, undoable = true)
             _refocus.update { it + 1 }
@@ -482,16 +539,52 @@ class CountingScanViewModel @Inject constructor(
 
     // -- Not on this journal ----------------------------------------------------------------------
 
-    fun openUnexpected(itemId: String? = null) {
+    fun openUnexpected(itemId: String? = null, variant: com.d365fo.mobileops.domain.model.ProductVariant? = null) {
         if (!flags.countExceptions || state.value.locked) return
         _message.value = null
+        val item = itemId.orEmpty()
         _ui.update {
-            it.copy(unexpected = UnexpectedItemPrompt(itemId.orEmpty(), state.value.selectedLocation))
+            it.copy(unexpected = UnexpectedItemPrompt(item, state.value.selectedLocation ?: soleLocation))
+        }
+        // The item's variants, so the one found can be chosen (14 Oct: Dm001 was recorded without
+        // its configuration and could not go on the journal).
+        if (item.isNotBlank()) viewModelScope.launch {
+            val variants = variantsOf(item)
+            _ui.update { ui ->
+                ui.copy(unexpected = ui.unexpected?.takeIf { it.itemId == item }?.copy(
+                    variants = variants,
+                    variant = variant?.takeIf { v -> !v.isEmpty && variants.any { it.sameAs(v) } }
+                        ?: variants.singleOrNull(),
+                ) ?: ui.unexpected)
+            }
         }
     }
 
-    fun saveUnexpected(itemId: String, locationId: String, quantity: String, batchId: String, serialId: String, note: String) {
+    private suspend fun variantsOf(itemId: String): List<com.d365fo.mobileops.domain.model.ProductVariant> =
+        itemDao.variantsOf(itemId).map {
+            com.d365fo.mobileops.domain.model.ProductVariant(
+                configId = it.configId.ifBlank { null },
+                sizeId = it.sizeId.ifBlank { null },
+                colorId = it.colorId.ifBlank { null },
+                styleId = it.styleId.ifBlank { null },
+            )
+        }.filterNot { it.isEmpty }
+
+    private fun com.d365fo.mobileops.domain.model.ProductVariant.sameAs(other: com.d365fo.mobileops.domain.model.ProductVariant) =
+        configId.orEmpty().equals(other.configId.orEmpty(), true) && sizeId.orEmpty().equals(other.sizeId.orEmpty(), true) &&
+            colorId.orEmpty().equals(other.colorId.orEmpty(), true) && styleId.orEmpty().equals(other.styleId.orEmpty(), true)
+
+    fun saveUnexpected(
+        itemId: String,
+        locationId: String,
+        quantity: String,
+        batchId: String,
+        serialId: String,
+        note: String,
+        variant: com.d365fo.mobileops.domain.model.ProductVariant? = null,
+    ) {
         viewModelScope.launch {
+            val variants = variantsOf(itemId.trim())
             val result = capture.addUnexpectedItem(
                 journalId = journalId,
                 itemId = itemId,
@@ -501,10 +594,12 @@ class CountingScanViewModel @Inject constructor(
                 serialId = serialId,
                 note = note,
                 capturedBy = workerSession.session.value?.userName,
+                variant = variant ?: com.d365fo.mobileops.domain.model.ProductVariant(),
+                variantRequired = variants.isNotEmpty(),
             )
             when (result) {
                 is UnexpectedItemResult.Invalid -> _ui.update {
-                    it.copy(unexpected = it.unexpected?.copy(itemId = itemId, locationId = locationId, error = result.message))
+                    it.copy(unexpected = it.unexpected?.copy(itemId = itemId, locationId = locationId, error = result.message, variants = variants, variant = variant))
                 }
                 is UnexpectedItemResult.Saved -> {
                     _ui.update { it.copy(unexpected = null) }
@@ -515,12 +610,81 @@ class CountingScanViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Adds one of [itemId] as not on this journal - or one more to the row already there for the
+     * same item, variant and location. An item that comes in variants needs the one found: the
+     * scanned barcode's, the only one, or the worker picks it ([UnexpectedVariantChoice]).
+     */
+    private suspend fun addNotOnJournal(itemId: String, variant: com.d365fo.mobileops.domain.model.ProductVariant?) {
+        val location = state.value.selectedLocation ?: soleLocation
+        val variants = variantsOf(itemId)
+        val found = when {
+            variants.isEmpty() -> com.d365fo.mobileops.domain.model.ProductVariant()
+            variant != null && !variant.isEmpty && variants.any { it.sameAs(variant) } -> variant
+            variants.size == 1 -> variants.single()
+            else -> {
+                _ui.update { it.copy(variantChoice = UnexpectedVariantChoice(itemId, variants, location)) }
+                return
+            }
+        }
+        addNotOnJournal(itemId, found, location)
+    }
+
+    private suspend fun addNotOnJournal(itemId: String, variant: com.d365fo.mobileops.domain.model.ProductVariant, location: String?) {
+        val total = capture.addOneNotOnJournal(
+            journalId = journalId,
+            itemId = itemId,
+            locationId = location,
+            variant = variant,
+            capturedBy = workerSession.session.value?.userName,
+        )
+        // A typed item number would stay in the box and filter the list down to nothing.
+        _query.value = ""
+        val what = listOfNotNull(itemId, variant.label.takeIf { it.isNotBlank() }).joinToString(" ")
+        _message.value = ScanMessage("$what · $total - not on this journal, added to the list.", isError = false)
+        _refocus.update { it + 1 }
+    }
+
+    fun chooseUnexpectedVariant(variant: com.d365fo.mobileops.domain.model.ProductVariant) {
+        val choice = _ui.value.variantChoice ?: return
+        _ui.update { it.copy(variantChoice = null) }
+        viewModelScope.launch { addNotOnJournal(choice.itemId, variant, choice.locationId) }
+    }
+
+    fun cancelVariantChoice() {
+        _query.value = ""
+        _ui.update { it.copy(variantChoice = null) }
+        _refocus.update { it + 1 }
+    }
+
+    /** Tap on a not-on-the-journal row: its quantity can be set, or the row removed. */
+    fun editUnexpected(clientId: String) {
+        if (state.value.locked) return
+        _ui.update { it.copy(editingException = clientId) }
+    }
+
+    fun setUnexpectedQuantity(clientId: String, text: String) {
+        val qty = text.trim().trimStart('0').ifEmpty { "0" }
+        if (text.isBlank() || text.any { !it.isDigit() }) return
+        _ui.update { it.copy(editingException = null) }
+        viewModelScope.launch {
+            if (qty == "0") capture.removeUnexpectedItem(clientId) else capture.setUnexpectedQuantity(clientId, qty)
+            _refocus.update { it + 1 }
+        }
+    }
+
+    fun closeUnexpectedEdit() {
+        _ui.update { it.copy(editingException = null) }
+        _refocus.update { it + 1 }
+    }
+
     fun cancelUnexpected() {
         _ui.update { it.copy(unexpected = null) }
         _refocus.update { it + 1 }
     }
 
     fun removeUnexpected(clientId: String) {
+        _ui.update { it.copy(editingException = null) }
         viewModelScope.launch { capture.removeUnexpectedItem(clientId) }
     }
 
@@ -567,14 +731,17 @@ class CountingScanViewModel @Inject constructor(
 
     /** OK in the popup. Whole pieces: digits only; "007" is 7; blank clears the count. */
     fun confirmQuantity(journalLineId: String, text: String) {
-        viewModelScope.launch {
+        // ATOMIC + NonCancellable around the write - see ReceivingFlowViewModel.persist.
+        viewModelScope.launch(start = kotlinx.coroutines.CoroutineStart.ATOMIC) {
             if (!state.value.locked) {
                 val digits = text.filter { it.isDigit() }.take(MAX_DIGITS)
                 val value = if (digits.isEmpty()) null else digits.trimStart('0').ifEmpty { "0" }
                 val by = workerSession.session.value?.userName
                 val at = System.currentTimeMillis()
-                countingDao.recordCount(journalLineId, value, by, at)
-                if (value == null) countingDao.recordMarked(journalLineId, false, by, at)
+                kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) {
+                    countingDao.recordCount(journalLineId, value, by, at)
+                    if (value == null) countingDao.recordMarked(journalLineId, false, by, at)
+                }
             }
             _prompt.value = null
             _refocus.update { it + 1 }
@@ -588,7 +755,23 @@ class CountingScanViewModel @Inject constructor(
 
     /** A scan that did not land. Silent for typed text, which may just be a search term. */
     /** Typed misses stay silent (typing filters the list) unless [always] - e.g. the location prompt. */
-    private fun miss(message: String, typed: Boolean, unexpectedItemId: String? = null, always: Boolean = false) {
+    /** The journal's one location, when all its lines are in one - "Not on this journal" starts there. */
+    private var soleLocation: String? = null
+
+    private fun miss(
+        message: String,
+        typed: Boolean,
+        unexpectedItemId: String? = null,
+        always: Boolean = false,
+        unexpectedVariant: com.d365fo.mobileops.domain.model.ProductVariant? = null,
+    ) {
+        // An item scanned or typed that is not on the journal is added to the list as such - no
+        // form (user, 14 Oct); it used to be an error with a button to a form.
+        if (unexpectedItemId != null && flags.countExceptions && !state.value.locked) {
+            if (!typed) scanFeedback.warning()
+            viewModelScope.launch { addNotOnJournal(unexpectedItemId, unexpectedVariant) }
+            return
+        }
         if (typed && unexpectedItemId == null && !always) return
         _message.value = ScanMessage(
             message,
@@ -638,6 +821,8 @@ data class CountingScanState(
     val exceptions: List<CountExceptionEntity> = emptyList(),
     val emptyPrompt: EmptyLocationPrompt? = null,
     val unexpected: UnexpectedItemPrompt? = null,
+    val variantChoice: UnexpectedVariantChoice? = null,
+    val editingException: CountExceptionEntity? = null,
     /** Stock-freeze banner text, from the server's freeze state. */
     val freezeBanner: String? = null,
     /** Location types on this journal, when there is more than one - for the filter chips. */

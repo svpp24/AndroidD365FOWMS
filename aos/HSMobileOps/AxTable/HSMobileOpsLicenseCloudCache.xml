@@ -1,0 +1,141 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxTable xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsLicenseCloudCache</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// The last reachable answer from the vendor's CheckLicense Azure Function - what
+/// HSMobileOpsLicense::verifyWithAttestation falls back to for a short grace period when the
+/// Function genuinely cannot be reached (network outage, Azure incident), so a transient
+/// connectivity gap between AOS and Azure does not lock out an entire customer's fleet the
+/// moment it happens.
+///
+/// One row, environment-wide - same SaveDataPerCompany=No shape as HSMobileOpsLicenseSetup,
+/// since there is only ever one license (and therefore one cloud verdict) per environment.
+/// Never displayed or edited directly - purely an internal cache, updated only from
+/// HSMobileOpsLicenseCloudClient's caller, never from a form.
+/// </summary>
+public class HSMobileOpsLicenseCloudCache extends common
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>find</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The one cache row, or an unsaved empty one before the first successful cloud check has
+    /// ever landed - callers treat a blank LastCheckedUtc the same as "outside the grace
+    /// period," never as a cached pass.
+    /// </summary>
+    internal static HSMobileOpsLicenseCloudCache find(boolean _forUpdate = false)
+    {
+        HSMobileOpsLicenseCloudCache cache;
+
+        cache.selectForUpdate(_forUpdate);
+
+        select firstOnly cache;
+
+        return cache;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>record</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Upserts the one cache row with a fresh reachable answer and the current UTC time - called
+    /// only after HSMobileOpsLicenseCloudClient::checkStatus() comes back with reachable = true;
+    /// an unreachable result must never overwrite the last good verdict, which is the entire
+    /// point of keeping it.
+    /// </summary>
+    internal static void record(str _licenseStatus, str _integrityVerdict, str _reasonsText)
+    {
+        HSMobileOpsLicenseCloudCache cache = HSMobileOpsLicenseCloudCache::find(true);
+
+        ttsbegin;
+
+        cache.LicenseStatus    = _licenseStatus;
+        cache.IntegrityVerdict = _integrityVerdict;
+        cache.ReasonsText      = _reasonsText;
+        cache.LastCheckedUtc   = DateTimeUtil::utcNow();
+
+        if (cache.RecId)
+        {
+            cache.update();
+        }
+        else
+        {
+            cache.insert();
+        }
+
+        ttscommit;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>withinGracePeriod</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Whether the cached row is recent enough to be trusted in place of a live call that just
+    /// failed to reach the Function - see HSMobileOpsLicense::verifyWithAttestation. 4 hours,
+    /// deliberately shorter than the Android app's own 72-hour offline grace period
+    /// (LicenseRepository.GRACE_PERIOD_MS): AOS itself is expected to always have outbound
+    /// internet access, unlike a handheld, so a long AOS-side outage is a real incident worth
+    /// failing closed over, not something to paper over as generously as a device going out of
+    /// wifi range.
+    /// </summary>
+    internal boolean withinGracePeriod()
+    {
+        if (!this.LastCheckedUtc)
+        {
+            return false;
+        }
+
+        return DateTimeUtil::getDifference(DateTimeUtil::utcNow(), this.LastCheckedUtc) <= (4 * 60 * 60);
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+	<Label>License cloud check cache</Label>
+	<CacheLookup>NotInTTS</CacheLookup>
+	<SaveDataPerCompany>No</SaveDataPerCompany>
+	<Fields>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>LicenseStatus</Name>
+			<Label>License status</Label>
+			<HelpText>The last reachable answer from CheckLicense - Active / Suspended / Revoked / Unknown.</HelpText>
+			<StringSize>20</StringSize>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>IntegrityVerdict</Name>
+			<Label>Integrity verdict</Label>
+			<HelpText>The last reachable Play Integrity verdict - PASS / FAIL / UNVERIFIED.</HelpText>
+			<StringSize>20</StringSize>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>ReasonsText</Name>
+			<Label>Reasons</Label>
+			<HelpText>Human-readable detail behind the last cached verdict.</HelpText>
+			<StringSize>500</StringSize>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldUtcDateTime">
+			<Name>LastCheckedUtc</Name>
+			<Label>Last checked (UTC)</Label>
+			<HelpText>When the cached verdict above was last confirmed reachable.</HelpText>
+		</AxTableField>
+	</Fields>
+	<FullTextIndexes />
+	<Indexes />
+	<Mappings />
+	<Relations />
+	<StateMachines />
+</AxTable>

@@ -1,5 +1,6 @@
 package com.d365fo.mobileops.presentation.common
 
+import com.d365fo.mobileops.presentation.common.components.LineIcons
 import android.content.Intent
 import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
@@ -30,6 +31,13 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Feedback
+import androidx.compose.material.icons.outlined.CloudUpload
+import androidx.compose.material.icons.outlined.Article
+import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.material.icons.outlined.Warehouse
+import androidx.compose.material.icons.outlined.Palette
+import androidx.compose.material.icons.outlined.Link
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Add
@@ -37,6 +45,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import com.d365fo.mobileops.presentation.common.components.SquareButton as Button
 import androidx.compose.material3.AlertDialog
+import androidx.compose.runtime.LaunchedEffect
 import com.d365fo.mobileops.presentation.common.components.AppCard as Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -71,7 +80,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextDecoration
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -87,7 +95,6 @@ import com.d365fo.mobileops.domain.model.WarehouseWorkflow
 import kotlinx.coroutines.flow.Flow
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
-import com.d365fo.mobileops.data.security.AuthType
 import com.d365fo.mobileops.data.security.DisplayScale
 import com.d365fo.mobileops.data.security.IdleTimeout
 import com.d365fo.mobileops.data.security.TenantConfig
@@ -111,41 +118,65 @@ fun SettingsScreen(
     onBack: () -> Unit,
     onSignOut: (() -> Unit)? = null,
     onChangeWarehouse: () -> Unit = {},
+    /** Opens Send feedback - signed in only. */
+    onFeedback: (() -> Unit)? = null,
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val tenant by viewModel.tenant.collectAsStateWithLifecycle()
     val profiles by viewModel.profiles.collectAsStateWithLifecycle()
+    // A connection change that would wipe work not yet in D365FO asks first - see guardUnsent.
+    val unsentBlock by viewModel.unsentBlock.collectAsStateWithLifecycle()
+    unsentBlock?.let { block ->
+        com.d365fo.mobileops.presentation.common.components.UnsentWorkDialog(
+            description = block.description,
+            onKeep = viewModel::keepUnsent,
+            onDelete = viewModel::deleteUnsentAndProceed,
+        )
+    }
     val postingEnabled by viewModel.postingEnabled.collectAsStateWithLifecycle()
+    val postImmediately by viewModel.postImmediately.collectAsStateWithLifecycle()
     val worker by viewModel.worker.collectAsStateWithLifecycle()
+    val signedInAs by viewModel.signedInAs.collectAsStateWithLifecycle()
     val test by viewModel.test.collectAsStateWithLifecycle()
-    val deviceCode by viewModel.deviceCode.collectAsStateWithLifecycle()
-    val palette by viewModel.palette.collectAsStateWithLifecycle()
+    val credentialStatus by viewModel.credentialStatus.collectAsStateWithLifecycle()
     val displayScale by viewModel.displayScale.collectAsStateWithLifecycle()
     val idleTimeout by viewModel.idleTimeout.collectAsStateWithLifecycle()
-    val isAdmin by viewModel.isAdmin.collectAsStateWithLifecycle()
-
-    var url by remember(tenant.resourceUrl) { mutableStateOf(tenant.resourceUrl) }
-    var tenantId by remember(tenant.tenantId) { mutableStateOf(tenant.tenantId) }
-    var clientId by remember(tenant.clientId) { mutableStateOf(tenant.clientId) }
-
-    var dataArea by remember(worker.dataAreaId) { mutableStateOf(worker.dataAreaId) }
 
     // Which submenu is open, or null for the top-level list. Local Compose state, not a nav
     // route - Settings is reached two different ways (AppRoot's pre-sign-in gate and the
     // signed-in nav graph) and this way neither caller needs to know submenus exist.
     var openSection by remember { mutableStateOf<SettingsMenuItem?>(null) }
+    var confirmSignOut by remember { mutableStateOf(false) }
+    // Signed in, the top level is the More tab (20 Oct restyle): the greeting bar, no back arrow.
+    val isTab = onSignOut != null && openSection == null
+
+    if (confirmSignOut) {
+        AlertDialog(
+            onDismissRequest = { confirmSignOut = false },
+            title = { Text("Sign out?") },
+            text = { Text("Anything you posted is still sent to D365FO. Scans you have not posted yet stay on this device for when you sign back in.") },
+            confirmButton = {
+                com.d365fo.mobileops.presentation.common.components.DialogButtonRow(
+                    dismiss = { com.d365fo.mobileops.presentation.common.components.CancelOutlinedButton(onClick = { confirmSignOut = false }, modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget)) { Text("Cancel") } },
+                    confirm = { com.d365fo.mobileops.presentation.common.components.CancelButton(onClick = { confirmSignOut = false; onSignOut?.invoke() }, modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget)) { Text("Sign out") } },
+                )
+            },
+        )
+    }
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(openSection?.title ?: "Settings") },
+                title = { if (isTab) HomeGreeting() else Text(openSection?.title ?: "Settings") },
                 expandedHeight = WarehouseDimens.TopBarHeight,
                 navigationIcon = {
-                    IconButton(onClick = { if (openSection != null) openSection = null else onBack() }) {
-                        Icon(
-                            Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = stringResource(R.string.action_back),
-                        )
+                    if (!isTab) {
+                        IconButton(onClick = { if (openSection != null) openSection = null else onBack() }) {
+                            Icon(
+                                Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = stringResource(R.string.action_back),
+                            )
+                        }
                     }
                 },
             )
@@ -163,11 +194,31 @@ fun SettingsScreen(
 
             if (openSection == null) {
                 SettingsMenu(
+                    postingEnabled = postingEnabled,
                     showConnectionProfile = onSignOut == null,
                     showSignedInSections = onSignOut != null,
-                    // Users and their menu access are set up in D365FO (Mobile device users).
-                    showAdminCenter = false,
-                    onOpen = { openSection = it },
+                    onOpen = { if (it == SettingsMenuItem.Feedback) onFeedback?.invoke() else openSection = it },
+                )
+                if (onSignOut != null) {
+                    com.d365fo.mobileops.presentation.common.components.SquareOutlinedButton(
+                        onClick = { confirmSignOut = true },
+                        border = androidx.compose.foundation.BorderStroke(1.5.dp, WarehouseStatusColors.red),
+                        colors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(contentColor = WarehouseStatusColors.red),
+                        modifier = Modifier.fillMaxWidth().heightIn(min = WarehouseDimens.MinTouchTarget).padding(top = 4.dp),
+                    ) { Text("Sign out", fontWeight = androidx.compose.ui.text.font.FontWeight.Bold) }
+                }
+                // Which build this is - what support asks first, and what D365FO's device list records.
+                Text(
+                    text = com.d365fo.mobileops.util.AppVersion.full,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = WarehouseStatusColors.text3,
+                    modifier = Modifier.padding(top = 8.dp),
+                )
+                // The brand mark at the foot of More, like the reference app (video, 20 Oct).
+                androidx.compose.foundation.Image(
+                    painter = androidx.compose.ui.res.painterResource(id = R.drawable.ic_app_logo),
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxWidth().height(44.dp).padding(top = 4.dp),
                 )
             }
 
@@ -177,140 +228,27 @@ fun SettingsScreen(
             // device at a different D365FO environment from the Settings tab; that is fleet
             // commissioning, done once before anyone signs in, not a day-to-day setting.
             if (openSection == SettingsMenuItem.ConnectionProfile && onSignOut == null) {
-                SettingsSection("D365FO environment") {
-                    // The fields below always edit the profile selected here - switching to a
-                    // different saved profile (Dev/UAT/Prod, or any custom name) replaces them
-                    // with that profile's own values. Switching, like saving a change to the
-                    // active profile's URL, wipes local data - see SettingsViewModel's
-                    // wipeLocalData - because order and item data from two environments must
-                    // never mix. Directory (tenant) ID lives in Authentication below, not here -
-                    // one Azure AD tenant hosts every D365FO environment an org runs (DEV, UAT,
-                    // PROD all resolve the same worker sign-ins against it), so it does not vary
-                    // per environment the way the URL does.
-                    ProfileRow(
-                        profiles = profiles,
-                        activeLabel = tenant.label,
-                        onSelect = viewModel::switchProfile,
-                        onAdd = viewModel::addProfile,
-                        onDelete = viewModel::deleteProfile,
-                    )
-
-                    SettingField(
-                        label = "Environment URL",
-                        value = url,
-                        placeholder = "https://xxx.operations.dynamics.com",
-                        keyboard = KeyboardType.Uri,
-                    ) { url = it }
-
-                    // The device connects to one company, chosen before anyone signs in - this
-                    // is what decides the X-Company header on every call this device ever
-                    // makes, including the sign-in call itself. Independent of warehouse: which
-                    // warehouses exist within this company, and which one a worker is assigned,
-                    // is a backoffice decision made per worker, not something set here. See
-                    // "Assigned warehouse" below.
-                    SettingField(
-                        label = "Legal entity",
-                        value = dataArea,
-                        placeholder = "USMF",
-                        capitalize = true,
-                    ) { dataArea = it }
-                }
-
-                SettingsSection("Authentication") {
-                    // Directory (tenant) ID and Client ID together say which Azure AD app
-                    // registration, in which tenant, this device signs in against - neither one
-                    // is environment-specific the way "D365FO environment" above is, so they
-                    // live in their own section rather than beside the URL/legal entity fields.
-                    SettingField(
-                        label = "Directory (tenant) ID",
-                        value = tenantId,
-                        placeholder = "00000000-0000-0000-0000-000000000000",
-                    ) { tenantId = it }
-
-                    // Editable now rather than compiled in - a client ID is a public identifier
-                    // (an app registration's own name, not a secret), so there's nothing
-                    // sensitive about it being visible on a handheld. Lets a device be pointed
-                    // at a different app registration without a rebuild.
-                    SettingField(
-                        label = "Client ID",
-                        value = clientId,
-                        placeholder = "00000000-0000-0000-0000-000000000000",
-                    ) { clientId = it }
-
-                    // This device's own identity to Azure AD - still not a worker sign-in. The
-                    // person authenticates separately on the worker sign-in screen against
-                    // HSMobileOpsUser; offering a Microsoft sign-in there would ask a warehouse
-                    // worker for an account the fleet does not have. Device-code only now - no
-                    // long-lived secret sits on any handheld, at the cost of an interactive step
-                    // and Azure AD's own admin-consent/public-client-flow setup.
+                // One profile = one D365FO environment: its URL, company and app registrations,
+                // all from that environment's connection QR code. Scanning a code adds the
+                // profile (or updates it) and makes it the one in use.
+                SettingsSection("Connection") {
                     Text(
-                        text = "One person signs in once, on any device with a browser - " +
-                            "this handheld only shows a short code.",
+                        text = "Each profile is one D365FO environment - its URL, company and app registrations " +
+                            "come from its connection QR code. Scan a code to add a profile or update it.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = WarehouseStatusColors.text3,
                     )
-
-                    TestResult(test)
-
-                    // No separate save step - signing in saves whatever is currently typed. See
-                    // SettingsViewModel.startDeviceCodeSignIn's own doc comment for why.
-                    DeviceCodeSection(
-                        state = deviceCode,
-                        onStart = {
-                            viewModel.startDeviceCodeSignIn(
-                                TenantConfig(
-                                    label = tenant.label,
-                                    resourceUrl = url.trim(),
-                                    tenantId = tenantId.trim(),
-                                    clientId = clientId.trim(),
-                                    authType = AuthType.DEVICE_CODE,
-                                ),
-                            )
-                        },
-                        onCancel = viewModel::cancelDeviceCodeSignIn,
-                    )
+                    ConnectionQrSetup()
                 }
 
-                // Plain persistence, no sign-in attached - see SettingsViewModel.saveConnection's
-                // own doc comment for why this exists on top of the "save and sign in"/"save and
-                // test" buttons above: those are the *only* save path otherwise, and a typed edit
-                // is silently lost the moment this screen is left (or the process dies) without
-                // tapping one of them - confirmed live. Sits below both connection sections since
-                // it commits everything in both at once (environment URL/legal entity as well as
-                // tenant/client ID), not just Authentication's own fields.
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(WarehouseDimens.ItemSpacing),
-                ) {
-                    CancelOutlinedButton(
-                        onClick = {
-                            url = tenant.resourceUrl
-                            tenantId = tenant.tenantId
-                            clientId = tenant.clientId
-                            dataArea = worker.dataAreaId
-                        },
-                        modifier = Modifier.weight(1f).heightIn(min = 56.dp),
-                    ) {
-                        Text("Cancel")
-                    }
-                    ConfirmButton(
-                        onClick = {
-                            viewModel.saveConnection(
-                                TenantConfig(
-                                    label = tenant.label,
-                                    resourceUrl = url.trim(),
-                                    tenantId = tenantId.trim(),
-                                    clientId = clientId.trim(),
-                                    authType = tenant.authType,
-                                ),
-                                dataAreaId = dataArea,
-                            )
-                        },
-                        modifier = Modifier.weight(1f).heightIn(min = 56.dp),
-                    ) {
-                        Text("Save")
-                    }
-                }
+                ConnectionProfiles(
+                    profiles = profiles,
+                    activeLabel = tenant.label,
+                    deviceCompany = worker.dataAreaId,
+                    credentialStatus = credentialStatus,
+                    test = test,
+                    viewModel = viewModel,
+                )
 
                 // Moved here from the day-to-day Settings tab: whether captures post to
                 // D365FO is a fleet-commissioning decision, made once by whoever sets the
@@ -318,18 +256,24 @@ fun SettingsScreen(
                 // off by default during commissioning itself - see ConnectionSettings'
                 // own doc comment on why a freshly connected device should hold captures
                 // rather than post them before the AOS services are confirmed deployed.
-                SettingsSection("Data posting") {
+                SettingsSection("Data posting" + tenant.label.takeIf { it.isNotBlank() }?.let { " · $it" }.orEmpty()) {
                     ToggleRow(
                         title = "Allow posting to D365FO",
                         detail = if (postingEnabled) {
-                            "Captures will post. The custom AOS services must be deployed."
+                            "Captures post to D365FO. The custom AOS services must be deployed."
                         } else {
-                            "Reads only. Captures are held on the device and never posted."
+                            "Off: captures are saved and held on this device. Nothing is sent to D365FO until " +
+                                "this is switched on - then everything held is sent."
                         },
                         checked = postingEnabled,
                         onToggle = { viewModel.setPostingEnabled(!postingEnabled) },
                     )
                 }
+
+                ConnectionReset(
+                    hasCredentials = profiles.any { it.clientId.isNotBlank() || it.tenantId.isNotBlank() },
+                    viewModel = viewModel,
+                )
             }
 
             // Display scale and lockout timeout are both fleet-commissioning settings, on
@@ -353,18 +297,30 @@ fun SettingsScreen(
                 // only so they can see what that is without having to guess from a scan failing.
                 SettingsSection("Assigned warehouse") {
                     AssignedWarehouseText(fallbackId = worker.warehouseId)
-                    TextButton(onClick = onChangeWarehouse) { Text("Change warehouse") }
+                    // An outlined full-width button, like "Show the app tour again" below it.
+                    OutlinedButton(onClick = onChangeWarehouse, modifier = Modifier.fillMaxWidth()) { Text("Change warehouse") }
                 }
 
                 // Sign-out itself lives one tap away on Home's own top bar now, not buried here -
                 // this screen keeps only who is signed in, for the rare moment that matters.
                 SettingsSection("Session") {
                     Text(
-                        text = worker.displayName.ifBlank { "Signed in" },
+                        text = signedInAs,
                         style = MaterialTheme.typography.bodyMedium,
                         color = WarehouseStatusColors.text3,
                     )
+                    // The navigation tour shows once per worker; this brings it back on Home.
+                    val tour: com.d365fo.mobileops.presentation.common.tour.TourViewModel = hiltViewModel()
+                    OutlinedButton(
+                        onClick = {
+                            tour.replay()
+                            onBack()
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text("Show the app tour again") }
                 }
+
+                OfflineSection(warehouseId = worker.warehouseId)
             }
 
             // Always reachable, regardless of sign-in or license state - see LogStore's own doc
@@ -373,13 +329,37 @@ fun SettingsScreen(
                 LogsSection()
             }
 
-            if (openSection == SettingsMenuItem.AiTraining && onSignOut != null) {
-                com.d365fo.mobileops.presentation.modules.cyclecounting.AiTrainingSection()
+            // Signed in, so it can be changed during a shift (feedback 301e5d0e); whether the
+            // device posts at all stays a commissioning switch on the sign-in screen.
+            if (openSection == SettingsMenuItem.Posting && onSignOut != null) {
+                SettingsSection("Data posting") {
+                    // Feedback 301e5d0e: synchronous or asynchronous posting.
+                    ToggleRow(
+                        title = "Post immediately",
+                        detail = if (postImmediately) {
+                            "On: each receipt or transfer is posted in D365FO while the worker waits, and a " +
+                                "refusal shows at once with D365FO's reason. Slower on a busy D365FO."
+                        } else {
+                            "Off: D365FO takes each receipt or transfer at once and posts it in the background " +
+                                "within a few minutes (or with Process pending on the Activity screen)."
+                        },
+                        checked = postImmediately,
+                        onToggle = { viewModel.setPostImmediately(!postImmediately) },
+                    )
+                    // The commissioning switch lives on the sign-in screen; say so here when it is
+                    // off - "Post immediately" On read as "posting is on" (11 Oct) while every
+                    // capture was still being held.
+                    if (!postingEnabled) {
+                        Text(
+                            text = "Posting to D365FO is switched off for this connection, so captures and counts " +
+                                "are held on this device. Switch on \"Allow posting to D365FO\" under Connection " +
+                                "settings on the sign-in screen.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = WarehouseStatusColors.amber,
+                        )
+                    }
+                }
             }
-
-            // Menu entry itself is already gated on isAdmin (see SettingsMenu's showAdminCenter
-            // param) - the onSignOut != null check here is only defence against the unreachable
-            // case of openSection somehow still pointing at AdminCenter after signing out.
 
             Row(modifier = Modifier.padding(bottom = 28.dp)) { }
         }
@@ -391,14 +371,14 @@ fun SettingsScreen(
  * app's Settings screen is small enough (four or five entries, fewer while signed out) that a
  * plain labelled row reads faster than a grid of icons would.
  */
-private enum class SettingsMenuItem(val title: String) {
-    ConnectionProfile("Connection & profile"),
-    Appearance("Appearance"),
-    Session("My warehouse & sign-in"),
-    Lockout("Lockout settings"),
-    Logs("Logs"),
-    AiTraining("AI training data"),
-    AdminCenter("Admin Center"),
+private enum class SettingsMenuItem(val title: String, val icon: androidx.compose.ui.graphics.vector.ImageVector) {
+    ConnectionProfile("Connection & profile", LineIcons.Link),
+    Appearance("Appearance", LineIcons.Palette),
+    Session("My warehouse & sign-in", LineIcons.Warehouse),
+    Lockout("Lockout settings", LineIcons.Lock),
+    Logs("Logs", LineIcons.About),
+    Posting("Data posting", LineIcons.Posting),
+    Feedback("Send feedback", LineIcons.Feedback),
 }
 
 /**
@@ -410,62 +390,84 @@ private enum class SettingsMenuItem(val title: String) {
  */
 @Composable
 private fun SettingsMenu(
+    postingEnabled: Boolean,
     showConnectionProfile: Boolean,
     showSignedInSections: Boolean,
-    /** Only ever true alongside [showSignedInSections] - see [WorkerRole]. */
-    showAdminCenter: Boolean,
     onOpen: (SettingsMenuItem) -> Unit,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(WarehouseDimens.ItemSpacing)) {
-        // Appearance and Lockout are both fleet-commissioning settings now, on request - set
-        // once by whoever configures the device before handing it to a worker, not something
-        // to find and change mid-shift. Reachable only from the pre-sign-in ("outside") screen,
-        // same reasoning as Connection & profile and Data posting right above them there.
+    // Headed groups of rows in one white card each, icon and chevron per row (20 Oct restyle,
+    // the mock's More screen). Appearance, Lockout and Connection stay pre-sign-in only - they
+    // are set once by whoever commissions the device.
+    // A row's current value on its right, as the reference app shows "English" (video, 20 Oct).
+    val switcher: WarehouseSwitcherViewModel = hiltViewModel()
+    val session by switcher.session.collectAsStateWithLifecycle()
+    val values = mapOf(
+        SettingsMenuItem.Session to session?.selected?.warehouseId.orEmpty(),
+        SettingsMenuItem.Posting to if (postingEnabled) "On" else "Off",
+    )
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         if (showConnectionProfile) {
-            SettingsMenuRow(SettingsMenuItem.ConnectionProfile, onOpen)
-            SettingsMenuRow(SettingsMenuItem.Appearance, onOpen)
-            SettingsMenuRow(SettingsMenuItem.Lockout, onOpen)
+            SettingsGroup("Device", listOf(SettingsMenuItem.ConnectionProfile, SettingsMenuItem.Appearance, SettingsMenuItem.Lockout), onOpen)
         }
         if (showSignedInSections) {
-            SettingsMenuRow(SettingsMenuItem.Session, onOpen)
-        }
-        if (showAdminCenter) {
-            SettingsMenuRow(SettingsMenuItem.AdminCenter, onOpen)
-        }
-        SettingsMenuRow(SettingsMenuItem.Logs, onOpen)
-        if (showSignedInSections) {
-            SettingsMenuRow(SettingsMenuItem.AiTraining, onOpen)
+            SettingsGroup("Settings", listOf(SettingsMenuItem.Session, SettingsMenuItem.Posting), onOpen, values)
+            SettingsGroup("Support", listOf(SettingsMenuItem.Feedback, SettingsMenuItem.Logs), onOpen)
+        } else {
+            SettingsGroup("Support", listOf(SettingsMenuItem.Logs), onOpen)
         }
     }
 }
 
 @Composable
-private fun SettingsMenuRow(item: SettingsMenuItem, onOpen: (SettingsMenuItem) -> Unit) {
-    Card(
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+private fun SettingsGroup(
+    title: String,
+    items: List<SettingsMenuItem>,
+    onOpen: (SettingsMenuItem) -> Unit,
+    values: Map<SettingsMenuItem, String> = emptyMap(),
+) {
+    Text(
+        title,
+        style = MaterialTheme.typography.titleLarge,
+        fontWeight = androidx.compose.ui.text.font.FontWeight.ExtraBold,
+        modifier = Modifier.padding(top = 6.dp),
+    )
+    Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable { onOpen(item) },
+            .background(androidx.compose.ui.graphics.Color.White, androidx.compose.foundation.shape.RoundedCornerShape(10.dp)),
     ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp)
-                .heightIn(min = WarehouseDimens.MinTouchTarget),
-        ) {
-            Text(
-                text = item.title,
-                style = MaterialTheme.typography.titleMedium,
-                modifier = Modifier.weight(1f),
-            )
-            Icon(
-                Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                contentDescription = null,
-                tint = WarehouseStatusColors.text3,
-            )
+        items.forEachIndexed { i, item ->
+            if (i > 0) androidx.compose.material3.HorizontalDivider(color = WarehouseStatusColors.border.copy(alpha = 0.45f))
+            SettingsMenuRow(item, onOpen, values[item].orEmpty())
         }
+    }
+}
+
+@Composable
+private fun SettingsMenuRow(item: SettingsMenuItem, onOpen: (SettingsMenuItem) -> Unit, value: String = "") {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = WarehouseDimens.MinTouchTarget)
+            .clickable { onOpen(item) }
+            .padding(horizontal = 14.dp, vertical = 6.dp),
+    ) {
+        Icon(item.icon, contentDescription = null, tint = MaterialTheme.colorScheme.onSurface)
+        Text(
+            text = item.title,
+            style = MaterialTheme.typography.bodyLarge,
+            modifier = Modifier.weight(1f),
+        )
+        if (value.isNotBlank()) {
+            Text(value, style = MaterialTheme.typography.bodyLarge, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+        }
+        Icon(
+            Icons.AutoMirrored.Filled.KeyboardArrowRight,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurface,
+        )
     }
 }
 
@@ -485,6 +487,7 @@ private fun LogsSection(viewModel: LogViewerViewModel = hiltViewModel()) {
     val clipboard = LocalClipboardManager.current
     val context = LocalContext.current
     var expandedId by remember { mutableStateOf<Long?>(null) }
+    var shown by remember { mutableStateOf(LOG_PAGE) }
 
     Column(verticalArrangement = Arrangement.spacedBy(WarehouseDimens.ItemSpacing)) {
         Row(
@@ -516,18 +519,29 @@ private fun LogsSection(viewModel: LogViewerViewModel = hiltViewModel()) {
             // Newest first, and not virtualized (LazyColumn) - this whole screen already sits
             // inside SettingsScreen's own verticalScroll, and nesting a scrollable list inside
             // another with unbounded height needs exactly the height constraints a LazyColumn
-            // does not get for free here. LogStore's own cap (3000 entries) keeps this from
-            // becoming a real problem.
-            entries.asReversed().forEach { entry ->
+            // does not get for free here. So only a page is composed at a time: LogStore keeps
+            // 2 MB (~7000 entries), and composing all of them froze the handheld for 46 s
+            // ("isn't responding", 10 Oct).
+            // Copy all still copies everything.
+            entries.asReversed().take(shown).forEach { entry ->
                 LogRow(
                     entry = entry,
                     expanded = entry.id == expandedId,
                     onToggle = { expandedId = if (expandedId == entry.id) null else entry.id },
                 )
             }
+            if (entries.size > shown) {
+                OutlinedButton(
+                    onClick = { shown += LOG_PAGE },
+                    modifier = Modifier.fillMaxWidth().heightIn(min = WarehouseDimens.MinTouchTarget),
+                ) { Text("Show ${minOf(LOG_PAGE, entries.size - shown)} more (${entries.size - shown} older)") }
+            }
         }
     }
 }
+
+/** Log rows composed per page - see LogsSection. */
+private const val LOG_PAGE = 200
 
 private val LogTimeFormatter: DateTimeFormatter =
     DateTimeFormatter.ofPattern("HH:mm:ss").withZone(ZoneId.systemDefault())
@@ -541,7 +555,7 @@ private fun LogTableHeader() {
             text = "Time",
             style = MaterialTheme.typography.labelSmall,
             color = WarehouseStatusColors.text3,
-            modifier = Modifier.width(56.dp),
+            modifier = Modifier.width(72.dp),
         )
         Text(
             text = "Lvl",
@@ -585,7 +599,7 @@ private fun LogRow(entry: LogEntry, expanded: Boolean, onToggle: () -> Unit) {
                 style = MaterialTheme.typography.bodySmall,
                 fontFamily = FontFamily.Monospace,
                 color = WarehouseStatusColors.text3,
-                modifier = Modifier.width(56.dp),
+                modifier = Modifier.width(72.dp),
             )
             Text(
                 text = entry.levelLabel,
@@ -598,14 +612,14 @@ private fun LogRow(entry: LogEntry, expanded: Boolean, onToggle: () -> Unit) {
             Text(
                 text = "${entry.tag}: ${entry.message}",
                 style = MaterialTheme.typography.bodySmall,
-                maxLines = if (expanded) Int.MAX_VALUE else 1,
-                overflow = if (expanded) TextOverflow.Clip else TextOverflow.Ellipsis,
+                // Wrapped, never cut off with "…" (the app's rule); a tap adds the full time
+                // and any stack trace. 72 dp fits HH:mm:ss without breaking the seconds.
                 modifier = Modifier.weight(1f),
             )
         }
 
         if (expanded) {
-            Column(modifier = Modifier.fillMaxWidth().padding(top = 6.dp, start = 84.dp)) {
+            Column(modifier = Modifier.fillMaxWidth().padding(top = 6.dp, start = 100.dp)) {
                 Text(
                     text = entry.timestamp.toString(),
                     style = MaterialTheme.typography.bodySmall,
@@ -632,121 +646,6 @@ private fun LogEntry.toLogLine(): String =
     "$timestamp $levelLabel/$tag: $message"
 
 /**
- * The Admin Center content - the worker directory, refreshed from AOS on open (see
- * [AdminCenterRepository]'s own doc on why that read is network-required while the toggle below
- * it is not), each worker expandable to its four module switches.
- */
-@Composable
-private fun AdminCenterSection(viewModel: AdminCenterViewModel = hiltViewModel()) {
-    val workers by viewModel.workers.collectAsStateWithLifecycle()
-    val refreshing by viewModel.refreshing.collectAsStateWithLifecycle()
-    val error by viewModel.error.collectAsStateWithLifecycle()
-    var expandedUserName by remember { mutableStateOf<String?>(null) }
-
-    Column(verticalArrangement = Arrangement.spacedBy(WarehouseDimens.ItemSpacing)) {
-        error?.let {
-            ErrorBanner(message = it, onDismiss = viewModel::dismissError)
-        }
-
-        OutlinedButton(
-            onClick = viewModel::refresh,
-            enabled = !refreshing,
-            modifier = Modifier.fillMaxWidth().heightIn(min = WarehouseDimens.MinTouchTarget),
-        ) {
-            Text(if (refreshing) "Refreshing…" else "Refresh worker list")
-        }
-
-        if (workers.isEmpty() && !refreshing) {
-            Text(
-                text = "No workers loaded yet.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = WarehouseStatusColors.text3,
-            )
-        }
-
-        workers.forEach { worker ->
-            AdminWorkerCard(
-                worker = worker,
-                expanded = expandedUserName == worker.userName,
-                onToggleExpanded = {
-                    expandedUserName =
-                        if (expandedUserName == worker.userName) null else worker.userName
-                },
-                permissions = viewModel.permissionsFor(worker.userName),
-                onTogglePermission = { workflow, allowed ->
-                    viewModel.togglePermission(worker.userName, workflow, allowed)
-                },
-            )
-        }
-    }
-}
-
-/**
- * One worker: a summary row that expands, on tap, into a switch per
- * [com.d365fo.mobileops.domain.model.WarehouseWorkflow]. Absence-means-allowed applies here the
- * same way it does everywhere else this cache is read - a workflow with no row yet shows as
- * allowed, not as a state the admin has to first turn on.
- */
-@Composable
-private fun AdminWorkerCard(
-    worker: WorkerDirectoryEntity,
-    expanded: Boolean,
-    onToggleExpanded: () -> Unit,
-    permissions: Flow<List<WorkerPermissionEntity>>,
-    onTogglePermission: (WarehouseWorkflow, Boolean) -> Unit,
-) {
-    Card(
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onToggleExpanded),
-    ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = worker.displayName.ifBlank { worker.userName },
-                        style = MaterialTheme.typography.titleMedium,
-                    )
-                    Text(
-                        text = if (worker.isSupervisor) {
-                            "Supervisor · ${worker.userName}"
-                        } else {
-                            worker.userName
-                        },
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = WarehouseStatusColors.text3,
-                    )
-                }
-                Icon(
-                    Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                    contentDescription = null,
-                    tint = WarehouseStatusColors.text3,
-                )
-            }
-
-            if (expanded) {
-                val permissionState by permissions.collectAsStateWithLifecycle(initialValue = emptyList())
-                HorizontalDivider(
-                    color = WarehouseStatusColors.border,
-                    modifier = Modifier.padding(vertical = 8.dp),
-                )
-                Column {
-                    WarehouseWorkflow.entries.forEach { workflow ->
-                        val allowed = permissionState.find { it.workflow == workflow }?.allowed ?: true
-                        ToggleRow(
-                            title = workflow.label,
-                            detail = if (allowed) "Allowed" else "Blocked",
-                            checked = allowed,
-                            onToggle = { onTogglePermission(workflow, !allowed) },
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-/**
  * The saved connection profiles (Dev / UAT / Prod, or any custom name), one [FilterChip] each -
  * selected = the currently active one. Tapping a different one asks to confirm before switching,
  * since a switch wipes local data; tapping the active one does nothing, there is nothing to
@@ -755,297 +654,197 @@ private fun AdminWorkerCard(
  * three or four chips before it needs to, and a fixed single row keeps this from pushing the
  * rest of the form down every time someone adds a profile.
  */
+/**
+ * Every saved profile as a card, the one in use first. The in-use card also shows which of its
+ * app registrations this device uses and can test the connection; any card can be deleted, and
+ * an unused one can be switched to. Switching or deleting the one in use clears order and item
+ * data, so both ask first (and the view model checks for unsent work - see guardUnsent).
+ */
 @Composable
-private fun ProfileRow(
+private fun ConnectionProfiles(
     profiles: List<TenantConfig>,
     activeLabel: String,
-    onSelect: (String) -> Unit,
-    onAdd: (String) -> Unit,
-    onDelete: (String) -> Unit,
+    deviceCompany: String,
+    credentialStatus: com.d365fo.mobileops.data.security.CredentialStatus,
+    test: ConnectionTest,
+    viewModel: SettingsViewModel,
 ) {
     var switchTarget by remember { mutableStateOf<String?>(null) }
     var deleteTarget by remember { mutableStateOf<String?>(null) }
-    var addingName by remember { mutableStateOf<String?>(null) }
 
-    Row(
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        modifier = Modifier
-            .fillMaxWidth()
-            .horizontalScroll(rememberScrollState()),
-    ) {
-        profiles.forEach { profile ->
-            val isActive = profile.label == activeLabel
-            FilterChip(
-                selected = isActive,
-                onClick = { if (!isActive) switchTarget = profile.label },
-                label = { Text(profile.label) },
-                trailingIcon = if (!isActive) {
-                    {
-                        Icon(
-                            Icons.Default.Close,
-                            contentDescription = "Delete ${profile.label}",
-                            modifier = Modifier
-                                .size(16.dp)
-                                .clickable { deleteTarget = profile.label },
-                        )
-                    }
-                } else {
-                    null
-                },
+    if (profiles.isEmpty()) {
+        SettingsSection("Profiles") {
+            Text(
+                text = "No profile yet. Scan a connection QR code above to connect this device to D365FO.",
+                style = MaterialTheme.typography.bodyMedium,
             )
         }
-        FilterChip(
-            selected = false,
-            onClick = { addingName = "" },
-            leadingIcon = { Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp)) },
-            label = { Text("New") },
-        )
+    }
+
+    profiles.sortedByDescending { it.label == activeLabel }.forEach { profile ->
+        val active = profile.label == activeLabel
+        val registrations = profile.credentials.count { it.isComplete }
+        Card(
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        text = profile.label,
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.SemiBold,
+                        color = WarehouseStatusColors.accent,
+                        modifier = Modifier.weight(1f),
+                    )
+                    if (active) {
+                        com.d365fo.mobileops.presentation.common.components.StatusChip(
+                            text = "In use",
+                            color = WarehouseStatusColors.green,
+                            dimColor = WarehouseStatusColors.greenDim,
+                        )
+                    }
+                }
+                InfoRow("Environment", profile.resourceUrl.ifBlank { "Not set" })
+                InfoRow(
+                    "Company",
+                    profile.company.ifBlank { if (active) deviceCompany.ifBlank { "Not set" } else "Not set" },
+                )
+                if (registrations == 0) {
+                    Text(
+                        text = "No credentials - scan this environment's connection QR code.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = WarehouseStatusColors.amber,
+                    )
+                } else {
+                    InfoRow("App registrations", registrations.toString())
+                    InfoRow("Tenant", profile.tenantId.ifBlank { "Not set" })
+                    if (active) {
+                        // This device's one, not all of them: the slot and the last few
+                        // characters of its client ID, never a secret.
+                        InfoRow(
+                            "This device uses",
+                            "Registration ${credentialStatus.slot} of ${credentialStatus.total}" +
+                                credentialStatus.shortId.takeIf { it.isNotBlank() }?.let { " · …$it" }.orEmpty() +
+                                credentialStatus.borrowedFromSlot?.let { " (moved from $it while it is throttled)" }.orEmpty(),
+                        )
+                        if (credentialStatus.throttledReplies > 0) {
+                            InfoRow("Throttled replies since start", credentialStatus.throttledReplies.toString())
+                        }
+                    }
+                }
+                if (active) TestResult(test)
+                Row(horizontalArrangement = Arrangement.spacedBy(WarehouseDimens.ItemSpacing), modifier = Modifier.fillMaxWidth()) {
+                    if (active) {
+                        OutlinedButton(
+                            onClick = { viewModel.saveAndSignInWithSecret(profile) },
+                            enabled = profile.isComplete,
+                            modifier = Modifier.weight(1f),
+                        ) { Text("Test connection") }
+                    } else {
+                        OutlinedButton(onClick = { switchTarget = profile.label }, modifier = Modifier.weight(1f)) {
+                            Text("Use this profile")
+                        }
+                    }
+                    CancelOutlinedButton(onClick = { deleteTarget = profile.label }, modifier = Modifier.weight(1f)) {
+                        Text("Delete")
+                    }
+                }
+            }
+        }
     }
 
     switchTarget?.let { label ->
         AlertDialog(
             onDismissRequest = { switchTarget = null },
-            title = { Text("Switch to $label?") },
+            title = { Text("Use $label?") },
             text = {
                 Text(
-                    "This device will now talk to the $label environment. Data from " +
-                        "$activeLabel currently on this device will be cleared first - " +
-                        "order and item data from two environments must never mix.",
+                    "This device will work in $label from now on. Order and item data from $activeLabel on this " +
+                        "device is cleared first - data from two environments must never mix.",
                 )
             },
             confirmButton = {
-                ConfirmButton(
-                    onClick = {
-                        onSelect(label)
-                        switchTarget = null
-                    },
-                ) { Text("Switch") }
-            },
-            dismissButton = {
-                CancelOutlinedButton(onClick = { switchTarget = null }) { Text("Cancel") }
+                com.d365fo.mobileops.presentation.common.components.DialogButtonRow(
+                    dismiss = { com.d365fo.mobileops.presentation.common.components.CancelOutlinedButton(onClick = { switchTarget = null }, modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget)) { Text("Cancel") } },
+                    confirm = { com.d365fo.mobileops.presentation.common.components.ConfirmButton(onClick = {
+                    switchTarget = null
+                    viewModel.switchProfile(label)
+                }, modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget)) { Text("Use $label") } },
+                )
             },
         )
     }
 
     deleteTarget?.let { label ->
+        val active = label == activeLabel
+        val next = profiles.firstOrNull { it.label != label }?.label
         AlertDialog(
             onDismissRequest = { deleteTarget = null },
             title = { Text("Delete $label?") },
-            text = { Text("This removes the saved connection details for $label. This cannot be undone.") },
-            confirmButton = {
-                CancelButton(onClick = {
-                    onDelete(label)
-                    deleteTarget = null
-                }) { Text("Delete") }
-            },
-            dismissButton = {
-                CancelOutlinedButton(onClick = { deleteTarget = null }) { Text("Cancel") }
-            },
-        )
-    }
-
-    addingName?.let { name ->
-        AlertDialog(
-            onDismissRequest = { addingName = null },
-            title = { Text("New profile") },
             text = {
-                OutlinedTextField(
-                    value = name,
-                    onValueChange = { addingName = it },
-                    label = { Text("Name") },
-                    placeholder = { Text("e.g. Staging") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
+                Text(
+                    "Removes $label's environment URL, company and app registrations from this device." +
+                        if (active) {
+                            " " + (next?.let { "The device switches to $it" } ?: "The device has no connection until a QR code is scanned") +
+                                ", and order and item data on it is cleared."
+                        } else {
+                            ""
+                        },
                 )
             },
             confirmButton = {
-                ConfirmButton(
-                    onClick = {
-                        onAdd(name)
-                        addingName = null
-                    },
-                    enabled = name.isNotBlank(),
-                ) { Text("Add") }
-            },
-            dismissButton = {
-                CancelOutlinedButton(onClick = { addingName = null }) { Text("Cancel") }
+                com.d365fo.mobileops.presentation.common.components.DialogButtonRow(
+                    dismiss = { com.d365fo.mobileops.presentation.common.components.CancelOutlinedButton(onClick = { deleteTarget = null }, modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget)) { Text("Cancel") } },
+                    confirm = { com.d365fo.mobileops.presentation.common.components.CancelButton(onClick = {
+                    deleteTarget = null
+                    viewModel.deleteProfile(label)
+                }, modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget)) { Text("Delete") } },
+                )
             },
         )
     }
 }
 
-/** The interactive half of device-code sign-in - the code, the URL, and the wait. */
+/** Clears the credentials of every profile - see SettingsViewModel.resetConnection. Data stays. */
 @Composable
-private fun DeviceCodeSection(
-    state: DeviceCodeUiState,
-    onStart: () -> Unit,
-    onCancel: () -> Unit,
-) {
-    when (state) {
-        DeviceCodeUiState.Idle -> {
-            Button(
-                onClick = onStart,
-                modifier = Modifier.fillMaxWidth().heightIn(min = WarehouseDimens.MinTouchTarget),
-            ) {
-                Text("Sign in with Microsoft")
-            }
-        }
+private fun ConnectionReset(hasCredentials: Boolean, viewModel: SettingsViewModel) {
+    var confirm by remember { mutableStateOf(false) }
+    var unsent by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(confirm) { unsent = if (confirm) viewModel.unsentDescription() else null }
 
-        DeviceCodeUiState.Starting -> Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            CircularProgressIndicator(modifier = Modifier.size(22.dp), strokeWidth = 2.dp)
-            Text("Requesting a code…", style = MaterialTheme.typography.bodyMedium)
-        }
-
-        is DeviceCodeUiState.WaitingForUser -> Card(
-            colors = CardDefaults.cardColors(containerColor = WarehouseStatusColors.surface2),
-            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            val context = LocalContext.current
-            val clipboard = LocalClipboardManager.current
-            Column(
-                modifier = Modifier.padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Text(
-                    text = "Go to this address on any device and enter the code:",
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-                // Tappable rather than plain text a worker has to retype by hand onto a second
-                // device - opens straight in a browser, same URI the text names.
-                Text(
-                    text = state.verificationUri,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = WarehouseStatusColors.accent,
-                    textDecoration = TextDecoration.Underline,
-                    modifier = Modifier.clickable {
-                        runCatching {
-                            context.startActivity(
-                                Intent(Intent.ACTION_VIEW, state.verificationUri.toUri()),
-                            )
-                        }
-                    },
-                )
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                ) {
-                    Text(
-                        text = state.userCode,
-                        style = MaterialTheme.typography.headlineMedium,
-                        fontFamily = FontFamily.Monospace,
-                    )
-                    IconButton(
-                        onClick = {
-                            clipboard.setText(AnnotatedString(state.userCode))
-                            Toast.makeText(context, "Code copied", Toast.LENGTH_SHORT).show()
-                        },
-                    ) {
-                        Icon(Icons.Default.ContentCopy, contentDescription = "Copy code")
-                    }
-                }
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                ) {
-                    CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
-                    Text("Waiting for authorization…", style = MaterialTheme.typography.bodyMedium)
-                }
-                CancelOutlinedButton(onClick = onCancel, modifier = Modifier.fillMaxWidth()) {
-                    Text("Cancel")
-                }
-            }
-        }
-
-        is DeviceCodeUiState.SignedIn -> Card(
-            colors = CardDefaults.cardColors(containerColor = WarehouseStatusColors.surface2),
-            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                modifier = Modifier.padding(12.dp),
-            ) {
-                Text(
-                    text = state.userPrincipalName?.let { "Signed in as $it" } ?: "Signed in",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = WarehouseStatusColors.green,
-                    modifier = Modifier.weight(1f),
-                )
-                TextButton(onClick = onStart) { Text("Sign in again") }
-            }
-        }
-
-        is DeviceCodeUiState.Failed -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            ErrorBanner(message = state.reason)
-            Button(
-                onClick = onStart,
-                modifier = Modifier.fillMaxWidth().heightIn(min = WarehouseDimens.MinTouchTarget),
-            ) {
-                Text("Try again")
-            }
+    SettingsSection("Reset") {
+        Text(
+            text = "Clears the client IDs and secrets of every profile, and the offline sign-ins. Profiles, company " +
+                "and all data on this device stay.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = WarehouseStatusColors.text3,
+        )
+        OutlinedButton(onClick = { confirm = true }, enabled = hasCredentials, modifier = Modifier.fillMaxWidth()) {
+            Text("Reset connection")
         }
     }
-}
-
-/**
- * A wrapped grid of round accent swatches, one per [ColorPalette] - a tap changes
- * [WarehouseStatusColors.accent] app-wide (see [com.d365fo.mobileops.presentation.common.theme.D365MobileTheme]),
- * everything else about the theme untouched. Swatches rather than labelled buttons: the choice
- * here is entirely visual, so showing the colour says more than its name would. A gradient entry
- * ([ColorPalette.isGradient]) shows its real two-hue [ColorPalette.gradientBrush] rather than a
- * flat fill, since that swatch is exactly what [WarehouseStatusColors.accentGradient] renders
- * once picked - the swatch would otherwise misrepresent the one thing that entry is for.
- *
- * Chunked into fixed-size rows rather than a single scrolling row or a `FlowRow` - same
- * multi-row technique this file already uses for [DisplayScaleRow], now needed here too since the
- * palette has grown past what fits one row (see [ColorPalette]'s own doc comment for the count).
- */
-@Composable
-private fun PaletteRow(
-    selected: ColorPalette,
-    onSelect: (ColorPalette) -> Unit,
-) {
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        ColorPalette.entries.chunked(6).forEach { row ->
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                row.forEach { option ->
-                    val isSelected = option == selected
-                    Box(
-                        modifier = Modifier
-                            .size(40.dp)
-                            // Drawn as an actual circle primitive, not a rectangle clipped/
-                            // background-shaped to one - `clip(CircleShape)` (with or without a
-                            // brush background before or after it) confirmed live to still leave
-                            // some swatches square-cornered on this device, a
-                            // RenderNode-outline-clip quirk `drawCircle` doesn't go through at
-                            // all, since it rasterises the circle directly instead of clipping a
-                            // rectangular fill to one.
-                            .drawBehind {
-                                drawCircle(
-                                    brush = if (option.isGradient) option.gradientBrush else SolidColor(option.accent),
-                                    radius = size.minDimension / 2f,
-                                )
-                            }
-                            .border(
-                                width = if (isSelected) 3.dp else 1.dp,
-                                color = if (isSelected) MaterialTheme.colorScheme.onSurface else WarehouseStatusColors.border,
-                                shape = CircleShape,
-                            )
-                            .toggleable(
-                                value = isSelected,
-                                role = Role.RadioButton,
-                                onValueChange = { onSelect(option) },
-                            ),
-                    )
-                }
-            }
-        }
-    }
+    if (!confirm) return
+    AlertDialog(
+        onDismissRequest = { confirm = false },
+        title = { Text("Reset connection?") },
+        text = {
+            Text(
+                "Removes the tenant, client IDs and secrets of every profile, and the offline sign-ins. Scan a " +
+                    "connection QR code to use the device again." +
+                    (unsent?.let { " This device has $it - it stays here and is sent once a connection is set up again." } ?: ""),
+            )
+        },
+        confirmButton = {
+            com.d365fo.mobileops.presentation.common.components.DialogButtonRow(
+                dismiss = { com.d365fo.mobileops.presentation.common.components.CancelOutlinedButton(onClick = { confirm = false }, modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget)) { Text("Cancel") } },
+                confirm = { com.d365fo.mobileops.presentation.common.components.CancelButton(onClick = {
+                confirm = false
+                viewModel.resetConnection()
+            }, modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget)) { Text("Reset") } },
+            )
+        },
+    )
 }
 
 /**
@@ -1210,6 +1009,59 @@ private fun TestResult(test: ConnectionTest) {
  * one-off here), flat fill, a real border for definition rather than a shadow - the same
  * language [WarehouseStatusColors.border] already draws card/field edges in everywhere else.
  */
+/** What works without a connection, and what is saved for it. See OfflinePrefetcher. */
+@Composable
+private fun OfflineSection(warehouseId: String?, viewModel: OfflineReadyViewModel = hiltViewModel()) {
+    val readiness by viewModel.readiness.collectAsStateWithLifecycle()
+    SettingsSection("Offline use") {
+        Text(
+            text = "If D365FO can't be reached, workers who signed in on this device in the last " +
+                "${viewModel.offlineSignInDays} days can still sign in. Receipts, transfers and counts " +
+                "are saved on the device and sent when the connection is back.",
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        Text(
+            text = when {
+                readiness.running -> "Saving today's orders for offline use..."
+                readiness.savedAt != null && readiness.warehouseId == warehouseId ->
+                    "Saved for offline: ${readiness.purchaseOrders} purchase " +
+                        (if (readiness.purchaseOrders == 1) "order" else "orders") +
+                        " for today, ${readiness.transferOrders} transfer " +
+                        (if (readiness.transferOrders == 1) "order" else "orders") +
+                        " · ${com.d365fo.mobileops.util.Formatters.clockTime(readiness.savedAt!!)}"
+                else -> "Today's orders are saved automatically while you are connected."
+            },
+            style = MaterialTheme.typography.bodyMedium,
+            color = WarehouseStatusColors.text3,
+        )
+        readiness.error?.let {
+            Text(text = it, style = MaterialTheme.typography.bodySmall, color = WarehouseStatusColors.red)
+        }
+        // Item data for offline scanning: what the last sync brought, how long it took and what
+        // it cost the device (feedback: record count, time taken, app memory).
+        val sku = androidx.compose.runtime.remember { viewModel.lastSkuSync() }
+        Text(
+            text = sku?.let { s ->
+                val n = java.text.NumberFormat.getIntegerInstance()
+                "Item data (${if (s.full) "full" else "changes"} sync ${com.d365fo.mobileops.util.Formatters.clockTime(s.finishedAt)}): " +
+                    "${n.format(s.itemCount)} items, ${n.format(s.barcodeCount)} barcodes, ${n.format(s.variantCount)} variants · " +
+                    "${s.activeSeconds} s" + (if (s.seconds > s.activeSeconds + 5) " (${s.seconds} s with pauses)" else "") +
+                    " · peak memory ${s.peakMemoryBytes / (1024 * 1024)} MB · stored ${s.storedBytes / (1024 * 1024)} MB"
+            } ?: "Item data: not synced on this device yet - it syncs daily on Wi-Fi while charging.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = WarehouseStatusColors.text3,
+        )
+        val online = com.d365fo.mobileops.presentation.common.components.LocalSyncStatus.current?.fullyOnline != false
+        if (warehouseId != null) {
+            com.d365fo.mobileops.presentation.common.components.SquareOutlinedButton(
+                onClick = { viewModel.saveNow(warehouseId) },
+                enabled = !readiness.running && online,
+                modifier = Modifier.fillMaxWidth(),
+            ) { Text(if (online) "Save today's orders now" else "Saving needs a connection") }
+        }
+    }
+}
+
 @Composable
 private fun SettingsSection(
     title: String,
@@ -1232,51 +1084,6 @@ private fun SettingsSection(
             content()
         }
     }
-}
-
-@Composable
-private fun SettingField(
-    label: String,
-    value: String,
-    placeholder: String = "",
-    keyboard: KeyboardType = KeyboardType.Text,
-    capitalize: Boolean = false,
-    masked: Boolean = false,
-    onChange: (String) -> Unit,
-) {
-    OutlinedTextField(
-        value = value,
-        onValueChange = onChange,
-        label = { Text(label) },
-        placeholder = if (placeholder.isNotBlank()) {
-            {
-                Text(
-                    placeholder,
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontFamily = FontFamily.Monospace,
-                )
-            }
-        } else {
-            null
-        },
-        singleLine = true,
-        visualTransformation = if (masked) PasswordVisualTransformation() else VisualTransformation.None,
-        keyboardOptions = KeyboardOptions(
-            keyboardType = if (masked) KeyboardType.Password else keyboard,
-            capitalization = if (capitalize) {
-                KeyboardCapitalization.Characters
-            } else {
-                KeyboardCapitalization.None
-            },
-            autoCorrectEnabled = false,
-        ),
-        // Monospaced because these are guids and URLs — proportional type makes an O and a 0
-        // hard to tell apart, and a mistyped guid fails with an error that names neither.
-        textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
-        modifier = Modifier
-            .fillMaxWidth()
-            .heightIn(min = WarehouseDimens.MinTouchTarget),
-    )
 }
 
 @Composable
@@ -1304,5 +1111,14 @@ private fun ToggleRow(
             )
         }
         Switch(checked = checked, onCheckedChange = null)
+    }
+}
+
+/** A read-only label and value, the label above in the muted colour. */
+@Composable
+private fun InfoRow(label: String, value: String) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Text(text = label, style = MaterialTheme.typography.labelMedium, color = WarehouseStatusColors.text3)
+        Text(text = value, style = MaterialTheme.typography.bodyLarge)
     }
 }

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxService xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsSignInLogSvc</Name>
+	<Class>HSMobileOpsSignInLogService</Class>
+	<ExternalName>SignInLogService</ExternalName>
+	<Namespace>http://schemas.hs.com/mobileops</Namespace>
+	<ServiceOperations>
+		<AxServiceOperation>
+			<Name>logSession</Name>
+			<Method>logSession</Method>
+		</AxServiceOperation>
+	</ServiceOperations>
+</AxService>

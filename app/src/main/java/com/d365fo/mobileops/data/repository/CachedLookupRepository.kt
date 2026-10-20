@@ -250,12 +250,4 @@ class CachedLookupRepository @Inject constructor(
         siteId = siteId,
     )
 
-    /** Unused today; kept so a caller can distinguish "no warehouses" from "never fetched". */
-    suspend fun warehousesCachedAt(): Long? =
-        withContext(ioDispatcher) { runCatching { warehouseDao.cachedAt() }.getOrNull() }
-
-    private companion object {
-        @Suppress("unused")
-        val OFFLINE = AppFailure.Offline()
-    }
 }

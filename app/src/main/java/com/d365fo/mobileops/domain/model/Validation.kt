@@ -41,10 +41,6 @@ sealed interface ValidationOutcome {
         val rawValue: String? = null,
     ) : ValidationOutcome
 
-    val isValid: Boolean get() = this is Valid
-    val blocksProgress: Boolean
-        get() = this is Invalid && severity == ValidationSeverity.HARD
-
     /** True when a supervisor PIN would let the worker continue. */
     val isOverridable: Boolean
         get() = this is Invalid && severity == ValidationSeverity.SOFT
@@ -80,10 +76,6 @@ class ValidationChain private constructor(
         private val checks = mutableListOf<suspend () -> ValidationOutcome>()
 
         fun check(block: suspend () -> ValidationOutcome) = apply { checks.add(block) }
-
-        /** Adds a check only when [condition] holds — keeps call sites free of if-nesting. */
-        fun checkIf(condition: Boolean, block: suspend () -> ValidationOutcome) =
-            apply { if (condition) checks.add(block) }
 
         fun build() = ValidationChain(checks.toList())
     }

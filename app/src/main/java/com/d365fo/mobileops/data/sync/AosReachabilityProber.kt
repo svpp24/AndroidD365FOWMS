@@ -45,6 +45,12 @@ class AosReachabilityProber @Inject constructor(
     private val client = OkHttpClient.Builder()
         .certificatePinner(certificatePinner)
         .addInterceptor(reachabilityInterceptor)
+        // Debug builds only: a simulated outage must fail the probe too, as a real one would.
+        .apply {
+            if (com.d365fo.mobileops.BuildConfig.DEBUG) {
+                addInterceptor(com.d365fo.mobileops.data.remote.interceptor.SimulatedOutage)
+            }
+        }
         .connectTimeout(10, TimeUnit.SECONDS)
         .readTimeout(10, TimeUnit.SECONDS)
         .build()
@@ -60,7 +66,11 @@ class AosReachabilityProber @Inject constructor(
         if (resourceUrl.isBlank()) return
         withContext(Dispatchers.IO) {
             runCatching {
-                client.newCall(Request.Builder().url(resourceUrl).build()).execute().close()
+                client.newCall(
+                    Request.Builder().url(resourceUrl)
+                        .tag(com.d365fo.mobileops.data.remote.interceptor.ReachabilityProbe::class.java, com.d365fo.mobileops.data.remote.interceptor.ReachabilityProbe)
+                        .build(),
+                ).execute().close()
             }
         }
     }

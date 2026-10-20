@@ -11,14 +11,10 @@ object Constants {
      *  chunk or it would be 10,000+ individual transactions. */
     const val SKU_SYNC_BATCH_SIZE = 5000
 
-    /** OData */
-    const val ODATA_PAGE_SIZE = 500          // master-data pull chunk
     const val ORDER_PAGE_SIZE = 50           // order list page
     const val ODATA_BATCH_WRITE_SIZE = 50
     const val MAX_CONCURRENT_REQUESTS = 10
 
-    /** Sync */
-    const val SYNC_INTERVAL_SECONDS = 60L
     const val MAX_RETRY_COUNT = 8
     val BACKOFF_LADDER_MINUTES = longArrayOf(1, 5, 15, 60)
 
@@ -30,16 +26,8 @@ object Constants {
      *  gated, so it can never repeat the bandwidth contention that got the old one killed. */
     const val WORK_SYNC_SKU_MASTER = "d365.sync.skumaster"
 
-    /** Caching */
-    const val ONHAND_STALE_AFTER_MS = 5 * 60 * 1000L
-    const val ORDER_STATUS_STALE_AFTER_MS = 60 * 60 * 1000L
-
     /** Security */
     const val DEFAULT_IDLE_LOCK_MS = 5 * 60 * 1000L
-    const val SUPERVISOR_PIN_MAX_ATTEMPTS = 3
-    const val SUPERVISOR_PIN_LOCKOUT_MS = 60 * 1000L
 
-    /** UX */
-    const val MIN_TOUCH_TARGET_DP = 56
     const val SCAN_DEBOUNCE_MS = 250L
 }

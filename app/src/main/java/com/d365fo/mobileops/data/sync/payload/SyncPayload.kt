@@ -53,51 +53,6 @@ data class ReceiptLinePayload(
 )
 
 @Serializable
-@SerialName("arrival_journal")
-data class ArrivalJournalPayload(
-    override val idempotencyKey: String,
-    override val dataAreaId: String,
-    val journalId: String,
-    val journalNameId: String,
-    val journalDate: String,
-    val deviceId: String,
-    val lines: List<JournalLinePayload>,
-) : SyncPayload
-
-@Serializable
-@SerialName("inventory_journal")
-data class InventoryJournalPayload(
-    override val idempotencyKey: String,
-    override val dataAreaId: String,
-    val journalId: String,
-    val journalNameId: String,
-    /** MOVEMENT | ADJUSTMENT | COUNTING | TRANSFER */
-    val journalType: String,
-    val journalDate: String,
-    val deviceId: String,
-    val lines: List<JournalLinePayload>,
-) : SyncPayload
-
-@Serializable
-data class JournalLinePayload(
-    val lineNumber: Int,
-    val itemNumber: String,
-    val quantity: Double,
-    val unitSymbol: String,
-    val countedQuantity: Double? = null,
-    val siteId: String? = null,
-    val warehouseId: String? = null,
-    val locationId: String? = null,
-    val batchNumber: String? = null,
-    val serialNumber: String? = null,
-    val reasonCode: String? = null,
-    val offsetAccount: String? = null,
-    val toSiteId: String? = null,
-    val toWarehouseId: String? = null,
-    val toLocationId: String? = null,
-)
-
-@Serializable
 @SerialName("transfer_ship")
 data class TransferShipPayload(
     override val idempotencyKey: String,
@@ -133,28 +88,8 @@ data class TransferLinePayload(
     /** One id per unit for a serial-tracked item, so a quantity of five carries five ids. */
     val serialNumbers: List<String> = emptyList(),
     val locationId: String? = null,
-)
-
-@Serializable
-@SerialName("packing_slip")
-data class PackingSlipPayload(
-    override val idempotencyKey: String,
-    override val dataAreaId: String,
-    val salesOrderNumber: String,
-    val packingSlipDate: String,
-    val deviceId: String,
-    val lines: List<PackingSlipLinePayload>,
-) : SyncPayload
-
-@Serializable
-data class PackingSlipLinePayload(
-    val lineNumber: Double,
-    val itemNumber: String,
-    val deliverNowQuantity: Double,
-    val unitSymbol: String,
-    val batchNumber: String? = null,
-    val serialNumber: String? = null,
-    val locationId: String? = null,
+    /** Shipping: picked in D365FO when it was scanned - see TransferPicker. */
+    val picked: Boolean = false,
 )
 
 /**
@@ -174,3 +109,109 @@ data class SetWorkerPermissionPayload(
     val workflow: String,
     val allowed: Boolean,
 ) : SyncPayload
+
+/**
+ * A purchase order built on the handheld. Prices are D365FO's, set when it is created; a line's
+ * [OrderLinePayload.price] is only sent as an override (a supervisor, online).
+ */
+@Serializable
+@SerialName("create_purchase_order")
+data class CreatePurchaseOrderPayload(
+    override val idempotencyKey: String,
+    override val dataAreaId: String,
+    val userName: String,
+    val deviceId: String,
+    val vendorAccount: String,
+    val vendorName: String = "",
+    val warehouseId: String,
+    /** yyyy-MM-dd */
+    val deliveryDate: String,
+    val lines: List<OrderLinePayload>,
+) : SyncPayload
+
+/**
+ * Feedback from the app. The screenshot stays a file on the device ([screenshotPath]) until it is
+ * sent - a JPEG in the queue's own table would bloat every read of it.
+ */
+@Serializable
+@SerialName("send_feedback")
+data class SendFeedbackPayload(
+    override val idempotencyKey: String,
+    override val dataAreaId: String,
+    val userName: String,
+    val deviceId: String,
+    val warehouseId: String,
+    val appVersion: String,
+    val deviceModel: String,
+    val screen: String,
+    val feedbackType: String,
+    val message: String,
+    val logs: String,
+    val screenshotPath: String? = null,
+) : SyncPayload
+
+/** Confirmation of an approved purchase order (PO confirmation). */
+@Serializable
+@SerialName("confirm_purchase_order")
+data class ConfirmPurchaseOrderPayload(
+    override val idempotencyKey: String,
+    override val dataAreaId: String,
+    val userName: String,
+    val deviceId: String,
+    val purchId: String,
+) : SyncPayload
+
+/** Stock returned to a vendor: a return order D365FO creates, confirms and posts the packing slip of. */
+@Serializable
+@SerialName("create_purchase_return")
+data class CreatePurchaseReturnPayload(
+    override val idempotencyKey: String,
+    override val dataAreaId: String,
+    val userName: String,
+    val deviceId: String,
+    val vendorAccount: String,
+    val vendorName: String = "",
+    val warehouseId: String,
+    val returnReasonCode: String = "",
+    val rmaNumber: String = "",
+    val returnActionId: String = "",
+    val lines: List<OrderLinePayload>,
+) : SyncPayload
+
+/** A transfer order built on the handheld, between two of the worker's warehouses. */
+@Serializable
+@SerialName("create_transfer_order")
+data class CreateTransferOrderPayload(
+    override val idempotencyKey: String,
+    override val dataAreaId: String,
+    val userName: String,
+    val deviceId: String,
+    val fromWarehouseId: String,
+    val toWarehouseId: String,
+    /** yyyy-MM-dd */
+    val shipDate: String,
+    val receiveDate: String,
+    val lines: List<OrderLinePayload>,
+) : SyncPayload
+
+@Serializable
+data class OrderLinePayload(
+    val itemId: String,
+    val itemName: String = "",
+    val configId: String = "",
+    val sizeId: String = "",
+    val colorId: String = "",
+    val styleId: String = "",
+    val batchId: String = "",
+    val serialId: String = "",
+    /** The bin a return takes the stock from; blank for orders. */
+    val locationId: String = "",
+    val qty: Double,
+    val unitId: String = "",
+    /** Set by D365FO once priced; sent only with [priceOverride]. */
+    val price: Double? = null,
+    val priceOverride: Boolean = false,
+    val discPct: Double? = null,
+    val lineAmount: Double? = null,
+    val priceSource: String? = null,
+)

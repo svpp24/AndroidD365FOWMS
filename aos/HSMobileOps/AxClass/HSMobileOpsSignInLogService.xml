@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsSignInLogService</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Worker sign-in history from the handheld (HSMobileOpsSignInLogSvc) - see HSMobileOpsSignInLog.
+/// logSession records a session when it starts and completes it when it ends. Idempotent on
+/// SessionId: the same session sent again changes nothing it already has.
+/// </summary>
+class HSMobileOpsSignInLogService
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>logSession</Name>
+				<Source><![CDATA[
+
+    public HSMobileOpsSignInLogResponse logSession(HSMobileOpsSignInLogRequest _request)
+    {
+        HSMobileOpsSignInLogResponse response = new HSMobileOpsSignInLogResponse();
+        HSMobileOpsSignInLog         log;
+        utcdatetime                  signOut;
+
+        response.parmSuccess(false);
+        if (!_request || !_request.parmSessionId() || !_request.parmUserName() || _request.parmSignInMillis() <= 0)
+        {
+            response.parmErrorCode('INVALID_REQUEST');
+            response.parmMessage('The session had no ID, worker or sign-in time');
+            return response;
+        }
+
+        try
+        {
+            ttsbegin;
+            log = HSMobileOpsSignInLog::findBySessionId(_request.parmSessionId(), true);
+            if (!log.RecId)
+            {
+                log.clear();
+                log.SessionId       = subStr(_request.parmSessionId(), 1, 64);
+                log.UserName        = _request.parmUserName();
+                log.CompanyId       = subStr(_request.parmDataAreaId(), 1, 4);
+                log.WarehouseId     = _request.parmWarehouseId();
+                log.DeviceId        = subStr(_request.parmDeviceId(), 1, 64);
+                log.DeviceName      = subStr(_request.parmDeviceName(), 1, 121);
+                log.AppVersionName  = subStr(_request.parmAppVersionName(), 1, 32);
+                log.SignedInOffline = _request.parmSignedInOffline() ? NoYes::Yes : NoYes::No;
+                log.SignInUtc       = HSMobileOpsSignInLogService::fromMillis(_request.parmSignInMillis());
+            }
+            // The end, once: a later resend of the start does not reopen it.
+            if (_request.parmSignOutMillis() > 0 && !log.SignOutUtc)
+            {
+                signOut = HSMobileOpsSignInLogService::fromMillis(_request.parmSignOutMillis());
+                if (signOut >= log.SignInUtc)
+                {
+                    log.SignOutUtc = signOut;
+                    log.EndReason  = subStr(_request.parmEndReason(), 1, 30);
+                }
+            }
+            log.setDuration();
+            if (log.RecId)
+            {
+                log.update();
+            }
+            else
+            {
+                log.insert();
+            }
+            ttscommit;
+            response.parmSuccess(true);
+        }
+        catch (Exception::DuplicateKeyException)
+        {
+            // Sent twice at once: the other call recorded it.
+            response.parmSuccess(true);
+        }
+        catch (Exception::Error)
+        {
+            response.parmErrorCode('FAILED');
+            response.parmMessage(infolog.text(infologLine()));
+        }
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>fromMillis</Name>
+				<Source><![CDATA[
+
+    private static utcdatetime fromMillis(int64 _millis)
+    {
+        return DateTimeUtil::addSeconds(DateTimeUtil::newDateTime(mkDate(1, 1, 1970), 0), _millis div 1000);
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

@@ -1,5 +1,6 @@
 package com.d365fo.mobileops.data.repository
 
+import com.d365fo.mobileops.data.sync.PollBackoff
 import com.d365fo.mobileops.data.counting.CountSubmissions
 import com.d365fo.mobileops.data.counting.DirectCountingRepository
 import com.d365fo.mobileops.data.local.dao.JournalDao
@@ -59,6 +60,8 @@ data class CountingSubmission(
     val description: String?,
     val status: ImportJobStatus,
     val startedAt: Long,
+    /** Went to the Stock count control center for review, not into the journal. */
+    val sentForReview: Boolean = false,
 ) {
     val inProgress: Boolean
         get() = status is ImportJobStatus.Enqueued || status is ImportJobStatus.Running
@@ -67,7 +70,7 @@ data class CountingSubmission(
         get() = when (status) {
             ImportJobStatus.Enqueued -> "Submitting counts…"
             is ImportJobStatus.Running -> status.percent?.let { "Submitting counts… $it%" } ?: "Submitting counts…"
-            ImportJobStatus.Succeeded -> "Counts submitted to D365FO"
+            ImportJobStatus.Succeeded -> if (sentForReview) "Sent to the supervisor for review" else "Counts submitted to D365FO"
             is ImportJobStatus.PartiallySucceeded -> "Counts submitted, but some lines were not accepted: ${status.warning}"
             is ImportJobStatus.Failed -> status.reason
         }
@@ -190,8 +193,8 @@ class CountingDownloadTracker @Inject constructor(
             is NetworkResult.Success -> started.data
         }
 
-        repeat(POLL_ATTEMPTS_MAX) {
-            delay(POLL_INTERVAL_MS)
+        PollBackoff.delays(POLL_ATTEMPTS_MAX * POLL_INTERVAL_MS, POLL_INTERVAL_MS).forEach { wait ->
+            delay(wait)
 
             when (val poll = repository.pollExport(executionId)) {
                 is NetworkResult.Error -> return failDownload(journal, poll.failure.message)
@@ -267,6 +270,7 @@ class CountingDownloadTracker @Inject constructor(
             CountSubmissionState.FAILED -> ImportJobStatus.Failed(message ?: "The submission failed.")
         },
         startedAt = submittedAt,
+        sentForReview = resultNote?.startsWith("Sent to the supervisor for review") == true,
     )
 
     private fun CountingDownload.toActivity() = CountingActivity(

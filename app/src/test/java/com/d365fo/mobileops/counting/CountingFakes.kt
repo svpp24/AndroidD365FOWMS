@@ -191,8 +191,10 @@ class FakeCountCaptureStore(lines: List<CountLine>) : CountCaptureStore {
         }
     }
     override suspend fun saveLocationCheck(check: CountLocationCheckEntity) { checks += check }
-    override suspend fun saveException(exception: CountExceptionEntity) { exceptions += exception }
+    override suspend fun saveException(exception: CountExceptionEntity) { exceptions.removeAll { it.clientId == exception.clientId }; exceptions += exception }
     override suspend fun deleteUnsentException(clientId: String) { exceptions.removeAll { it.clientId == clientId && it.sentAt == null } }
+    override suspend fun unsentExceptions(journalId: String) = exceptions.filter { it.journalId == journalId && it.sentAt == null }
+    override suspend fun unsentExceptionById(clientId: String) = exceptions.firstOrNull { it.clientId == clientId && it.sentAt == null }
 }
 
 fun countLine(id: Int, item: String, location: String?, counted: String? = null) = CountLine(
@@ -218,6 +220,10 @@ class FakeCountTransport : CountTransport {
     val sentExceptions = mutableListOf<List<CountExceptionEntity>>()
     val sentEmptyLocations = mutableListOf<List<CountLocationCheckEntity>>()
     val sentConfirmations = mutableListOf<com.d365fo.mobileops.data.local.entity.JournalLineEntity>()
+
+    /** Non-null: the store reviews journal counts in the control center. */
+    var staged: TransportResult<com.d365fo.mobileops.data.counting.StagedCount>? = null
+    override suspend fun submitStaged(journalId: String, audit: SubmissionAudit) = staged
 
     var startCalls = 0
     val audits = mutableListOf<SubmissionAudit>()

@@ -123,33 +123,3 @@ data class OnHandDto(
     @Serializable(with = NoYesSerializer::class)
     val wmsManaged: Boolean? = null,
 )
-
-// ---------------------------------------------------------------------------------------
-// Device registration
-// ---------------------------------------------------------------------------------------
-
-/**
- * Custom AOS service. A handheld must be approved by a supervisor inside D365FO before it
- * can post anything; until then the app is read-only.
- */
-@Serializable
-data class DeviceRegistrationRequest(
-    val deviceId: String,
-    val deviceModel: String,
-    val osVersion: String,
-    val appVersion: String,
-    val userPrincipalName: String,
-)
-
-@Serializable
-data class DeviceRegistrationResponse(
-    /** PENDING_APPROVAL | APPROVED | REJECTED | REVOKED */
-    val state: String,
-    val personnelNumber: String? = null,
-    val defaultSiteId: String? = null,
-    val defaultWarehouseId: String? = null,
-    val dataAreaId: String? = null,
-    /** Supervisor override PIN, issued once on approval. */
-    val supervisorPin: String? = null,
-    val message: String? = null,
-)

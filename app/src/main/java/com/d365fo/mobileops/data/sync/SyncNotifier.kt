@@ -44,8 +44,6 @@ class SyncNotifier @Inject constructor(
 ) {
 
     fun createChannel() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
-
         val manager = context.getSystemService(NotificationManager::class.java) ?: return
 
         manager.createNotificationChannel(
@@ -101,7 +99,7 @@ class SyncNotifier @Inject constructor(
             .setAutoCancel(true)
             .setContentIntent(openApp)
             .build()
-        runCatching { NotificationManagerCompat.from(context).notify(journalId.hashCode(), notification) }
+        safeNotify(journalId.hashCode(), notification)
     }
 
     /** The ongoing notification an End count job shows while it runs in the foreground. */
@@ -149,9 +147,7 @@ class SyncNotifier @Inject constructor(
             .setContentIntent(openApp)
             .build()
 
-        runCatching {
-            NotificationManagerCompat.from(context).notify(aggregateId.hashCode(), notification)
-        }
+        safeNotify(aggregateId.hashCode(), notification)
     }
 
     /**
@@ -172,7 +168,7 @@ class SyncNotifier @Inject constructor(
             .setAutoCancel(true)
             .build()
 
-        runCatching { NotificationManagerCompat.from(context).notify(LINE_ADDED_ID, notification) }
+        safeNotify(LINE_ADDED_ID, notification)
     }
 
     /**
@@ -218,12 +214,22 @@ class SyncNotifier @Inject constructor(
             .setContentIntent(openApp)
             .build()
 
-        runCatching {
-            NotificationManagerCompat.from(context).notify(aggregateId.hashCode(), notification)
-        }
+        safeNotify(aggregateId.hashCode(), notification)
     }
 
     /** See the identical API-33+ grant check inlined in [notifyDeadLetter]; shared here too. */
+    /**
+     * Posting a notification throws SecurityException without POST_NOTIFICATIONS (API 33+, a
+     * grant the worker can refuse). A notification is never worth a crash - logged and dropped.
+     */
+    private fun safeNotify(id: Int, notification: android.app.Notification) {
+        try {
+            NotificationManagerCompat.from(context).notify(id, notification)
+        } catch (e: SecurityException) {
+            timber.log.Timber.w(e, "notification not shown: permission refused")
+        }
+    }
+
     private fun hasNotificationPermission(): Boolean =
         Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
             ActivityCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) ==
@@ -246,6 +252,11 @@ enum class SyncOperationLabel(val label: String) {
     PRODUCT_RECEIPT("Product receipt"),
     TRANSFER_SHIPMENT("Transfer shipment"),
     TRANSFER_RECEIPT("Transfer receipt"),
+    PURCHASE_ORDER("New purchase order"),
+    TRANSFER_ORDER("New transfer order"),
+    PURCHASE_CONFIRMATION("PO confirmation"),
+    FEEDBACK("Feedback"),
+    PURCHASE_RETURN("Return to vendor"),
     OTHER("Posting");
 
     companion object {
@@ -253,6 +264,11 @@ enum class SyncOperationLabel(val label: String) {
             SyncOperation.POST_PRODUCT_RECEIPT -> PRODUCT_RECEIPT
             SyncOperation.TRANSFER_ORDER_SHIP -> TRANSFER_SHIPMENT
             SyncOperation.TRANSFER_ORDER_RECEIVE -> TRANSFER_RECEIPT
+            SyncOperation.CREATE_PURCHASE_ORDER -> PURCHASE_ORDER
+            SyncOperation.CREATE_TRANSFER_ORDER -> TRANSFER_ORDER
+            SyncOperation.CONFIRM_PURCHASE_ORDER -> PURCHASE_CONFIRMATION
+            SyncOperation.SEND_FEEDBACK -> FEEDBACK
+            SyncOperation.CREATE_PURCHASE_RETURN -> PURCHASE_RETURN
             else -> OTHER
         }
     }

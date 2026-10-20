@@ -74,8 +74,51 @@ class HSMobileOpsDmfService
     public HSMobileOpsDmfResponse getExecutionErrors(HSMobileOpsDmfRequest _request)
     {
         HSMobileOpsDmfResponse response = new HSMobileOpsDmfResponse();
-        response.parmValue(DataManagementDefinitionGroupEntity::GetExecutionErrors(_request.parmExecutionId()));
+        str                    errors = DataManagementDefinitionGroupEntity::GetExecutionErrors(_request.parmExecutionId());
+
+        // GetExecutionErrors only reports staging errors. A row refused when written to the
+        // target (e.g. "Item X is locked for updates ... because it is being counted") is only
+        // in the validation log, and the app showed a bare "The run failed" - so read it there.
+        if (!errors || strLRTrim(errors) == '[]')
+        {
+            errors = HSMobileOpsDmfService::validationErrors(_request.parmExecutionId());
+        }
+        response.parmValue(errors);
         return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>validationErrors</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The execution's validation log as the same JSON shape GetExecutionErrors returns
+    /// ([{"RecordId","Field","ErrorMessage"}]), without D365FO's generic follow-up lines.
+    /// </summary>
+    private static str validationErrors(DMFExecutionId _executionId)
+    {
+        DMFStagingValidationLog log;
+        str                     json = '';
+        str                     message;
+
+        while select ErrorMessage from log
+            order by RecId
+            where log.ExecutionId == _executionId
+        {
+            message = strLRTrim(log.ErrorMessage);
+            if (strStartsWith(message, 'Results. '))
+            {
+                message = subStr(message, 10, strLen(message));
+            }
+            if (!message || strScan(message, 'validateWrite failed', 1, strLen(message)))
+            {
+                continue;
+            }
+            message = strReplace(strReplace(strReplace(strReplace(message, '\\', '\\\\'), '"', '\\"'), '\n', ' '), '\r', ' ');
+            json += (json ? ',' : '') + '{"RecordId":"","Field":"","ErrorMessage":"' + message + '"}';
+        }
+        return json ? '[' + json + ']' : '';
     }
 ]]></Source>
 			</Method>

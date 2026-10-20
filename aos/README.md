@@ -275,23 +275,97 @@ Two identities are in play and they answer different questions. The service prin
 the *person* — it is what `HSMobileOpsPostLog` records. Neither substitutes for the other: a shared
 handheld with only a service principal cannot tell you who received the pallet.
 
-## Transfer postings are full-line only, on purpose
+## Hand-written AxTable XML: element order matters
 
-`postTransfer` refuses a request whose quantity is less than the outstanding quantity on any
-line, returning `PARTIAL_UNSUPPORTED`.
+The metadata serializer reads elements in a fixed order and **silently ignores** one that comes
+after an element that sorts later. Nothing warns: Visual Studio drops it on the next save, the
+build passes, and the database sync creates the default instead. Found in October 2026:
 
-This is not an oversight. The transfer engine takes its quantity from
-`InventTransferParmTable.ShipUpdateQty`, whose values are `All` (the full outstanding quantity)
-and `PickedQty`. Neither reads the per-line `QtyShipNow` the service writes. Posting a partial
-down this path would therefore ship the **whole remaining line** — booking stock that was never
-physically moved, and doing it silently, with the device reporting success. A refused posting is a
-phone call; a silent over-ship is a discrepancy found at a count weeks later by someone with no way
-to explain it.
+- `<ExtendedDataType>` after `<Label>` was dropped, so three username columns were created as
+  nvarchar(10) instead of 50 (`HSMobileOpsLineClaim.ClaimedByUserName`,
+  `HSMobileOpsDevice.LastUserName`, `HSMobileOpsCountLineReview.ReviewedBy`).
+- On `HSMobileOpsDevice`, `<SaveDataPerCompany>` before `<ClusteredIndex>` dropped the clustered
+  index, primary index and replacement key.
 
-Lifting the restriction means creating `InventTransferParmLine` rows carrying the per-line
-quantities, then verifying against a real partial shipment on a dev box. Neither published source
-consulted creates those rows, so the field names are unverified and the behaviour is untested. Until
-someone does that test, full lines only.
+The order, as in standard ApplicationSuite tables (InventLocation, CustTable):
+
+- **Table:** `Name`, `SourceCode`, then the descriptive group alphabetically (`ConfigurationKey`,
+  `DeveloperDocumentation`, `FormRef`, `Label`, `TableGroup`, `TitleField1`, `TitleField2`), then
+  the table settings alphabetically (`CacheLookup`, `ClusteredIndex`, ..., `PrimaryIndex`,
+  `ReplacementKey`, `SaveDataPerCompany`, `TableContents`), then `DeleteActions`, `FieldGroups`,
+  `Fields`, `FullTextIndexes`, `Indexes`, `Mappings`, `Relations`, `StateMachines`.
+- **Field (`AxTableField`) and index (`AxTableIndex`):** `Name` first, the rest alphabetical.
+
+Also spell out `<AllowDuplicates>Yes</AllowDuplicates>` on every lookup index: the default is a
+unique index. Missing on `HSMobileOpsPostLog.SourceIdx` and `HSMobileOpsLineClaim.ExpiryIdx` (two
+claims made in the same second collided), and earlier on the Device warehouse index.
+
+The same silent drop hid two more hand-written mistakes, found in October 2026 by comparing with
+ApplicationSuite's own files:
+
+- **Menus.** A menu holds `<Elements>` of `AxMenuElementSubMenu` and `AxMenuElementMenuItem`
+  (with `MenuItemName`). A MainMenu extension puts its module under
+  `<Elements><AxMenuExtensionElement><MenuElement i:type="AxMenuElementMenuReference">`, followed by
+  `<MenuElementModifications />` and `<PropertyModifications />`. Ours used `<MenuItems>`, which
+  neither reads, so Mobile operations never appeared under Modules.
+- **Security.** A role lists `AxSecurityDutyReference` and `AxSecurityPrivilegeReference`, a duty
+  `AxSecurityPrivilegeReference`. A privilege grants an entry point through `<Grant>` (Correct,
+  Create, Delete, Read, Update set to Allow) and tables under `<DirectAccessPermissions>` as
+  `AxSecurityDataEntityReference`. Ours used invented names (`AxSecurityRoleDutyReference`,
+  `AccessLevel`, `<Tables>`, `HelpText`), so both roles granted nothing to anyone but a system
+  administrator. Security changes reach the database only through a security sync:
+  `SyncEngine.exe -syncmode=fullsecurity` (about 2.5 minutes on the dev VM).
+
+The licensing duty and privilege (`HSMobileOpsMaintainLicense`, `HSMobileOpsLicenseImport`) still
+use the old names; they are left to the licensing work.
+
+All HSMobileOps tables except the two licensing tables (`HSMobileOpsLicenseSetup`,
+`HSMobileOpsLicenseCloudCache`, left to the licensing work) were corrected and synced on the dev
+VM on 5 October 2026.
+
+## The registration queue is worked by a batch job
+
+`postProductReceipt` and `postTransfer` only stage a request (a Pending row in
+`HSMobileOpsPostQueue`) and answer within a second. The real registration or posting is done by
+`HSMobileOpsPostingService::processCompany`, which runs in two ways:
+
+- **`HSMobileOpsProcessPendingBatch`** - a recurring batch job, every 5 minutes, all companies.
+  Work queued on a handheld (offline included) registers even if nobody opens the app again.
+- **"Process pending"** on the Activity screen (`processPending`) - the same, at once, for the
+  device's company.
+
+Both can run at the same time. Each row is claimed first (`HSMobileOpsPostQueue::claim`, Pending
+to Processing under a row lock), so only one run ever works it. A row left in Processing for more
+than 30 minutes (a run that died part way) is failed for a person to check, never retried: its
+posting may already have committed.
+
+Setting it up: the first "Process pending" on an environment creates the job (`ensureScheduled`),
+or run `?mi=SysClassRunner&cls=HSMobileOpsProcessPendingBatch`. It shows under System
+administration > Batch jobs as "Mobile ops: process pending postings". The batch service
+(`DynamicsAxBatch`) must be running, and needs a restart after a deploy to load new code.
+
+Until 5 October 2026 there was no job and only the button processed the queue (the staging
+design of 8 September 2026). That left offline work Pending until someone opened Activity.
+
+## Transfer postings take per-line quantities, partials included
+
+Workers ship and receive part of a line (a pallet picked over two shifts, a short delivery), so
+`processTransferQueueEntry` posts exactly what was scanned and leaves the rest open on the line.
+
+It works through the "now" quantities. Every line's `QtyShipNow` / `QtyReceiveNow` is zeroed,
+the scanned lines get the scanned quantity, and the engine runs with
+`InventTransferParmTable.ShipUpdateQty = ShipNow` (or `ReceiveUpdateQty = ReceiveNow`). Those
+read the per-line now-quantity. The old setting, `All`, ignored it and posted **everything
+outstanding on the order**: one scanned line of a 520-line transfer shipped all 520 lines, and
+that is why partials used to be refused outright.
+
+On receipt, `registerTransferReceipt` registers only the received quantity, splitting an
+in-transit transaction when needed. It takes the scanned serials when the shipment carries
+serials, otherwise the scanned batch first. Registering the whole in-transit quantity would show
+stock as arrived at the location that is still on the truck.
+
+Verified on the dev box (October 2026): one line of a 520-line transfer shipped and received,
+other lines untouched.
 
 Purchase receiving *is* capable of per-line quantities — `PurchFormLetter` supports it, unlike the
 transfer engine — but it wasn't actually doing so until 4 September 2026. See below.
@@ -624,6 +698,23 @@ absolute adjusted cost. ABC_CLASS and COUNTER return `GROUPING_NOT_AVAILABLE` an
 `Tolerance` text is empty (**TODO** — they need the ABC classification and the attempt table).
 The app never computes accuracy or tolerance itself. App flag: `FEATURE_COUNT_ACCURACY`.
 
+## PO creation, PO confirmation, TO creation and purchase return (HSMobileOpsOrderCreateSvc)
+
+The handheld creates purchase orders (confirmed in the same step), transfer orders and purchase returns through `HSMobileOpsOrderCreateSvc`. Screens, operations, JSON samples, prerequisites and test cases are in [docs/order-creation.md](../docs/order-creation.md). Points worth knowing when you change it:
+
+- **Lines arrive as `LinesJson`, a string.** A `List` of a custom class marked `DataCollectionAttribute` serialises fine on the way *out*, but on the way *in* every element arrives as a `JObject`. The service then fails with an `InvalidCastException`, which surfaces as a CLR error with an empty infolog. `HSMobileOpsOrderRequest.parmLines()` parses `LinesJson` with Newtonsoft instead, the same fix as `HSMobileOpsPostRequest`.
+- **`priceLines` catches its own errors** (`PRICE_FAILED`, which names the step and the CLR message), because a price preview must never fail the worker's screen.
+- **Menu access is an allow list** (HSMobileOpsUserModulePermission): a worker with any rows sees only the modules ticked Allowed, and a worker with no rows sees every module except PO creation, TO creation, PO confirmation and Purchase return, which always need an Allowed row. The app applies it (WarehouseWorkflow.kt `blockedWorkflows`), and so do `HSMobileOpsUserModulePermission::isAllowed` and `mayCreate`.
+- **Command buttons that delete a grid row use `<Command>DeleteRecord</Command>`.** `Delete` is a different command and does nothing on a grid, which is why Remove on Mobile device users did nothing.
+- **PO confirmation runs `PurchFormLetter` (DocumentStatus::PurchaseOrder)** without an outer transaction, then rereads the order and only accepts it when `DocumentState` is Confirmed. The form letter can refuse via the infolog without throwing. The first confirmation after an AOS restart can exceed the app's 60 s timeout; the queued retry with the same key then returns "already confirmed", so nothing is confirmed twice.
+- **`count` is a reserved word in X++.** Don't use it as a variable name.
+- **Creating a PO confirms it** (`confirmCreated`, after the create has committed). A PO that lands In review is left created; a resend of the same key finishes the confirmation.
+- **Purchase return (`createPurchaseReturn`)** creates a ReturnItem order, confirms it and posts its packing slip (`completeReturn`); a resend finishes whatever step is left. Three things D365FO insists on, found the hard way:
+  - every return line needs a `ReturnActionId` ("Specify return action"; BSP's procurement default is blank);
+  - on a warehouse-management warehouse its InventDim needs the stock's `InventStatusId` ("Inventory dimension Inventory status must be specified");
+  - `ReturnItemNum` is only 10 characters (a PO number gets cut off to "BSP-PO-000"), so the packing slip ID is the return order number, not the RMA.
+- **`HSMobileOpsPurchListSvc.getOrdersForDate` rows carry `HasOpenLines`** (a line with RemainPurchPhysical > 0). Receiving's "Due today" and the offline prefetcher skip fully received POs; the PO of today inquiry still lists every order.
+
 ## Licensing
 
 **Full replacement, this session — a certificate-chain design, not the earlier single-key-per-
@@ -691,6 +782,41 @@ Visual Studio build. The single biggest open technical question: whether
 server for `HSMobileOpsPostingService::parseLines`'s `LinesJson`) parses these certificate/
 license payloads the same way — reused deliberately rather than risking an unverified JSON API,
 but not yet exercised for *this* shape of JSON specifically. See "Verification status" below.
+
+### Live revocation + device attestation, layered on top — `verifyWithAttestation`
+
+Written this session, on top of the certificate/license chain above rather than replacing it.
+Two problems the signed chain alone can't solve: revoking a single customer requires a full root
+rotation today (breaks every customer's fleet at once, no partial containment — see
+`licensing/README.md`'s "Key rotation"), and nothing checks whether the calling Android build is
+genuine rather than a reverse-engineered, resigned APK.
+
+`HSMobileOpsLicense::verifyWithAttestation(deviceId, integrityToken)` — now called by
+`HSMobileOpsUserService::signIn` and `HSMobileOpsLicenseService::registerDevice` in place of
+`verify()` directly — runs the existing local chain first, unchanged, then (only if that already
+passed) calls the vendor's own `CheckLicense` Azure Function (`HSMobileOpsLicenseCloudClient`,
+`../azure-license-function/`), which independently checks a live per-customer status row in a
+Storage Table the vendor alone controls, and decodes the device's Play Integrity token via
+Google's own API. Genuinely new for this model: **no other class here makes any outbound HTTP
+call at all** — confirmed via a full grep before writing this — so the `System.Net.Http.HttpClient`
+interop in `HSMobileOpsLicenseCloudClient` is unverified against a real AOS build; see that
+Function's own README "Verify it's actually callable" section for the curl check that has to
+happen first.
+
+A short grace-period cache (`HSMobileOpsLicenseCloudCache`, 4 hours) rides out a transient
+Azure/network outage between AOS and the Function without locking out an entire customer's fleet;
+beyond that window it fails closed. `integrityVerdict = UNVERIFIED` (no token sent, or Google's
+endpoint unreachable) never blocks sign-in on its own — only an explicit `FAIL` does — which
+matters during rollout, since every call is UNVERIFIED until the Android side ships
+`PlayIntegrityTokenProvider`. Two new `HSMobileOpsLicenseSetup` fields
+(`AzureFunctionUrl`/`AzureFunctionKey`) hold the Function's own endpoint; the key is stored
+encrypted at rest (AES-256-CBC, a compiled constant key — see `fieldEncryptionKeyBase64()`'s own
+doc comment on exactly what that does and does not protect against) so a browse of that table by
+a customer's own admin shows ciphertext, the same reasoning that moved the root key out of a
+table field in the first place.
+
+Revoking one customer live: `python wms_license_tool.py azure-register --client "..." --status
+Revoked` — see `licensing/README.md`. Not yet built or exercised against a real AOS.
 
 ## Verification status
 
@@ -876,9 +1002,10 @@ Still unproven: no call has been made *from the app itself* - every result above
 scripted probe against the same endpoints the app now calls - and **nothing has been posted**. The
 posting service has never run.
 
-Two behaviours were chosen deliberately and will look like bugs if you meet them without knowing:
+One behaviour was chosen deliberately and will look like a bug if you meet it without knowing.
+(The other one from that time, refusing partial transfers, is gone - see "Transfer postings take
+per-line quantities".)
 
-- `postTransfer` refuses a partial-quantity transfer with `PARTIAL_UNSUPPORTED` (see above).
 - The handheld has no bootstrap path. Until a row exists on the Mobile device users form, every
   credential is refused - correctly, but indistinguishably from a broken sign-in.
 
@@ -904,3 +1031,114 @@ Things still worth watching on first *run*, in the order I would check them:
   class, and both derive from `InventTransferUpdate`, so it is expected on the base.
 - `InventDimGroupSetup.isDimensionActive`, `InventTableModule::find`, and
   `PurchTable::isChangeManagementActivated`, whose signatures vary across application versions.
+
+## Inbound lists travel as JSON strings (counting and unit requests)
+
+This D365FO version can't use an inbound JSON array that binds to an X++ `List`. The bind itself
+succeeds, but the elements are CLR objects, not X++ values, so using one fails. A
+`List` of a custom class fails with `InvalidCastException: Unable to cast ... JObject to ...`
+(`HSMobileOpsPostRequest`, `HSMobileOpsOrderRequest`). A `List` of `Types::Real` fails with
+`ArgumentNullException: Value cannot be null. Parameter name: meth`. Both surface as an HTTP 500
+with an empty infolog. Every inbound list therefore travels as a `str` data member holding a
+JSON array, and the `List` getter parses it with Newtonsoft. The getter itself has no
+`DataMemberAttribute`. The app builds these strings with `rowsJson()` (`RowsJson.kt`).
+
+| Contract | JSON member(s) | Live result before the change (6 Oct 2026) |
+|---|---|---|
+| `HSMobileOpsItemUnitsRequest` | `ItemsJson` | `getItemUnits` → 500 `InvalidCastException ... HSMobileOpsItemUnitsKey` |
+| `HSMobileOpsCountReviewRequest` | `LineNumbersJson` | `reviewLines` on an open test journal → 500 `ArgumentNullException` (`meth`). It answered normally with no list, an empty list or an unknown journal, so the failure is in using the elements. |
+| `HSMobileOpsCountDirectSubmitRequest` | `LinesJson` | `submitCounts` → `NOT_IMPLEMENTED`. The stub never reads `Lines`, so the failure was latent. |
+| `HSMobileOpsCountExceptionsRequest` | `ExceptionsJson`, `EmptyLocationsJson`, `ConfirmationsJson` | `submitExceptions` → `NOT_IMPLEMENTED`. Same as above. |
+
+The probes ran from the handheld through the debug-only `ServiceProbeReceiver`
+(`app/src/debug/.../debugtools`). It POSTs a raw body with the app's own token, so the client
+secret never leaves the phone:
+
+```
+adb shell am broadcast -n com.d365fo.mobileops.debug/com.d365fo.mobileops.debugtools.ServiceProbeReceiver \
+    --es op "HSMobileOpsUnitSvc/getItemUnits" --es body64 "<base64 of the JSON body>"
+adb logcat -d -s SVCPROBE:I
+```
+
+**Deployed 6 Oct 2026 (backup `ps_bak29`, xppc Errors: 0) and re-probed.** `getItemUnits` now
+answers Success with units for real items (BSPGIFT, 8000011) and leaves an unknown item out.
+`reviewLines` with `LineNumbersJson` `[999999]` now reaches the line lookup and answers
+`LINE_NOT_FOUND`, rolling back with nothing written. `submitCounts`/`submitExceptions` answer
+`NOT_IMPLEMENTED` with the new members, as before. Their parsing code doesn't run until those
+stubs are implemented.
+
+Only send bodies that can't change data, such as unknown ids or the generator's test journals.
+When you implement `submitCounts`/`submitExceptions`, read the lists through the `parm*`
+getters, which already parse the JSON.
+
+## Handheld menus (Mobile device menus)
+
+The handheld's Home can be organised into menus and sub-menus, like the mobile device menus of
+Warehouse management. The setup is in **Inventory hub > Setup > Mobile device menus**
+(`HSMobileOpsMenu` form).
+
+- **A menu** (`HSMobileOpsMenu`) has an ID, a name (the title shown on the handheld) and lines
+  (`HSMobileOpsMenuLine`) in Sequence order. Each line is either a **Menu item**, which opens an
+  app module (`HSMobileOpsModule`), or a **Sub-menu**, which opens another menu. A module is listed
+  once per menu, and a sub-menu that leads back to its own menu is refused.
+- **Which menu a worker sees.** It's their own, set as **Handheld menu** on Mobile device users
+  (`HSMobileOpsUser.MenuId`), or else the menu marked **Default**. Only one menu can be the
+  default. With no menus at all, Home keeps its plain list of modules.
+- **Create default menus** (button on the form, `HSMobileOpsMenuSeed`) creates MAIN (the default
+  when there isn't one), which opens INBOUND (PO receiving, Transfer - receive, PO creation),
+  OUTBOUND (Transfer - ship, TO creation, Purchase return), INVENTORY (Inventory count) and
+  INQUIRY (the six inquiries). A menu ID that already exists is left alone, so running it again
+  only adds what's missing.
+- **Menu access still applies.** The app hides modules a worker may not use, and a sub-menu with
+  nothing left in it isn't shown. The server returns the whole tree (`HSMobileOpsMenuSvc/getMenu`)
+  and doesn't filter by permission, because the app already applies Menu access the same way with
+  or without menus.
+- **App.** `HandheldMenuRepository` asks for the menus at sign-in and each time Home is shown
+  (at most every 30 s, together with Menu access). It keeps the last answer per company and worker,
+  so the menus work offline. Sub-menus open as their own screen (`menu/{menuId}`,
+  `HandheldMenuScreen`), with Back to the menu they were opened from.
+- **Form notes.** The line grid is linked to the selected menu in code (`HSMobileOpsMenuLine`
+  data source `init`, and `active` on the menu data source). `SubMenuId` has no table relation to
+  `HSMobileOpsMenu`, because with two relations to the same table the grid joined on both and
+  showed nothing. The Sub-menu field has its own lookup instead. The grid shows Sequence, Menu item
+  type and Opens. Menu item or Sub-menu is set under the grid in *Selected line*, which shows only
+  the one that applies. **Sequence** (int) and **Opens** (text) are stored fields kept by the table
+  (`LineNum` is kept equal to Sequence and holds the unique order), because display and edit methods
+  render blank on this environment's forms (the license form's status fields too). Create default
+  menus also fills Sequence and Opens on lines saved before those fields existed.
+- **Verified on the dev VM (7 Oct 2026).** Create default menus made the five menus, the form
+  shows each menu's lines, and `getMenu` for 001 returns MAIN with its four sub-menus.
+
+## Transfers: several batches on one line (feedback 461bd22a, 9fb668d7)
+
+- **Ship.** Several scans of one transfer line in one posting now add up. Before, "Ship now" took
+  only the last scan's quantity, and the line's batch was the last one scanned. A line holds one
+  batch, because the batch goes on the line itself (a pick alone is refused as "must consequently
+  be specified"). So when one line is shipped from a second batch, that quantity moves onto a new
+  line of the same order with that batch (`HSMobileOpsPostingService::splitForBatch`), and each
+  line is picked and shipped with its own batch. The same applies to a single serial put on the
+  line. The original line's ordered quantity goes down by what moved.
+- **Receive.** "Receive now" also adds up across scans of one line (for example, two bins).
+  `getTransferOrder` / `getLinesForItem` return `ShippedBatches` per line when receiving: the
+  batches in transit, with quantities. At the batch scan the app refuses a batch that wasn't
+  shipped on the line, or more of it than was shipped (counting what's already scanned). A batch
+  shipped on another line of the same item (a line split when shipped) switches to that line.
+- **Outstanding count.** The Item step's "N lines outstanding" now subtracts the lines this
+  session has scanned in full. A 2-unit line scanned as 1 + 1 shows "All lines scanned".
+- **Shipped batches come from the issue side** (feedback f1afd048, ps_bak71). On BSP-TO-000000017,
+  0.58 left AAC as batch 4S2MK, but the in-transit receipt transaction said 3S6NC (a leftover of
+  the old one-line, two-batch shipping bug). Receiving against it failed with "Total received
+  quantity for item ... exceeds shipped quantity", because D365FO checks received against shipped
+  per batch. `ShippedBatches` is now shipped (issue transactions, Sold/Deducted) less received or
+  registered (receipt side), per batch. `registerTransferReceipt` registers with the scanned batch
+  when one was scanned without serials, so the received batch is the one that left.
+- **Not yet verified live.** Deployed as ps_bak70 (compile Errors 0), but no test item with two
+  batches on hand at AAC was found to ship from.
+- **Receive posting refuses an unshipped batch** (feedback 0c8c65da, ps_bak77). BSP-TO-000000020
+  shipped 4S2MK, but was received as 3S6NC from app 1.0.13, which has no batch check at the scan.
+  With physical negative inventory allowed, nothing in D365FO's posting refused it either.
+  `processTransferQueueEntry` now checks each scanned batch with
+  `HSMobileOpsPostingService::unshippedBatch` against `shippedBatchesOf` (made public). It fails
+  the entry with "Line N: batch X was not shipped on TO. Shipped: ..." or "only N of batch X is
+  left to receive". A line shipped without batches has no list and is not checked. Earlier scans
+  in the same posting are already registered, so the list has them deducted.

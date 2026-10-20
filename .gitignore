@@ -8,3 +8,15 @@ build/
 *.keystore
 *.jks
 keystore/
+
+# Connection QR inputs and outputs - they hold client secrets (tools/make_connection_qr.py)
+connection*.json
+*connection*.png
+apps.txt
+
+# iOS (ios/) - the Xcode project and Info.plist are generated from ios/project.yml by XcodeGen
+ios/*.xcodeproj/
+ios/InventoryHub/Info.plist
+ios/build/
+ios/DerivedData/
+ios/*.xcresult

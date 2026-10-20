@@ -23,6 +23,7 @@ class CountSubmitWorker @AssistedInject constructor(
     @Assisted params: WorkerParameters,
     private val runner: CountSubmitRunner,
     private val notifier: SyncNotifier,
+    private val connectionSettings: com.d365fo.mobileops.data.security.ConnectionSettings,
 ) : CoroutineWorker(context, params) {
 
     private val journalId: String? get() = inputData.getString(KEY_JOURNAL_ID)
@@ -31,6 +32,9 @@ class CountSubmitWorker @AssistedInject constructor(
 
     override suspend fun doWork(): Result {
         val id = journalId ?: return Result.failure()
+        // Posting off: the submission stays QUEUED on the device, untouched. Switching posting on
+        // enqueues it again - see CountSubmissions.resumeWaiting.
+        if (!connectionSettings.postingEnabled.value) return Result.success()
         // Refused on some Android versions when the app is in the background - the job runs anyway.
         runCatching { setForeground(getForegroundInfo()) }
             .onFailure { Timber.w(it, "count submit for %s running without foreground", id) }
