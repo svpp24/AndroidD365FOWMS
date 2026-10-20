@@ -1,0 +1,54 @@
+# Inventory hub for iPhone - the native Swift app, kept separate from the Android app (android: app/).
+# The Xcode project is generated from this file with XcodeGen, so it can be written on Windows and
+# built on GitHub's macOS runners (.github/workflows/ios.yml). Never commit the generated .xcodeproj.
+name: InventoryHub
+options:
+  bundleIdPrefix: com.d365fo
+  deploymentTarget:
+    iOS: "17.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    MARKETING_VERSION: "1.0.0"
+    CURRENT_PROJECT_VERSION: "1"
+    SWIFT_VERSION: "5.0"
+    SWIFT_STRICT_CONCURRENCY: minimal
+targets:
+  InventoryHub:
+    type: application
+    platform: iOS
+    sources:
+      - InventoryHub
+    info:
+      path: InventoryHub/Info.plist
+      properties:
+        CFBundleDisplayName: Inventory hub
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        NSCameraUsageDescription: Inventory hub uses the camera to scan item barcodes and the connection code.
+        ITSAppUsesNonExemptEncryption: false
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.d365fo.mobileops
+        TARGETED_DEVICE_FAMILY: "1"
+  InventoryHubTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - InventoryHubTests
+    dependencies:
+      - target: InventoryHub
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+schemes:
+  InventoryHub:
+    build:
+      targets:
+        InventoryHub: all
+    test:
+      targets:
+        - InventoryHubTests

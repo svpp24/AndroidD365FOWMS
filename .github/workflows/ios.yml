@@ -1,0 +1,79 @@
+# Builds and tests the iPhone app (ios/) on GitHub's macOS runners - there is no Mac in the team.
+# The Xcode project is generated from ios/project.yml by XcodeGen on every run.
+name: iOS
+
+on:
+  push:
+    paths: ["ios/**", ".github/workflows/ios.yml"]
+  pull_request:
+    paths: ["ios/**", ".github/workflows/ios.yml"]
+  workflow_dispatch:
+
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    runs-on: macos-15
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: ios
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Generate the Xcode project
+        run: |
+          brew install xcodegen
+          xcodegen generate
+
+      - name: Pick an iPhone simulator
+        id: sim
+        run: |
+          id=$(xcrun simctl list devices available -j | python3 -c '
+          import json, sys
+          devices = json.load(sys.stdin)["devices"]
+          ios = sorted((k for k in devices if "iOS" in k), key=lambda k: [int(x) for x in k.rsplit("iOS-", 1)[1].split("-")])
+          for runtime in reversed(ios):
+              for d in devices[runtime]:
+                  if d["name"].startswith("iPhone"):
+                      print(d["udid"]); sys.exit()
+          ')
+          echo "Simulator: $id"
+          echo "udid=$id" >> "$GITHUB_OUTPUT"
+
+      - name: Unit tests
+        run: |
+          set -o pipefail
+          xcodebuild test \
+            -project InventoryHub.xcodeproj -scheme InventoryHub \
+            -destination "id=${{ steps.sim.outputs.udid }}" \
+            -resultBundlePath TestResults.xcresult \
+            CODE_SIGNING_ALLOWED=NO | tee xcodebuild-test.log
+
+      - name: Build for iPhone (unsigned)
+        run: |
+          set -o pipefail
+          xcodebuild build \
+            -project InventoryHub.xcodeproj -scheme InventoryHub -configuration Release \
+            -destination "generic/platform=iOS" \
+            CODE_SIGNING_ALLOWED=NO | tee xcodebuild-device.log
+
+      - name: Simulator app for review
+        run: |
+          xcodebuild build \
+            -project InventoryHub.xcodeproj -scheme InventoryHub -configuration Debug \
+            -destination "id=${{ steps.sim.outputs.udid }}" \
+            -derivedDataPath build CODE_SIGNING_ALLOWED=NO -quiet
+          cd build/Build/Products/Debug-iphonesimulator && zip -qr ../../../../InventoryHub-simulator.zip InventoryHub.app
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ios-build
+          if-no-files-found: ignore
+          path: |
+            ios/InventoryHub-simulator.zip
+            ios/TestResults.xcresult
+            ios/*.log
