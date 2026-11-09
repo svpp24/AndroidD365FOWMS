@@ -29,7 +29,11 @@ class HidScannerBridge @Inject constructor() {
     private var lastKeyAt = 0L
     private var lastScanAtMs = 0L
 
-    private val _scans = MutableSharedFlow<RawScan>(extraBufferCapacity = 8)
+    // 64, not 8: tryEmit discards a scan once the buffer is full behind a slow collector, and a
+    // worker scanning a stack of labels can queue more than 8 while a lookup runs (redesign brief
+    // §3: rapid scanning never drops one). ScanRouter takes each one straight into its own
+    // unbounded queue; a drop that still happens is logged in publish().
+    private val _scans = MutableSharedFlow<RawScan>(extraBufferCapacity = 64)
     val scans: SharedFlow<RawScan> = _scans.asSharedFlow()
 
     /** Screens that own a text field can suspend interception while the worker types. */
@@ -103,7 +107,7 @@ class HidScannerBridge @Inject constructor() {
         // A dialog on top that is waiting for a scan gets it - not the screen underneath, which
         // would take a bin for a transfer order ("No transfer order AAC").
         modalCapture?.let { capture -> capture(scan.value); return }
-        _scans.tryEmit(scan)
+        if (!_scans.tryEmit(scan)) timber.log.Timber.w("scan dropped: buffer full (%d chars)", scan.value.length)
     }
 
     /**
