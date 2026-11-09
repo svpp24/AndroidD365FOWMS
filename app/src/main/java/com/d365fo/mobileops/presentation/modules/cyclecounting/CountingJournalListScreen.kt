@@ -450,6 +450,8 @@ private fun CountingJournalRow(
                         text = journal.journalId,
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.ExtraBold,
+                        // The document in the accent, as every Harbour row.
+                        color = WarehouseStatusColors.accent,
                     )
                     // Description, size and date on one quiet line rather than three.
                     Text(
