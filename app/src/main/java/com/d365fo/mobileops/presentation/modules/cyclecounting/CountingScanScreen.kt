@@ -784,6 +784,7 @@ private fun LocationRows(locations: List<LocationChoice>, onPick: (String) -> Un
  * "Not on this journal": what was found, where, how many. Recorded as an exception for the
  * server to resolve - the device never adds a journal line.
  */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 private fun UnexpectedItemDialog(
     prompt: UnexpectedItemPrompt,
@@ -798,43 +799,110 @@ private fun UnexpectedItemDialog(
     var serial by remember(prompt) { mutableStateOf("") }
     var note by remember(prompt) { mutableStateOf("") }
 
+    // Harbour: a white sheet-like dialog, an amber tag saying what this is, the app's field
+    // style with small labels above, variants as pills, and the gradient Record.
     AlertDialog(
         onDismissRequest = onCancel,
-        title = { Text("Not on this journal") },
+        containerColor = Color.White,
+        title = {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(
+                    item.ifBlank { "Item found" },
+                    fontWeight = FontWeight.ExtraBold,
+                    color = WarehouseStatusColors.accent,
+                )
+                com.d365fo.mobileops.presentation.common.components.StatusTag(
+                    "Not on this journal",
+                    com.d365fo.mobileops.presentation.common.components.Lead.Warn,
+                )
+            }
+        },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+            ) {
                 prompt.error?.let { ErrorBanner(message = it) }
-                OutlinedTextField(item, { item = it.trim() }, label = { Text("Item number") }, singleLine = true)
+                NjField("Item number", item, { item = it.trim() })
                 // The variant found, for an item that comes in variants (14 Oct).
                 if (prompt.variants.isNotEmpty() && item.equals(prompt.itemId, ignoreCase = true)) {
-                    Text("Variant", style = MaterialTheme.typography.labelLarge)
-                    prompt.variants.forEach { v ->
-                        androidx.compose.material3.FilterChip(
-                            selected = variant == v,
-                            onClick = { variant = v },
-                            label = { Text(v.label) },
-                        )
+                    NjLabel("Variant")
+                    androidx.compose.foundation.layout.FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        prompt.variants.forEach { v ->
+                            val on = variant == v
+                            Text(
+                                v.label,
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = if (on) Color.White else WarehouseStatusColors.accent,
+                                modifier = Modifier
+                                    .clip(androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
+                                    .background(if (on) WarehouseStatusColors.accent else WarehouseStatusColors.accentDim)
+                                    .clickable { variant = v }
+                                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                            )
+                        }
                     }
                 }
-                OutlinedTextField(location, { location = it.trim() }, label = { Text("Location") }, singleLine = true)
-                OutlinedTextField(
-                    value = quantity,
-                    onValueChange = { quantity = it.filter(Char::isDigit).take(12) },
-                    label = { Text("Quantity found") },
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                NjField("Location", location, { location = it.trim() })
+                NjField(
+                    "Quantity found",
+                    quantity,
+                    { quantity = it.filter(Char::isDigit).take(12) },
+                    keyboard = KeyboardOptions(keyboardType = KeyboardType.Number),
                 )
-                OutlinedTextField(batch, { batch = it.trim() }, label = { Text("Batch (optional)") }, singleLine = true)
-                OutlinedTextField(serial, { serial = it.trim() }, label = { Text("Serial (optional)") }, singleLine = true)
-                OutlinedTextField(note, { note = it }, label = { Text("Note (optional)") })
+                NjField("Batch (optional)", batch, { batch = it.trim() })
+                NjField("Serial (optional)", serial, { serial = it.trim() })
+                NjField("Note (optional)", note, { note = it }, singleLine = false)
             }
         },
         confirmButton = {
-            com.d365fo.mobileops.presentation.common.components.DialogButtonRow(
-                dismiss = { com.d365fo.mobileops.presentation.common.components.CancelOutlinedButton(onClick = onCancel, modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget)) { Text("Cancel") } },
-                confirm = { com.d365fo.mobileops.presentation.common.components.ConfirmButton(onClick = { onSave(item, location, quantity, batch, serial, note, variant) }, modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget)) { Text("Record") } },
-            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                com.d365fo.mobileops.presentation.common.components.DockOutlinedButton(
+                    onClick = onCancel,
+                    text = "Cancel",
+                    modifier = Modifier.weight(1f),
+                )
+                com.d365fo.mobileops.presentation.common.components.GradientButton(
+                    onClick = { onSave(item, location, quantity, batch, serial, note, variant) },
+                    modifier = Modifier.weight(1f),
+                ) { Text("Record") }
+            }
         },
+    )
+}
+
+/** A field's small label, as on the creation screens. */
+@Composable
+private fun NjLabel(text: String) = Text(
+    text,
+    style = MaterialTheme.typography.labelLarge,
+    fontWeight = FontWeight.Bold,
+    color = WarehouseStatusColors.text3,
+    modifier = Modifier.padding(top = 6.dp),
+)
+
+/** A labelled field in the app's own style - accent outline, rounded. */
+@Composable
+private fun NjField(
+    label: String,
+    value: String,
+    onChange: (String) -> Unit,
+    keyboard: KeyboardOptions = KeyboardOptions.Default,
+    singleLine: Boolean = true,
+) {
+    NjLabel(label)
+    OutlinedTextField(
+        value = value,
+        onValueChange = onChange,
+        singleLine = singleLine,
+        keyboardOptions = keyboard,
+        shape = com.d365fo.mobileops.presentation.common.components.HeroFieldShape,
+        colors = com.d365fo.mobileops.presentation.common.components.heroFieldColors(),
+        modifier = Modifier.fillMaxWidth(),
     )
 }
 
@@ -865,35 +933,34 @@ private fun LegendItem(icon: androidx.compose.ui.graphics.vector.ImageVector, ti
 /** An item found that is not on the journal, in the list like a line, marked as such. */
 @Composable
 private fun NotOnJournalRow(exception: CountExceptionEntity, onClick: (() -> Unit)?) {
-    val shape = MaterialTheme.shapes.medium
+    // A Harbour row with an amber marker and tag - in the list like a line, marked as not on it.
     val variant = com.d365fo.mobileops.domain.model.ProductVariant(exception.configId, exception.sizeId, exception.colorId, exception.styleId)
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(WarehouseStatusColors.amberDim, shape)
-            .border(1.5.dp, WarehouseStatusColors.amber, shape)
-            .then(if (onClick != null) Modifier.clip(shape).clickable(onClick = onClick) else Modifier)
-            .padding(horizontal = 10.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        Icon(Icons.Default.AddCircle, contentDescription = "Not on this journal", tint = WarehouseStatusColors.amber, modifier = Modifier.size(22.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(exception.itemId, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-            Text(
-                text = listOfNotNull(
-                    "Not on this journal",
+    com.d365fo.mobileops.presentation.common.components.ListCard {
+        com.d365fo.mobileops.presentation.common.components.LineRow(
+            title = exception.itemId,
+            status = {
+                com.d365fo.mobileops.presentation.common.components.StatusTag(
+                    if (exception.sendError != null) "Not sent" else "Not on journal",
+                    if (exception.sendError != null) com.d365fo.mobileops.presentation.common.components.Lead.Bad else com.d365fo.mobileops.presentation.common.components.Lead.Warn,
+                )
+            },
+            lines = listOf(
+                listOfNotNull(
                     variant.label.takeIf { it.isNotBlank() },
                     exception.locationId?.let { "Loc $it" },
                     exception.batchId?.let { "Batch $it" },
                     exception.serialId?.let { "Serial $it" },
-                    exception.sendError?.let { "not sent" },
                 ).joinToString(" · "),
-                style = MaterialTheme.typography.labelSmall,
-                color = WarehouseStatusColors.amber,
-            )
-        }
-        Text(exception.quantity, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            ),
+            lead = {
+                com.d365fo.mobileops.presentation.common.components.LeadDot(
+                    com.d365fo.mobileops.presentation.common.components.Lead.Warn,
+                    icon = Icons.Default.AddCircle,
+                )
+            },
+            trailing = { com.d365fo.mobileops.presentation.common.components.QtyTrail(exception.quantity, null) },
+            onClick = onClick,
+        )
     }
 }
 
@@ -907,25 +974,42 @@ private fun NotOnJournalQuantityDialog(
     var quantity by remember(exception.clientId) { mutableStateOf(exception.quantity) }
     AlertDialog(
         onDismissRequest = onCancel,
-        title = { Text(exception.itemId) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Not on this journal - quantity found", style = MaterialTheme.typography.bodyMedium)
-                OutlinedTextField(
-                    value = quantity,
-                    onValueChange = { quantity = it.filter(Char::isDigit).take(12) },
-                    label = { Text("Quantity found") },
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+        containerColor = Color.White,
+        title = {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(exception.itemId, fontWeight = FontWeight.ExtraBold, color = WarehouseStatusColors.accent)
+                com.d365fo.mobileops.presentation.common.components.StatusTag(
+                    "Not on this journal",
+                    com.d365fo.mobileops.presentation.common.components.Lead.Warn,
                 )
-                androidx.compose.material3.TextButton(onClick = onRemove) { Text("Remove from the list") }
+            }
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                NjField(
+                    "Quantity found",
+                    quantity,
+                    { quantity = it.filter(Char::isDigit).take(12) },
+                    keyboard = KeyboardOptions(keyboardType = KeyboardType.Number),
+                )
+                androidx.compose.material3.TextButton(onClick = onRemove) {
+                    Text("Remove from the list", color = WarehouseStatusColors.red, fontWeight = FontWeight.Bold)
+                }
             }
         },
         confirmButton = {
-            com.d365fo.mobileops.presentation.common.components.DialogButtonRow(
-                dismiss = { com.d365fo.mobileops.presentation.common.components.CancelOutlinedButton(onClick = onCancel, modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget)) { Text("Cancel") } },
-                confirm = { com.d365fo.mobileops.presentation.common.components.ConfirmButton(onClick = { onOk(quantity) }, enabled = quantity.isNotBlank(), modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget)) { Text("OK") } },
-            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                com.d365fo.mobileops.presentation.common.components.DockOutlinedButton(
+                    onClick = onCancel,
+                    text = "Cancel",
+                    modifier = Modifier.weight(1f),
+                )
+                com.d365fo.mobileops.presentation.common.components.GradientButton(
+                    onClick = { onOk(quantity) },
+                    enabled = quantity.isNotBlank(),
+                    modifier = Modifier.weight(1f),
+                ) { Text("OK") }
+            }
         },
     )
 }
