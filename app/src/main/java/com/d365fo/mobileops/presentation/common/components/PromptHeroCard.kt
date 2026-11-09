@@ -44,32 +44,44 @@ fun PromptHeroCard(
     pills: List<Pair<androidx.compose.ui.graphics.vector.ImageVector?, String>> = emptyList(),
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    // A white card with the prompt as its heading, the context pills, and an outlined field
-    // (Harbour design, 9 Nov).
-    Column(
-        horizontalAlignment = Alignment.Start,
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-        modifier = modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .background(Color.White)
-            .padding(horizontal = 12.dp, vertical = 12.dp),
-    ) {
-        Text(
-            text = prompt,
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.ExtraBold,
-            color = MaterialTheme.colorScheme.onSurface,
-        )
-        ContextPills(pills)
-        hint?.let {
+    // The scan field always first (user, 9 Nov): the prompt and the field in the first card, any
+    // hint under the field, and what the scan is for - the PO, vendor, bin pills - in a second
+    // card below, so the field never moves as that information grows.
+    Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(
+            horizontalAlignment = Alignment.Start,
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(12.dp))
+                .background(Color.White)
+                .padding(horizontal = 12.dp, vertical = 12.dp),
+        ) {
             Text(
-                text = it,
-                style = MaterialTheme.typography.bodyMedium,
-                color = WarehouseStatusColors.text3,
+                text = prompt,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.ExtraBold,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            content()
+            hint?.let {
+                Text(
+                    text = it,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = WarehouseStatusColors.text3,
+                )
+            }
+        }
+        if (pills.isNotEmpty()) {
+            ContextPills(
+                pills,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Color.White)
+                    .padding(12.dp),
             )
         }
-        content()
     }
 }
 
