@@ -13,6 +13,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -134,30 +137,59 @@ fun AccuracyReportScreen(onBack: () -> Unit, viewModel: AccuracyReportViewModel 
         },
     ) { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding)) {
+            // The period as tabs under the bar (Harbour), the grouping as pills.
+            val periods = AccuracyPeriod.entries
+            com.d365fo.mobileops.presentation.common.components.SegmentTabs(
+                labels = periods.map { it.label },
+                selected = periods.indexOf(state.period),
+                onSelect = { viewModel.setPeriod(periods[it]) },
+            )
             Column(
-                modifier = Modifier.padding(horizontal = WarehouseDimens.ScreenPadding, vertical = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp),
+                modifier = Modifier.padding(horizontal = WarehouseDimens.ScreenPadding, vertical = 10.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    AccuracyPeriod.entries.forEach { period ->
-                        FilterChip(selected = state.period == period, onClick = { viewModel.setPeriod(period) }, label = { Text(period.label) })
-                    }
-                }
                 Row(
                     modifier = Modifier.horizontalScroll(rememberScrollState()),
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
                     AccuracyGroupBy.entries.forEach { group ->
-                        FilterChip(selected = state.groupBy == group, onClick = { viewModel.setGroupBy(group) }, label = { Text(group.label) })
+                        val on = state.groupBy == group
+                        Text(
+                            group.label,
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = if (on) androidx.compose.ui.graphics.Color.White else WarehouseStatusColors.accent,
+                            modifier = Modifier
+                                .clip(androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
+                                .background(if (on) WarehouseStatusColors.accent else WarehouseStatusColors.accentDim)
+                                .clickable { viewModel.setGroupBy(group) }
+                                .padding(horizontal = 12.dp, vertical = 10.dp),
+                        )
                     }
                 }
                 state.report?.let { report ->
-                    Text(
-                        text = (if (report.countedLines == 0) "No counts in this period" else "${percent(report.overallPct)} accurate · ${report.accurateLines} of ${report.countedLines} lines") +
-                            (state.warehouseId?.let { " · $it" } ?: ""),
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.SemiBold,
-                    )
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(2.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(androidx.compose.ui.graphics.Color.White, androidx.compose.foundation.shape.RoundedCornerShape(12.dp))
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                    ) {
+                        Text(
+                            if (report.countedLines == 0) "No counts in this period" else "${percent(report.overallPct)} accurate",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = WarehouseStatusColors.accent,
+                        )
+                        Text(
+                            listOfNotNull(
+                                "${report.accurateLines} of ${report.countedLines} lines".takeIf { report.countedLines > 0 },
+                                state.warehouseId,
+                            ).joinToString(" · "),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = WarehouseStatusColors.text3,
+                        )
+                    }
                 }
             }
 
@@ -182,8 +214,19 @@ fun AccuracyReportScreen(onBack: () -> Unit, viewModel: AccuracyReportViewModel 
                             Card(modifier = Modifier.fillMaxWidth()) {
                                 Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                        Text(row.label, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-                                        Text(percent(row.accuracyPct), fontWeight = FontWeight.SemiBold)
+                                        Text(
+                                            row.label,
+                                            style = MaterialTheme.typography.titleMedium,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = WarehouseStatusColors.accent,
+                                            modifier = Modifier.weight(1f),
+                                        )
+                                        Text(
+                                            percent(row.accuracyPct),
+                                            style = MaterialTheme.typography.titleLarge,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = WarehouseStatusColors.accent,
+                                        )
                                     }
                                     LinearProgressIndicator(
                                         progress = { (row.accuracyPct / 100.0).toFloat().coerceIn(0f, 1f) },

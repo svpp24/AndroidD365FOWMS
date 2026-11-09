@@ -290,6 +290,7 @@ fun FailedSyncScreen(
             selected = tab,
             onSelect = { tab = it },
             badges = mapOf(0 to needsAction.size),
+            alertTab = 0,
         )
         LazyColumn(
             modifier = Modifier

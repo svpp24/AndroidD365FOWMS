@@ -13,6 +13,11 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Checklist
+import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.Alignment
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Clear
@@ -31,7 +36,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -85,29 +89,52 @@ fun CountingCaptureScreen(
         },
     ) { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding)) {
+            // All / Not counted / Counted as tabs under the bar, with their counts (Harbour).
+            val filters = LineFilter.entries
+            com.d365fo.mobileops.presentation.common.components.SegmentTabs(
+                labels = filters.map { it.label },
+                selected = filters.indexOf(state.filter),
+                onSelect = { viewModel.setFilter(filters[it]) },
+                badges = filters.withIndex().associate { (i, filter) ->
+                    i to when (filter) {
+                        LineFilter.ALL -> state.totalLines
+                        LineFilter.NOT_COUNTED -> state.notCounted
+                        LineFilter.COUNTED -> state.counted
+                    }
+                }.filterValues { it > 0 },
+            )
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = WarehouseDimens.ScreenPadding, vertical = 6.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp),
+                    .padding(horizontal = WarehouseDimens.ScreenPadding, vertical = 10.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
+                // How far along, in one white card: the ring, the tally, and the bar.
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color.White, RoundedCornerShape(12.dp))
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
                 ) {
-                    Text(
-                        text = "${state.counted} of ${state.totalLines} counted",
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.SemiBold,
+                    com.d365fo.mobileops.presentation.common.components.CountProgressRing(
+                        progress = if (state.totalLines > 0) state.counted.toFloat() / state.totalLines else 0f,
+                        percent = state.percent,
                     )
-                    Text(
-                        text = "${state.percent}%",
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                }
-                if (state.totalLines > 0) {
-                    CountProgressBar(progress = state.counted.toFloat() / state.totalLines)
+                    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text(
+                            text = "${state.counted} of ${state.totalLines} counted",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = WarehouseStatusColors.accent,
+                        )
+                        Text(
+                            text = "${state.notCounted} still to count",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = WarehouseStatusColors.text3,
+                        )
+                    }
                 }
 
                 OutlinedTextField(
@@ -116,7 +143,7 @@ fun CountingCaptureScreen(
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
                     placeholder = { Text("Search item, name, location…") },
-                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = WarehouseStatusColors.accent) },
                     trailingIcon = {
                         if (state.query.isNotEmpty()) {
                             IconButton(onClick = { viewModel.setQuery("") }) {
@@ -124,22 +151,9 @@ fun CountingCaptureScreen(
                             }
                         }
                     },
+                    shape = com.d365fo.mobileops.presentation.common.components.HeroFieldShape,
+                    colors = com.d365fo.mobileops.presentation.common.components.heroFieldColors(),
                 )
-
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    LineFilter.entries.forEach { filter ->
-                        val count = when (filter) {
-                            LineFilter.ALL -> state.totalLines
-                            LineFilter.NOT_COUNTED -> state.notCounted
-                            LineFilter.COUNTED -> state.counted
-                        }
-                        FilterChip(
-                            selected = state.filter == filter,
-                            onClick = { viewModel.setFilter(filter) },
-                            label = { Text("${filter.label} $count", style = MaterialTheme.typography.labelMedium) },
-                        )
-                    }
-                }
 
                 if (state.resolvingNames) {
                     Text(
@@ -148,6 +162,11 @@ fun CountingCaptureScreen(
                         color = WarehouseStatusColors.text3,
                     )
                 }
+                com.d365fo.mobileops.presentation.common.components.ListHeader(
+                    icon = Icons.Default.Checklist,
+                    title = "Lines",
+                    count = state.lines.size,
+                )
             }
 
             if (state.lines.isEmpty()) {
@@ -163,8 +182,9 @@ fun CountingCaptureScreen(
                 modifier = Modifier.weight(1f),
                 state = listState,
                 contentPadding = PaddingValues(
-                    horizontal = WarehouseDimens.ScreenPadding,
-                    vertical = 6.dp,
+                    start = WarehouseDimens.ScreenPadding,
+                    end = WarehouseDimens.ScreenPadding,
+                    bottom = 12.dp,
                 ),
                 verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {

@@ -13,6 +13,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Warning
+import androidx.compose.foundation.background
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
@@ -191,6 +193,7 @@ fun DualCountReviewScreen(
         topBar = {
             TopAppBar(
                 title = { Text("Dual count · ${state.journalId}") },
+                expandedHeight = WarehouseDimens.TopBarHeight,
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
@@ -212,7 +215,7 @@ fun DualCountReviewScreen(
                     contentPadding = PaddingValues(vertical = WarehouseDimens.ItemSpacing),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    item(key = "summary") { Summary(review, state.busy, viewModel::askPost) }
+                    item(key = "summary") { Summary(review, state.busy, viewModel::post) }
                     items(review.lines, key = { it.lineNumber }) { line ->
                         LineCard(line, state.busy, onApprove = { viewModel.askApprove(line) }, onRecount = { viewModel.recount(line) })
                     }
@@ -233,65 +236,109 @@ fun DualCountReviewScreen(
 
 @Composable
 private fun Summary(review: DualCountReview, busy: Boolean, onPost: () -> Unit) {
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text("${review.settled} of ${review.total} settled", fontWeight = FontWeight.SemiBold)
-            Text("Not counted: ${review.notCounted}")
-            Text("Counted once: ${review.firstCounted}")
-            Text("Matched: ${review.matched}")
-            Text("Disagree: ${review.mismatch}")
-            Text("Sent for recount: ${review.recount}")
-            Text("Approved: ${review.approved}")
-            if (review.emptyConfirmed > 0) Text("Location empty: ${review.emptyConfirmed}")
-            Button(
-                onClick = onPost,
-                enabled = review.canPost && !busy,
-                modifier = Modifier.fillMaxWidth().padding(top = 8.dp).heightIn(min = WarehouseDimens.MinTouchTarget),
-            ) { Text("Post journal") }
-            if (!review.canPost) {
-                Text(
-                    "Every line must be settled before this can post.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = WarehouseStatusColors.text3,
-                )
+    // Harbour: the tally in the accent, the counts as small tiles, and posting as a hold - it
+    // adjusts on-hand and can't be undone.
+    Column(
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(androidx.compose.ui.graphics.Color.White, androidx.compose.foundation.shape.RoundedCornerShape(12.dp))
+            .padding(12.dp),
+    ) {
+        Text(
+            "${review.settled} of ${review.total} settled",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.ExtraBold,
+            color = WarehouseStatusColors.accent,
+        )
+        val tiles = listOfNotNull(
+            "Not counted" to review.notCounted,
+            "Counted once" to review.firstCounted,
+            "Matched" to review.matched,
+            "Disagree" to review.mismatch,
+            "Recount" to review.recount,
+            "Approved" to review.approved,
+            ("Location empty" to review.emptyConfirmed).takeIf { review.emptyConfirmed > 0 },
+        )
+        tiles.chunked(2).forEach { pair ->
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                pair.forEach { (label, n) ->
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .background(WarehouseStatusColors.surface2, androidx.compose.foundation.shape.RoundedCornerShape(10.dp))
+                            .padding(horizontal = 10.dp, vertical = 6.dp),
+                    ) {
+                        Text(label, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, color = WarehouseStatusColors.text3)
+                        Text(
+                            "$n",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = if (label == "Disagree" && n > 0) WarehouseStatusColors.red else WarehouseStatusColors.accent,
+                        )
+                    }
+                }
+                if (pair.size == 1) Box(Modifier.weight(1f))
             }
+        }
+        com.d365fo.mobileops.presentation.common.components.HoldButton(
+            label = "Hold to post journal",
+            onConfirm = onPost,
+            enabled = review.canPost && !busy,
+            modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+        )
+        if (!review.canPost) {
+            Text(
+                "Every line must be settled before this can post.",
+                style = MaterialTheme.typography.bodySmall,
+                color = WarehouseStatusColors.text3,
+            )
         }
     }
 }
 
 @Composable
 private fun LineCard(line: DualCountLine, busy: Boolean, onApprove: () -> Unit, onRecount: () -> Unit) {
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text("${line.itemNumber} · line ${line.lineNumber.toInt()}", fontWeight = FontWeight.SemiBold)
-            Text(line.itemName, style = MaterialTheme.typography.bodySmall)
-            if (line.where.isNotBlank()) Text(line.where, style = MaterialTheme.typography.bodySmall)
-            Text("D365FO holds ${line.systemQty.qty()}")
-            line.attempts.forEach { attempt ->
-                Text("Count ${attempt.attemptNo}: ${attempt.countedQty.qty()} by ${attempt.userId}")
-            }
-            Text(
-                when {
-                    line.needsApproval -> "Three counts disagree: needs your decision."
-                    line.status == "Recount" -> "Sent for a recount."
-                    else -> "Waiting for a tiebreak count. You can settle it now."
-                },
-                style = MaterialTheme.typography.bodySmall,
-                color = WarehouseStatusColors.amber,
-            )
-            Row(modifier = Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(
-                    onClick = onRecount,
-                    enabled = !busy && line.status != "Recount",
-                    modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget),
-                ) { Text("Recount") }
-                Button(
-                    onClick = onApprove,
-                    enabled = !busy,
-                    modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget),
-                ) { Text("Approve") }
-            }
-        }
+    val (tag, kind) = when {
+        line.needsApproval -> "Needs decision" to com.d365fo.mobileops.presentation.common.components.Lead.Bad
+        line.status == "Recount" -> "Recount" to com.d365fo.mobileops.presentation.common.components.Lead.Warn
+        else -> "Tiebreak" to com.d365fo.mobileops.presentation.common.components.Lead.Warn
+    }
+    com.d365fo.mobileops.presentation.common.components.ListCard {
+        com.d365fo.mobileops.presentation.common.components.LineRow(
+            title = line.itemNumber,
+            status = { com.d365fo.mobileops.presentation.common.components.StatusTag(tag, kind) },
+            description = line.itemName,
+            lines = listOfNotNull(
+                line.where.takeIf { it.isNotBlank() },
+                "Line ${line.lineNumber.toInt()} · D365FO holds ${line.systemQty.qty()}",
+            ) + line.attempts.map { "Count ${it.attemptNo}: ${it.countedQty.qty()} by ${it.userId}" },
+            lead = { com.d365fo.mobileops.presentation.common.components.LeadDot(kind, icon = androidx.compose.material.icons.Icons.Filled.Warning) },
+            below = {
+                Text(
+                    when {
+                        line.needsApproval -> "Three counts disagree: needs your decision."
+                        line.status == "Recount" -> "Sent for a recount."
+                        else -> "Waiting for a tiebreak count. You can settle it now."
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = WarehouseStatusColors.amber,
+                )
+                Row(modifier = Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    com.d365fo.mobileops.presentation.common.components.DockOutlinedButton(
+                        onClick = onRecount,
+                        enabled = !busy && line.status != "Recount",
+                        text = "Recount",
+                        modifier = Modifier.weight(1f),
+                    )
+                    com.d365fo.mobileops.presentation.common.components.GradientButton(
+                        onClick = onApprove,
+                        enabled = !busy,
+                        modifier = Modifier.weight(1f),
+                    ) { Text("Approve") }
+                }
+            },
+        )
     }
 }
 

@@ -403,6 +403,8 @@ fun SegmentTabs(
     onSelect: (Int) -> Unit,
     modifier: Modifier = Modifier,
     badges: Map<Int, Int> = emptyMap(),
+    /** The tab whose badge means "needs someone" - red, not the accent (Activity's first). */
+    alertTab: Int? = null,
 ) {
     Column(modifier = modifier.fillMaxWidth().background(Color.White)) {
         Row(modifier = Modifier.fillMaxWidth()) {
@@ -432,7 +434,7 @@ fun SegmentTabs(
                                 color = Color.White,
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(6.dp))
-                                    .background(if (i == 0) WarehouseStatusColors.red else WarehouseStatusColors.accent)
+                                    .background(if (i == alertTab) WarehouseStatusColors.red else WarehouseStatusColors.accent)
                                     .padding(horizontal = 5.dp),
                             )
                         }

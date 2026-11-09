@@ -1,6 +1,7 @@
 package com.d365fo.mobileops.presentation.modules.cyclecounting.supervisor
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -146,16 +147,29 @@ private fun VarianceContent(state: SupervisorVarianceState, viewModel: Superviso
             modifier = Modifier.padding(horizontal = WarehouseDimens.ScreenPadding, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            Text(
-                text = listOfNotNull(
-                    "${all.count { it.counted }}/${all.size} counted",
-                    "${state.overToleranceCount} need a decision",
-                    state.variance?.toleranceText?.let { "tolerance $it" },
-                ).joinToString(" · "),
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 2,
-            )
+            // The tally in a white card (Harbour): counted in the accent, what needs a decision in amber.
+            Column(
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(androidx.compose.ui.graphics.Color.White, androidx.compose.foundation.shape.RoundedCornerShape(12.dp))
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
+            ) {
+                Text(
+                    "${all.count { it.counted }} of ${all.size} counted",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = WarehouseStatusColors.accent,
+                )
+                Text(
+                    listOfNotNull(
+                        "${state.overToleranceCount} need a decision",
+                        state.variance?.toleranceText?.let { "tolerance $it" },
+                    ).joinToString(" · "),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = if (state.overToleranceCount > 0) WarehouseStatusColors.amber else WarehouseStatusColors.text3,
+                )
+            }
             if (state.posted) {
                 Text("Posted in D365FO.", color = WarehouseStatusColors.green, style = MaterialTheme.typography.bodyMedium)
             }
@@ -184,26 +198,46 @@ private fun VarianceContent(state: SupervisorVarianceState, viewModel: Superviso
             }
         }
 
-        Column(
-            modifier = Modifier.padding(WarehouseDimens.ScreenPadding),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            val canAct = state.selected.isNotEmpty() && !state.busy && !state.posted
-            val buttonModifier = Modifier.heightIn(min = WarehouseDimens.MinTouchTarget)
-            if (canAct) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = { viewModel.openDecision(ReviewAction.APPROVE) }, enabled = canAct, modifier = buttonModifier.weight(1f)) { Text("Approve") }
-                OutlinedButton(onClick = { viewModel.openDecision(ReviewAction.RECOUNT) }, enabled = canAct, modifier = buttonModifier.weight(1f)) { Text("Recount") }
+        // The dock (Harbour). While lines are selected the decisions take Post's place, so the
+        // list keeps its room. Posting adjusts on-hand and can't be undone - a hold.
+        val canAct = state.selected.isNotEmpty() && !state.busy && !state.posted
+        com.d365fo.mobileops.presentation.common.components.FlowDock {
+            if (canAct) {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.weight(1f)) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        com.d365fo.mobileops.presentation.common.components.GradientButton(
+                            onClick = { viewModel.openDecision(ReviewAction.APPROVE) },
+                            modifier = Modifier.weight(1f),
+                        ) { Text("Approve") }
+                        com.d365fo.mobileops.presentation.common.components.DockOutlinedButton(
+                            onClick = { viewModel.openDecision(ReviewAction.RECOUNT) },
+                            text = "Recount",
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        com.d365fo.mobileops.presentation.common.components.DockOutlinedButton(
+                            onClick = { viewModel.openDecision(ReviewAction.INVESTIGATE) },
+                            text = "Investigate",
+                            color = WarehouseStatusColors.amber,
+                            modifier = Modifier.weight(1f),
+                        )
+                        com.d365fo.mobileops.presentation.common.components.DockOutlinedButton(
+                            onClick = { viewModel.openDecision(ReviewAction.REJECT) },
+                            text = "Reject",
+                            color = WarehouseStatusColors.red,
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                }
+            } else {
+                com.d365fo.mobileops.presentation.common.components.HoldButton(
+                    label = if (state.busy) "Working…" else "Hold to post journal",
+                    onConfirm = viewModel::post,
+                    enabled = !state.busy && !state.posted,
+                    modifier = Modifier.weight(1f),
+                )
             }
-            if (canAct) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = { viewModel.openDecision(ReviewAction.INVESTIGATE) }, enabled = canAct, modifier = buttonModifier.weight(1f)) { Text("Investigate") }
-                OutlinedButton(onClick = { viewModel.openDecision(ReviewAction.REJECT) }, enabled = canAct, modifier = buttonModifier.weight(1f)) { Text("Reject") }
-            }
-            // While lines are selected the decisions take Post's place, so the list keeps its room.
-            if (!canAct) Button(
-                onClick = viewModel::askPost,
-                enabled = !state.busy && !state.posted,
-                modifier = Modifier.fillMaxWidth().heightIn(min = WarehouseDimens.MinTouchTarget),
-            ) { Text(if (state.busy) "Working…" else "Post journal") }
         }
     }
 }
@@ -247,12 +281,19 @@ private fun VarianceFilterMenu(state: SupervisorVarianceState, viewModel: Superv
 
 @Composable
 private fun VarianceRow(line: VarianceLine, currency: String, selected: Boolean, onToggle: () -> Unit) {
-    Card(modifier = Modifier.fillMaxWidth().clickable(onClick = onToggle)) {
-        Row(modifier = Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
+    // A Harbour row: the item in the accent, its status as a tag, the variance on the right; the
+    // card takes the accent tint while selected.
+    Card(
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onToggle),
+        colors = androidx.compose.material3.CardDefaults.cardColors(
+            containerColor = if (selected) WarehouseStatusColors.accentDim else androidx.compose.ui.graphics.Color.White,
+        ),
+    ) {
+        Row(modifier = Modifier.padding(10.dp), verticalAlignment = Alignment.Top) {
             Checkbox(checked = selected, onCheckedChange = { onToggle() })
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(line.itemNumber, fontWeight = FontWeight.SemiBold)
-                if (line.itemName != line.itemNumber) Text(line.itemName, style = MaterialTheme.typography.bodySmall)
+                Text(line.itemNumber, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold, color = WarehouseStatusColors.accent)
+                if (line.itemName != line.itemNumber) Text(line.itemName, style = MaterialTheme.typography.bodyMedium, color = WarehouseStatusColors.text2)
                 Text(
                     text = listOfNotNull(
                         line.locationId?.let { "Loc $it" },
@@ -306,14 +347,15 @@ private fun VarianceRow(line: VarianceLine, currency: String, selected: Boolean,
 
 @Composable
 private fun StatusLabel(status: CountStatus) {
-    val color = when (status) {
-        CountStatus.MATCH, CountStatus.APPROVED, CountStatus.CLOSED -> WarehouseStatusColors.green
-        CountStatus.MINOR_VARIANCE -> WarehouseStatusColors.amber
+    // A Harbour status tag.
+    val kind = when (status) {
+        CountStatus.MATCH, CountStatus.APPROVED, CountStatus.CLOSED -> com.d365fo.mobileops.presentation.common.components.Lead.Done
+        CountStatus.MINOR_VARIANCE -> com.d365fo.mobileops.presentation.common.components.Lead.Warn
         CountStatus.RECOUNT_REQUIRED, CountStatus.CONFIRMATION_REQUIRED, CountStatus.INVESTIGATE ->
-            MaterialTheme.colorScheme.error
-        CountStatus.NOT_COUNTED, CountStatus.UNKNOWN -> WarehouseStatusColors.text3
+            com.d365fo.mobileops.presentation.common.components.Lead.Bad
+        CountStatus.NOT_COUNTED, CountStatus.UNKNOWN -> com.d365fo.mobileops.presentation.common.components.Lead.Idle
     }
-    Text(status.label, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold, color = color)
+    Box(Modifier.padding(top = 2.dp)) { com.d365fo.mobileops.presentation.common.components.StatusTag(status.label, kind) }
 }
 
 /**
