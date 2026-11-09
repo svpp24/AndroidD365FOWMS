@@ -1,62 +1,65 @@
 package com.d365fo.mobileops.presentation.modules.stepflow
 
-import com.d365fo.mobileops.presentation.common.components.BarcodeFieldIcon
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material.icons.filled.PhotoCamera
-import com.d365fo.mobileops.presentation.common.components.SquareButton as Button
-import com.d365fo.mobileops.presentation.common.components.AppCard as Card
+import androidx.compose.material.icons.filled.RemoveCircle
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
-import com.d365fo.mobileops.presentation.common.components.SquareTextButton as TextButton
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import com.d365fo.mobileops.presentation.common.components.SquareOutlinedButton as OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import com.d365fo.mobileops.presentation.common.components.AppTopBar as TopAppBar
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.d365fo.mobileops.domain.repository.OnHandLine
 import com.d365fo.mobileops.domain.repository.WarehouseOption
-import com.d365fo.mobileops.presentation.common.components.ErrorBanner
-import com.d365fo.mobileops.presentation.common.components.HeroEnterBadge
-import com.d365fo.mobileops.presentation.common.components.HeroFieldShape
-import com.d365fo.mobileops.presentation.common.components.PromptHeroCard
-import com.d365fo.mobileops.presentation.common.components.heroFieldColors
+import com.d365fo.mobileops.presentation.common.components.CancelOutlinedButton
+import com.d365fo.mobileops.presentation.common.components.DialogButtonRow
+import com.d365fo.mobileops.presentation.common.components.FlowAction
+import com.d365fo.mobileops.presentation.common.components.FlowHeader
+import com.d365fo.mobileops.presentation.common.components.FlowKeyHandler
+import com.d365fo.mobileops.presentation.common.components.ListRow
+import com.d365fo.mobileops.presentation.common.components.ListRowValue
+import com.d365fo.mobileops.presentation.common.components.SquareOutlinedButton
+import com.d365fo.mobileops.presentation.common.components.StatusBand
+import com.d365fo.mobileops.presentation.common.components.StatusKind
 import com.d365fo.mobileops.presentation.common.components.TextEntryScreen
 import com.d365fo.mobileops.presentation.common.scan.CameraScannerSheet
 import com.d365fo.mobileops.presentation.common.theme.WarehouseDimens
-import java.math.BigDecimal
+import com.d365fo.mobileops.presentation.common.theme.WarehouseStatusColors
+import com.d365fo.mobileops.presentation.common.theme.WarehouseType
 
 /**
  * Scan an item, see what is on hand. Nothing is fetched until something is scanned.
@@ -65,8 +68,12 @@ import java.math.BigDecimal
  * cache was wrong the moment anyone else moved stock, and on-hand is the one figure an operator
  * will act on immediately — walking to a bin because the handheld said there were twelve. A
  * live number that takes a second beats an instant number that might be yesterday's.
+ *
+ * 9 Nov redesign (brief §4, phase 8): reached from the red scan button on any tab, or by scanning
+ * an item on Home. Scans come through ScanRouter; the screen is a [FlowHeader], a [StatusBand],
+ * the item with *available* big and green, on hand and reserved under it, then a [ListRow] per
+ * warehouse. F1 goes back.
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun OnHandInquiryScreen(
     onBack: () -> Unit,
@@ -75,148 +82,118 @@ fun OnHandInquiryScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     var showCamera by remember { mutableStateOf(false) }
-    val focusRequester = remember { FocusRequester() }
 
-    // Read-only field now (see below) - no keyboardController fight needed any more. The old
-    // double-hide-with-delay here was working around this exact screen's IME auto-show
-    // consistently beating a single hide() when reached via the bottom tab's restoreState/
-    // launchSingleTop transition (unlike every pushed screen, where one hide() was enough); a
-    // readOnly field makes that race moot everywhere, this screen included.
-    LaunchedEffect(Unit) {
-        runCatching { focusRequester.requestFocus() }
+    DisposableEffect(viewModel) {
+        viewModel.scannerOnScreen(true)
+        onDispose { viewModel.scannerOnScreen(false) }
     }
+    FlowKeyHandler { if (it == FlowAction.Back) onBack() }
 
     Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("On-hand") },
-                expandedHeight = WarehouseDimens.TopBarHeight,
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                    }
-                },
-            )
-        },
+        containerColor = WarehouseStatusColors.pageComfort,
+        topBar = { FlowHeader(title = "On-hand", onBack = onBack) },
     ) { padding ->
-        Column(
+        LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(padding)
-                .padding(horizontal = 16.dp),
+                .padding(padding),
+            contentPadding = PaddingValues(
+                start = WarehouseDimens.ScreenPadding, end = WarehouseDimens.ScreenPadding, top = 12.dp, bottom = 20.dp,
+            ),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            // A fixed slot, so the bar never moves the scan card below it.
-            androidx.compose.foundation.layout.Box(Modifier.fillMaxWidth().height(4.dp)) { if (state.busy) LinearProgressIndicator(modifier = Modifier.fillMaxWidth()) }
+            item(key = "band") { OnHandBand(state) }
 
-            // Read-only tap target, not an editable field - a scan lands straight in the
-            // ViewModel (see HidScannerBridge), and typing now happens on a dedicated screen
-            // reached by tapping this one, matching every other scan-first field in this app.
-            //
-            // Overlaid Box, not clickable() on the field itself - a read-only field's own
-            // pointer input (for cursor placement) swallows a tap before an outer clickable on
-            // the same modifier chain ever sees it - confirmed live.
-            PromptHeroCard(prompt = "Scan item or barcode") {
-            Box {
-                OutlinedTextField(
-                    value = "",
-                    onValueChange = {},
-                    readOnly = true,
-                    singleLine = true,
-                    textStyle = MaterialTheme.typography.titleLarge,
-                    shape = HeroFieldShape,
-                    colors = heroFieldColors(),
-                    leadingIcon = { BarcodeFieldIcon() },
-                    trailingIcon = { HeroEnterBadge() },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = 64.dp)
-                        .focusRequester(focusRequester),
-                )
-                Box(
-                    modifier = Modifier
-                        .matchParentSize()
-                        .clickable(onClick = onManualEntryRequested),
-                )
-            }
-            // Inside the card, as on the creation screens and Counting.
-            com.d365fo.mobileops.presentation.common.components.HeroCameraButton(onClick = { showCamera = true })
+            item(key = "input") {
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    SquareOutlinedButton(
+                        onClick = onManualEntryRequested,
+                        modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget),
+                    ) {
+                        Icon(Icons.Filled.Keyboard, contentDescription = null)
+                        Text("Type it", modifier = Modifier.padding(start = 8.dp))
+                    }
+                    SquareOutlinedButton(
+                        onClick = { showCamera = true },
+                        modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget),
+                    ) {
+                        Icon(Icons.Filled.PhotoCamera, contentDescription = null)
+                        Text("Camera", modifier = Modifier.padding(start = 8.dp))
+                    }
+                }
             }
 
-
-            // Label left, switch right - as "Count by location" and Settings' switches.
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween,
-            ) {
-                Text(
-                    text = state.homeWarehouseId
-                        ?.let { "This warehouse only ($it)" }
-                        ?: "No warehouse assigned",
-                    style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.weight(1f),
-                )
-                Switch(
-                    checked = state.thisWarehouseOnly,
-                    onCheckedChange = viewModel::setThisWarehouseOnly,
-                    enabled = state.homeWarehouseId != null,
-                )
+            val item = state.itemNumber
+            if (item != null && state.error == null) {
+                item(key = "result") {
+                    OnHandResult(itemNumber = item, productName = state.productName, rows = state.rows, scope = state.scopeLabel)
+                }
+                if (state.rows.isNotEmpty()) {
+                    item(key = "rows-title") {
+                        Text("By warehouse", style = WarehouseType.label, color = WarehouseStatusColors.inkMuted)
+                    }
+                    item(key = "rows") {
+                        Column(
+                            Modifier
+                                .clip(RoundedCornerShape(16.dp))
+                                .background(WarehouseStatusColors.surface),
+                        ) {
+                            state.rows.forEachIndexed { i, row ->
+                                if (i > 0) HorizontalDivider(color = WarehouseStatusColors.divider)
+                                OnHandRow(row)
+                            }
+                        }
+                    }
+                }
             }
 
-            // With the filter off, the operator picks the warehouse rather than reading a
-            // hundred rows to find one. "All warehouses" stays available because "where is
-            // this stock?" is a real question the enquiry is for.
-            if (!state.thisWarehouseOnly) {
-                // The app's dropdown look; the list itself is a searchable dialog (many warehouses).
-                com.d365fo.mobileops.presentation.common.components.DropdownTrigger(
-                    text = if (state.loadingWarehouses) null else "Warehouse: ${state.scopeLabel}",
-                    placeholder = "Loading warehouses…",
-                    onClick = viewModel::openWarehousePicker,
-                )
-            }
-
-            if (state.pickerOpen) {
-                WarehousePickerDialog(
-                    warehouses = state.warehouses,
-                    loading = state.loadingWarehouses,
-                    selected = state.pickedWarehouseId,
-                    onPick = viewModel::pickWarehouse,
-                    onDismiss = viewModel::dismissWarehousePicker,
-                )
-            }
-
-            state.error?.let { message ->
-                ErrorBanner(message = message)
-            }
-
-            state.itemNumber?.let { item ->
-                Text(
-                    text = state.productName?.takeIf { it.isNotBlank() }
-                        ?.let { "$item — $it" }
-                        ?: item,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                )
-            }
-
-            if (state.rows.isEmpty() && state.itemNumber != null && !state.busy) {
-                // An item with no on-hand row is a real answer, and a different one from an
-                // item that does not exist. Saying "none" rather than showing an empty list
-                // is what stops an operator scanning again to see if it was a bad read.
-                Text(
-                    text = "No stock on hand.",
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-
-            LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(state.rows, key = { "${it.siteId}:${it.warehouseId}" }) { row ->
-                    OnHandRow(row)
+            // The filter, under the answer: the switch is changed now and then, the answer every scan.
+            item(key = "filter") {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    // Label left, switch right - as "Count by location" and Settings' switches.
+                    Row(
+                        modifier = Modifier.fillMaxWidth().heightIn(min = WarehouseDimens.MinTouchTarget),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        Text(
+                            text = state.homeWarehouseId
+                                ?.let { "This warehouse only ($it)" }
+                                ?: "No warehouse assigned",
+                            style = WarehouseType.body,
+                            color = WarehouseStatusColors.ink,
+                            modifier = Modifier.weight(1f),
+                        )
+                        Switch(
+                            checked = state.thisWarehouseOnly,
+                            onCheckedChange = viewModel::setThisWarehouseOnly,
+                            enabled = state.homeWarehouseId != null,
+                        )
+                    }
+                    // With the filter off, the operator picks the warehouse rather than reading a
+                    // hundred rows to find one. "All warehouses" stays available because "where is
+                    // this stock?" is a real question the enquiry is for.
+                    if (!state.thisWarehouseOnly) {
+                        // The app's dropdown look; the list itself is a searchable dialog (many warehouses).
+                        com.d365fo.mobileops.presentation.common.components.DropdownTrigger(
+                            text = if (state.loadingWarehouses) null else "Warehouse: ${state.scopeLabel}",
+                            placeholder = "Loading warehouses…",
+                            onClick = viewModel::openWarehousePicker,
+                        )
+                    }
                 }
             }
         }
+    }
+
+    if (state.pickerOpen) {
+        WarehousePickerDialog(
+            warehouses = state.warehouses,
+            loading = state.loadingWarehouses,
+            selected = state.pickedWarehouseId,
+            onPick = viewModel::pickWarehouse,
+            onDismiss = viewModel::dismissWarehousePicker,
+        )
     }
 
     if (showCamera) {
@@ -230,16 +207,112 @@ fun OnHandInquiryScreen(
     }
 }
 
+/** What happened last: ready, looking up, not found, or a scan this screen doesn't take. */
+@Composable
+private fun OnHandBand(state: OnHandInquiryState) {
+    val notice = state.notice
+    val error = state.error
+    when {
+        state.busy -> StatusBand(StatusKind.Info, "Looking up…", line = "Asking D365FO for the stock")
+        error != null -> StatusBand(StatusKind.Bad, "Can't show stock", line = error)
+        notice != null -> StatusBand(StatusKind.Warn, notice.title, line = notice.line)
+        state.itemNumber != null -> StatusBand(StatusKind.Idle, "Ready", line = "Scan the next item")
+        else -> StatusBand(StatusKind.Idle, "Ready", line = "Scan an item to see its stock")
+    }
+}
+
+/** The item, with what can be used now big and green, and on hand / reserved under it. */
+@Composable
+private fun OnHandResult(itemNumber: String, productName: String?, rows: List<OnHandLine>, scope: String) {
+    val totals = onHandTotals(rows)
+    val any = totals.available.signum() > 0
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(WarehouseStatusColors.surface)
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        Text(itemNumber, style = WarehouseType.code, color = WarehouseStatusColors.ink)
+        productName?.takeIf { it.isNotBlank() }?.let {
+            Text(it, style = WarehouseType.body, color = WarehouseStatusColors.ink)
+        }
+        Spacer(Modifier.size(8.dp))
+        // Available first: it is the number that decides whether the operator can pick, and it
+        // is not the number D365FO puts first. Icon and word, never colour alone.
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                if (any) Icons.Filled.CheckCircle else Icons.Filled.RemoveCircle,
+                contentDescription = null,
+                tint = if (any) WarehouseStatusColors.okEdge else WarehouseStatusColors.badEdge,
+                modifier = Modifier.size(24.dp),
+            )
+            Spacer(Modifier.width(8.dp))
+            Text(
+                when {
+                    rows.isEmpty() -> "No stock on hand"
+                    any -> "Available"
+                    else -> "None available"
+                },
+                style = WarehouseType.label,
+                color = if (any) WarehouseStatusColors.okText else WarehouseStatusColors.badText,
+            )
+        }
+        Text(
+            formatOnHandQty(totals.available),
+            style = WarehouseType.quantity,
+            color = if (any) WarehouseStatusColors.okText else WarehouseStatusColors.badText,
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
+            Figure("On hand", totals.onHand)
+            Figure("Reserved", totals.reserved)
+        }
+        Text(scope, style = WarehouseType.label, color = WarehouseStatusColors.inkMuted)
+    }
+}
+
+@Composable
+private fun Figure(label: String, value: java.math.BigDecimal) {
+    Column {
+        Text(label, style = WarehouseType.label, color = WarehouseStatusColors.inkMuted)
+        Text(formatOnHandQty(value), style = WarehouseType.codeSmall, color = WarehouseStatusColors.ink)
+    }
+}
+
+/** One warehouse: available on the right, the rest underneath. */
+@Composable
+private fun OnHandRow(row: OnHandLine) {
+    val available = row.available.signum() > 0
+    ListRow(
+        title = row.warehouseId ?: "All warehouses",
+        codeTitle = row.warehouseId != null,
+        status = if (available) StatusKind.Ok else StatusKind.Idle,
+        subtitles = listOfNotNull(
+            row.siteId?.let { "Site $it" },
+            (if (available) "Available" else "None available") +
+                " · on hand ${formatOnHandQty(row.onHand)} · reserved ${formatOnHandQty(row.reserved)}",
+            row.ordered.takeIf { it.signum() != 0 }?.let { "Ordered ${formatOnHandQty(it)}" },
+        ),
+        trailing = { ListRowValue(formatOnHandQty(row.available)) },
+    )
+}
+
 /**
  * The dedicated typing screen for this inquiry - see the identical
  * [com.d365fo.mobileops.presentation.modules.dataenquiry.LocationInquiryScreen]'s note on
- * fetching the same ViewModel instance as the screen underneath.
+ * fetching the same ViewModel instance as the screen underneath. Registered on the scan router
+ * too, so a scan made while typing still lands.
  */
 @Composable
 fun OnHandEntryScreen(
     viewModel: OnHandInquiryViewModel,
     onBack: () -> Unit,
 ) {
+    DisposableEffect(viewModel) {
+        viewModel.scannerOnScreen(true)
+        onDispose { viewModel.scannerOnScreen(false) }
+    }
     TextEntryScreen(
         title = "On-hand",
         hint = "Scan item or barcode",
@@ -249,48 +322,6 @@ fun OnHandEntryScreen(
             onBack()
         },
     )
-}
-
-@Composable
-private fun OnHandRow(row: OnHandLine) {
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(
-            modifier = Modifier.padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            Text(
-                text = listOfNotNull(
-                    row.siteId?.let { "Site $it" },
-                    row.warehouseId?.let { "Whs $it" },
-                ).joinToString(" · ").ifBlank { "All warehouses" },
-                style = MaterialTheme.typography.titleMedium,
-            )
-            // Available first: it is the number that decides whether the operator can pick,
-            // and it is not the number D365FO puts first.
-            Quantity("Available", row.available)
-            Quantity("On hand", row.onHand)
-            Quantity("Reserved", row.reserved)
-            Quantity("Ordered", row.ordered)
-            Quantity("Total available", row.totalAvailable)
-        }
-    }
-}
-
-@Composable
-private fun Quantity(label: String, value: BigDecimal) {
-    Row(modifier = Modifier.fillMaxWidth()) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.weight(1f),
-        )
-        Text(
-            text = value.stripTrailingZeros().toPlainString(),
-            style = MaterialTheme.typography.bodyMedium,
-            fontWeight = FontWeight.Medium,
-        )
-    }
 }
 
 /**
@@ -385,9 +416,9 @@ private fun WarehousePickerDialog(
             }
         },
         confirmButton = {
-            com.d365fo.mobileops.presentation.common.components.DialogButtonRow(
+            DialogButtonRow(
                 dismiss = null,
-                confirm = { com.d365fo.mobileops.presentation.common.components.CancelOutlinedButton(onClick = onDismiss, modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget)) { Text("Cancel") } },
+                confirm = { CancelOutlinedButton(onClick = onDismiss, modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget)) { Text("Cancel") } },
             )
         },
     )
