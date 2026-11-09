@@ -20,6 +20,9 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -57,62 +60,66 @@ import com.d365fo.mobileops.presentation.common.components.StatusChip
 import com.d365fo.mobileops.presentation.common.theme.WarehouseStatusColors
 import com.d365fo.mobileops.util.Formatters
 
-/** One line of an order being built. [showPrice]: purchase orders only. */
+/** One line of an order being built - a Harbour row. [showPrice]: purchase orders only. */
 @Composable
 fun OrderLineCard(line: DraftLine, showPrice: Boolean, currency: String, onClick: () -> Unit) {
-    AppCard(onClick = onClick, modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(line.itemId, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                    Text(line.itemName, style = MaterialTheme.typography.bodyMedium)
-                }
-                Text(
-                    com.d365fo.mobileops.util.Formatters.qtyUnit(java.math.BigDecimal.valueOf(line.qty), line.unitId),
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
+    val dims = listOf(
+        line.variant.label,
+        line.locationId.takeIf { it.isNotBlank() }?.let { "Location $it" },
+        line.batchId.takeIf { it.isNotBlank() }?.let { "Batch $it" },
+        line.serialId.takeIf { it.isNotBlank() }?.let { "Serial $it" },
+    ).filter { !it.isNullOrBlank() }.joinToString(" · ")
+    com.d365fo.mobileops.presentation.common.components.ListCard {
+        com.d365fo.mobileops.presentation.common.components.LineRow(
+            title = line.itemId,
+            description = line.itemName,
+            lines = listOfNotNull(
+                dims.takeIf { it.isNotBlank() },
+                line.available?.let { "${qtyText(it)} available " + if (line.locationId.isNotBlank()) "at the location" else "at From" },
+            ),
+            lead = {
+                com.d365fo.mobileops.presentation.common.components.LeadDot(
+                    com.d365fo.mobileops.presentation.common.components.Lead.Done,
+                    icon = androidx.compose.material.icons.Icons.Filled.Check,
                 )
-            }
-            val dims = listOf(line.variant.label, line.locationId.takeIf { it.isNotBlank() }?.let { "Location $it" }, line.batchId.takeIf { it.isNotBlank() }?.let { "Batch $it" },
-                line.serialId.takeIf { it.isNotBlank() }?.let { "Serial $it" })
-                .filter { !it.isNullOrBlank() }.joinToString(" · ")
-            if (dims.isNotBlank()) Text(dims, style = MaterialTheme.typography.bodySmall, color = WarehouseStatusColors.text3)
-            line.available?.let {
-                Text("${qtyText(it)} available " + if (line.locationId.isNotBlank()) "at the location" else "at From", style = MaterialTheme.typography.bodySmall, color = WarehouseStatusColors.text3)
+            },
+            trailing = {
+                com.d365fo.mobileops.presentation.common.components.QtyTrail(qtyText(line.qty), line.unitId)
+            },
+            onClick = onClick,
+            below = {
                 // Allowed for an item that may go negative - but said, not left for the reader to
                 // compare two numbers (50 ordered with 3 there showed only "3 available at From").
-                if (line.qty > it) {
-                    Text(
-                        "More than on hand",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.error,
-                    )
+                line.available?.let {
+                    if (line.qty > it) {
+                        Text("More than on hand", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                    }
                 }
-            }
-            if (showPrice) {
-                if (line.price != null) {
-                    Text(
-                        buildString {
-                            append("${amountText(line.price)} $currency".trim())
-                            line.discPct?.takeIf { it > 0 }?.let { append(" · ${qtyText(it)}% off") }
-                            line.lineAmount?.let { append(" · line ${amountText(it)}") }
-                        },
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
-                    Text(
-                        if (line.priceOverride) "Price entered here" else line.priceSource ?: "D365FO price",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = WarehouseStatusColors.text3,
-                    )
-                } else {
-                    Text("Priced by D365FO when the order is sent", style = MaterialTheme.typography.bodySmall, color = WarehouseStatusColors.amber)
+                if (showPrice) {
+                    if (line.price != null) {
+                        Text(
+                            buildString {
+                                append("${amountText(line.price)} $currency".trim())
+                                line.discPct?.takeIf { it > 0 }?.let { append(" · ${qtyText(it)}% off") }
+                                line.lineAmount?.let { append(" · line ${amountText(it)}") }
+                            },
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                        Text(
+                            if (line.priceOverride) "Price entered here" else line.priceSource ?: "D365FO price",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = WarehouseStatusColors.text3,
+                        )
+                    } else {
+                        Text("Priced by D365FO when the order is sent", style = MaterialTheme.typography.bodySmall, color = WarehouseStatusColors.amber)
+                    }
                 }
-            }
-        }
+            },
+        )
     }
 }
 
-/** An order made on this device and where it stands in D365FO. */
+/** An order made on this device and where it stands in D365FO - a Harbour row with its status tag. */
 @Composable
 fun CreatedOrderCard(
     order: CreatedOrderEntity,
@@ -130,82 +137,65 @@ fun CreatedOrderCard(
         order.message?.startsWith("Created; not confirmed") == true -> "Not confirmed"
         else -> null
     }
-    val content: @Composable () -> Unit = {
-        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    order.documentNumber ?: "Not created yet",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.weight(1f),
-                )
-                if (unfinished != null) StatusChip(unfinished, WarehouseStatusColors.amber, WarehouseStatusColors.amberDim)
-                else when (order.status) {
-                    CreatedOrderStatus.CREATED -> StatusChip(
-                        when {
-                            order.message?.startsWith("Posted") == true -> "Posted"
-                            order.kind == com.d365fo.mobileops.data.local.entity.OrderKind.CONFIRMATION ||
-                                order.message?.startsWith("Confirmation ") == true -> "Confirmed"
-                            else -> laterStatus ?: "Created"
-                        },
-                        WarehouseStatusColors.green,
-                        WarehouseStatusColors.greenDim,
-                    )
-                    CreatedOrderStatus.WAITING -> StatusChip(
-                        if (com.d365fo.mobileops.presentation.common.components.LocalSyncStatus.current?.fullyOnline != false) "Sending" else "Waiting",
-                        WarehouseStatusColors.amber,
-                        WarehouseStatusColors.amberDim,
-                    )
-                    CreatedOrderStatus.FAILED -> StatusChip("Refused", WarehouseStatusColors.red, WarehouseStatusColors.redDim)
-                }
-            }
-            Text(order.title, style = MaterialTheme.typography.bodyMedium)
-            Text(
+    val online = com.d365fo.mobileops.presentation.common.components.LocalSyncStatus.current?.fullyOnline != false
+    val (tag, kind) = when {
+        unfinished != null -> unfinished to com.d365fo.mobileops.presentation.common.components.Lead.Warn
+        order.status == CreatedOrderStatus.CREATED -> when {
+            order.message?.startsWith("Posted") == true -> "Posted"
+            order.kind == com.d365fo.mobileops.data.local.entity.OrderKind.CONFIRMATION ||
+                order.message?.startsWith("Confirmation ") == true -> "Confirmed"
+            else -> laterStatus ?: "Created"
+        } to com.d365fo.mobileops.presentation.common.components.Lead.Done
+        order.status == CreatedOrderStatus.WAITING ->
+            (if (online) "Sending" else "Waiting") to com.d365fo.mobileops.presentation.common.components.Lead.Warn
+        else -> "Refused" to com.d365fo.mobileops.presentation.common.components.Lead.Bad
+    }
+    val icon = when (kind) {
+        com.d365fo.mobileops.presentation.common.components.Lead.Done -> androidx.compose.material.icons.Icons.Filled.Check
+        com.d365fo.mobileops.presentation.common.components.Lead.Bad -> androidx.compose.material.icons.Icons.Filled.Warning
+        else -> androidx.compose.material.icons.Icons.Filled.Schedule
+    }
+    com.d365fo.mobileops.presentation.common.components.ListCard {
+        com.d365fo.mobileops.presentation.common.components.LineRow(
+            title = order.documentNumber ?: "Not created yet",
+            status = { com.d365fo.mobileops.presentation.common.components.StatusTag(tag, kind) },
+            description = order.title,
+            lines = listOf(
                 buildString {
                     append("${order.lineCount} " + if (order.lineCount == 1) "line" else "lines")
                     order.total?.let { append(" · ${amountText(it)} ${order.currencyCode.orEmpty()}".trimEnd()) }
                     append(" · ${Formatters.clockTime(order.createdAt)}")
                 },
-                style = MaterialTheme.typography.bodySmall,
-                color = WarehouseStatusColors.text3,
-            )
-            when (order.status) {
-                CreatedOrderStatus.WAITING -> {
+            ),
+            lead = { com.d365fo.mobileops.presentation.common.components.LeadDot(kind, icon = icon) },
+            onClick = onClick,
+            below = {
+                when (order.status) {
                     // Online it is already on its way - creating and confirming takes D365FO up to
                     // a minute or two - so "as soon as it can be reached" read as if it were offline.
-                    val online = com.d365fo.mobileops.presentation.common.components.LocalSyncStatus.current?.fullyOnline != false
-                    val what = when (order.kind) {
-                        com.d365fo.mobileops.data.local.entity.OrderKind.CONFIRMATION -> "confirms it"
-                        com.d365fo.mobileops.data.local.entity.OrderKind.RETURN -> "posts the return"
-                        else -> "creates it"
-                    }
-                    Text(
-                        if (online) {
-                            "Sent - takes a minute or two."
-                        } else {
-                            "Saved - sent when online."
-                        },
+                    CreatedOrderStatus.WAITING -> Text(
+                        if (online) "Sent - takes a minute or two." else "Saved - sent when online.",
                         style = MaterialTheme.typography.bodySmall,
+                        color = WarehouseStatusColors.text3,
                     )
+                    CreatedOrderStatus.FAILED -> Text(
+                        order.message ?: "D365FO refused the order.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = WarehouseStatusColors.red,
+                    )
+                    CreatedOrderStatus.CREATED -> order.message?.let {
+                        Text(
+                            it,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (unfinished != null) WarehouseStatusColors.amber else WarehouseStatusColors.text3,
+                        )
+                    }
                 }
-                CreatedOrderStatus.FAILED -> Text(
-                    order.message ?: "D365FO refused the order.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = WarehouseStatusColors.red,
-                )
-                CreatedOrderStatus.CREATED -> order.message?.let {
-                    Text(it, style = MaterialTheme.typography.bodySmall, color = if (unfinished != null) WarehouseStatusColors.amber else androidx.compose.ui.graphics.Color.Unspecified)
+                if (order.status == CreatedOrderStatus.CREATED && actionLabel != null && onAction != null) {
+                    com.d365fo.mobileops.presentation.common.components.SquareTextButton(onClick = onAction) { Text(actionLabel) }
                 }
-            }
-            if (order.status == CreatedOrderStatus.CREATED && actionLabel != null && onAction != null) {
-                com.d365fo.mobileops.presentation.common.components.SquareTextButton(onClick = onAction) { Text(actionLabel) }
-            }
-        }
-    }
-    if (onClick != null) {
-        AppCard(onClick = onClick, modifier = Modifier.fillMaxWidth()) { content() }
-    } else {
-        AppCard(modifier = Modifier.fillMaxWidth()) { content() }
+            },
+        )
     }
 }
 

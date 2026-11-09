@@ -12,6 +12,15 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.SwapHoriz
+import androidx.compose.material.icons.filled.Route
+import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.ArrowDownward
+import androidx.compose.material.icons.automirrored.filled.ListAlt
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.foundation.background
+import androidx.compose.ui.Alignment
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material.icons.filled.PhotoCamera
@@ -60,7 +69,7 @@ fun ToCreateScreen(onBack: () -> Unit, onShip: () -> Unit, viewModel: ToCreateVi
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("TO creation") },
+                title = { Text("Create transfer") },
                 expandedHeight = WarehouseDimens.TopBarHeight,
                 navigationIcon = {
                     IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back") }
@@ -68,18 +77,29 @@ fun ToCreateScreen(onBack: () -> Unit, onShip: () -> Unit, viewModel: ToCreateVi
             )
         },
     ) { padding ->
+        Column(modifier = Modifier.fillMaxSize().padding(padding)) {
         LazyColumn(
-            modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = WarehouseDimens.ScreenPadding),
+            modifier = Modifier.fillMaxWidth().weight(1f),
+            // contentPadding, not padding: the step tabs run edge to edge (Harbour).
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = WarehouseDimens.ScreenPadding),
             verticalArrangement = Arrangement.spacedBy(WarehouseDimens.ItemSpacing),
         ) {
-            item { androidx.compose.foundation.layout.Box(Modifier.fillMaxWidth().height(4.dp)) { if (state.busy) LinearProgressIndicator(modifier = Modifier.fillMaxWidth()) } }
+            item(key = "tabs") {
+                Column {
+                    com.d365fo.mobileops.presentation.common.components.StepTrail(
+                        names = listOf("Route", "Items", "Create"),
+                        current = if (!state.routeChosen) 0 else 1,
+                    )
+                    androidx.compose.foundation.layout.Box(Modifier.fillMaxWidth().height(4.dp)) { if (state.busy) LinearProgressIndicator(modifier = Modifier.fillMaxWidth()) }
+                }
+            }
             // Below the scan card on a step that has one - see the item after it in step 2.
             if (!state.routeChosen) state.error?.let { message -> item { ErrorBanner(message = message, onDismiss = viewModel::dismissError) } }
 
             state.submittedId?.let { id ->
                 val order = orders.firstOrNull { it.id == id }
                 if (order != null) {
-                    item { Text("Order saved", style = MaterialTheme.typography.titleMedium) }
+                    item { com.d365fo.mobileops.presentation.common.components.ListHeader(Icons.Default.Check, "Order saved") }
                     item { CreatedOrderCard(order) }
                     if (order.status == CreatedOrderStatus.CREATED) {
                         item { SquareButton(onClick = { viewModel.ship(order.documentNumber.orEmpty()); onShip() }, modifier = Modifier.fillMaxWidth()) { Text("Ship ${order.documentNumber} now") } }
@@ -99,37 +119,43 @@ fun ToCreateScreen(onBack: () -> Unit, onShip: () -> Unit, viewModel: ToCreateVi
                     }
                 } else {
                     // Dropdowns, not a chip per warehouse: a worker assigned many warehouses got
-                    // two walls of chips before the first item (feedback, 10 Oct).
-                    item { Text("From", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 8.dp)) }
+                    // two walls of chips before the first item (feedback, 10 Oct). From and To in
+                    // one white card with an arrow between (Harbour).
                     item {
-                        WarehouseDropdown(
-                            options = state.warehouses,
-                            selectedId = draft.fromWarehouseId,
-                            placeholder = "Choose the warehouse it ships from",
-                            onPick = viewModel::pickFrom,
-                        )
-                    }
-                    item { Text("To", style = MaterialTheme.typography.titleMedium) }
-                    item {
-                        WarehouseDropdown(
-                            options = state.warehouses.filter { it.warehouseId != draft.fromWarehouseId },
-                            selectedId = draft.toWarehouseId,
-                            placeholder = "Choose the warehouse it goes to",
-                            onPick = viewModel::pickTo,
-                        )
-                    }
-                    item {
-                        SquareButton(
-                            onClick = viewModel::confirmRoute,
-                            enabled = draft.fromWarehouseId.isNotBlank() && draft.toWarehouseId.isNotBlank(),
-                            modifier = Modifier.fillMaxWidth().heightIn(min = WarehouseDimens.MinTouchTarget),
-                        ) { Text("Continue to items") }
+                        Column(
+                            verticalArrangement = Arrangement.spacedBy(6.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(androidx.compose.ui.graphics.Color.White, androidx.compose.foundation.shape.RoundedCornerShape(12.dp))
+                                .padding(12.dp),
+                        ) {
+                            Text("From", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, color = WarehouseStatusColors.text3)
+                            WarehouseDropdown(
+                                options = state.warehouses,
+                                selectedId = draft.fromWarehouseId,
+                                placeholder = "Choose the warehouse it ships from",
+                                onPick = viewModel::pickFrom,
+                            )
+                            Icon(
+                                Icons.Default.ArrowDownward,
+                                contentDescription = null,
+                                tint = WarehouseStatusColors.text3,
+                                modifier = Modifier.align(Alignment.CenterHorizontally),
+                            )
+                            Text("To", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, color = WarehouseStatusColors.text3)
+                            WarehouseDropdown(
+                                options = state.warehouses.filter { it.warehouseId != draft.fromWarehouseId },
+                                selectedId = draft.toWarehouseId,
+                                placeholder = "Choose the warehouse it goes to",
+                                onPick = viewModel::pickTo,
+                            )
+                        }
                     }
                 }
-                // Below the route and Continue - what the worker acts on comes first; then the
-                // latest three, the same as PO creation and Purchase return.
+                // Below the route - what the worker acts on comes first; then the latest three,
+                // the same as PO creation and Purchase return.
                 if (orders.isNotEmpty() && state.submittedId == null) {
-                    item { Text("Made on this device", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 8.dp)) }
+                    item { com.d365fo.mobileops.presentation.common.components.ListHeader(Icons.Default.SwapHoriz, "Your transfers", orders.size.coerceAtMost(3), trailing = "Newest") }
                     items(orders.take(3), key = { it.id }) { order ->
                         val shippable = state.shippableIds?.let { ids -> order.documentNumber?.uppercase() in ids } ?: true
                         // No longer to ship from here: it shipped - the card still said "Created".
@@ -145,36 +171,61 @@ fun ToCreateScreen(onBack: () -> Unit, onShip: () -> Unit, viewModel: ToCreateVi
                 item {
                     PromptHeroCard(
                         prompt = "Scan item",
+                        pills = listOf(
+                            Icons.Default.Route to "${draft.fromWarehouseId} to ${draft.toWarehouseId}",
+                            Icons.Default.CalendarMonth to "Ships ${draft.shipDate}",
+                        ),
                     ) {
                         OrderScanField(onType = { typing = true }, onCamera = { showCamera = true }, enabled = !state.busy)
+                        if (draft.lines.isEmpty()) TextButton(onClick = viewModel::changeRoute) { Text("Change warehouses") }
                     }
                 }
                 state.error?.let { message -> item { ErrorBanner(message = message, onDismiss = viewModel::dismissError) } }
-                item {
-                    AppCard(modifier = Modifier.fillMaxWidth()) {
-                        Column(modifier = Modifier.padding(14.dp)) {
-                            Text("${draft.fromWarehouseId} → ${draft.toWarehouseId}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                            Text("Ships ${draft.shipDate}", style = MaterialTheme.typography.bodySmall, color = WarehouseStatusColors.text3)
-                            if (draft.lines.isEmpty()) TextButton(onClick = viewModel::changeRoute) { Text("Change warehouses") }
-                        }
+                if (draft.lines.isNotEmpty()) {
+                    item {
+                        com.d365fo.mobileops.presentation.common.components.ListHeader(
+                            icon = Icons.AutoMirrored.Filled.ListAlt,
+                            title = "Order lines",
+                            count = draft.lines.size,
+                        )
                     }
                 }
                 items(draft.lines, key = { it.id }) { line ->
                     OrderLineCard(line, showPrice = false, currency = "") { viewModel.editLine(line) }
                 }
-                if (draft.lines.isNotEmpty()) {
-                    item {
-                        SquareButton(onClick = viewModel::create, enabled = !state.busy, modifier = Modifier.fillMaxWidth().heightIn(min = WarehouseDimens.MinTouchTarget)) {
-                            Text("Create transfer order")
-                        }
-                    }
-                    item {
-                        TextButton(onClick = { confirmDiscard = true }, modifier = Modifier.fillMaxWidth()) {
-                            Text("Discard this order", color = WarehouseStatusColors.red)
-                        }
+                item { androidx.compose.foundation.layout.Spacer(Modifier.height(8.dp)) }
+            }
+        }
+        // The dock (Harbour): Next on the route step; Discard and a hold to create on the items.
+        if (!state.routeChosen) {
+            if (state.warehouses.size >= 2) {
+                com.d365fo.mobileops.presentation.common.components.FlowDock {
+                    com.d365fo.mobileops.presentation.common.components.GradientButton(
+                        onClick = viewModel::confirmRoute,
+                        enabled = draft.fromWarehouseId.isNotBlank() && draft.toWarehouseId.isNotBlank(),
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        Text("Next")
+                        Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null)
                     }
                 }
             }
+        } else if (draft.lines.isNotEmpty()) {
+            com.d365fo.mobileops.presentation.common.components.FlowDock {
+                com.d365fo.mobileops.presentation.common.components.DockOutlinedButton(
+                    onClick = { confirmDiscard = true },
+                    text = "Discard",
+                    color = WarehouseStatusColors.red,
+                    modifier = Modifier.weight(0.38f),
+                )
+                com.d365fo.mobileops.presentation.common.components.HoldButton(
+                    label = "Hold to create",
+                    onConfirm = viewModel::create,
+                    enabled = !state.busy,
+                    modifier = Modifier.weight(0.62f),
+                )
+            }
+        }
         }
     }
 

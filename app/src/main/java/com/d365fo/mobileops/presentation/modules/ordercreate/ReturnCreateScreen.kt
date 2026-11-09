@@ -11,6 +11,13 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.Store
+import androidx.compose.material.icons.filled.Warehouse
+import androidx.compose.material.icons.automirrored.filled.ListAlt
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Row
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -58,7 +65,7 @@ fun ReturnCreateScreen(onBack: () -> Unit, viewModel: ReturnCreateViewModel = hi
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Purchase return") },
+                title = { Text("Return to vendor") },
                 expandedHeight = WarehouseDimens.TopBarHeight,
                 navigationIcon = {
                     IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back") }
@@ -66,11 +73,26 @@ fun ReturnCreateScreen(onBack: () -> Unit, viewModel: ReturnCreateViewModel = hi
             )
         },
     ) { padding ->
+        Column(modifier = Modifier.fillMaxSize().padding(padding)) {
         LazyColumn(
-            modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = WarehouseDimens.ScreenPadding),
+            modifier = Modifier.fillMaxWidth().weight(1f),
+            // contentPadding, not padding: the step tabs run edge to edge (Harbour).
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = WarehouseDimens.ScreenPadding),
             verticalArrangement = Arrangement.spacedBy(WarehouseDimens.ItemSpacing),
         ) {
-            item { androidx.compose.foundation.layout.Box(Modifier.fillMaxWidth().height(4.dp)) { if (state.busy) LinearProgressIndicator(modifier = Modifier.fillMaxWidth()) } }
+            item(key = "tabs") {
+                Column {
+                    com.d365fo.mobileops.presentation.common.components.StepTrail(
+                        names = listOf("Vendor", "Reason", "Items", "Post"),
+                        current = when {
+                            draft.vendorAccount.isBlank() -> 0
+                            draft.lines.isEmpty() && (draft.reasonCode.isBlank() || draft.actionCode.isBlank()) -> 1
+                            else -> 2
+                        },
+                    )
+                    androidx.compose.foundation.layout.Box(Modifier.fillMaxWidth().height(4.dp)) { if (state.busy) LinearProgressIndicator(modifier = Modifier.fillMaxWidth()) }
+                }
+            }
             // Scan card first, above the saved return and the history: it stays in one place.
             if (draft.vendorAccount.isBlank()) {
                 item {
@@ -85,7 +107,7 @@ fun ReturnCreateScreen(onBack: () -> Unit, viewModel: ReturnCreateViewModel = hi
             state.submittedId?.let { id ->
                 val order = orders.firstOrNull { it.id == id }
                 if (order != null) {
-                    item { Text("Return saved", style = MaterialTheme.typography.titleMedium) }
+                    item { com.d365fo.mobileops.presentation.common.components.ListHeader(Icons.Default.Check, "Return saved") }
                     item { CreatedOrderCard(order) }
                     item { SquareOutlinedButton(onClick = viewModel::dismissResult, modifier = Modifier.fillMaxWidth()) { Text("Start another return") } }
                 }
@@ -94,33 +116,37 @@ fun ReturnCreateScreen(onBack: () -> Unit, viewModel: ReturnCreateViewModel = hi
             if (draft.vendorAccount.isBlank()) {
                 // -- Step 1: vendor - picked, or taken from the original PO ---------------------
                 // Keyed so the field keeps focus when the cards above go away as typing starts.
-                // The white prompt card the other start screens use (20 Oct restyle).
                 item(key = "vendor-search") {
                     com.d365fo.mobileops.presentation.common.components.PromptHeroCard(prompt = "Choose vendor") {
-                        TapToTypeField(state.vendorQuery, viewModel::onVendorQuery, "Search by name or account")
+                        TapToTypeField(state.vendorQuery, viewModel::onVendorQuery, "Vendor name or account")
                     }
                 }
-                // After the search field, which comes first as the thing to act on (the cards
-                // still hide while searching).
                 if (orders.isNotEmpty() && state.submittedId == null && state.vendorQuery.isBlank()) {
-                    item { Text("Made on this device", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 8.dp)) }
+                    item { com.d365fo.mobileops.presentation.common.components.ListHeader(Icons.Default.Description, "Your returns", orders.size.coerceAtMost(3), trailing = "Newest") }
                     items(orders.take(3), key = { it.id }) { order -> CreatedOrderCard(order) }
                 }
-                if (state.vendorCount == 0) {
-                    item {
-                        Text(
-                            if (online) "Getting vendors..." else "No vendors yet - connect once.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = WarehouseStatusColors.text3,
-                        )
-                    }
+                item {
+                    com.d365fo.mobileops.presentation.common.components.ListHeader(
+                        icon = Icons.Default.Store,
+                        title = "Vendors",
+                        count = state.vendorCount.takeIf { it > 0 },
+                        trailing = if (state.vendorCount == 0) (if (online) "Getting vendors..." else "No vendors yet - connect once.") else null,
+                    )
                 }
                 items(state.vendors, key = { it.accountNum }) { vendor ->
-                    AppCard(onClick = { viewModel.pickVendor(vendor) }, modifier = Modifier.fillMaxWidth()) {
-                        Column(modifier = Modifier.padding(14.dp)) {
-                            Text(vendor.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                            Text(vendor.accountNum, style = MaterialTheme.typography.bodySmall, color = WarehouseStatusColors.text3)
-                        }
+                    com.d365fo.mobileops.presentation.common.components.ListCard {
+                        com.d365fo.mobileops.presentation.common.components.LineRow(
+                            title = vendor.name,
+                            lines = listOf(vendor.accountNum),
+                            lead = {
+                                com.d365fo.mobileops.presentation.common.components.LeadDot(
+                                    com.d365fo.mobileops.presentation.common.components.Lead.Accent,
+                                    text = vendor.accountNum.takeLast(3),
+                                )
+                            },
+                            trailing = { com.d365fo.mobileops.presentation.common.components.RowChevron() },
+                            onClick = { viewModel.pickVendor(vendor) },
+                        )
                     }
                 }
             } else {
@@ -129,51 +155,52 @@ fun ReturnCreateScreen(onBack: () -> Unit, viewModel: ReturnCreateViewModel = hi
                 item {
                     PromptHeroCard(
                         prompt = "Scan item",
+                        pills = listOfNotNull(
+                            Icons.Default.Store to draft.vendorName.ifBlank { draft.vendorAccount },
+                            Icons.Default.Warehouse to "From ${draft.warehouseId}",
+                            draft.rmaNumber.takeIf { it.isNotBlank() }?.let { Icons.Default.Description to "RMA $it" },
+                        ),
                     ) {
                         OrderScanField(onType = { typing = true }, onCamera = { showCamera = true }, enabled = !state.busy)
-                    }
-                }
-                state.error?.let { message -> item { ErrorBanner(message = message, onDismiss = viewModel::dismissError) } }
-                item {
-                    AppCard(modifier = Modifier.fillMaxWidth()) {
-                        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                            Text(draft.vendorName.ifBlank { draft.vendorAccount }, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                            Text(
-                                "Vendor ${draft.vendorAccount} · from ${draft.warehouseId}",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = WarehouseStatusColors.text3,
-                            )
+                        Row(modifier = Modifier.fillMaxWidth()) {
                             TextButton(onClick = { viewModel.editRma(true) }) {
-                                Text(if (draft.rmaNumber.isBlank()) "Add the vendor's RMA number" else "RMA ${draft.rmaNumber} - change")
+                                Text(if (draft.rmaNumber.isBlank()) "Add vendor RMA" else "Change RMA")
                             }
                             if (draft.lines.isEmpty()) TextButton(onClick = viewModel::changeVendor) { Text("Change vendor") }
                         }
                     }
                 }
-                if (state.reasons.isNotEmpty()) {
-                    item { Text("Return reason", style = MaterialTheme.typography.titleMedium) }
+                state.error?.let { message -> item { ErrorBanner(message = message, onDismiss = viewModel::dismissError) } }
+                if (state.reasons.isNotEmpty() || state.actions.isNotEmpty()) {
                     item {
-                        // A dropdown, like TO creation's warehouses: the list is D365FO's
-                        // own setup and can be any length.
-                        com.d365fo.mobileops.presentation.common.components.DropdownField(
-                            options = state.reasons.map { com.d365fo.mobileops.presentation.common.components.DropdownOption(it.code, it.label) },
-                            selectedId = draft.reasonCode,
-                            placeholder = "Choose a reason",
-                            onPick = viewModel::pickReason,
-                        )
-                    }
-                }
-                if (state.actions.isNotEmpty()) {
-                    item { Text("Return action", style = MaterialTheme.typography.titleMedium) }
-                    item {
-                        // A dropdown, like TO creation's warehouses: the list is D365FO's
-                        // own setup and can be any length.
-                        com.d365fo.mobileops.presentation.common.components.DropdownField(
-                            options = state.actions.map { com.d365fo.mobileops.presentation.common.components.DropdownOption(it.code, it.label) },
-                            selectedId = draft.actionCode,
-                            placeholder = "Choose an action",
-                            onPick = viewModel::pickAction,
-                        )
+                        // Reason and action in one white card (Harbour) - dropdowns, as D365FO's
+                        // own setup can be any length.
+                        Column(
+                            verticalArrangement = Arrangement.spacedBy(6.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(androidx.compose.ui.graphics.Color.White, androidx.compose.foundation.shape.RoundedCornerShape(12.dp))
+                                .padding(12.dp),
+                        ) {
+                            if (state.reasons.isNotEmpty()) {
+                                Text("Return reason", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, color = WarehouseStatusColors.text3)
+                                com.d365fo.mobileops.presentation.common.components.DropdownField(
+                                    options = state.reasons.map { com.d365fo.mobileops.presentation.common.components.DropdownOption(it.code, it.label) },
+                                    selectedId = draft.reasonCode,
+                                    placeholder = "Choose a reason",
+                                    onPick = viewModel::pickReason,
+                                )
+                            }
+                            if (state.actions.isNotEmpty()) {
+                                Text("Return action", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, color = WarehouseStatusColors.text3, modifier = Modifier.padding(top = 4.dp))
+                                com.d365fo.mobileops.presentation.common.components.DropdownField(
+                                    options = state.actions.map { com.d365fo.mobileops.presentation.common.components.DropdownOption(it.code, it.label) },
+                                    selectedId = draft.actionCode,
+                                    placeholder = "Choose an action",
+                                    onPick = viewModel::pickAction,
+                                )
+                            }
+                        }
                     }
                 }
                 if (state.reasons.isEmpty() && !online) {
@@ -185,25 +212,42 @@ fun ReturnCreateScreen(onBack: () -> Unit, viewModel: ReturnCreateViewModel = hi
                         )
                     }
                 }
+                if (draft.lines.isNotEmpty()) {
+                    item {
+                        com.d365fo.mobileops.presentation.common.components.ListHeader(
+                            icon = Icons.AutoMirrored.Filled.ListAlt,
+                            title = "Return lines",
+                            count = draft.lines.size,
+                        )
+                    }
+                }
                 items(draft.lines, key = { it.id }) { line ->
                     OrderLineCard(line, showPrice = false, currency = "") { viewModel.editLine(line) }
                 }
                 if (draft.lines.isNotEmpty()) {
                     state.missing?.let { item { Text(it, style = MaterialTheme.typography.bodyMedium, color = WarehouseStatusColors.amber) } }
-                    item {
-                        SquareButton(
-                            onClick = { confirmSend = true },
-                            enabled = !state.busy && state.missing == null,
-                            modifier = Modifier.fillMaxWidth().heightIn(min = WarehouseDimens.MinTouchTarget),
-                        ) { Text("Return and post") }
-                    }
                 }
-                item {
-                    TextButton(onClick = { confirmDiscard = true }, modifier = Modifier.fillMaxWidth()) {
-                        Text("Discard this return", color = WarehouseStatusColors.red)
-                    }
-                }
+                item { androidx.compose.foundation.layout.Spacer(Modifier.height(8.dp)) }
             }
+        }
+        // The dock (Harbour): Discard beside a hold to return and post - posting can't be undone,
+        // so a hold rather than a tap and a question.
+        if (draft.vendorAccount.isNotBlank()) {
+            com.d365fo.mobileops.presentation.common.components.FlowDock {
+                com.d365fo.mobileops.presentation.common.components.DockOutlinedButton(
+                    onClick = { confirmDiscard = true },
+                    text = "Discard",
+                    color = WarehouseStatusColors.red,
+                    modifier = Modifier.weight(0.38f),
+                )
+                com.d365fo.mobileops.presentation.common.components.HoldButton(
+                    label = "Hold to post",
+                    onConfirm = viewModel::create,
+                    enabled = !state.busy && draft.lines.isNotEmpty() && state.missing == null,
+                    modifier = Modifier.weight(0.62f),
+                )
+            }
+        }
         }
     }
 
