@@ -271,21 +271,7 @@ fun HomeScreen(
     var infoFor by remember { mutableStateOf<ModuleTile?>(null) }
     var confirmSignOut by remember { mutableStateOf(false) }
     val unfinished by unfinishedViewModel.unfinished.collectAsStateWithLifecycle()
-    var showAllUnfinished by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableStateOf(false) }
-    val onHoldElsewhere by unfinishedViewModel.onHoldElsewhere.collectAsStateWithLifecycle()
     val blockedWorkflows by accessViewModel.blockedWorkflows.collectAsStateWithLifecycle()
-    val switchedOff by accessViewModel.switchedOff.collectAsStateWithLifecycle()
-    var switchedOffNotice by remember { mutableStateOf<String?>(null) }
-    switchedOffNotice?.let { notice ->
-        AlertDialog(
-            onDismissRequest = { switchedOffNotice = null },
-            title = { Text("Switched off") },
-            text = { Text(notice) },
-            confirmButton = {
-                com.d365fo.mobileops.presentation.common.components.ConfirmButton(onClick = { switchedOffNotice = null }) { Text("OK") }
-            },
-        )
-    }
     val handheldMenu by accessViewModel.menu.collectAsStateWithLifecycle()
     // Each time Home shows: pick up Menu access changed in D365FO since the last look.
     androidx.compose.runtime.LaunchedEffect(Unit) {
@@ -372,62 +358,7 @@ fun HomeScreen(
                 RestoreWorkCard(modifier = side)
             }
 
-            // Unfinished work first. It is the only thing on this screen that is time-
-            // sensitive: the modules will still be there tomorrow, a half-counted pallet
-            // in an aisle will not.
-            if (unfinished.isNotEmpty()) {
-                item(key = "unfinished-header") {
-                    HomeSectionTitle("Continue where you left off", modifier = side)
-                }
-                items(
-                    // Three, then "show all": however many have piled up, the modules stay in reach.
-                    if (showAllUnfinished) unfinished else unfinished.take(UNFINISHED_SHOWN),
-                    key = { "${it.flowType}:${it.orderId}" },
-                    contentType = { "unfinished" },
-                ) { work ->
-                    UnfinishedWorkCard(
-                        modifier = side,
-                        work = work,
-                        onResume = {
-                            val workflow = when (work.flowType) {
-                                com.d365fo.mobileops.data.local.entity.FlowType.RECEIVING -> com.d365fo.mobileops.domain.model.WarehouseWorkflow.PO_RECEIVING
-                                com.d365fo.mobileops.data.local.entity.FlowType.TRANSFER_SHIP -> com.d365fo.mobileops.domain.model.WarehouseWorkflow.TRANSFER_SHIP
-                                com.d365fo.mobileops.data.local.entity.FlowType.TRANSFER_RECEIVE -> com.d365fo.mobileops.domain.model.WarehouseWorkflow.TRANSFER_RECEIVE
-                            }
-                            // A switched-off module doesn't open from here either; the job stays.
-                            val off = switchedOff[workflow]
-                            if (off != null) {
-                                switchedOffNotice = "${workflow.label}: $off"
-                            } else if (!unfinishedViewModel.justScanned()) {
-                                onModuleSelected(unfinishedViewModel.resume(work))
-                            }
-                        },
-                        onDiscard = { unfinishedViewModel.discard(work) },
-                    )
-                }
-                if (unfinished.size > UNFINISHED_SHOWN) {
-                    item(key = "unfinished-more") {
-                        Text(
-                            text = if (showAllUnfinished) "Show fewer" else "Show all ${unfinished.size} unfinished",
-                            style = MaterialTheme.typography.titleSmall,
-                            color = WarehouseStatusColors.accent,
-                            modifier = side
-                                .clickable { showAllUnfinished = !showAllUnfinished }
-                                .padding(vertical = 10.dp),
-                        )
-                    }
-                }
-            }
-            if (onHoldElsewhere > 0) {
-                item(key = "on-hold") {
-                    Text(
-                        text = "$onHoldElsewhere unfinished at another warehouse - change warehouse",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = WarehouseStatusColors.text3,
-                        modifier = side.clickable(onClick = onChangeWarehouse).padding(vertical = 4.dp),
-                    )
-                }
-            }
+            // "Continue where you left off" moved to the Activity tab (9 Nov).
 
             // The tasks by area, with today's counts; look-ups on the Enquiry tab (30 Oct).
             val visible = visibleModules(handheldMenu, blockedWorkflows)
@@ -448,12 +379,71 @@ fun HomeScreen(
                     }
                 }
             }
-            item(key = "news-title") { HomeSectionTitle("Tips", modifier = side) }
-            item(key = "news") { TipsRow() }
-            item(key = "report-title") { HomeSectionTitle("Tell us", modifier = side) }
-            item(key = "report") { ReportSuggestCards(modifier = side) }
+            // Tips and Tell us removed (9 Nov).
         }
     }
+}
+
+/**
+ * "Continue where you left off": unfinished jobs on this device, with resume and discard - on
+ * the Activity tab (moved from Home, 9 Nov). Three shown, then "Show all".
+ */
+internal fun androidx.compose.foundation.lazy.LazyListScope.unfinishedWorkSection(
+    unfinished: List<UnfinishedWork>,
+    showAll: Boolean,
+    onToggleShowAll: () -> Unit,
+    onHoldElsewhere: Int,
+    onResume: (UnfinishedWork) -> Unit,
+    onDiscard: (UnfinishedWork) -> Unit,
+    onChangeWarehouse: () -> Unit,
+    side: Modifier = Modifier,
+) {
+    if (unfinished.isNotEmpty()) {
+        item(key = "unfinished-header") {
+            HomeSectionTitle("Continue where you left off", modifier = side)
+        }
+        items(
+            if (showAll) unfinished else unfinished.take(UNFINISHED_SHOWN),
+            key = { "${it.flowType}:${it.orderId}" },
+            contentType = { "unfinished" },
+        ) { work ->
+            UnfinishedWorkCard(
+                modifier = side,
+                work = work,
+                onResume = { onResume(work) },
+                onDiscard = { onDiscard(work) },
+            )
+        }
+        if (unfinished.size > UNFINISHED_SHOWN) {
+            item(key = "unfinished-more") {
+                Text(
+                    text = if (showAll) "Show fewer" else "Show all ${unfinished.size} unfinished",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = WarehouseStatusColors.accent,
+                    modifier = side
+                        .clickable(onClick = onToggleShowAll)
+                        .padding(vertical = 10.dp),
+                )
+            }
+        }
+    }
+    if (onHoldElsewhere > 0) {
+        item(key = "on-hold") {
+            Text(
+                text = "$onHoldElsewhere unfinished at another warehouse - change warehouse",
+                style = MaterialTheme.typography.bodySmall,
+                color = WarehouseStatusColors.text3,
+                modifier = side.clickable(onClick = onChangeWarehouse).padding(vertical = 4.dp),
+            )
+        }
+    }
+}
+
+/** The module a job resumes in - for the switched-off check before resuming. */
+internal fun workflowFor(work: UnfinishedWork) = when (work.flowType) {
+    com.d365fo.mobileops.data.local.entity.FlowType.RECEIVING -> com.d365fo.mobileops.domain.model.WarehouseWorkflow.PO_RECEIVING
+    com.d365fo.mobileops.data.local.entity.FlowType.TRANSFER_SHIP -> com.d365fo.mobileops.domain.model.WarehouseWorkflow.TRANSFER_SHIP
+    com.d365fo.mobileops.data.local.entity.FlowType.TRANSFER_RECEIVE -> com.d365fo.mobileops.domain.model.WarehouseWorkflow.TRANSFER_RECEIVE
 }
 
 @Composable

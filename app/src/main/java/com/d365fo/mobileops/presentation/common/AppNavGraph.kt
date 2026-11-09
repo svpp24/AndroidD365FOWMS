@@ -655,7 +655,13 @@ fun AppNavGraph(
                 }
 
                 composable(Routes.FAILED_SYNC) {
-                    FailedSyncScreen(onBack = { navController.popBackStack() })
+                    val homeEntry = remember(it) { runCatching { navController.getBackStackEntry(Routes.HOME) }.getOrNull() }
+                    FailedSyncScreen(
+                        onBack = { navController.popBackStack() },
+                        onOpen = { route -> navController.navigate(route) },
+                        onChangeWarehouse = { navController.navigate(Routes.CHANGE_WAREHOUSE) },
+                        accessViewModel = if (homeEntry != null) hiltViewModel(homeEntry) else hiltViewModel(),
+                    )
                 }
             }
         }

@@ -28,6 +28,7 @@ import com.d365fo.mobileops.presentation.common.components.AppTopBar as TopAppBa
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -227,8 +228,28 @@ class FailedSyncViewModel @Inject constructor(
 @Composable
 fun FailedSyncScreen(
     onBack: () -> Unit,
+    /** Opens a route - resuming an unfinished job. */
+    onOpen: (String) -> Unit = {},
+    onChangeWarehouse: () -> Unit = {},
     viewModel: FailedSyncViewModel = hiltViewModel(),
+    unfinishedViewModel: UnfinishedWorkViewModel = hiltViewModel(),
+    accessViewModel: HomeAccessViewModel = hiltViewModel(),
 ) {
+    val unfinished by unfinishedViewModel.unfinished.collectAsStateWithLifecycle()
+    val onHoldElsewhere by unfinishedViewModel.onHoldElsewhere.collectAsStateWithLifecycle()
+    val switchedOff by accessViewModel.switchedOff.collectAsStateWithLifecycle()
+    var showAllUnfinished by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableStateOf(false) }
+    var switchedOffNotice by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<String?>(null) }
+    switchedOffNotice?.let { notice ->
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { switchedOffNotice = null },
+            title = { Text("Switched off") },
+            text = { Text(notice) },
+            confirmButton = {
+                com.d365fo.mobileops.presentation.common.components.ConfirmButton(onClick = { switchedOffNotice = null }) { Text("OK") }
+            },
+        )
+    }
     val failures by viewModel.failures.collectAsStateWithLifecycle()
     val waiting by viewModel.waiting.collectAsStateWithLifecycle()
     val activities by viewModel.countingActivities.collectAsStateWithLifecycle()
@@ -261,7 +282,26 @@ fun FailedSyncScreen(
                 .padding(horizontal = WarehouseDimens.ScreenPadding),
             verticalArrangement = Arrangement.spacedBy(WarehouseDimens.ItemSpacing),
         ) {
-            // First: work captured on this device that D365FO hasn't received yet. Offline this
+            // Unfinished jobs on this device first - moved here from Home (9 Nov).
+            unfinishedWorkSection(
+                unfinished = unfinished,
+                showAll = showAllUnfinished,
+                onToggleShowAll = { showAllUnfinished = !showAllUnfinished },
+                onHoldElsewhere = onHoldElsewhere,
+                onResume = { work ->
+                    val workflow = workflowFor(work)
+                    // A switched-off module doesn't open from here either; the job stays.
+                    val off = switchedOff[workflow]
+                    if (off != null) {
+                        switchedOffNotice = "${workflow.label}: $off"
+                    } else if (!unfinishedViewModel.justScanned()) {
+                        onOpen(unfinishedViewModel.resume(work))
+                    }
+                },
+                onDiscard = { unfinishedViewModel.discard(it) },
+                onChangeWarehouse = onChangeWarehouse,
+            )
+            // Then: work captured on this device that D365FO hasn't received yet. Offline this
             // is the answer to "is my receipt safe?" - it is, and here it is.
             if (waiting.isNotEmpty()) {
                 item {
