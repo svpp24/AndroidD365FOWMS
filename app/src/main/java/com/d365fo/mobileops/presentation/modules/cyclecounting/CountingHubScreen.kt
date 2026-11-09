@@ -38,6 +38,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.launch
+import androidx.lifecycle.viewModelScope
 import com.d365fo.mobileops.domain.model.CountKind
 import com.d365fo.mobileops.domain.model.kind
 import com.d365fo.mobileops.presentation.common.components.AppTopBar
@@ -57,17 +59,9 @@ fun CountingHubScreen(
     onStoreCount: () -> Unit,
     onJournals: (CountKind) -> Unit,
     onAccuracy: () -> Unit,
-    viewModel: CountingJournalListViewModel = hiltViewModel(),
+    viewModel: CountingHubViewModel = hiltViewModel(),
 ) {
-    val state by viewModel.state.collectAsStateWithLifecycle()
-    // How many of each kind are open for this worker - shown once D365FO has answered.
-    val open = state.journals.filter { it.journalId !in state.doneIds }.groupBy { it.kind }
-    val known = state.journals.isNotEmpty() || (!state.busy && state.error == null)
-    fun badge(kind: CountKind): String? = if (!known) null else when (val n = open[kind].orEmpty().size) {
-        0 -> null
-        else -> "$n open"
-    }
-    val recounts = open[CountKind.CYCLE].orEmpty().sumOf { it.recountLines }
+    val canViewAccuracy by viewModel.canViewAccuracy.collectAsStateWithLifecycle()
 
     Scaffold(
         topBar = {
@@ -118,7 +112,7 @@ fun CountingHubScreen(
                     onClick = { onJournals(CountKind.WALL_TO_WALL) },
                 )
             }
-            if (state.canViewAccuracy) {
+            if (canViewAccuracy) {
                 item(key = "accuracy") {
                     com.d365fo.mobileops.presentation.common.components.ModuleCard(
                         icon = Icons.Default.Insights,
@@ -130,5 +124,33 @@ fun CountingHubScreen(
                 }
             }
         }
+    }
+}
+
+/**
+ * The hub's one question - may this worker open Count accuracy - without the journal list's
+ * load: the hub used to list every count journal from D365FO just to show badges, and then the
+ * Cycle count screen listed them again (9 Nov, performance).
+ */
+@dagger.hilt.android.lifecycle.HiltViewModel
+class CountingHubViewModel @javax.inject.Inject constructor(
+    private val flags: com.d365fo.mobileops.domain.FeatureFlags,
+    private val workerSession: com.d365fo.mobileops.data.repository.WorkerSessionRepository,
+    private val counterProfiles: com.d365fo.mobileops.data.counting.CounterProfiles,
+) : androidx.lifecycle.ViewModel() {
+    private val _canViewAccuracy = kotlinx.coroutines.flow.MutableStateFlow(accuracyFor(null))
+    val canViewAccuracy: kotlinx.coroutines.flow.StateFlow<Boolean> = _canViewAccuracy
+
+    init {
+        if (flags.countAccuracy && flags.countExternalCounters) {
+            viewModelScope.launch { _canViewAccuracy.value = accuracyFor(counterProfiles.refresh()) }
+        }
+    }
+
+    // The same gate as CountingJournalListViewModel.applyCapabilities.
+    private fun accuracyFor(profile: com.d365fo.mobileops.domain.counting.CounterProfile?): Boolean {
+        val supervisor = workerSession.session.value?.isCycleCountSupervisor == true
+        val caps = com.d365fo.mobileops.data.counting.countingCapabilities(flags, profile, supervisor)
+        return flags.countAccuracy && !caps.externalCounter && (profile?.isCycleCountSupervisor ?: supervisor)
     }
 }

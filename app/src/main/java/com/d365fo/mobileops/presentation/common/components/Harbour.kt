@@ -265,18 +265,28 @@ fun LineRow(
         lead?.invoke()
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
             // The tag wraps under the title when both don't fit - beside it, a narrow row broke
-            // the document number in the middle of its digits.
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalArrangement = Arrangement.spacedBy(2.dp),
-            ) {
+            // the document number in the middle of its digits. Without a tag, a plain Text: the
+            // wrapping layout costs more, and long lists are mostly rows without one.
+            if (status == null) {
                 Text(
                     title.breakableCode(),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.ExtraBold,
                     color = WarehouseStatusColors.accent,
                 )
-                status?.let { Box(Modifier.align(Alignment.CenterVertically)) { it() } }
+            } else {
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                ) {
+                    Text(
+                        title.breakableCode(),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = WarehouseStatusColors.accent,
+                    )
+                    Box(Modifier.align(Alignment.CenterVertically)) { status() }
+                }
             }
             description?.takeIf { it.isNotBlank() }?.let {
                 Text(it, style = MaterialTheme.typography.bodyMedium, color = WarehouseStatusColors.text2)

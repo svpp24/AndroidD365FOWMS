@@ -530,9 +530,14 @@ private fun QueueStatusCard(entry: PostQueueEntry) {
         else -> com.d365fo.mobileops.presentation.common.components.Lead.Warn
     }
     // D365FO sends its empty date (1900-01-01) rather than null for a row not processed yet.
-    val processedAt = entry.processedUtc?.let(Formatters::odataToEpochMillis)?.takeIf { it > EMPTY_DATE_CUTOFF }
-    val receivedAt = entry.receivedUtc?.let(Formatters::odataToEpochMillis)?.takeIf { it > EMPTY_DATE_CUTOFF }
-    val queueLines = parseQueueLines(entry.linesJson)
+    // Parsed once per row, not on every redraw - a long queue scrolled smoothly only then.
+    val processedAt = androidx.compose.runtime.remember(entry.processedUtc) {
+        entry.processedUtc?.let(Formatters::odataToEpochMillis)?.takeIf { it > EMPTY_DATE_CUTOFF }
+    }
+    val receivedAt = androidx.compose.runtime.remember(entry.receivedUtc) {
+        entry.receivedUtc?.let(Formatters::odataToEpochMillis)?.takeIf { it > EMPTY_DATE_CUTOFF }
+    }
+    val queueLines = androidx.compose.runtime.remember(entry.linesJson) { parseQueueLines(entry.linesJson) }
     com.d365fo.mobileops.presentation.common.components.ListCard {
         com.d365fo.mobileops.presentation.common.components.LineRow(
             title = entry.sourceId,
