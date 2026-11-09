@@ -53,7 +53,7 @@ import androidx.compose.material3.TextButton as MaterialTextButton
 private const val DOUBLE_TAP_GUARD_MS = 600L
 
 @Composable
-private fun workerClick(onClick: () -> Unit): () -> Unit {
+internal fun workerClick(onClick: () -> Unit): () -> Unit {
     val view = LocalView.current
     val latest by rememberUpdatedState(onClick)
     var lastTap by remember { mutableLongStateOf(0L) }
@@ -246,19 +246,20 @@ fun CancelOutlinedButton(
     content = content,
 )
 
-/** Confirm/OK half of a Cancel-or-OK pair, coloured green - see [CancelButton]'s doc for why
- *  this pair alone stays fixed rather than following the selected accent palette. */
+/**
+ * Confirm/OK half of a Cancel-or-OK pair: the Harbour gradient, the same as every other main
+ * action (9 Nov - it was a green of its own, the one button outside the theme). Cancel stays red.
+ */
 @Composable
 fun ConfirmButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
     content: @Composable RowScope.() -> Unit,
-) = SquareButton(
+) = GradientButton(
     onClick = onClick,
     modifier = modifier,
     enabled = enabled,
-    colors = ButtonDefaults.buttonColors(containerColor = WarehouseStatusColors.green),
     content = content,
 )
 

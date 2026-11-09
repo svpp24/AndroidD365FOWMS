@@ -253,12 +253,14 @@ fun LineRow(
     trailing: (@Composable () -> Unit)? = null,
     below: (@Composable ColumnScope.() -> Unit)? = null,
 ) {
+    // A one-line row centres its title on the icon and chevron; with more lines they sit at the top.
+    val oneLine = description.isNullOrBlank() && lines.none { it.isNotBlank() } && below == null
     Row(
-        verticalAlignment = Alignment.Top,
+        verticalAlignment = if (oneLine) Alignment.CenterVertically else Alignment.Top,
         horizontalArrangement = Arrangement.spacedBy(10.dp),
         modifier = modifier
             .fillMaxWidth()
-            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+            .then(if (onClick != null) Modifier.clickable(onClick = workerClick(onClick)) else Modifier)
             .heightIn(min = WarehouseDimens.MinTouchTarget)
             .padding(horizontal = 12.dp, vertical = 10.dp),
     ) {
@@ -317,7 +319,6 @@ fun RowChevron() = Icon(
     Icons.AutoMirrored.Filled.KeyboardArrowRight,
     contentDescription = null,
     tint = WarehouseStatusColors.text3,
-    modifier = Modifier.padding(top = 4.dp),
 )
 
 /** A module's colour pair: the icon fill and its light tint for tags. */
@@ -362,7 +363,7 @@ fun ModuleCard(
                         detectTapGestures(onTap = { onClick() }, onLongPress = { onLongClick() })
                     }
                 } else {
-                    Modifier.clickable(onClick = onClick)
+                    Modifier.clickable(onClick = workerClick(onClick))
                 },
             )
             .heightIn(min = WarehouseDimens.MinTouchTarget + 8.dp)
@@ -496,7 +497,7 @@ fun DockOutlinedButton(
             .alpha(if (enabled) 1f else 0.45f)
             .clip(DockShape)
             .border(BorderStroke(1.5.dp, color), DockShape)
-            .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
+            .clickable(enabled = enabled, role = Role.Button, onClick = workerClick(onClick))
             .padding(horizontal = 12.dp, vertical = 8.dp),
     ) {
         icon?.let { Icon(it, contentDescription = null, tint = color, modifier = Modifier.size(20.dp)) }
@@ -520,7 +521,7 @@ fun GradientButton(
             .alpha(if (enabled) 1f else 0.45f)
             .clip(DockShape)
             .background(WarehouseStatusColors.accentGradient)
-            .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
+            .clickable(enabled = enabled, role = Role.Button, onClick = workerClick(onClick))
             .padding(horizontal = 12.dp, vertical = 8.dp),
     ) {
         CompositionLocalProvider(

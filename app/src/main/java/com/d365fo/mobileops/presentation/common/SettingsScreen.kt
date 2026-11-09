@@ -485,7 +485,8 @@ private fun SettingsMenu(
         }
     }
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        session?.displayName?.takeIf { it.isNotBlank() }?.let { name ->
+        // Only when someone is signed in - before sign-in (the setup screens) there is nobody to name.
+        session?.displayName?.takeIf { it.isNotBlank() && showSignedInSections }?.let { name ->
             com.d365fo.mobileops.presentation.common.components.ContextPill(
                 androidx.compose.material.icons.Icons.Filled.Person,
                 "Signed in $name" + (session?.userName?.takeIf { it.isNotBlank() && !it.equals(name, ignoreCase = true) }?.let { " ($it)" } ?: ""),
