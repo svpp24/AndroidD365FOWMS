@@ -83,7 +83,12 @@ class MainActivity : ComponentActivity() {
                     )
                 } else {
                     val status by syncStatusProvider.status.collectAsState(initial = SyncStatus.UNKNOWN)
-                    AppRoot(syncStatus = status)
+                    // The scan pill's typed codes go down the same path as a trigger scan.
+                    androidx.compose.runtime.CompositionLocalProvider(
+                        com.d365fo.mobileops.presentation.common.focus.LocalScanBridge provides scannerBridge,
+                    ) {
+                        AppRoot(syncStatus = status)
+                    }
                 }
             }
         }
