@@ -396,7 +396,12 @@ internal fun androidx.compose.foundation.lazy.LazyListScope.unfinishedWorkSectio
 ) {
     if (unfinished.isNotEmpty()) {
         item(key = "unfinished-header") {
-            HomeSectionTitle("Continue where you left off", modifier = side)
+            com.d365fo.mobileops.presentation.common.components.ListHeader(
+                icon = androidx.compose.material.icons.Icons.Filled.Checklist,
+                title = "Continue where you left off",
+                count = unfinished.size,
+                modifier = side,
+            )
         }
         items(
             if (showAll) unfinished else unfinished.take(UNFINISHED_SHOWN),
@@ -499,64 +504,26 @@ private fun UnfinishedWorkCard(
     onDiscard: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val amber = WarehouseStatusColors.amber
-    val amberDim = WarehouseStatusColors.amberDim
-
-    Card(
-        onClick = onResume,
-        shape = RoundedCornerShape(WarehouseDimens.CardCorner),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-        modifier = modifier.fillMaxWidth(),
-    ) {
-        Column {
-            Box(modifier = Modifier.fillMaxWidth().height(3.dp).background(amber))
-
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(WarehouseDimens.ScreenPadding),
-                // Top, not centre - the left column is three lines tall (title, subtitle,
-                // warehouse) while Discard is one. Centering it against the whole column pushed
-                // it down away from the title row it belongs next to - confirmed live.
-                verticalAlignment = Alignment.Top,
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    // Wraps: on a narrow screen the chip moves under the order number rather
-                    // than being squeezed into a column beside it.
-                    androidx.compose.foundation.layout.FlowRow(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalArrangement = Arrangement.spacedBy(4.dp),
-                    ) {
-                        Text(
-                            text = work.orderId,
-                            style = MaterialTheme.typography.titleMedium,
-                        )
-                        StatusChip(
-                            text = "In progress", color = amber, dimColor = amberDim,
-                            modifier = Modifier.align(Alignment.CenterVertically),
-                        )
-                    }
-                    Text(
-                        text = UnfinishedWorkViewModel.labelFor(work.flowType) +
-                            " · " + work.lineCount +
-                            (if (work.lineCount == 1) " line" else " lines") +
-                            " · " + relativeTime(work.updatedAt),
-                        style = MaterialTheme.typography.labelMedium,
-                        color = WarehouseStatusColors.text3,
-                        modifier = Modifier.padding(top = 4.dp),
-                    )
-                    work.warehouseId?.takeIf { it.isNotBlank() }?.let {
-                        Text(
-                            text = "Warehouse $it",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = WarehouseStatusColors.text3,
-                        )
-                    }
-                }
-                TextButton(onClick = onDiscard) { Text("Discard") }
-            }
-        }
+    // A Harbour row: amber marker, the order with an "In progress" tag, and Discard on the right
+    // (top-aligned, next to the title it belongs to).
+    com.d365fo.mobileops.presentation.common.components.ListCard(modifier = modifier) {
+        com.d365fo.mobileops.presentation.common.components.LineRow(
+            title = work.orderId,
+            status = { com.d365fo.mobileops.presentation.common.components.StatusTag("In progress", com.d365fo.mobileops.presentation.common.components.Lead.Warn) },
+            lines = listOfNotNull(
+                UnfinishedWorkViewModel.labelFor(work.flowType) + " · " + work.lineCount +
+                    (if (work.lineCount == 1) " line" else " lines") + " · " + relativeTime(work.updatedAt),
+                work.warehouseId?.takeIf { it.isNotBlank() }?.let { "Store $it" },
+            ),
+            lead = {
+                com.d365fo.mobileops.presentation.common.components.LeadDot(
+                    com.d365fo.mobileops.presentation.common.components.Lead.Warn,
+                    icon = androidx.compose.material.icons.Icons.Filled.Checklist,
+                )
+            },
+            trailing = { TextButton(onClick = onDiscard) { Text("Discard") } },
+            onClick = onResume,
+        )
     }
 }
 

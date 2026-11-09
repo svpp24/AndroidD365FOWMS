@@ -13,6 +13,13 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Checklist
+import androidx.compose.material.icons.filled.CloudUpload
+import androidx.compose.material.icons.filled.Warning
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import com.d365fo.mobileops.presentation.common.components.ListHeader
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import com.d365fo.mobileops.presentation.common.components.SquareButton as Button
 import com.d365fo.mobileops.presentation.common.components.AppCard as Card
@@ -239,6 +246,7 @@ fun FailedSyncScreen(
     val onHoldElsewhere by unfinishedViewModel.onHoldElsewhere.collectAsStateWithLifecycle()
     val switchedOff by accessViewModel.switchedOff.collectAsStateWithLifecycle()
     var showAllUnfinished by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableStateOf(false) }
+    var tab by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableIntStateOf(0) }
     var switchedOffNotice by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<String?>(null) }
     switchedOffNotice?.let { notice ->
         androidx.compose.material3.AlertDialog(
@@ -268,20 +276,28 @@ fun FailedSyncScreen(
 
     Scaffold(
         topBar = {
-            // A bottom tab: the greeting bar like Home, Services and More, no back arrow (20 Oct restyle).
+            // A bottom tab: its own name in the bar, no back arrow (Harbour, 9 Nov).
             TopAppBar(
-                title = { HomeGreeting() },
+                title = { Text("Activity") },
                 expandedHeight = WarehouseDimens.TopBarHeight,
             )
         },
     ) { padding ->
+        Column(modifier = Modifier.fillMaxSize().padding(padding)) {
+        // Two tabs (Harbour): what needs someone on this device, and D365FO's registration queue.
+        ActivityTabs(
+            tab = tab,
+            attention = needsAction.size,
+            onTab = { tab = it },
+        )
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(padding)
                 .padding(horizontal = WarehouseDimens.ScreenPadding),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(top = 4.dp, bottom = 16.dp),
             verticalArrangement = Arrangement.spacedBy(WarehouseDimens.ItemSpacing),
         ) {
+            if (tab == 0) {
             // Unfinished jobs on this device first - moved here from Home (9 Nov).
             unfinishedWorkSection(
                 unfinished = unfinished,
@@ -304,28 +320,13 @@ fun FailedSyncScreen(
             // Then: work captured on this device that D365FO hasn't received yet. Offline this
             // is the answer to "is my receipt safe?" - it is, and here it is.
             if (waiting.isNotEmpty()) {
-                item {
-                    Text(
-                        text = "Waiting to send · ${waiting.size}",
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = androidx.compose.ui.text.font.FontWeight.ExtraBold,
-                        modifier = Modifier.padding(top = WarehouseDimens.ItemSpacing),
-                    )
-                }
+                item { ListHeader(Icons.Filled.CloudUpload, "Waiting to send", waiting.size) }
                 items(waiting, key = { it.queueId }) { entry -> WaitingCard(entry, online, postingEnabled) }
             }
 
-            // Needs someone now, so above the history: under the queue it took 15 swipes to reach
-            // Resubmit. Acknowledged ones have been seen and stay at the bottom.
+            // Needs someone now. Acknowledged ones have been seen and stay at the bottom.
             if (needsAction.isNotEmpty()) {
-                item {
-                    Text(
-                        text = "Failed postings · ${needsAction.size}",
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = androidx.compose.ui.text.font.FontWeight.ExtraBold,
-                        modifier = Modifier.padding(top = WarehouseDimens.ItemSpacing),
-                    )
-                }
+                item { ListHeader(Icons.Filled.Warning, "Needs attention", needsAction.size) }
                 items(needsAction, key = { it.failureId }) { failure ->
                     FailureCard(
                         failure = failure,
@@ -336,53 +337,54 @@ fun FailedSyncScreen(
             }
 
             if (activities.isNotEmpty()) {
-                item {
-                    Text(
-                        text = "Counting",
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = androidx.compose.ui.text.font.FontWeight.ExtraBold,
-                        modifier = Modifier.padding(top = WarehouseDimens.ItemSpacing),
-                    )
-                }
+                item { ListHeader(Icons.Filled.Checklist, "Counting", activities.size) }
                 items(activities, key = { it.key }) { activity ->
                     ActivityCard(activity, onDismiss = { viewModel.dismissActivity(activity.key) })
                 }
             }
 
-            item {
-                Text(
-                    text = "Registration queue",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = androidx.compose.ui.text.font.FontWeight.ExtraBold,
-                    modifier = Modifier.padding(top = WarehouseDimens.ItemSpacing),
-                )
+            if (failures.isEmpty()) {
+                item { ListHeader(Icons.Filled.Check, "Failed postings", 0) }
+                item {
+                    Text(
+                        text = "Nothing has failed to post.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            } else if (acknowledged.isNotEmpty()) {
+                item { ListHeader(Icons.Filled.Check, "Acknowledged", acknowledged.size) }
+                items(acknowledged, key = { it.failureId }) { failure ->
+                    FailureCard(
+                        failure = failure,
+                        onResubmit = { viewModel.resubmit(failure.failureId) },
+                        onAcknowledge = { viewModel.acknowledge(failure.failureId) },
+                    )
+                }
             }
+            }
+
+            if (tab == 1) {
             item {
-                Row(
+                com.d365fo.mobileops.presentation.common.components.GradientButton(
+                    onClick = viewModel::processPending,
+                    enabled = !processing && online,
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(WarehouseDimens.ItemSpacing),
                 ) {
-                    Button(
-                        onClick = viewModel::processPending,
-                        enabled = !processing && online,
-                        modifier = Modifier
-                            .weight(1f)
-                            .heightIn(min = WarehouseDimens.MinTouchTarget),
-                    ) {
-                        if (processing) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.heightIn(max = 20.dp),
-                                strokeWidth = 2.dp,
-                            )
-                        } else {
-                            Text("Process pending")
-                        }
+                    if (processing) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.heightIn(max = 20.dp),
+                            strokeWidth = 2.dp,
+                            color = androidx.compose.ui.graphics.Color.White,
+                        )
+                    } else {
+                        Text("Process pending")
                     }
                 }
             }
             if (!online) {
                 // Not an error: the queue lives in D365FO, so there is nothing to show until it
-                // answers. What this device still has to send is listed above and below.
+                // answers. What this device still has to send is on the other tab.
                 item {
                     Text(
                         text = "Check again when online.",
@@ -415,41 +417,66 @@ fun FailedSyncScreen(
                     )
                 }
             } else {
+                item { ListHeader(Icons.Filled.Check, "Sent to D365FO", queueStatus.size) }
                 // D365FO's rows have no id of their own, and one document can have two in the same
                 // second (a PO created and then confirmed) - the position keeps every key unique.
                 itemsIndexed(queueStatus, key = { i, it -> "$i|${it.documentType}|${it.receivedUtc.orEmpty()}|${it.sourceId}" }) { _, entry ->
                     QueueStatusCard(entry)
                 }
             }
-
-            if (failures.isEmpty() || acknowledged.isNotEmpty()) {
-                item {
-                    Text(
-                        text = if (failures.isEmpty()) "Failed postings" else "Failed postings · acknowledged",
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = androidx.compose.ui.text.font.FontWeight.ExtraBold,
-                        modifier = Modifier.padding(top = WarehouseDimens.ItemSpacing),
-                    )
-                }
             }
-            if (failures.isEmpty()) {
-                item {
-                    Text(
-                        text = "Nothing has failed to post.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            } else {
-                items(acknowledged, key = { it.failureId }) { failure ->
-                    FailureCard(
-                        failure = failure,
-                        onResubmit = { viewModel.resubmit(failure.failureId) },
-                        onAcknowledge = { viewModel.acknowledge(failure.failureId) },
+        }
+        }
+    }
+}
+
+/** The two tabs under Activity's bar: Needs attention (with its count) and Registration queue. */
+@Composable
+private fun ActivityTabs(tab: Int, attention: Int, onTab: (Int) -> Unit) {
+    Column(modifier = Modifier.fillMaxWidth().background(androidx.compose.ui.graphics.Color.White)) {
+        Row(modifier = Modifier.fillMaxWidth()) {
+            listOf("Needs attention", "Registration queue").forEachIndexed { i, label ->
+                val on = i == tab
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier
+                        .weight(1f)
+                        .clickable { onTab(i) },
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        modifier = Modifier.heightIn(min = WarehouseDimens.MinTouchTarget - 3.dp).padding(horizontal = 6.dp),
+                    ) {
+                        Text(
+                            label,
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = if (on) androidx.compose.ui.text.font.FontWeight.ExtraBold else androidx.compose.ui.text.font.FontWeight.Bold,
+                            color = if (on) WarehouseStatusColors.accent else WarehouseStatusColors.text3,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                        )
+                        if (i == 0 && attention > 0) {
+                            Text(
+                                "$attention",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = androidx.compose.ui.text.font.FontWeight.ExtraBold,
+                                color = androidx.compose.ui.graphics.Color.White,
+                                modifier = Modifier
+                                    .background(WarehouseStatusColors.red, androidx.compose.foundation.shape.RoundedCornerShape(6.dp))
+                                    .padding(horizontal = 5.dp),
+                            )
+                        }
+                    }
+                    androidx.compose.foundation.layout.Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 3.dp, max = 3.dp)
+                            .background(if (on) WarehouseStatusColors.accent else androidx.compose.ui.graphics.Color.Transparent),
                     )
                 }
             }
         }
+        androidx.compose.material3.HorizontalDivider(color = WarehouseStatusColors.overlay)
     }
 }
 
@@ -545,83 +572,46 @@ private fun ActivityCard(activity: CountingActivity, onDismiss: () -> Unit) {
 
 @Composable
 private fun QueueStatusCard(entry: PostQueueEntry) {
-    val statusColor = when (entry.status) {
-        "Registered" -> MaterialTheme.colorScheme.secondary
-        "Failed" -> MaterialTheme.colorScheme.error
-        else -> MaterialTheme.colorScheme.tertiary
+    val kind = when (entry.status) {
+        "Registered" -> com.d365fo.mobileops.presentation.common.components.Lead.Done
+        "Failed" -> com.d365fo.mobileops.presentation.common.components.Lead.Bad
+        else -> com.d365fo.mobileops.presentation.common.components.Lead.Warn
     }
-
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(
-            modifier = Modifier.padding(WarehouseDimens.ScreenPadding),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-            ) {
-                Text(
-                    text = entry.sourceId,
-                    style = MaterialTheme.typography.titleMedium,
+    // D365FO sends its empty date (1900-01-01) rather than null for a row not processed yet.
+    val processedAt = entry.processedUtc?.let(Formatters::odataToEpochMillis)?.takeIf { it > EMPTY_DATE_CUTOFF }
+    val receivedAt = entry.receivedUtc?.let(Formatters::odataToEpochMillis)?.takeIf { it > EMPTY_DATE_CUTOFF }
+    val queueLines = parseQueueLines(entry.linesJson)
+    com.d365fo.mobileops.presentation.common.components.ListCard {
+        com.d365fo.mobileops.presentation.common.components.LineRow(
+            title = entry.sourceId,
+            status = { com.d365fo.mobileops.presentation.common.components.StatusTag(entry.status, kind) },
+            description = readableDocumentType(entry.documentType),
+            lines = listOfNotNull(
+                // A big posting's lines are not sent to this list, only how many there were.
+                if (queueLines.isNotEmpty()) queueLines.joinToString(", ") { "${it.itemId} ×${formatQty(it.quantity)}" }
+                else entry.lineCount.takeIf { it > 0 }?.let { "$it ${if (it == 1) "line" else "lines"}" },
+                listOfNotNull(
+                    entry.grnId?.let { "GRN $it" },
+                    (processedAt ?: receivedAt)?.let { (if (processedAt != null) "Processed " else "Received ") + Formatters.clockTime(it) },
+                    entry.userName?.takeIf { it.isNotBlank() }?.let { "by $it" },
+                ).joinToString(" · ").takeIf { it.isNotBlank() },
+            ),
+            lead = {
+                com.d365fo.mobileops.presentation.common.components.LeadDot(
+                    kind,
+                    icon = when (kind) {
+                        com.d365fo.mobileops.presentation.common.components.Lead.Done -> Icons.Filled.Check
+                        com.d365fo.mobileops.presentation.common.components.Lead.Bad -> Icons.Filled.Warning
+                        else -> Icons.Filled.CloudUpload
+                    },
                 )
-                Text(
-                    text = entry.status,
-                    style = MaterialTheme.typography.labelLarge,
-                    color = statusColor,
-                )
-            }
-            Text(
-                text = readableDocumentType(entry.documentType),
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            // Prefers processedUtc (when D365FO actually actioned it) over receivedUtc (when
-            // this device's request landed) - the more useful of the two once both exist, since
-            // "when did this finish" is what a supervisor scanning this list is really asking.
-            // D365FO sends its empty date (1900-01-01) rather than null for a row not processed
-            // yet - shown as-is that read "Processed 04:28" on a pending row.
-            val processedAt = entry.processedUtc?.let(Formatters::odataToEpochMillis)?.takeIf { it > EMPTY_DATE_CUTOFF }
-            val receivedAt = entry.receivedUtc?.let(Formatters::odataToEpochMillis)?.takeIf { it > EMPTY_DATE_CUTOFF }
-            (processedAt ?: receivedAt)
-                ?.let { epochMs ->
-                    Text(
-                        text = (if (processedAt != null) "Processed " else "Received ") +
-                            Formatters.clockTime(epochMs),
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+            },
+            below = {
+                entry.errorMessage?.takeIf { it.isNotBlank() }?.let { message ->
+                    Text(message, style = MaterialTheme.typography.bodyMedium, color = WarehouseStatusColors.red)
                 }
-            parseQueueLines(entry.linesJson).takeIf { it.isNotEmpty() }?.let { queueLines ->
-                Text(
-                    text = queueLines.joinToString(", ") { "${it.itemId} ×${formatQty(it.quantity)}" },
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-            }
-            // A big posting's lines are not sent to this list, only how many there were.
-            if (parseQueueLines(entry.linesJson).isEmpty() && entry.lineCount > 0) {
-                Text(
-                    text = "${entry.lineCount} " + (if (entry.lineCount == 1) "line" else "lines"),
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-            }
-            entry.grnId?.let { grn ->
-                Text(
-                    text = "GRN $grn",
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
-                )
-            }
-            entry.userName?.takeIf { it.isNotBlank() }?.let { userName ->
-                Text(
-                    text = "by $userName",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            entry.errorMessage?.takeIf { it.isNotBlank() }?.let { message ->
-                ErrorBanner(message = message)
-            }
-        }
+            },
+        )
     }
 }
 
@@ -644,63 +634,41 @@ private fun FailureCard(
     onResubmit: () -> Unit,
     onAcknowledge: () -> Unit,
 ) {
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(
-            modifier = Modifier.padding(WarehouseDimens.ScreenPadding),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            Text(
-                text = failure.aggregateId,
-                style = MaterialTheme.typography.titleMedium,
-            )
-            Text(
-                text = failure.operation.name.replace('_', ' ').lowercase(),
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            ErrorBanner(message = failure.errorMessage)
-            Text(
-                text = "${failure.attempts} attempts · failed " +
-                    Formatters.clockTime(failure.failedAt),
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(WarehouseDimens.ItemSpacing),
-            ) {
-                // Acknowledged cards stay listed (Resubmit still works) but must look seen: the
-                // button stayed exactly as it was, so a tap changed nothing a worker could see
-                // except the tab badge.
-                if (failure.acknowledged) {
-                    Text(
-                        text = "✓ Acknowledged",
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier
-                            .heightIn(min = WarehouseDimens.MinTouchTarget)
-                            .wrapContentHeight(Alignment.CenterVertically)
-                            .padding(horizontal = 12.dp),
-                    )
-                } else {
-                    TextButton(
-                        onClick = onAcknowledge,
-                        modifier = Modifier.heightIn(min = WarehouseDimens.MinTouchTarget),
-                    ) {
-                        Text("Acknowledge")
-                    }
-                }
-                Button(
-                    onClick = onResubmit,
-                    modifier = Modifier
-                        .weight(1f)
-                        .heightIn(min = WarehouseDimens.MinTouchTarget),
+    com.d365fo.mobileops.presentation.common.components.ListCard {
+        com.d365fo.mobileops.presentation.common.components.LineRow(
+            title = failure.aggregateId,
+            status = {
+                com.d365fo.mobileops.presentation.common.components.StatusTag(
+                    if (failure.acknowledged) "Seen" else "Refused",
+                    if (failure.acknowledged) com.d365fo.mobileops.presentation.common.components.Lead.Idle else com.d365fo.mobileops.presentation.common.components.Lead.Bad,
+                )
+            },
+            description = failure.errorMessage,
+            lines = listOf(
+                operationLabel(failure.operation),
+                "Tried ${failure.attempts} ${if (failure.attempts == 1) "time" else "times"} · last " + Formatters.clockTime(failure.failedAt),
+            ),
+            lead = { com.d365fo.mobileops.presentation.common.components.LeadDot(com.d365fo.mobileops.presentation.common.components.Lead.Bad, icon = Icons.Filled.Warning) },
+            below = {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
                 ) {
-                    Text("Resubmit")
+                    // Acknowledged cards stay listed (Resubmit still works) but must look seen.
+                    if (!failure.acknowledged) {
+                        com.d365fo.mobileops.presentation.common.components.DockOutlinedButton(
+                            onClick = onAcknowledge,
+                            text = "Acknowledge",
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                    com.d365fo.mobileops.presentation.common.components.GradientButton(
+                        onClick = onResubmit,
+                        modifier = Modifier.weight(1f),
+                    ) { Text("Resubmit") }
                 }
-            }
-        }
+            },
+        )
     }
 }
 

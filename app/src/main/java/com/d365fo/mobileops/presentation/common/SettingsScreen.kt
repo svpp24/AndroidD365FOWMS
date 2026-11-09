@@ -167,7 +167,7 @@ fun SettingsScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { if (isTab) HomeGreeting() else Text(openSection?.title ?: "Settings") },
+                title = { Text(openSection?.title ?: "Settings") },
                 expandedHeight = WarehouseDimens.TopBarHeight,
                 navigationIcon = {
                     if (!isTab) {
@@ -205,14 +205,15 @@ fun SettingsScreen(
                         border = androidx.compose.foundation.BorderStroke(1.5.dp, WarehouseStatusColors.red),
                         colors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(contentColor = WarehouseStatusColors.red),
                         modifier = Modifier.fillMaxWidth().heightIn(min = WarehouseDimens.MinTouchTarget).padding(top = 4.dp),
-                    ) { Text("Sign out", fontWeight = androidx.compose.ui.text.font.FontWeight.Bold) }
+                    ) { Text("Sign out", fontWeight = androidx.compose.ui.text.font.FontWeight.ExtraBold) }
                 }
                 // Which build this is - what support asks first, and what D365FO's device list records.
                 Text(
                     text = com.d365fo.mobileops.util.AppVersion.full,
                     style = MaterialTheme.typography.bodySmall,
                     color = WarehouseStatusColors.text3,
-                    modifier = Modifier.padding(top = 8.dp),
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
                 )
                 // The brand mark at the foot of More, like the reference app (video, 20 Oct).
                 androidx.compose.foundation.Image(
@@ -419,73 +420,42 @@ private fun SettingsMenu(
     // A row's current value on its right, as the reference app shows "English" (video, 20 Oct).
     val switcher: WarehouseSwitcherViewModel = hiltViewModel()
     val session by switcher.session.collectAsStateWithLifecycle()
+    // Harbour (9 Nov): who is signed in as a chip, then one card of rows - a tinted icon, the
+    // name in the accent and what it is set to under it.
     val values = mapOf(
-        SettingsMenuItem.Session to session?.selected?.warehouseId.orEmpty(),
-        SettingsMenuItem.Posting to if (postingEnabled) "On" else "Off",
+        SettingsMenuItem.Session to (session?.selected?.warehouseId?.let { "Store $it" } ?: "Your store and sign-in"),
+        SettingsMenuItem.Posting to if (postingEnabled) "Posting is on" else "Off - work is held here",
+        SettingsMenuItem.ConnectionProfile to "D365FO environment",
+        SettingsMenuItem.Appearance to "Harbour · text size",
+        SettingsMenuItem.Lockout to "Sign out when idle",
+        SettingsMenuItem.Feedback to "Problem, idea or question",
+        SettingsMenuItem.UnsentWork to "Work not sent yet",
+        SettingsMenuItem.Logs to "Calls to D365FO",
     )
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        if (showConnectionProfile) {
-            SettingsGroup("Device", listOf(SettingsMenuItem.ConnectionProfile, SettingsMenuItem.Appearance, SettingsMenuItem.Lockout), onOpen)
-        }
+    val items = buildList {
+        if (showConnectionProfile) addAll(listOf(SettingsMenuItem.ConnectionProfile, SettingsMenuItem.Appearance, SettingsMenuItem.Lockout))
         if (showSignedInSections) {
-            SettingsGroup("Settings", listOf(SettingsMenuItem.Session, SettingsMenuItem.Posting), onOpen, values)
-            SettingsGroup("Support", listOf(SettingsMenuItem.Feedback, SettingsMenuItem.UnsentWork, SettingsMenuItem.Logs), onOpen)
+            addAll(listOf(SettingsMenuItem.Session, SettingsMenuItem.Posting, SettingsMenuItem.UnsentWork, SettingsMenuItem.Feedback, SettingsMenuItem.Logs))
         } else {
-            SettingsGroup("Support", listOf(SettingsMenuItem.UnsentWork, SettingsMenuItem.Logs), onOpen)
+            addAll(listOf(SettingsMenuItem.UnsentWork, SettingsMenuItem.Logs))
         }
     }
-}
-
-@Composable
-private fun SettingsGroup(
-    title: String,
-    items: List<SettingsMenuItem>,
-    onOpen: (SettingsMenuItem) -> Unit,
-    values: Map<SettingsMenuItem, String> = emptyMap(),
-) {
-    Text(
-        title,
-        style = MaterialTheme.typography.titleLarge,
-        fontWeight = androidx.compose.ui.text.font.FontWeight.ExtraBold,
-        modifier = Modifier.padding(top = 6.dp),
-    )
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(androidx.compose.ui.graphics.Color.White, androidx.compose.foundation.shape.RoundedCornerShape(10.dp)),
-    ) {
-        items.forEachIndexed { i, item ->
-            if (i > 0) androidx.compose.material3.HorizontalDivider(color = WarehouseStatusColors.border.copy(alpha = 0.45f))
-            SettingsMenuRow(item, onOpen, values[item].orEmpty())
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        session?.displayName?.takeIf { it.isNotBlank() }?.let { name ->
+            com.d365fo.mobileops.presentation.common.components.ListHeader(icon = LineIcons.Warehouse, title = name)
         }
-    }
-}
-
-@Composable
-private fun SettingsMenuRow(item: SettingsMenuItem, onOpen: (SettingsMenuItem) -> Unit, value: String = "") {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(14.dp),
-        modifier = Modifier
-            .fillMaxWidth()
-            .heightIn(min = WarehouseDimens.MinTouchTarget)
-            .clickable { onOpen(item) }
-            .padding(horizontal = 14.dp, vertical = 6.dp),
-    ) {
-        Icon(item.icon, contentDescription = null, tint = MaterialTheme.colorScheme.onSurface)
-        Text(
-            text = item.title,
-            style = MaterialTheme.typography.bodyLarge,
-            modifier = Modifier.weight(1f),
-        )
-        if (value.isNotBlank()) {
-            Text(value, style = MaterialTheme.typography.bodyLarge, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+        com.d365fo.mobileops.presentation.common.components.ListCard {
+            items.forEachIndexed { i, item ->
+                if (i > 0) com.d365fo.mobileops.presentation.common.components.RowDivider()
+                com.d365fo.mobileops.presentation.common.components.LineRow(
+                    title = item.title,
+                    lines = listOf(values[item].orEmpty()),
+                    lead = { com.d365fo.mobileops.presentation.common.components.LeadDot(com.d365fo.mobileops.presentation.common.components.Lead.Accent, icon = item.icon) },
+                    trailing = { com.d365fo.mobileops.presentation.common.components.RowChevron() },
+                    onClick = { onOpen(item) },
+                )
+            }
         }
-        Icon(
-            Icons.AutoMirrored.Filled.KeyboardArrowRight,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.onSurface,
-        )
     }
 }
 
