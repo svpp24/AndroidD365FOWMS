@@ -80,7 +80,7 @@ fun AppTopBar(
             ) {
                 CompositionLocalProvider(
                     LocalContentColor provides MaterialTheme.colorScheme.onSurface,
-                    LocalTextStyle provides MaterialTheme.typography.titleLarge,
+                    LocalTextStyle provides MaterialTheme.typography.titleLarge.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.Bold),
                 ) {
                     title()
                 }

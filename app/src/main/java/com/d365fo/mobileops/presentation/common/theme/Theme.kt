@@ -96,7 +96,7 @@ enum class ColorPalette(
     /** Deep indigo-navy, the 20 Oct restyle's identity (navy text and outlined buttons on grey). */
     INDIGO("Indigo", Color(0xFF232A7C), Color(0xFFE1E0F6)),
     /** Deep petrol - the app's own identity from 21 Oct, so it isn't a copy of the reference app. */
-    PETROL("Petrol", Color(0xFF0B5563), Color(0xFFDCEBEE)),
+    PETROL("Harbour", Color(0xFF0B5563), Color(0xFFDCEBEE), Color(0xFF3FB8AF)),
     MICROSOFT("Microsoft blue", Color(0xFF0078D4), Color(0xFFEFF6FC)),
     BLUE("Blue", Color(0xFF0274BE), Color(0xFFEAF7FD)),
     GREEN("Green", Color(0xFF15803D), Color(0xFFE1F3E8)),
@@ -203,7 +203,11 @@ object WarehouseStatusColors {
     val redDim = RedDim
     val border = Border
     val surface2 = Surface2
+    val text1 = Text1
+    val text2 = Text2
     val text3 = Text3
+    /** Hairlines between rows and under bars (Harbour design). */
+    val overlay = Color(0xFFE3E5EE)
 }
 
 private fun industrialColors(palette: ColorPalette) = lightColorScheme(

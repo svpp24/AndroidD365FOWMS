@@ -1,6 +1,8 @@
 package com.d365fo.mobileops.presentation.common.components
 
 import androidx.compose.material.icons.filled.PhotoCamera
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -38,25 +40,28 @@ fun PromptHeroCard(
     prompt: String,
     modifier: Modifier = Modifier,
     hint: String? = null,
+    /** What the scan is for - the PO, vendor, bin - as pills under the prompt (Harbour). */
+    pills: List<Pair<androidx.compose.ui.graphics.vector.ImageVector?, String>> = emptyList(),
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    // A white card with the prompt as its heading and an outlined field (20 Oct restyle, the
-    // mock's "Scan item" card) - it was a full accent gradient with white text.
+    // A white card with the prompt as its heading, the context pills, and an outlined field
+    // (Harbour design, 9 Nov).
     Column(
         horizontalAlignment = Alignment.Start,
-        verticalArrangement = Arrangement.spacedBy(10.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
         modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
             .background(Color.White)
-            .padding(horizontal = 14.dp, vertical = 14.dp),
+            .padding(horizontal = 12.dp, vertical = 12.dp),
     ) {
         Text(
             text = prompt,
-            style = MaterialTheme.typography.titleLarge,
+            style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.ExtraBold,
             color = MaterialTheme.colorScheme.onSurface,
         )
+        ContextPills(pills)
         hint?.let {
             Text(
                 text = it,
@@ -140,18 +145,42 @@ fun BarcodeFieldIcon() {
     )
 }
 
-/** "Scan with camera" inside a [PromptHeroCard] - accent outline on the white card. */
+/**
+ * "Scan with camera" inside a [PromptHeroCard] - a quiet accent link under the field (Harbour:
+ * the scanner trigger is the main way in, so the camera no longer takes a full-width button).
+ * [extra] sits on the same line at the other end - "Search PO items".
+ */
 @Composable
-fun HeroCameraButton(onClick: () -> Unit, enabled: Boolean = true) {
-    SquareOutlinedButton(
-        onClick = onClick,
-        enabled = enabled,
-        shape = RoundedCornerShape(10.dp),
-        border = androidx.compose.foundation.BorderStroke(1.5.dp, WarehouseStatusColors.accent),
-        colors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(contentColor = WarehouseStatusColors.accent),
-        modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
+fun HeroCameraButton(
+    onClick: () -> Unit,
+    enabled: Boolean = true,
+    extraLabel: String? = null,
+    onExtra: (() -> Unit)? = null,
+) {
+    androidx.compose.foundation.layout.Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.fillMaxWidth(),
     ) {
-        androidx.compose.material3.Icon(androidx.compose.material.icons.Icons.Default.PhotoCamera, contentDescription = null)
-        Text("Scan with camera", modifier = Modifier.padding(start = 8.dp))
+        HeroLink(Icons.Default.PhotoCamera, "Scan with camera", enabled, onClick)
+        Box(Modifier.weight(1f))
+        if (extraLabel != null && onExtra != null) {
+            HeroLink(Icons.Default.Search, extraLabel, enabled, onExtra)
+        }
+    }
+}
+
+@Composable
+private fun HeroLink(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, enabled: Boolean, onClick: () -> Unit) {
+    androidx.compose.foundation.layout.Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(5.dp),
+        modifier = Modifier
+            .clip(RoundedCornerShape(8.dp))
+            .clickable(enabled = enabled, onClick = onClick)
+            .heightIn(min = 44.dp)
+            .padding(horizontal = 4.dp),
+    ) {
+        Icon(icon, contentDescription = null, tint = WarehouseStatusColors.accent, modifier = Modifier.size(18.dp))
+        Text(label, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, color = WarehouseStatusColors.accent)
     }
 }

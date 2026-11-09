@@ -31,6 +31,16 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.Store
+import androidx.compose.material.icons.filled.Numbers
+import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.Tag
+import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.QrCode2
+import com.d365fo.mobileops.presentation.common.components.bleed
+import com.d365fo.mobileops.presentation.common.components.BarcodeGlyph
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import com.d365fo.mobileops.presentation.common.components.SquareButton as Button
@@ -211,7 +221,8 @@ fun ReceivingFlowScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(titleFor(state.step)) },
+                // The flow's name; the step tabs under the bar say which step (Harbour, 9 Nov).
+                title = { Text("PO receiving") },
                 expandedHeight = WarehouseDimens.TopBarHeight,
                 navigationIcon = {
                     // Hidden, not just disabled, while a post is in flight or its summary is
@@ -225,20 +236,7 @@ fun ReceivingFlowScreen(
                         }
                     }
                 },
-                actions = {
-                    if (!state.posting && state.postOutcome == null) {
-                        // The "view scanned so far, and remove one if it is wrong" menu - a WMS
-                        // handheld's own "review" screen, one tap away for the whole visit rather
-                        // than buried per line. See CapturedLines below for the remove action.
-                        if (state.captured.isNotEmpty()) {
-                            IconButton(onClick = { viewModel.showCaptured(true) }) {
-                                BadgedBox(badge = { Badge { Text("${state.captured.size}") } }) {
-                                    Icon(Icons.AutoMirrored.Filled.ListAlt, contentDescription = "Scanned lines")
-                                }
-                            }
-                        }
-                    }
-                },
+                // The scanned lines are reviewed from the dock's Review button (Harbour).
                 // Start over in the ⋮ menu rather than a ✕ of its own beside it ("clumsy",
                 // feedback 10 Oct).
                 menuItems = if (state.posting || state.postOutcome != null || state.capture.purchId == null) null else { close ->
@@ -306,8 +304,8 @@ fun ReceivingFlowScreen(
                             onSkip = viewModel::skipStep,
                             onSearchItem = { showItemSearch = true },
                             onPostSoFar = viewModel::postReceipt,
+                            onShowCaptured = { viewModel.showCaptured(true) },
                             onSelectUnit = viewModel::selectEntryUnit,
-                        context = { state.capture.purchId?.let { CaptureSummary(state) } },
                             belowField = {
                                 // Inside the prompt's scrolling top group: placed after the prompt,
                                 // it sat below the prompt's full-height layout, off the screen.
@@ -355,7 +353,9 @@ private fun StepProgress(state: ReceivingFlowState) {
     val sequence = stepsFor(state.capture)
     val position = (sequence.indexOf(state.step) + 1).coerceAtLeast(1)
 
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+    // The tabs first, flush under the bar; the lookup bar under them.
+    Column {
+        StepTrail(names = sequence.map { it.shortName() }, current = position - 1)
         if (state.busy) {
             LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
         } else {
@@ -363,7 +363,6 @@ private fun StepProgress(state: ReceivingFlowState) {
             // eyes every time a lookup starts and finishes.
             Box(modifier = Modifier.fillMaxWidth().heightIn(min = 4.dp))
         }
-        StepTrail(names = sequence.map { it.shortName() }, current = position - 1)
     }
 }
 
@@ -376,8 +375,8 @@ private fun StepPrompt(
     onSkip: () -> Unit = {},
     onSearchItem: () -> Unit,
     onPostSoFar: () -> Unit,
+    onShowCaptured: () -> Unit,
     onSelectUnit: (String) -> Unit = {},
-    context: @Composable () -> Unit = {},
     belowField: @Composable () -> Unit = {},
 ) {
     val focusRequester = remember { FocusRequester() }
@@ -411,7 +410,7 @@ private fun StepPrompt(
             modifier = Modifier.weight(1f).verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            PromptHeroCard(prompt = promptFor(state), hint = hintFor(state)) {
+            PromptHeroCard(prompt = promptFor(state), hint = hintFor(state), pills = capturePills(state)) {
             // Read-only and empty, always - a scan never lands here (it goes straight to the
             // ViewModel, see HidScannerBridge), and typing now happens on a dedicated screen,
             // not inline. What remains is a tap target styled like the field it replaces: a
@@ -450,9 +449,21 @@ private fun StepPrompt(
                 )
             }
                         // Inside the card, as on every other scan screen.
-            com.d365fo.mobileops.presentation.common.components.HeroCameraButton(onClick = onOpenCamera, enabled = !state.busy)
+            com.d365fo.mobileops.presentation.common.components.HeroCameraButton(
+                onClick = onOpenCamera,
+                enabled = !state.busy,
+                // Search the order's lines by name instead of scanning - only with the lines in hand.
+                extraLabel = "Search PO items".takeIf {
+                    state.step == ReceivingStep.ITEM && state.linesInline && state.openLines.isNotEmpty()
+                },
+                onExtra = onSearchItem,
+            )
             }
             belowField()
+            // What is scanned so far, latest first, under the card on the item step (Harbour).
+            if (state.step == ReceivingStep.ITEM && state.captured.isNotEmpty()) {
+                ScannedSoFar(state, onShowCaptured)
+            }
             // In the scrolling group with the card, not the fixed bottom one: with up to six unit
             // chips there, the bottom group squeezed the card - its rounded bottom was cut off
             // and this button sat against the cut edge, reading as one control (feedback
@@ -488,59 +499,99 @@ private fun StepPrompt(
                     )
                 }
             }
-            context()
         }
 
-        Column(
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-            // Fixed, not derived from navigationBarsPadding(): with the system nav bar hidden
-            // (see MainActivity.hideSystemBars) that inset reads as zero, and a transient bar
-            // swiped back in overlays content rather than resizing it - either way there is no
-            // live inset value here to lean on. Confirmed live: without this, the button row sat
-            // flush against the true bottom edge of the glass, no margin at all.
-            modifier = Modifier.padding(bottom = WarehouseDimens.ScreenPadding),
-        ) {
+        if (com.d365fo.mobileops.domain.model.canSkipStep(state.step, state.capture)) {
+            OutlinedButton(
+                onClick = onSkip,
+                enabled = !state.busy,
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp).heightIn(min = WarehouseDimens.MinTouchTarget),
+            ) { Text("Skip - not required for this item") }
+        }
 
-            // Lets the operator stop after any number of lines and post what is already banked,
-            // without scanning the rest of the order first - a short-delivered pallet, a break,
-            // or simply not wanting to hold everything captured so far on the device any longer.
-            // Only ever posts state.captured (already-banked lines); the step in progress right
-            // now, if any, is untouched either way, so this is safe to show at any step.
-            if (state.captured.isNotEmpty()) {
-                OutlinedButton(
-                    onClick = onPostSoFar,
+        // The dock: review what is scanned, and post it with a hold - a short delivery, a break,
+        // or the end of the order. Only ever posts what is banked; the step in progress is
+        // untouched, so this is safe at any step.
+        if (state.captured.isNotEmpty()) {
+            com.d365fo.mobileops.presentation.common.components.FlowDock(
+                modifier = Modifier.bleed(16.dp).padding(top = 8.dp),
+            ) {
+                com.d365fo.mobileops.presentation.common.components.DockOutlinedButton(
+                    onClick = onShowCaptured,
                     enabled = !state.busy,
-                    modifier = Modifier.fillMaxWidth().heightIn(min = WarehouseDimens.MinTouchTarget),
-                ) {
-                    Text(
-                        "Register ${state.captured.size} " +
-                            (if (state.captured.size == 1) "line" else "lines") + " scanned so far",
-                    )
-                }
-            }
-
-            if (com.d365fo.mobileops.domain.model.canSkipStep(state.step, state.capture)) {
-                OutlinedButton(
-                    onClick = onSkip,
+                    icon = Icons.AutoMirrored.Filled.ListAlt,
+                    text = "Review",
+                    modifier = Modifier.weight(0.4f),
+                )
+                com.d365fo.mobileops.presentation.common.components.HoldButton(
+                    label = "Hold to post",
+                    onConfirm = onPostSoFar,
                     enabled = !state.busy,
-                    modifier = Modifier.fillMaxWidth().heightIn(min = WarehouseDimens.MinTouchTarget),
-                ) { Text("Skip - not required for this item") }
+                    modifier = Modifier.weight(0.6f),
+                )
             }
+        } else {
+            Box(Modifier.padding(bottom = WarehouseDimens.ScreenPadding))
+        }
+    }
+}
 
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                // See the identical note on TransferFlowScreen's StepPrompt - only meaningful
-                // once there is a set of lines in hand to search.
-                if (state.step == ReceivingStep.ITEM && state.linesInline && state.openLines.isNotEmpty()) {
-                    OutlinedButton(
-                        onClick = onSearchItem,
-                        enabled = !state.busy,
-                        modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget),
-                    ) {
-                        Icon(Icons.Default.Search, contentDescription = null)
-                        Text("Search items", modifier = Modifier.padding(start = 8.dp))
-                    }
-                }
+/** The scanned lines under the item step's card, latest first - tap one to change or remove it. */
+@Composable
+private fun ScannedSoFar(state: ReceivingFlowState, onOpen: () -> Unit) {
+    val total = state.outstandingLineCount.takeIf { it > 0 }
+    com.d365fo.mobileops.presentation.common.components.ListHeader(
+        icon = Icons.AutoMirrored.Filled.ListAlt,
+        title = "Scanned",
+        count = state.captured.size,
+        trailing = total?.let { "of $it ${if (it == 1) "line" else "lines"}" },
+    )
+    com.d365fo.mobileops.presentation.common.components.ListCard {
+        state.captured.reversed().forEachIndexed { i, entry ->
+            if (i > 0) com.d365fo.mobileops.presentation.common.components.RowDivider()
+            com.d365fo.mobileops.presentation.common.components.LineRow(
+                title = entry.itemId,
+                description = entry.itemName,
+                lines = listOfNotNull(
+                    listOfNotNull(
+                        entry.variantLabel.takeIf { it.isNotBlank() },
+                        entry.batchId?.takeIf { it.isNotBlank() }?.let { "Batch $it" },
+                        entry.batchExpiryDate?.takeIf { it.isNotBlank() }?.let { "Expiry ${displayDate(it)}" },
+                    ).joinToString(" · ").takeIf { it.isNotBlank() },
+                    when (entry.serialIds.size) {
+                        0 -> null
+                        1 -> "Serial ${entry.serialIds[0]}"
+                        else -> "${entry.serialIds.size} serials"
+                    },
+                    entry.locationId?.takeIf { it.isNotBlank() }?.let { "Location $it" },
+                ),
+                lead = { com.d365fo.mobileops.presentation.common.components.LeadDot(com.d365fo.mobileops.presentation.common.components.Lead.Done, icon = Icons.Default.Check) },
+                trailing = { com.d365fo.mobileops.presentation.common.components.QtyTrail(plain(entry.quantity), entry.unitSymbol) },
+                onClick = onOpen,
+            )
+        }
+    }
+}
+
+/** What the scan is working on, as pills in the scan card - order, vendor, then each field so far. */
+private fun capturePills(state: ReceivingFlowState): List<Pair<androidx.compose.ui.graphics.vector.ImageVector?, String>> {
+    val c = state.capture
+    return buildList {
+        c.purchId?.let { add(Icons.Default.Description to it) }
+        state.order?.let { o -> add(Icons.Default.Store to (o.vendorName.takeIf { it.isNotBlank() } ?: o.vendorAccount)) }
+        if (state.step != ReceivingStep.ITEM) {
+            c.item?.let {
+                // The name only when it says more than the number.
+                val name = it.productName.takeIf { n -> n.isNotBlank() && !n.equals(it.itemNumber, ignoreCase = true) }
+                add(com.d365fo.mobileops.presentation.common.components.BarcodeGlyph to (name?.let { n -> "${it.itemNumber} · $n" } ?: it.itemNumber))
             }
+            c.line?.mobileDescriptions?.forEach { add(null to it) }
+            c.line?.variant?.label?.takeIf { it.isNotBlank() }?.let { add(null to it) }
+            c.quantity?.let { add(Icons.Default.Numbers to com.d365fo.mobileops.util.Formatters.qtyUnit(it, c.unitSymbol)) }
+            c.locationId?.let { add(Icons.Default.LocationOn to it) }
+            c.batchId?.let { add(Icons.Default.Tag to "Batch $it") }
+            if (c.batchIsNew == true) displayDate(c.batchExpiryDate)?.let { add(Icons.Default.CalendarMonth to "Expiry $it") }
+            if (c.serialIds.isNotEmpty()) add(Icons.Default.QrCode2 to "${c.serialIds.size} ${if (c.serialIds.size == 1) "serial" else "serials"}")
         }
     }
 }
@@ -848,10 +899,10 @@ private fun CapturedLines(
         modifier = Modifier.fillMaxSize(),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Text(
-            text = "Scanned so far (${captured.size})",
-            style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.SemiBold,
+        com.d365fo.mobileops.presentation.common.components.ListHeader(
+            icon = Icons.AutoMirrored.Filled.ListAlt,
+            title = "Scanned so far",
+            count = captured.size,
         )
         Text(
             text = "Check the lines - posting can't be undone.",
@@ -940,24 +991,20 @@ private fun CapturedLines(
 
         // Side by side, the same order as every dialog: the action on the left, going back on
         // the right (feedback, 10 Oct).
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            Button(
-                onClick = onPost,
-                enabled = !busy && captured.isNotEmpty(),
-                modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget),
-            ) {
-                Text(if (busy) "Posting…" else "Post receipt")
-            }
-            OutlinedButton(
+        com.d365fo.mobileops.presentation.common.components.FlowDock(modifier = Modifier.bleed(16.dp)) {
+            com.d365fo.mobileops.presentation.common.components.DockOutlinedButton(
                 onClick = onClose,
                 enabled = !busy,
-                modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget),
-            ) {
-                Text("Back to scanning")
-            }
+                icon = BarcodeGlyph,
+                text = "Scan more",
+                modifier = Modifier.weight(0.4f),
+            )
+            com.d365fo.mobileops.presentation.common.components.HoldButton(
+                label = if (busy) "Posting…" else "Hold to post",
+                onConfirm = onPost,
+                enabled = !busy && captured.isNotEmpty(),
+                modifier = Modifier.weight(0.6f),
+            )
         }
     }
 }
