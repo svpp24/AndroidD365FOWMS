@@ -414,6 +414,55 @@ fun CountingScanScreen(
                 }
             }
 
+            // The location and bin steps list where to count, not the journal's items (user,
+            // 9 Nov): the scan field first, then the locations / this location's bins.
+            val choosingLocation = state.byLocation && state.selectedLocation == null
+            val choosingBin = !choosingLocation && state.binsRequired && state.currentBin == null
+            if (choosingLocation || choosingBin) {
+                LazyColumn(
+                    modifier = Modifier.weight(1f),
+                    contentPadding = PaddingValues(horizontal = WarehouseDimens.ScreenPadding, vertical = 6.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    if (choosingLocation) {
+                        item { LocationRows(state.locations, viewModel::pickLocation, enabled = !state.locked) }
+                    } else {
+                        item {
+                            com.d365fo.mobileops.presentation.common.components.ListHeader(
+                                icon = Icons.Default.Inventory2,
+                                title = state.selectedLocation?.let { "Bins in $it" } ?: "Bins",
+                                count = state.binsHere.size,
+                            )
+                        }
+                        if (state.binsHere.isEmpty()) {
+                            item {
+                                Text(
+                                    "No bins listed here - scan the bin; it is counted as scanned.",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = WarehouseStatusColors.text3,
+                                )
+                            }
+                        }
+                        items(state.binsHere, key = { "bin-$it" }) { bin ->
+                            com.d365fo.mobileops.presentation.common.components.ListCard {
+                                com.d365fo.mobileops.presentation.common.components.LineRow(
+                                    title = bin,
+                                    lead = {
+                                        com.d365fo.mobileops.presentation.common.components.LeadDot(
+                                            com.d365fo.mobileops.presentation.common.components.Lead.Idle,
+                                            icon = Icons.Default.Inventory2,
+                                        )
+                                    },
+                                    trailing = { com.d365fo.mobileops.presentation.common.components.RowChevron() },
+                                    onClick = { viewModel.pickBin(bin) },
+                                )
+                            }
+                        }
+                    }
+                }
+                return@Column
+            }
+
             // What the row icons mean, once the list has rows of its own (user, 14 Oct).
             if (state.exceptionsEnabled && state.exceptions.isNotEmpty()) {
                 CountLegend(modifier = Modifier.padding(horizontal = WarehouseDimens.ScreenPadding))
@@ -746,9 +795,7 @@ private fun PlaceCard(
             modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
         ) { Text("Location is empty", fontWeight = FontWeight.Bold, color = WarehouseStatusColors.amber) }
     }
-    if (state.byLocation && location == null && state.locations.isNotEmpty()) {
-        LocationRows(state.locations, onPick, enabled = !state.locked)
-    }
+    // The locations to pick from are listed under the scan card, in the screen's list (9 Nov).
 }
 
 /** The journal's locations as Harbour rows - each with how many of its lines are counted. */

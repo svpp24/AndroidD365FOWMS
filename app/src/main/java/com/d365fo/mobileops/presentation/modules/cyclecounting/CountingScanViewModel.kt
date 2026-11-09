@@ -230,6 +230,8 @@ class CountingScanViewModel @Inject constructor(
             binsRequired = bins.isNotEmpty(),
             currentBin = values[1] as String?,
             addBinPrompt = values[2] as String?,
+            // The bins of the chosen location, listed under the scan card on the bin step.
+            binsHere = bins.filter { binRows[it]?.isIn(s.selectedLocation) != false },
             changingFrom = back?.let { listOfNotNull(it.location, it.bin).joinToString("  \u203A  ") }
                 ?.ifEmpty { null },
             layout = com.d365fo.mobileops.domain.model.countingLayout(s.originType, s.totalLines, bins.isNotEmpty()),
@@ -316,12 +318,10 @@ class CountingScanViewModel @Inject constructor(
                 if (isItem) {
                     _message.value = ScanMessage("Scan a bin first.", isError = true)
                     scanFeedback.warning()
-                } else if (workerSession.session.value?.isCycleCountSupervisor == true) {
-                    _addBinPrompt.value = bin
-                    scanFeedback.warning()
                 } else {
-                    _message.value = ScanMessage("$bin is not a bin in this store. Ask a supervisor to add it.", isError = true)
-                    scanFeedback.error()
+                    // A bin not on the store's list is counted as scanned (user, 9 Nov) - for
+                    // this count only; nothing is added to the bin master.
+                    selectBin(bin)
                 }
                 return
             }
@@ -438,6 +438,11 @@ class CountingScanViewModel @Inject constructor(
         _message.value = ScanMessage("Counting bin $bin", isError = false)
         scanFeedback.success()
         _refocus.update { it + 1 }
+    }
+
+    /** A bin tapped in the list under the scan card - the same as scanning it. */
+    fun pickBin(bin: String) {
+        if (!state.value.locked) selectBin(bin)
     }
 
     /** Back to scanning a bin, in the same location. */
@@ -1068,6 +1073,8 @@ data class CountingScanState(
     /** The store has bins: one must be chosen before anything can be counted. */
     val binsRequired: Boolean = false,
     val currentBin: String? = null,
+    /** The store's bins in the chosen location - the list on the bin step. */
+    val binsHere: List<String> = emptyList(),
     /** A supervisor scanned a bin that is not on the list: add it? */
     val addBinPrompt: String? = null,
     /** "location A-01, bin BIN-A1" while Change location / Change bin is under way: Cancel goes back. */

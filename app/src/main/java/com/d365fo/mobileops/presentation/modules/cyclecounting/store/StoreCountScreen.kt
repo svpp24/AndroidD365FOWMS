@@ -152,7 +152,20 @@ data class StoreCountState(
     val ended: Boolean = false,
     /** The supervisor transferred or cancelled this stock count while lines were still on the device. */
     val countClosed: Boolean = false,
+    /** The store's locations, listed under the scan card on the location step (user, 9 Nov). */
+    val knownLocations: List<String> = emptyList(),
+    /** The store's bins, listed by location on the bin step. */
+    val knownBins: List<com.d365fo.mobileops.data.local.entity.CountBinEntity> = emptyList(),
 ) {
+    /** The bins of the current location - and any bin counted here that is not in the master. */
+    val binsHere: List<String>
+        get() = (knownBins.filter { it.isIn(locationId) }.map { it.binId } +
+            draft?.lines.orEmpty().filter { it.locationId.equals(locationId, ignoreCase = true) && it.binId.isNotBlank() }.map { it.binId })
+            .distinctBy { it.uppercase() }
+    /** Lines counted in [location] (and in [bin] there). */
+    fun countedAt(location: String, bin: String? = null): Int = draft?.lines?.count {
+        it.locationId.equals(location, ignoreCase = true) && (bin == null || it.binId.equals(bin, ignoreCase = true))
+    } ?: 0
     val unsent: Int get() = draft?.lines?.count { !it.sent } ?: 0
     val needsLocation: Boolean get() = locationId.isBlank()
     val needsBin: Boolean get() = !needsLocation && binsRequired && binId.isBlank()
@@ -222,7 +235,25 @@ class StoreCountViewModel @Inject constructor(
             viewModelScope.launch {
                 binRepository.observe(wh).collect { rows ->
                     bins = rows.associateBy { it.binId }
-                    _state.update { it.copy(binsRequired = rows.isNotEmpty()) }
+                    _state.update {
+                        it.copy(
+                            binsRequired = rows.isNotEmpty(),
+                            knownBins = rows,
+                            knownLocations = (it.knownLocations + rows.mapNotNull { b -> b.locationId?.takeIf(String::isNotBlank) })
+                                .distinctBy { l -> l.uppercase() },
+                        )
+                    }
+                }
+            }
+            // The store's locations from the device's copy, with any the bins name and the
+            // count's start location - the list under the location step's scan card.
+            viewModelScope.launch {
+                val stored = runCatching { locationDao.search(wh, "", 200).map { it.locationId } }.getOrDefault(emptyList())
+                _state.update { s ->
+                    s.copy(
+                        knownLocations = (listOfNotNull(startLocation) + stored + s.knownBins.mapNotNull { it.locationId?.takeIf(String::isNotBlank) })
+                            .distinctBy { it.uppercase() },
+                    )
                 }
             }
         }
@@ -311,9 +342,15 @@ class StoreCountViewModel @Inject constructor(
             pending != null && pending.needsBatch && !pending.needsVariant -> setBatch(value)
             s.needsLocation -> setLocation(value)
             bin != null -> setBin(bin)
-            s.needsBin -> _state.update {
-                it.copy(message = null, error = "$value is not a bin in ${s.locationId}. Scan one of its bins, or ask a supervisor to add it in Count bins.")
-            }
+            // A bin not on the store's list is counted as scanned (user, 9 Nov) - for this count
+            // only; nothing is added to the bin master.
+            s.needsBin -> setBin(
+                com.d365fo.mobileops.data.local.entity.CountBinEntity(
+                    warehouseId = warehouse.orEmpty(),
+                    binId = com.d365fo.mobileops.data.counting.normalizeBin(value).ifBlank { value.uppercase() },
+                    locationId = s.locationId,
+                ),
+            )
             else -> scanItem(value)
         }
     }
@@ -326,6 +363,21 @@ class StoreCountViewModel @Inject constructor(
             }
         }
         _state.update { it.copy(binId = bin.binId, back = null, pending = null, error = null, message = "Counting ${s.locationId} \u203A ${bin.binId}.") }
+    }
+
+    /** A location tapped in the list under the scan card - the same as scanning it. */
+    fun pickLocation(locationId: String) {
+        if (!_state.value.busy) setLocation(locationId)
+    }
+
+    /** A bin tapped in the list under the scan card - the same as scanning it. */
+    fun pickBin(binId: String) {
+        val s = _state.value
+        if (s.busy) return
+        setBin(
+            bins[com.d365fo.mobileops.data.counting.normalizeBin(binId)]
+                ?: com.d365fo.mobileops.data.local.entity.CountBinEntity(warehouseId = warehouse.orEmpty(), binId = binId, locationId = s.locationId),
+        )
     }
 
     /** Change location: scan another location (Damaged, Claim, Return...), then its bins. */
@@ -745,13 +797,17 @@ fun StoreCountScreen(onBack: () -> Unit, viewModel: StoreCountViewModel = hiltVi
             }
             state.message?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = WarehouseStatusColors.text3) }
 
+            // The location and bin steps list where to count, not what was counted (user, 9 Nov):
+            // the scan field first, then the store's locations / this location's bins.
+            if (state.needsLocation || state.needsBin) {
+                PlaceChoices(state, onPickLocation = viewModel::pickLocation, onPickBin = viewModel::pickBin, modifier = Modifier.weight(1f))
+            } else {
             if (draft.lines.isNotEmpty()) {
                 com.d365fo.mobileops.presentation.common.components.ListHeader(
                     icon = Icons.Default.Checklist,
                     title = "Counted",
                     count = draft.lines.size,
                     trailing = when {
-                        state.needsLocation -> null
                         state.binsRequired && state.binId.isNotBlank() -> "${state.inBin} in this bin"
                         else -> "${state.atLocation} here"
                     },
@@ -793,6 +849,7 @@ fun StoreCountScreen(onBack: () -> Unit, viewModel: StoreCountViewModel = hiltVi
                         )
                     }
                 }
+            }
             }
             // Change location / bin where Send was (user, 8 Nov): lines go by themselves. End
             // count is a hold (Harbour) - the lines go to the supervisor and can't be added to.
@@ -886,5 +943,56 @@ private fun StorePlaceControls(
         else -> com.d365fo.mobileops.presentation.modules.cyclecounting.StepBackButton(
             "Back to location", onBackToLocation, enabled = !state.busy,
         )
+    }
+}
+
+/**
+ * Where to count next, under the scan card: the store's locations on the location step, the
+ * location's bins on the bin step - each with how many lines are counted there. Tap = scan.
+ */
+@Composable
+private fun PlaceChoices(
+    state: StoreCountState,
+    onPickLocation: (String) -> Unit,
+    onPickBin: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val picking = if (state.needsLocation) state.knownLocations else state.binsHere
+    LazyColumn(modifier = modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        item {
+            com.d365fo.mobileops.presentation.common.components.ListHeader(
+                icon = if (state.needsLocation) Icons.Default.LocationOn else Icons.Default.Inventory2,
+                title = if (state.needsLocation) "Locations" else "Bins in ${state.locationId}",
+                count = picking.size,
+                trailing = picking.count { (if (state.needsLocation) state.countedAt(it) else state.countedAt(state.locationId, it)) > 0 }
+                    .takeIf { it > 0 }?.let { "$it counted" },
+            )
+        }
+        if (picking.isEmpty()) {
+            item {
+                Text(
+                    if (state.needsLocation) "Scan a location to count it." else "No bins listed here - scan the bin; it is counted as scanned.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = WarehouseStatusColors.text3,
+                )
+            }
+        }
+        items(picking, key = { it.uppercase() }) { id ->
+            val counted = if (state.needsLocation) state.countedAt(id) else state.countedAt(state.locationId, id)
+            com.d365fo.mobileops.presentation.common.components.ListCard {
+                com.d365fo.mobileops.presentation.common.components.LineRow(
+                    title = id,
+                    lines = listOf(if (counted > 0) "$counted ${if (counted == 1) "line" else "lines"} counted" else "Not counted"),
+                    lead = {
+                        com.d365fo.mobileops.presentation.common.components.LeadDot(
+                            if (counted > 0) com.d365fo.mobileops.presentation.common.components.Lead.Done else com.d365fo.mobileops.presentation.common.components.Lead.Idle,
+                            icon = if (counted > 0) Icons.Default.Check else if (state.needsLocation) Icons.Default.LocationOn else Icons.Default.Inventory2,
+                        )
+                    },
+                    trailing = { com.d365fo.mobileops.presentation.common.components.RowChevron() },
+                    onClick = { if (state.needsLocation) onPickLocation(id) else onPickBin(id) },
+                )
+            }
+        }
     }
 }
