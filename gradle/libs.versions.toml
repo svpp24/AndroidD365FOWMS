@@ -27,8 +27,10 @@ mockk = "1.13.13"
 turbine = "1.2.0"
 truth = "1.4.4"
 robolectric = "4.14.1"
-androidx-test = "1.6.1"
-espresso = "3.6.1"
+# 1.7.0 / 3.7.0: the first that run on API 36+ - 3.6.1 calls InputManager.getInstance, which
+# API 36 removed, so every instrumented test failed before reaching its first line (9 Nov).
+androidx-test = "1.7.0"
+espresso = "3.7.0"
 core-ktx = "1.15.0"
 activity-compose = "1.9.3"
 timber = "5.0.1"

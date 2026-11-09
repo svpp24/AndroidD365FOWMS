@@ -232,6 +232,12 @@ object WarehouseStatusColors {
     /** Primary action buttons, with white text - deliberately not the accent, so "press this"
      *  reads the same whichever palette is chosen. */
     val action = Color(0xFFEA6A12)
+    /** [action] at about 12% over white - the highlighted FlowActionBar button's background, the
+     *  same flat-tint technique as every other dim token in this file. */
+    val actionDim = Color(0xFFFDEDE3)
+    /** [action] pressed further - HoldToConfirmButton's fill as it is held. Dark enough that the
+     *  white label still reads over it. */
+    val actionDark = Color(0xFFB04E0B)
 
     /** Success band: tint, 10dp left edge, text. */
     val okBand = Color(0xFFDCFCE7)
@@ -350,17 +356,59 @@ val CodeFont: FontFamily = FontFamily(
 )
 
 /**
- * The [CodeFont] sizes from the redesign brief (§1.3), before [DisplayScale]. Not Material
- * [Typography] roles - those are shared by every existing screen, and Phase 1 deliberately
- * changes none of them; these are only read by the new flow components.
+ * A zero-width break opportunity after every hyphen, so a code too long for its line breaks
+ * between its parts (BSP-PO- / 000161763) instead of mid-number (BSP-PO-0001617 / 63). Android's
+ * line breaker never breaks at a hyphen followed by a digit - it reads "-5" as a negative number -
+ * so without this, document numbers and item codes at large text sizes split wherever the width
+ * ran out (caught by ComponentLayoutTest's screenshots, 9 Nov). Invisible, and not read by
+ * TalkBack; a test matching the displayed text should match on `code.breakableCode()`.
+ */
+fun String.breakableCode(): String = replace("-", "-​")
+
+/**
+ * The redesign's own type sizes (brief §1.3), before [DisplayScale]. Not Material [Typography]
+ * roles - those are shared by every existing screen, which keep their current sizes until each is
+ * redesigned; these are read only by the new flow components (FlowHeader, StatusBand, NextCard
+ * and the rest). Nothing here is below the brief's 12sp floor.
  *
  * Getters over a `mutableStateOf` scale, the same pattern as [WarehouseDimens.MinTouchTarget]:
  * [D365MobileTheme] sets [scale] from the Settings text size, and every composable reading one
  * of these styles recomposes with it.
  */
-object WarehouseCodeType {
+object WarehouseType {
     var scale by mutableStateOf(1f)
         internal set
+
+    /** Flow screen title in the header. */
+    val title: TextStyle
+        get() = TextStyle(
+            fontFamily = AppFont, fontWeight = FontWeight.Bold,
+            fontSize = 20.sp * scale, lineHeight = 25.sp * scale,
+        )
+    /** Body text - descriptions, the band's second line, list row titles (brief: 17-19sp). */
+    val body: TextStyle
+        get() = TextStyle(
+            fontFamily = AppFont, fontWeight = FontWeight.Normal,
+            fontSize = 18.sp * scale, lineHeight = 24.sp * scale,
+        )
+    /** The status band's second line (brief: 15-16sp). */
+    val line: TextStyle
+        get() = TextStyle(
+            fontFamily = AppFont, fontWeight = FontWeight.Medium,
+            fontSize = 16.sp * scale, lineHeight = 21.sp * scale,
+        )
+    /** Labels and subtitles (brief: at least 15sp). */
+    val label: TextStyle
+        get() = TextStyle(
+            fontFamily = AppFont, fontWeight = FontWeight.SemiBold,
+            fontSize = 15.sp * scale, lineHeight = 20.sp * scale, letterSpacing = 0.2.sp,
+        )
+    /** Hardware key hints (F1-F4) - the smallest text the redesign allows. */
+    val keyHint: TextStyle
+        get() = TextStyle(
+            fontFamily = AppFont, fontWeight = FontWeight.Bold,
+            fontSize = 12.sp * scale, lineHeight = 15.sp * scale, letterSpacing = 0.5.sp,
+        )
 
     /** Item and location/bin code on the next-item card. */
     val code: TextStyle
@@ -525,7 +573,7 @@ fun D365MobileTheme(
         WarehouseStatusColors.accentGradientStart = palette.gradientStart
         WarehouseDimens.MinTouchTarget = BaseMinTouchTarget * scale.factor
         WarehouseDimens.StepperButton = BaseStepperButton * scale.factor
-        WarehouseCodeType.scale = scale.factor
+        WarehouseType.scale = scale.factor
     }
 
     MaterialTheme(
