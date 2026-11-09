@@ -121,7 +121,7 @@ fun OnHandInquiryScreen(
             PromptHeroCard(
                 prompt = "Scan item",
                 pills = listOfNotNull(
-                    state.homeWarehouseId?.takeIf { state.thisWarehouseOnly }?.let { Icons.Default.Warehouse to "$it only" },
+                    state.homeWarehouseId?.takeIf { state.thisWarehouseOnly }?.let { Icons.Default.Warehouse to "Store $it only" },
                 ),
             ) {
             Box {

@@ -410,7 +410,7 @@ private fun StepPrompt(
             modifier = Modifier.weight(1f).verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            PromptHeroCard(prompt = promptFor(state), hint = hintFor(state), pills = capturePills(state)) {
+            PromptHeroCard(prompt = promptFor(state), hint = cardNote(state), pills = capturePills(state)) {
             // Read-only and empty, always - a scan never lands here (it goes straight to the
             // ViewModel, see HidScannerBridge), and typing now happens on a dedicated screen,
             // not inline. What remains is a tap target styled like the field it replaces: a
@@ -573,28 +573,45 @@ private fun ScannedSoFar(state: ReceivingFlowState, onOpen: () -> Unit) {
     }
 }
 
-/** What the scan is working on, as pills in the scan card - order, vendor, then each field so far. */
+/**
+ * What the scan is working on, as labelled chips under the scan card (user, 9 Nov: every chip
+ * says what it is) - order, vendor, then each field so far, and the order's suggested location
+ * on the location step.
+ */
 private fun capturePills(state: ReceivingFlowState): List<Pair<androidx.compose.ui.graphics.vector.ImageVector?, String>> {
     val c = state.capture
     return buildList {
-        c.purchId?.let { add(Icons.Default.Description to it) }
-        state.order?.let { o -> add(Icons.Default.Store to (o.vendorName.takeIf { it.isNotBlank() } ?: o.vendorAccount)) }
+        c.purchId?.let { add(Icons.Default.Description to "PO $it") }
+        state.order?.let { o -> add(Icons.Default.Store to "Vendor " + (o.vendorName.takeIf { it.isNotBlank() } ?: o.vendorAccount)) }
         if (state.step != ReceivingStep.ITEM) {
             c.item?.let {
                 // The name only when it says more than the number.
                 val name = it.productName.takeIf { n -> n.isNotBlank() && !n.equals(it.itemNumber, ignoreCase = true) }
-                add(com.d365fo.mobileops.presentation.common.components.BarcodeGlyph to (name?.let { n -> "${it.itemNumber} · $n" } ?: it.itemNumber))
+                add(com.d365fo.mobileops.presentation.common.components.BarcodeGlyph to "Item " + (name?.let { n -> "${it.itemNumber} · $n" } ?: it.itemNumber))
             }
             c.line?.mobileDescriptions?.forEach { add(null to it) }
-            c.line?.variant?.label?.takeIf { it.isNotBlank() }?.let { add(null to it) }
-            c.quantity?.let { add(Icons.Default.Numbers to com.d365fo.mobileops.util.Formatters.qtyUnit(it, c.unitSymbol)) }
-            c.locationId?.let { add(Icons.Default.LocationOn to it) }
+            c.line?.variant?.label?.takeIf { it.isNotBlank() }?.let { add(null to "Variant $it") }
+            c.quantity?.let { add(Icons.Default.Numbers to "Qty " + com.d365fo.mobileops.util.Formatters.qtyUnit(it, c.unitSymbol)) }
+            c.locationId?.let { add(Icons.Default.LocationOn to "Location $it") }
             c.batchId?.let { add(Icons.Default.Tag to "Batch $it") }
             if (c.batchIsNew == true) displayDate(c.batchExpiryDate)?.let { add(Icons.Default.CalendarMonth to "Expiry $it") }
-            if (c.serialIds.isNotEmpty()) add(Icons.Default.QrCode2 to "${c.serialIds.size} ${if (c.serialIds.size == 1) "serial" else "serials"}")
+            if (c.serialIds.isNotEmpty()) add(Icons.Default.QrCode2 to "Serials ${c.serialIds.size}")
         }
+        if (state.step == ReceivingStep.LOCATION) state.suggestedLocation?.let { add(Icons.Default.LocationOn to "Suggested $it") }
     }
 }
+
+/**
+ * The one line the receiving scan card may still show under its field: a state the worker must
+ * know (nothing left on the order). Instructions and figures are not repeated there (user, 9 Nov:
+ * no hints) - the chips and the prompt carry them.
+ */
+private fun cardNote(state: ReceivingFlowState): String? =
+    if (state.step == ReceivingStep.ITEM && state.outstandingLineCount == 0 && state.captured.isEmpty() && state.order != null) {
+        "Nothing left to receive on this order"
+    } else {
+        null
+    }
 
 /**
  * Lets the operator find a line by typing part of its item name or ID instead of scanning - see

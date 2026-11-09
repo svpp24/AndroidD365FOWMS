@@ -31,6 +31,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.outlined.Feedback
 import androidx.compose.material.icons.outlined.CloudUpload
 import androidx.compose.material.icons.outlined.Article
@@ -470,15 +471,10 @@ private fun SettingsMenu(
     val session by switcher.session.collectAsStateWithLifecycle()
     // Harbour (9 Nov): who is signed in as a chip, then one card of rows - a tinted icon, the
     // name in the accent and what it is set to under it.
+    // Only a value worth reading under a row (user, 9 Nov: nothing that repeats the row's name).
     val values = mapOf(
-        SettingsMenuItem.Session to (session?.selected?.warehouseId?.let { "Store $it" } ?: "Your store and sign-in"),
-        SettingsMenuItem.Posting to if (postingEnabled) "Posting is on" else "Off - work is held here",
-        SettingsMenuItem.ConnectionProfile to "D365FO environment",
-        SettingsMenuItem.Appearance to "Harbour · text size",
-        SettingsMenuItem.Lockout to "Sign out when idle",
-        SettingsMenuItem.Feedback to "Problem, idea or question",
-        SettingsMenuItem.UnsentWork to "Work not sent yet",
-        SettingsMenuItem.Logs to "Calls to D365FO",
+        SettingsMenuItem.Session to (session?.selected?.warehouseId?.let { "Store $it" } ?: ""),
+        SettingsMenuItem.Posting to if (postingEnabled) "On - work is sent" else "Off - work is held on this device",
     )
     val items = buildList {
         if (showConnectionProfile) addAll(listOf(SettingsMenuItem.ConnectionProfile, SettingsMenuItem.Appearance, SettingsMenuItem.Lockout))
@@ -490,7 +486,10 @@ private fun SettingsMenu(
     }
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         session?.displayName?.takeIf { it.isNotBlank() }?.let { name ->
-            com.d365fo.mobileops.presentation.common.components.ListHeader(icon = LineIcons.Warehouse, title = name)
+            com.d365fo.mobileops.presentation.common.components.ContextPill(
+                androidx.compose.material.icons.Icons.Filled.Person,
+                "Signed in $name" + (session?.userName?.takeIf { it.isNotBlank() && !it.equals(name, ignoreCase = true) }?.let { " ($it)" } ?: ""),
+            )
         }
         // Items and barcodes on this device, with a manual Sync - moved here from Inventory count
         // (user, 9 Nov). Signed in only: a sync needs the worker's company.

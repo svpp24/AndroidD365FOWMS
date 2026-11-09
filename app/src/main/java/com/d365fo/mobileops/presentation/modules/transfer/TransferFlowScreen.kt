@@ -395,7 +395,8 @@ private fun StepPrompt(
             modifier = Modifier.weight(1f).verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            PromptHeroCard(prompt = promptFor(state), hint = hintFor(state), pills = capturePills(state)) {
+            // No hint line under the field (user, 9 Nov) - the chips carry what to know.
+            PromptHeroCard(prompt = promptFor(state), pills = capturePills(state)) {
             // Read-only and empty, always - see the identical note on PO receiving's own
             // StepPrompt: a scan never lands here, and typing now happens on a dedicated
             // screen. What remains is a tap target styled like the field it replaces.
@@ -549,20 +550,31 @@ private fun ScannedSoFar(state: TransferFlowState, onOpen: () -> Unit) {
 private fun capturePills(state: TransferFlowState): List<Pair<androidx.compose.ui.graphics.vector.ImageVector?, String>> {
     val c = state.capture
     return buildList {
-        c.transferId?.let { add(Icons.Default.SwapHoriz to it) }
+        // Labelled chips (user, 9 Nov): what each value is, not just the value.
+        c.transferId?.let { add(Icons.Default.SwapHoriz to "Transfer $it") }
         state.order?.let { o ->
             if (o.fromWarehouseId != null && o.toWarehouseId != null) {
-                add(Icons.Default.Route to "${o.fromWarehouseId} to ${o.toWarehouseId}")
+                add(Icons.Default.Route to "Route ${o.fromWarehouseId} to ${o.toWarehouseId}")
             }
         }
         // Shipping asks the bin before the item, so it stays on the item step too.
-        if (c.mode == TransferMode.SHIP || state.step != TransferStep.ITEM) c.locationId?.let { add(Icons.Default.LocationOn to it) }
+        if (c.mode == TransferMode.SHIP || state.step != TransferStep.ITEM) c.locationId?.let { add(Icons.Default.LocationOn to "Location $it") }
         if (state.step != TransferStep.ITEM) {
-            c.line?.let { add(com.d365fo.mobileops.presentation.common.components.BarcodeGlyph to "${it.itemId} · ${it.itemName}") }
-            c.line?.variant?.label?.takeIf { it.isNotBlank() }?.let { add(null to it) }
-            c.quantity?.let { add(Icons.Default.Numbers to com.d365fo.mobileops.util.Formatters.qtyUnit(it, c.unitSymbol)) }
+            c.line?.let { add(com.d365fo.mobileops.presentation.common.components.BarcodeGlyph to "Item ${it.itemId} · ${it.itemName}") }
+            c.line?.variant?.label?.takeIf { it.isNotBlank() }?.let { add(null to "Variant $it") }
+            c.quantity?.let { add(Icons.Default.Numbers to "Qty " + com.d365fo.mobileops.util.Formatters.qtyUnit(it, c.unitSymbol)) }
             c.batchId?.let { add(Icons.Default.Tag to "Batch $it") }
-            if (c.serialIds.isNotEmpty()) add(Icons.Default.QrCode2 to "${c.serialIds.size} ${if (c.serialIds.size == 1) "serial" else "serials"}")
+            if (c.serialIds.isNotEmpty()) add(Icons.Default.QrCode2 to "Serials ${c.serialIds.size}")
+        }
+        // On the batch step, which batch the shipment carried (receive) or the order asked for
+        // (ship) - a fact to act on, as a chip rather than a hint line.
+        if (state.step == TransferStep.BATCH) c.line?.let { line ->
+            when {
+                c.mode == TransferMode.RECEIVE && line.shippedBatches.isNotEmpty() ->
+                    line.shippedBatches.forEach { add(Icons.Default.Tag to "Shipped batch ${it.batchId} (${plain(it.quantity)})") }
+                c.mode == TransferMode.SHIP && line.lineBatchId != null ->
+                    add(Icons.Default.Tag to "Ordered batch ${line.lineBatchId}")
+            }
         }
     }
 }

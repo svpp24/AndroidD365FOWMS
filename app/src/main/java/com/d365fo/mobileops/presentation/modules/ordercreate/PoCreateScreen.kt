@@ -175,7 +175,7 @@ fun PoCreateScreen(
                     PromptHeroCard(
                         prompt = "Scan item",
                         pills = listOf(
-                            Icons.Default.Store to draft.vendorName.ifBlank { draft.vendorAccount },
+                            Icons.Default.Store to "Vendor " + draft.vendorName.ifBlank { draft.vendorAccount },
                             Icons.Default.Warehouse to "To ${draft.warehouseId}",
                             Icons.Default.CalendarMonth to "Delivery ${draft.deliveryDate}",
                         ),

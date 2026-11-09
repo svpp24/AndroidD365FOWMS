@@ -401,7 +401,6 @@ fun AppNavGraph(
                         onBack = { navController.popBackStack() },
                         onModuleSelected = { route -> navController.navigate(route) },
                         accessViewModel = if (homeEntry != null) hiltViewModel(homeEntry) else hiltViewModel(),
-                        dashboardViewModel = if (homeEntry != null) hiltViewModel(homeEntry) else hiltViewModel(),
                     )
                 }
 

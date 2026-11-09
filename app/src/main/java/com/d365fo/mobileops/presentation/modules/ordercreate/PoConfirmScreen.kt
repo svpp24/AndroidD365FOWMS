@@ -128,7 +128,7 @@ fun PoConfirmScreen(onBack: () -> Unit, viewModel: PoConfirmViewModel = hiltView
                     }
                 }
                 item {
-                    PromptHeroCard(prompt = "Scan a PO", hint = "Or pick one below") {
+                    PromptHeroCard(prompt = "Scan a PO") {
                         OrderScanField(onType = { typing = true }, onCamera = { showCamera = true }, enabled = !state.opening)
                     }
                 }

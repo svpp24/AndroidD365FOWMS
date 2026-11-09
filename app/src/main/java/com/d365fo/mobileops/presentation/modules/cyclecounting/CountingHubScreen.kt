@@ -95,7 +95,7 @@ fun CountingHubScreen(
                     icon = Icons.Default.Storefront,
                     color = com.d365fo.mobileops.presentation.common.components.ModuleColor.Green,
                     title = "Store count",
-                    tags = listOf("No journal needed"),
+                    tags = emptyList(),
                     onClick = onStoreCount,
                 )
             }
@@ -104,8 +104,8 @@ fun CountingHubScreen(
                     icon = Icons.Default.Autorenew,
                     color = com.d365fo.mobileops.presentation.common.components.ModuleColor.Blue,
                     title = "Cycle count",
-                    tags = listOfNotNull(badge(CountKind.CYCLE), "$recounts to recount".takeIf { known && recounts > 0 })
-                        .ifEmpty { listOf(if (known) "None open" else "Journals") },
+                    // No counts on the menus (user, 9 Nov).
+                    tags = emptyList(),
                     onClick = { onJournals(CountKind.CYCLE) },
                 )
             }
@@ -114,7 +114,7 @@ fun CountingHubScreen(
                     icon = Icons.Default.GridView,
                     color = com.d365fo.mobileops.presentation.common.components.ModuleColor.Sienna,
                     title = "Wall-to-wall count",
-                    tags = listOf(badge(CountKind.WALL_TO_WALL) ?: if (known) "None running" else "Journals"),
+                    tags = emptyList(),
                     onClick = { onJournals(CountKind.WALL_TO_WALL) },
                 )
             }
@@ -124,7 +124,7 @@ fun CountingHubScreen(
                         icon = Icons.Default.Insights,
                         color = com.d365fo.mobileops.presentation.common.components.ModuleColor.Petrol,
                         title = "Count accuracy",
-                        tags = listOf("Supervisor"),
+                        tags = emptyList(),
                         onClick = onAccuracy,
                     )
                 }

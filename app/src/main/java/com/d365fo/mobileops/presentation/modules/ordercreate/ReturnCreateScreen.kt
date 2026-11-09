@@ -96,7 +96,7 @@ fun ReturnCreateScreen(onBack: () -> Unit, viewModel: ReturnCreateViewModel = hi
             // Scan card first, above the saved return and the history: it stays in one place.
             if (draft.vendorAccount.isBlank()) {
                 item {
-                    PromptHeroCard(prompt = "Scan the original PO", hint = "Or pick the vendor below") {
+                    PromptHeroCard(prompt = "Scan the original PO") {
                         OrderScanField(onType = { typing = true }, onCamera = { showCamera = true }, enabled = !state.busy)
                     }
                 }
@@ -156,7 +156,7 @@ fun ReturnCreateScreen(onBack: () -> Unit, viewModel: ReturnCreateViewModel = hi
                     PromptHeroCard(
                         prompt = "Scan item",
                         pills = listOfNotNull(
-                            Icons.Default.Store to draft.vendorName.ifBlank { draft.vendorAccount },
+                            Icons.Default.Store to "Vendor " + draft.vendorName.ifBlank { draft.vendorAccount },
                             Icons.Default.Warehouse to "From ${draft.warehouseId}",
                             draft.rmaNumber.takeIf { it.isNotBlank() }?.let { Icons.Default.Description to "RMA $it" },
                         ),

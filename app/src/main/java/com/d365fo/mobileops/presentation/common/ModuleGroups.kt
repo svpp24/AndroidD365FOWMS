@@ -73,13 +73,11 @@ internal fun ModuleGroupCard(
     onOpen: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val tags = modules.mapNotNull { m -> m.workflow?.let(counts::get) }
-        .ifEmpty { if (modules.size == 1) listOf(modules[0].summary) else modules.map { it.title } }
     ModuleCard(
         icon = group.icon,
         color = group.color,
         title = if (modules.size == 1 && group != ModuleGroup.COUNT) modules[0].title else group.title,
-        tags = tags,
+        tags = emptyList(),
         onClick = onOpen,
         modifier = modifier,
     )
@@ -92,13 +90,10 @@ fun ModuleGroupScreen(
     onBack: () -> Unit,
     onModuleSelected: (String) -> Unit,
     accessViewModel: HomeAccessViewModel = hiltViewModel(),
-    dashboardViewModel: HomeDashboardViewModel = hiltViewModel(),
 ) {
     val group = ModuleGroup.entries.firstOrNull { it.name == groupId } ?: ModuleGroup.PURCHASE
     val blocked by accessViewModel.blockedWorkflows.collectAsStateWithLifecycle()
     val menu by accessViewModel.menu.collectAsStateWithLifecycle()
-    val figures by dashboardViewModel.figures.collectAsStateWithLifecycle()
-    LaunchedEffect(Unit) { dashboardViewModel.refresh() }
     val modules = group.modules(visibleModules(menu, blocked))
     Scaffold(
         topBar = {
@@ -116,7 +111,7 @@ fun ModuleGroupScreen(
             contentPadding = PaddingValues(horizontal = WarehouseDimens.ScreenPadding, vertical = 12.dp),
         ) {
             item {
-                ModuleListCard(modules, counts = todaysCounts(figures)) { module -> module.route?.let(onModuleSelected) }
+                ModuleListCard(modules) { module -> module.route?.let(onModuleSelected) }
             }
         }
     }

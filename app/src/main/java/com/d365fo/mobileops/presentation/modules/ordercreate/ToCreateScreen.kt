@@ -173,7 +173,7 @@ fun ToCreateScreen(onBack: () -> Unit, onShip: () -> Unit, viewModel: ToCreateVi
                         prompt = "Scan item",
                         pills = listOf(
                             Icons.Default.Route to "${draft.fromWarehouseId} to ${draft.toWarehouseId}",
-                            Icons.Default.CalendarMonth to "Ships ${draft.shipDate}",
+                            Icons.Default.CalendarMonth to "Ship date ${draft.shipDate}",
                         ),
                     ) {
                         OrderScanField(onType = { typing = true }, onCamera = { showCamera = true }, enabled = !state.busy)

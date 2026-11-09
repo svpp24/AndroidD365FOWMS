@@ -138,7 +138,8 @@ internal fun ModuleListCard(
                 icon = module.icon,
                 color = harbourColor(module),
                 title = module.title,
-                tags = listOf(module.workflow?.let(counts::get) ?: module.summary),
+                // No tags (user, 9 Nov): no counts on the menus and no hints - the name says it.
+                tags = emptyList(),
                 onClick = { onOpen(module) },
             )
         }

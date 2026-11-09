@@ -265,7 +265,6 @@ fun HomeScreen(
     /** Opens a bottom tab (Services from More, Activity from its widget). */
     onOpenTab: (String) -> Unit = onModuleSelected,
     unfinishedViewModel: UnfinishedWorkViewModel = hiltViewModel(),
-    dashboardViewModel: HomeDashboardViewModel = hiltViewModel(),
     accessViewModel: HomeAccessViewModel = hiltViewModel(),
 ) {
     var infoFor by remember { mutableStateOf<ModuleTile?>(null) }
@@ -276,9 +275,7 @@ fun HomeScreen(
     // Each time Home shows: pick up Menu access changed in D365FO since the last look.
     androidx.compose.runtime.LaunchedEffect(Unit) {
         accessViewModel.refresh()
-        dashboardViewModel.refresh()
     }
-    val figures by dashboardViewModel.figures.collectAsStateWithLifecycle()
     val usage = rememberModuleUsage(warehouseId)
     infoFor?.let { module ->
         val enabled = module.workflow == null || module.workflow !in blockedWorkflows
@@ -327,13 +324,8 @@ fun HomeScreen(
         },
     ) { padding ->
         val side = Modifier.padding(horizontal = WarehouseDimens.ScreenPadding)
-        // Today's counts on the modules themselves (feedback, 30 Oct: the dashboard cards went,
-        // their numbers moved onto the rows). Activity's count is on its tab.
-        val counts = buildMap {
-            figures.posDueToday?.let { put(com.d365fo.mobileops.domain.model.WarehouseWorkflow.PO_RECEIVING, "$it due today") }
-            figures.transfersToShip?.let { put(com.d365fo.mobileops.domain.model.WarehouseWorkflow.TRANSFER_SHIP, "$it to ship") }
-            figures.countsInProgress?.let { put(com.d365fo.mobileops.domain.model.WarehouseWorkflow.INVENTORY_COUNT, "$it open") }
-        }
+        // No counts on the menus (user, 9 Nov) - and no D365FO calls to fetch them when Home shows.
+        val counts = emptyMap<com.d365fo.mobileops.domain.model.WarehouseWorkflow, String>()
         // Opens at the top: something scrolled it down on sign-in (seen 20 Oct, twice) - held at
         // the top until the worker scrolls it themself.
         val listState = androidx.compose.foundation.lazy.rememberLazyListState()
