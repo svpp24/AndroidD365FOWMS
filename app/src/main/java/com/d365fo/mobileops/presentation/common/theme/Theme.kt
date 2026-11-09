@@ -524,6 +524,8 @@ object FocusType {
     val rowCode get() = code(26f)
     val rowCount get() = code(30f)
     val rowDetail get() = nunito(14f, FontWeight.SemiBold)
+    /** A row's right-hand value when it is a word ("Ship", "Picked") rather than a number. */
+    val rowWord get() = nunito(16f, FontWeight.Bold)
     val button get() = nunito(18f, FontWeight.Bold)
     val pill get() = nunito(17f, FontWeight.SemiBold)
     val remaining get() = nunito(17f, FontWeight.Bold)
