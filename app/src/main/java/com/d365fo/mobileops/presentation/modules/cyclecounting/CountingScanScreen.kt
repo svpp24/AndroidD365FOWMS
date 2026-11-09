@@ -197,9 +197,12 @@ internal fun LegacyCountingScanScreen(
                     state.binsRequired && state.currentBin == null -> steps.indexOf("Bin")
                     else -> steps.lastIndex
                 }
-                com.d365fo.mobileops.presentation.common.components.StepTrail(
-                    names = steps,
-                    current = current,
+                // Plain progress text, as the redesign's FlowHeader shows it - the step trail is
+                // retired (brief §2). This screen is kept for wall-to-wall and triggered counts.
+                androidx.compose.material3.Text(
+                    text = "Step ${current + 1} of ${steps.size} · ${steps[current]}",
+                    style = com.d365fo.mobileops.presentation.common.theme.WarehouseType.label,
+                    color = com.d365fo.mobileops.presentation.common.theme.WarehouseStatusColors.inkMuted,
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = WarehouseDimens.ScreenPadding)

@@ -35,7 +35,7 @@ import com.d365fo.mobileops.presentation.common.theme.breakableCode
 
 /**
  * The top bar of every flow screen (redesign brief §2): back arrow, title, optional progress
- * ("1 of 2") and the ⋮ menu. Replaces [AppTopBar] *and* [StepTrail] there - the progress text and
+ * ("1 of 2") and the ⋮ menu. Replaces [AppTopBar] *and* the old step trail there - the progress text and
  * the status band under it say where the worker is, so the step trail goes.
  *
  * At least 52dp, white, a hairline under it. The back arrow's touch target is
