@@ -230,6 +230,7 @@ fun StatusTag(text: String, kind: Lead) {
     )
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 /**
  * One row of a [ListCard]: a [LeadDot], an accent title (with an optional [StatusTag]), a
  * darker first line and lighter lines under it, and something on the right - a quantity or a
@@ -258,15 +259,19 @@ fun LineRow(
     ) {
         lead?.invoke()
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            // The tag wraps under the title when both don't fit - beside it, a narrow row broke
+            // the document number in the middle of its digits.
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
                 Text(
                     title.breakableCode(),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.ExtraBold,
                     color = WarehouseStatusColors.accent,
-                    modifier = Modifier.weight(1f, fill = false),
                 )
-                status?.invoke()
+                status?.let { Box(Modifier.align(Alignment.CenterVertically)) { it() } }
             }
             description?.takeIf { it.isNotBlank() }?.let {
                 Text(it, style = MaterialTheme.typography.bodyMedium, color = WarehouseStatusColors.text2)

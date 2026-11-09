@@ -1,5 +1,6 @@
 package com.d365fo.mobileops.presentation.common.components
 
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -60,24 +61,38 @@ fun QuantityPicker(
         entry = edit(base).take(12)
     }
     val problem = entry.takeIf { it.isNotBlank() }?.let(validate) ?: error
+    // Harbour: the item code in the accent as the title, what is left as a pill, the number in
+    // an accent box on the right, grey keys, and the action as the gradient button.
+    val parts = subtitle?.takeIf { it.isNotBlank() }?.split(" · ").orEmpty()
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Quantity") },
+        containerColor = androidx.compose.ui.graphics.Color.White,
+        title = {
+            Text(
+                parts.firstOrNull() ?: "Quantity",
+                fontWeight = FontWeight.ExtraBold,
+                color = WarehouseStatusColors.accent,
+            )
+        },
         text = {
             Column(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.verticalScroll(rememberScrollState()),
             ) {
-                subtitle?.takeIf { it.isNotBlank() }?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
-                hint?.takeIf { it.isNotBlank() }?.let {
-                    Text(it, style = MaterialTheme.typography.bodySmall, color = WarehouseStatusColors.text3)
+                parts.drop(1).takeIf { it.isNotEmpty() }?.let {
+                    Text(it.joinToString(" · "), style = MaterialTheme.typography.bodyMedium, color = WarehouseStatusColors.text2)
                 }
+                hint?.takeIf { it.isNotBlank() }?.let { ContextPill(null, it) }
                 Text(
                     entry.ifBlank { "0" },
                     style = MaterialTheme.typography.headlineMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    color = if (entry.isBlank()) WarehouseStatusColors.text3 else MaterialTheme.colorScheme.onSurface,
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                    fontWeight = FontWeight.ExtraBold,
+                    color = if (entry.isBlank()) WarehouseStatusColors.text3 else WarehouseStatusColors.accent,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.End,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .border(2.dp, WarehouseStatusColors.accent, androidx.compose.foundation.shape.RoundedCornerShape(10.dp))
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
                 )
                 problem?.let { Text(it, color = WarehouseStatusColors.red, style = MaterialTheme.typography.bodyMedium) }
                 NumericKeypad(
@@ -106,10 +121,10 @@ fun QuantityPicker(
                     CancelOutlinedButton(onClick = onDismiss, modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget)) { Text(dismissLabel) }
                 },
                 confirm = {
-                    ConfirmButton(
+                    GradientButton(
                         onClick = { onConfirm(entry.trim()) },
                         enabled = entry.isNotBlank() && entry.trim().trimEnd('.').isNotEmpty() && (problem == null || problem == error),
-                        modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget),
+                        modifier = Modifier.weight(1f),
                     ) { Text(confirmLabel) }
                 },
             )

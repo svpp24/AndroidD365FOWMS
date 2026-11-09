@@ -14,6 +14,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.clickable
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Warehouse
+import androidx.compose.foundation.background
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.PhotoCamera
 import com.d365fo.mobileops.presentation.common.components.SquareButton as Button
@@ -116,7 +118,12 @@ fun OnHandInquiryScreen(
             // Overlaid Box, not clickable() on the field itself - a read-only field's own
             // pointer input (for cursor placement) swallows a tap before an outer clickable on
             // the same modifier chain ever sees it - confirmed live.
-            PromptHeroCard(prompt = "Scan item or barcode") {
+            PromptHeroCard(
+                prompt = "Scan item",
+                pills = listOfNotNull(
+                    state.homeWarehouseId?.takeIf { state.thisWarehouseOnly }?.let { Icons.Default.Warehouse to "$it only" },
+                ),
+            ) {
             Box {
                 OutlinedTextField(
                     value = "",
@@ -191,13 +198,17 @@ fun OnHandInquiryScreen(
             }
 
             state.itemNumber?.let { item ->
-                Text(
-                    text = state.productName?.takeIf { it.isNotBlank() }
-                        ?.let { "$item — $it" }
-                        ?: item,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                )
+                Column {
+                    Text(
+                        text = item,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = com.d365fo.mobileops.presentation.common.theme.WarehouseStatusColors.accent,
+                    )
+                    state.productName?.takeIf { it.isNotBlank() && !it.equals(item, ignoreCase = true) }?.let {
+                        Text(it, style = MaterialTheme.typography.bodyMedium, color = com.d365fo.mobileops.presentation.common.theme.WarehouseStatusColors.text2)
+                    }
+                }
             }
 
             if (state.rows.isEmpty() && state.itemNumber != null && !state.busy) {
@@ -253,42 +264,54 @@ fun OnHandEntryScreen(
 
 @Composable
 private fun OnHandRow(row: OnHandLine) {
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(
-            modifier = Modifier.padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            Text(
-                text = listOfNotNull(
-                    row.siteId?.let { "Site $it" },
-                    row.warehouseId?.let { "Whs $it" },
-                ).joinToString(" · ").ifBlank { "All warehouses" },
-                style = MaterialTheme.typography.titleMedium,
-            )
-            // Available first: it is the number that decides whether the operator can pick,
-            // and it is not the number D365FO puts first.
-            Quantity("Available", row.available)
-            Quantity("On hand", row.onHand)
-            Quantity("Reserved", row.reserved)
-            Quantity("Ordered", row.ordered)
-            Quantity("Total available", row.totalAvailable)
+    // Harbour: a white card, the warehouse as its heading, and the figures as a 2x2 grid of
+    // tiles - Available first and in green, the number that decides whether it can be picked.
+    val c = com.d365fo.mobileops.presentation.common.theme.WarehouseStatusColors
+    Column(
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(androidx.compose.ui.graphics.Color.White, androidx.compose.foundation.shape.RoundedCornerShape(12.dp))
+            .padding(12.dp),
+    ) {
+        Text(
+            text = listOfNotNull(
+                row.siteId?.let { "Site $it" },
+                row.warehouseId?.let { "Whs $it" },
+            ).joinToString(" · ").ifBlank { "All warehouses" },
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.ExtraBold,
+            color = c.accent,
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            QuantityTile("Available", row.available, c.green, Modifier.weight(1f))
+            QuantityTile("On hand", row.onHand, c.accent, Modifier.weight(1f))
         }
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            QuantityTile("Reserved", row.reserved, c.accent, Modifier.weight(1f))
+            QuantityTile("Ordered", row.ordered, c.accent, Modifier.weight(1f))
+        }
+        Text(
+            "Total available ${row.totalAvailable.stripTrailingZeros().toPlainString()}",
+            style = MaterialTheme.typography.labelLarge,
+            color = c.text3,
+        )
     }
 }
 
 @Composable
-private fun Quantity(label: String, value: BigDecimal) {
-    Row(modifier = Modifier.fillMaxWidth()) {
+private fun QuantityTile(label: String, value: BigDecimal, color: androidx.compose.ui.graphics.Color, modifier: Modifier = Modifier) {
+    Column(
+        modifier = modifier
+            .background(com.d365fo.mobileops.presentation.common.theme.WarehouseStatusColors.surface2, androidx.compose.foundation.shape.RoundedCornerShape(10.dp))
+            .padding(horizontal = 10.dp, vertical = 6.dp),
+    ) {
+        Text(label, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, color = com.d365fo.mobileops.presentation.common.theme.WarehouseStatusColors.text3)
         Text(
-            text = label,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.weight(1f),
-        )
-        Text(
-            text = value.stripTrailingZeros().toPlainString(),
-            style = MaterialTheme.typography.bodyMedium,
-            fontWeight = FontWeight.Medium,
+            value.stripTrailingZeros().toPlainString(),
+            style = MaterialTheme.typography.headlineSmall,
+            fontWeight = FontWeight.ExtraBold,
+            color = color,
         )
     }
 }

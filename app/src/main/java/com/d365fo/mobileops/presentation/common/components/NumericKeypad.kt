@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Backspace
 import androidx.compose.material3.Icon
@@ -75,12 +76,10 @@ private fun KeypadButton(
 ) {
     Box(
         modifier = modifier
-            .heightIn(min = 48.dp)
-            .background(WarehouseStatusColors.surface2, RoundedCornerShape(WarehouseDimens.CardCorner))
-            .border(
-                BorderStroke(1.dp, WarehouseStatusColors.border),
-                RoundedCornerShape(WarehouseDimens.CardCorner),
-            )
+            .heightIn(min = 52.dp)
+            // Harbour: soft grey filled keys, no outline.
+            .clip(RoundedCornerShape(10.dp))
+            .background(WarehouseStatusColors.surface2)
             .clickable(enabled = enabled, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
@@ -88,6 +87,7 @@ private fun KeypadButton(
             Text(
                 text = text,
                 style = MaterialTheme.typography.headlineSmall,
+                fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
                 color = if (enabled) MaterialTheme.colorScheme.onSurface else WarehouseStatusColors.text3,
             )
         }

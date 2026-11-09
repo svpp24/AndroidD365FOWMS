@@ -1,5 +1,8 @@
 package com.d365fo.mobileops.presentation.auth
 
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
+
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -153,9 +156,9 @@ fun WorkerLoginScreen(
         )
 
         Text(
-            text = "Sign in",
+            text = "Mobile Operations",
             style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.SemiBold,
+            fontWeight = FontWeight.ExtraBold,
         )
 
         // Only once "offline" has lasted a few seconds: the network and D365FO checks at start
@@ -171,6 +174,14 @@ fun WorkerLoginScreen(
         }
         if (showOffline) OfflineSignInNotice()
 
+        // The two fields in one white card (Harbour).
+        Column(
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(androidx.compose.ui.graphics.Color.White, RoundedCornerShape(12.dp))
+                .padding(12.dp),
+        ) {
         OutlinedTextField(
             value = state.userName,
             onValueChange = viewModel::onUserNameChange,
@@ -211,24 +222,28 @@ fun WorkerLoginScreen(
                 .heightIn(min = 64.dp)
                 .focusRequester(passwordFocus),
         )
-
-        Button(
-            onClick = viewModel::signIn,
-            enabled = !state.busy && state.userName.isNotBlank() && state.password.isNotBlank(),
-            modifier = Modifier.fillMaxWidth().heightIn(min = WarehouseDimens.MinTouchTarget),
-        ) {
-            if (state.busy) {
-                CircularProgressIndicator(modifier = Modifier.heightIn(max = 24.dp))
-            } else {
-                Text("Sign in")
-            }
         }
 
-        OutlinedButton(
-            onClick = onOpenSettings,
-            modifier = Modifier.fillMaxWidth().heightIn(min = WarehouseDimens.MinTouchTarget),
-        ) {
-            Text("Connection settings")
+        // Settings beside Sign in, as the flow screens' docks (Harbour).
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+            com.d365fo.mobileops.presentation.common.components.DockOutlinedButton(
+                onClick = onOpenSettings,
+                icon = androidx.compose.material.icons.Icons.Filled.Settings,
+                text = "Settings",
+                modifier = Modifier.weight(0.4f),
+            )
+            com.d365fo.mobileops.presentation.common.components.GradientButton(
+                onClick = viewModel::signIn,
+                enabled = !state.busy && state.userName.isNotBlank() && state.password.isNotBlank(),
+                modifier = Modifier.weight(0.6f),
+            ) {
+                if (state.busy) {
+                    CircularProgressIndicator(modifier = Modifier.heightIn(max = 24.dp), color = androidx.compose.ui.graphics.Color.White)
+                } else {
+                    Text("Sign in")
+                    androidx.compose.material3.Icon(androidx.compose.material.icons.Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null)
+                }
+            }
         }
     }
 }
