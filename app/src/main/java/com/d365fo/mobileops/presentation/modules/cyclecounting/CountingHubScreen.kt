@@ -88,7 +88,7 @@ fun CountingHubScreen(
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             // How much of the item master is on the device - counting offline looks items up there.
-            item(key = "master") { ItemMasterOnDevice() }
+            // "Data up to date" moved to Settings, with a manual Sync (user, 9 Nov).
             // The kinds of count as Harbour module cards, each with its tag.
             item(key = "store") {
                 com.d365fo.mobileops.presentation.common.components.ModuleCard(

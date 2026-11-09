@@ -444,6 +444,17 @@ private fun SettingsMenu(
         session?.displayName?.takeIf { it.isNotBlank() }?.let { name ->
             com.d365fo.mobileops.presentation.common.components.ListHeader(icon = LineIcons.Warehouse, title = name)
         }
+        // Items and barcodes on this device, with a manual Sync - moved here from Inventory count
+        // (user, 9 Nov). Signed in only: a sync needs the worker's company.
+        if (showSignedInSections) {
+            val offline: OfflineReadyViewModel = hiltViewModel()
+            val sync by offline.mastersSync.collectAsStateWithLifecycle()
+            com.d365fo.mobileops.presentation.modules.cyclecounting.ItemMasterOnDevice(
+                onSync = { offline.syncMastersNow(full = false) },
+                syncing = sync is com.d365fo.mobileops.data.sync.MasterSyncState.Running,
+                syncError = (sync as? com.d365fo.mobileops.data.sync.MasterSyncState.Failed)?.let { "Sync failed: ${it.reason}" },
+            )
+        }
         com.d365fo.mobileops.presentation.common.components.ListCard {
             items.forEachIndexed { i, item ->
                 if (i > 0) com.d365fo.mobileops.presentation.common.components.RowDivider()

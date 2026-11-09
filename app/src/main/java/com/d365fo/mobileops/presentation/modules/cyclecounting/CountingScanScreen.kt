@@ -137,7 +137,7 @@ fun CountingScanScreen(
             TopAppBar(
                 // "Counting" in the bar and the journal number above the progress (feedback, 11 Oct):
                 // the number wrapped in the bar beside its icons.
-                title = { Text("Counting") },
+                title = { Text(if (state.isWallToWall) "Wall-to-wall count" else "Cycle count") },
                 expandedHeight = WarehouseDimens.TopBarHeight,
                 navigationIcon = {
                     IconButton(onClick = onBack) {
@@ -198,6 +198,14 @@ fun CountingScanScreen(
                 com.d365fo.mobileops.presentation.common.components.StepTrail(
                     names = steps,
                     current = current,
+                    // A done tab goes back to that step - the way back now there are no Back /
+                    // Change buttons (user, 9 Nov). Only to another location when there is one.
+                    onStepClick = { i ->
+                        if (!state.locked) when (steps[i]) {
+                            "Location" -> if (state.locations.size > 1) viewModel.clearLocation()
+                            "Bin" -> viewModel.changeBin()
+                        }
+                    },
                     // Edge to edge under the bar (Harbour).
                     bleed = 0.dp,
                 )
@@ -216,7 +224,7 @@ fun CountingScanScreen(
                 if (state.showProgress) Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(MaterialTheme.colorScheme.surfaceContainerHighest, MaterialTheme.shapes.medium)
+                        .background(Color.White, MaterialTheme.shapes.medium)
                         .padding(horizontal = 12.dp, vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -264,9 +272,6 @@ fun CountingScanScreen(
                     PlaceCard(
                         state = state,
                         onEmpty = viewModel::requestLocationEmpty,
-                        onChangeLocation = viewModel::clearLocation,
-                        onChangeBin = viewModel::changeBin,
-                        onCancel = viewModel::cancelChange,
                         onPick = viewModel::pickLocation,
                     )
                 }
@@ -726,129 +731,51 @@ private fun whereLine(line: CountLine): String? =
 private fun PlaceCard(
     state: CountingScanState,
     onEmpty: () -> Unit,
-    onChangeLocation: () -> Unit,
-    onChangeBin: () -> Unit,
-    onCancel: () -> Unit,
     onPick: (String) -> Unit,
 ) {
+    // Harbour (9 Nov): where the counter is shows as pills on the scan card and the step tabs
+    // go back a step - no Back, Change or Cancel buttons here. What is left: the journal's
+    // locations as rows to pick from, and a wall-to-wall location's "is empty".
     val location = state.selectedLocation
-    val bin = state.currentBin
-    val place = listOfNotNull(
-        if (state.byLocation) location ?: "Choose a location" else null,
-        if (state.binsRequired && (location != null || !state.byLocation)) bin ?: "Scan a bin" else null,
-    ).joinToString("  \u203A  ")
-    val pick = state.byLocation && location == null && state.locations.isNotEmpty()
-    // Only where there is another location to go to: a journal of one location starts in it.
-    val changeLocation = state.byLocation && location != null && state.locations.size > 1
-    val changeBin = state.binsRequired && bin != null
-    val atBinStep = state.binsRequired && bin == null && (location != null || !state.byLocation)
-    // One step up: from the bin step to the location, from the item step to the bin (or to the
-    // location where there are no bins).
-    val back: Pair<String, () -> Unit>? = when {
-        atBinStep -> ("Back to location" to onChangeLocation).takeIf { changeLocation }
-        changeBin -> "Back to bin" to onChangeBin
-        changeLocation -> "Back to location" to onChangeLocation
-        else -> null
+    if (state.isWallToWall && location != null) {
+        androidx.compose.material3.OutlinedButton(
+            onClick = onEmpty,
+            enabled = !state.locked,
+            shape = com.d365fo.mobileops.presentation.common.components.HeroFieldShape,
+            border = androidx.compose.foundation.BorderStroke(1.5.dp, WarehouseStatusColors.amber),
+            modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
+        ) { Text("Location is empty", fontWeight = FontWeight.Bold, color = WarehouseStatusColors.amber) }
     }
-    var showChange by remember { mutableStateOf(false) }
-    if (showChange) {
-        ChangePlaceDialog(
-            location = location,
-            bin = bin,
-            binsUsed = state.binsRequired,
-            canChangeLocation = changeLocation,
-            onChangeLocation = { showChange = false; onChangeLocation() },
-            onChangeBin = { showChange = false; onChangeBin() },
-            onDismiss = { showChange = false },
-        )
-    }
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    text = place,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    color = WarehouseStatusColors.accent,
-                    modifier = Modifier.weight(1f),
-                )
-                if (location != null) {
-                    Text(
-                        text = "${state.locationCounted} of ${state.locationTotal}",
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
-                }
-            }
-            state.changingFrom?.let { from ->
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        text = "Changing from $from",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = WarehouseStatusColors.text3,
-                        modifier = Modifier.weight(1f),
-                    )
-                    CancelOutlinedButton(
-                        onClick = onCancel,
-                        modifier = Modifier.heightIn(min = WarehouseDimens.MinTouchTarget),
-                    ) { Text("Cancel") }
-                }
-            }
-            if (state.isWallToWall && location != null) {
-                androidx.compose.material3.OutlinedButton(
-                    onClick = onEmpty,
-                    enabled = !state.locked,
-                    shape = com.d365fo.mobileops.presentation.common.components.HeroFieldShape,
-                    border = androidx.compose.foundation.BorderStroke(1.5.dp, WarehouseStatusColors.amber),
-                    modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
-                ) { Text("Location is empty", fontWeight = FontWeight.Bold, color = WarehouseStatusColors.amber) }
-            }
-            if (pick) LocationPicker(state.locations, onPick, Modifier.fillMaxWidth())
-            if (back != null || changeLocation || changeBin) {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                    back?.let { (label, go) -> StepBackButton(label, go, enabled = !state.locked, modifier = Modifier.weight(1f)) }
-                    if ((changeLocation || changeBin) && !atBinStep) OutlinedButton(
-                        onClick = { showChange = true },
-                        enabled = !state.locked,
-                        modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget),
-                    ) { Text(changePlaceLabel(state.binsRequired, changeLocation)) }
-                }
-            }
-        }
+    if (state.byLocation && location == null && state.locations.isNotEmpty()) {
+        LocationRows(state.locations, onPick, enabled = !state.locked)
     }
 }
 
-/** The journal's locations as a dropdown - each with how many of its lines are counted. */
+/** The journal's locations as Harbour rows - each with how many of its lines are counted. */
 @Composable
-private fun LocationPicker(locations: List<LocationChoice>, onPick: (String) -> Unit, modifier: Modifier = Modifier) {
-    var open by remember { mutableStateOf(false) }
-    Box(modifier = modifier) {
-        OutlinedButton(
-            onClick = { open = true },
-            modifier = Modifier.fillMaxWidth().heightIn(min = WarehouseDimens.MinTouchTarget),
-        ) { Text("Choose location") }
-        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
-            locations.forEach { choice ->
-                DropdownMenuItem(
-                    text = {
-                        Text(
-                            "${choice.locationId}   ${choice.counted}/${choice.total}",
-                            color = if (choice.counted == choice.total) WarehouseStatusColors.green else Color.Unspecified,
-                        )
-                    },
-                    onClick = {
-                        open = false
-                        onPick(choice.locationId)
-                    },
-                )
-            }
+private fun LocationRows(locations: List<LocationChoice>, onPick: (String) -> Unit, enabled: Boolean) {
+    com.d365fo.mobileops.presentation.common.components.ListHeader(
+        icon = Icons.Default.LocationOn,
+        title = "Locations",
+        count = locations.size,
+        trailing = "${locations.count { it.total > 0 && it.counted == it.total }} counted",
+    )
+    com.d365fo.mobileops.presentation.common.components.ListCard {
+        locations.forEachIndexed { i, choice ->
+            if (i > 0) com.d365fo.mobileops.presentation.common.components.RowDivider()
+            val done = choice.total > 0 && choice.counted == choice.total
+            com.d365fo.mobileops.presentation.common.components.LineRow(
+                title = choice.locationId,
+                lines = listOf("${choice.counted} of ${choice.total} counted"),
+                lead = {
+                    com.d365fo.mobileops.presentation.common.components.LeadDot(
+                        if (done) com.d365fo.mobileops.presentation.common.components.Lead.Done else com.d365fo.mobileops.presentation.common.components.Lead.Idle,
+                        icon = if (done) Icons.Default.CheckCircle else Icons.Default.LocationOn,
+                    )
+                },
+                trailing = { com.d365fo.mobileops.presentation.common.components.RowChevron() },
+                onClick = { if (enabled) onPick(choice.locationId) },
+            )
         }
     }
 }

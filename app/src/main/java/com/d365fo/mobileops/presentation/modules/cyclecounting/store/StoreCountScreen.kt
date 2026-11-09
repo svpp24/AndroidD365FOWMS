@@ -686,7 +686,6 @@ fun StoreCountScreen(onBack: () -> Unit, viewModel: StoreCountViewModel = hiltVi
                     style = MaterialTheme.typography.bodyLarge,
                     modifier = Modifier.padding(top = 16.dp),
                 )
-                com.d365fo.mobileops.presentation.modules.cyclecounting.ItemMasterOnDevice()
                 state.error?.let { ErrorBanner(message = it) }
                 com.d365fo.mobileops.presentation.common.components.GradientButton(
                     onClick = viewModel::start,
@@ -707,16 +706,19 @@ fun StoreCountScreen(onBack: () -> Unit, viewModel: StoreCountViewModel = hiltVi
                     state.needsBin -> 1
                     else -> if (state.binsRequired) 2 else 1
                 },
+                // A done tab goes back to that step (user, 9 Nov: no Back / Change / Cancel buttons).
+                onStepClick = { i ->
+                    if (!state.busy) when (i) {
+                        0 -> viewModel.changeLocation()
+                        1 -> if (state.binsRequired) viewModel.changeBin()
+                    }
+                },
             )
             com.d365fo.mobileops.presentation.common.components.PromptHeroCard(
                 prompt = when {
                     state.needsLocation -> "Choose a location"
                     state.needsBin -> "Scan a bin"
                     else -> "Scan item"
-                },
-                hint = when {
-                    state.needsLocation -> "Stock, damaged, claim, return... - where you count now"
-                    else -> null
                 },
                 pills = buildList {
                     state.warehouseId?.let { add(Icons.Default.Store to it) }
@@ -731,12 +733,6 @@ fun StoreCountScreen(onBack: () -> Unit, viewModel: StoreCountViewModel = hiltVi
                     onType = { typing = true },
                     onCamera = { showCamera = true },
                     enabled = !state.busy,
-                )
-                StorePlaceControls(
-                    state = state,
-                    onBackToLocation = viewModel::changeLocation,
-                    onBackToBin = viewModel::changeBin,
-                    onCancel = viewModel::cancelChange,
                 )
             }
             state.error?.let { ErrorBanner(message = it) }
@@ -801,12 +797,13 @@ fun StoreCountScreen(onBack: () -> Unit, viewModel: StoreCountViewModel = hiltVi
             // Change location / bin where Send was (user, 8 Nov): lines go by themselves. End
             // count is a hold (Harbour) - the lines go to the supervisor and can't be added to.
             com.d365fo.mobileops.presentation.common.components.FlowDock(modifier = Modifier.bleed(WarehouseDimens.ScreenPadding)) {
-                if (!state.needsLocation) {
+                // Change bin only - a location is changed from its tab (user, 9 Nov).
+                if (state.binsRequired && !state.needsLocation && !state.needsBin) {
                     com.d365fo.mobileops.presentation.common.components.DockOutlinedButton(
-                        onClick = { changePlace = true },
+                        onClick = viewModel::changeBin,
                         enabled = !state.busy,
-                        icon = if (state.binsRequired) Icons.Default.Inventory2 else Icons.Default.LocationOn,
-                        text = com.d365fo.mobileops.presentation.modules.cyclecounting.changePlaceLabel(state.binsRequired, canChangeLocation = true),
+                        icon = Icons.Default.Inventory2,
+                        text = "Change bin",
                         modifier = Modifier.weight(0.42f),
                     )
                 }

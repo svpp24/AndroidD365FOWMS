@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.ui.draw.clip
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
@@ -45,7 +46,10 @@ class ItemMasterViewModel @Inject constructor(
     private val _counts = MutableStateFlow<ItemMasterCounts?>(null)
     val counts = _counts.asStateFlow()
 
-    init {
+    init { reload() }
+
+    /** Counts again - after a manual sync finishes. */
+    fun reload() {
         viewModelScope.launch {
             _counts.value = ItemMasterCounts(
                 items = runCatching { itemDao.itemCount() }.getOrDefault(0),
@@ -61,7 +65,17 @@ class ItemMasterViewModel @Inject constructor(
  * counting will work offline (user, 8 Nov). Amber when the item master is not on the device yet.
  */
 @Composable
-fun ItemMasterOnDevice(modifier: Modifier = Modifier, viewModel: ItemMasterViewModel = hiltViewModel()) {
+fun ItemMasterOnDevice(
+    modifier: Modifier = Modifier,
+    /** Settings' manual Sync (user, 9 Nov) - null shows no button. */
+    onSync: (() -> Unit)? = null,
+    syncing: Boolean = false,
+    /** A failed sync's reason, shown under the counts. */
+    syncError: String? = null,
+    viewModel: ItemMasterViewModel = hiltViewModel(),
+) {
+    // A sync that just finished changes the counts.
+    androidx.compose.runtime.LaunchedEffect(syncing) { if (!syncing) viewModel.reload() }
     val counts by viewModel.counts.collectAsStateWithLifecycle()
     val c = counts ?: return
     val n = NumberFormat.getIntegerInstance()
@@ -79,7 +93,7 @@ fun ItemMasterOnDevice(modifier: Modifier = Modifier, viewModel: ItemMasterViewM
             Modifier.width(4.dp).fillMaxHeight().background(edge),
         )
         androidx.compose.foundation.layout.Column(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            modifier = Modifier.weight(1f).padding(horizontal = 12.dp, vertical = 10.dp),
             verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(2.dp),
         ) {
             androidx.compose.foundation.layout.Row(
@@ -101,7 +115,7 @@ fun ItemMasterOnDevice(modifier: Modifier = Modifier, viewModel: ItemMasterViewM
             }
             Text(
                 text = if (missing) {
-                    "Counting offline can't look items up. Sync masters in Settings."
+                    "Counting offline can't look items up - sync now."
                 } else {
                     "${n.format(c.items)} items · ${n.format(c.barcodes)} barcodes"
                 },
@@ -115,6 +129,17 @@ fun ItemMasterOnDevice(modifier: Modifier = Modifier, viewModel: ItemMasterViewM
                     color = WarehouseStatusColors.text3,
                 )
             }
+            syncError?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = WarehouseStatusColors.red) }
+        }
+        // The manual Sync (user, 9 Nov): items, barcodes and variants changed since the last one.
+        if (onSync != null) {
+            com.d365fo.mobileops.presentation.common.components.DockOutlinedButton(
+                onClick = onSync,
+                enabled = !syncing,
+                icon = androidx.compose.material.icons.Icons.Filled.Refresh,
+                text = if (syncing) "Syncing…" else "Sync",
+                modifier = Modifier.align(androidx.compose.ui.Alignment.CenterVertically).padding(end = 10.dp),
+            )
         }
     }
 }

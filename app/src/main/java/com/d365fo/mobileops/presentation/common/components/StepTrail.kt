@@ -1,6 +1,7 @@
 package com.d365fo.mobileops.presentation.common.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -51,6 +52,8 @@ fun StepTrail(
     modifier: Modifier = Modifier,
     /** The parent's side padding - the tabs run edge to edge under the bar regardless. */
     bleed: androidx.compose.ui.unit.Dp = 16.dp,
+    /** Tapping a done step goes back to it; null keeps the tabs display-only. */
+    onStepClick: ((Int) -> Unit)? = null,
 ) {
     Column(
         modifier = modifier
@@ -74,7 +77,15 @@ fun StepTrail(
                 }
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier
+                        .weight(1f)
+                        .then(
+                            if (onStepClick != null && index < current) {
+                                Modifier.clickable { onStepClick(index) }
+                            } else {
+                                Modifier
+                            },
+                        ),
                 ) {
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,

@@ -285,10 +285,11 @@ fun FailedSyncScreen(
     ) { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding)) {
         // Two tabs (Harbour): what needs someone on this device, and D365FO's registration queue.
-        ActivityTabs(
-            tab = tab,
-            attention = needsAction.size,
-            onTab = { tab = it },
+        com.d365fo.mobileops.presentation.common.components.SegmentTabs(
+            labels = listOf("Needs attention", "Registration queue"),
+            selected = tab,
+            onSelect = { tab = it },
+            badges = mapOf(0 to needsAction.size),
         )
         LazyColumn(
             modifier = Modifier
@@ -427,56 +428,6 @@ fun FailedSyncScreen(
             }
         }
         }
-    }
-}
-
-/** The two tabs under Activity's bar: Needs attention (with its count) and Registration queue. */
-@Composable
-private fun ActivityTabs(tab: Int, attention: Int, onTab: (Int) -> Unit) {
-    Column(modifier = Modifier.fillMaxWidth().background(androidx.compose.ui.graphics.Color.White)) {
-        Row(modifier = Modifier.fillMaxWidth()) {
-            listOf("Needs attention", "Registration queue").forEachIndexed { i, label ->
-                val on = i == tab
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier
-                        .weight(1f)
-                        .clickable { onTab(i) },
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        modifier = Modifier.heightIn(min = WarehouseDimens.MinTouchTarget - 3.dp).padding(horizontal = 6.dp),
-                    ) {
-                        Text(
-                            label,
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = if (on) androidx.compose.ui.text.font.FontWeight.ExtraBold else androidx.compose.ui.text.font.FontWeight.Bold,
-                            color = if (on) WarehouseStatusColors.accent else WarehouseStatusColors.text3,
-                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                        )
-                        if (i == 0 && attention > 0) {
-                            Text(
-                                "$attention",
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = androidx.compose.ui.text.font.FontWeight.ExtraBold,
-                                color = androidx.compose.ui.graphics.Color.White,
-                                modifier = Modifier
-                                    .background(WarehouseStatusColors.red, androidx.compose.foundation.shape.RoundedCornerShape(6.dp))
-                                    .padding(horizontal = 5.dp),
-                            )
-                        }
-                    }
-                    androidx.compose.foundation.layout.Box(
-                        Modifier
-                            .fillMaxWidth()
-                            .heightIn(min = 3.dp, max = 3.dp)
-                            .background(if (on) WarehouseStatusColors.accent else androidx.compose.ui.graphics.Color.Transparent),
-                    )
-                }
-            }
-        }
-        androidx.compose.material3.HorizontalDivider(color = WarehouseStatusColors.overlay)
     }
 }
 

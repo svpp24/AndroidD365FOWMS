@@ -364,13 +364,28 @@ fun HomeScreen(
             val visible = visibleModules(handheldMenu, blockedWorkflows)
             // Store layout (Harbour, 9 Nov): one card per module, inbound then outbound then
             // counting, no area headings.
-            val tasks = listOf(ModuleArea.INBOUND, ModuleArea.OUTBOUND, ModuleArea.INVENTORY).flatMap { modulesIn(it, visible) }
-            if (tasks.isNotEmpty()) {
+            // Grouped (user, 9 Nov): Purchase, Transfers, Inventory count - a group of one opens
+            // its module straight away.
+            val groups = ModuleGroup.entries.map { it to it.modules(visible) }.filter { it.second.isNotEmpty() }
+            if (groups.isNotEmpty()) {
                 item(key = "modules") {
-                    ModuleListCard(tasks, modifier = side.tourTarget("tiles"), counts = counts) { module ->
-                        if (!unfinishedViewModel.justScanned()) module.route?.let { route ->
-                            usage.record(module.title)
-                            onModuleSelected(route)
+                    Column(
+                        modifier = side.tourTarget("tiles"),
+                        verticalArrangement = Arrangement.spacedBy(9.dp),
+                    ) {
+                        groups.forEach { (group, modules) ->
+                            ModuleGroupCard(group, modules, counts, onOpen = {
+                                if (!unfinishedViewModel.justScanned()) {
+                                    if (modules.size == 1) {
+                                        modules[0].route?.let { route ->
+                                            usage.record(modules[0].title)
+                                            onModuleSelected(route)
+                                        }
+                                    } else {
+                                        onModuleSelected(ModuleGroup.route(group))
+                                    }
+                                }
+                            })
                         }
                     }
                 }

@@ -390,6 +390,21 @@ fun AppNavGraph(
                     )
                 }
 
+                // A group of Home's menus (user, 9 Nov) - Home's own view models, as a sub-menu.
+                composable(
+                    ModuleGroup.ROUTE_PREFIX + "{groupId}",
+                    arguments = listOf(navArgument("groupId") { type = NavType.StringType }),
+                ) { entry ->
+                    val homeEntry = remember(entry) { runCatching { navController.getBackStackEntry(Routes.HOME) }.getOrNull() }
+                    ModuleGroupScreen(
+                        groupId = entry.arguments?.getString("groupId").orEmpty(),
+                        onBack = { navController.popBackStack() },
+                        onModuleSelected = { route -> navController.navigate(route) },
+                        accessViewModel = if (homeEntry != null) hiltViewModel(homeEntry) else hiltViewModel(),
+                        dashboardViewModel = if (homeEntry != null) hiltViewModel(homeEntry) else hiltViewModel(),
+                    )
+                }
+
                 composable(
                     Routes.HANDHELD_MENU,
                     arguments = listOf(navArgument("menuId") { type = NavType.StringType }),

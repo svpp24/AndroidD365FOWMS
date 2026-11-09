@@ -114,6 +114,11 @@ fun ContextPills(pills: List<Pair<ImageVector?, String>>, modifier: Modifier = M
 /** Lets a long document number break after a hyphen, never in the middle of the number. */
 fun String.breakableCode(): String = replace("-", "-​")
 
+/** [breakableCode] for files that already have another `breakableCode` in scope. */
+object Breakable {
+    fun String.code(): String = breakableCode()
+}
+
 /**
  * The heading over a list: a tinted chip (icon, title, count badge) and an optional accent note
  * on the right ("of 4 lines", "Newest").
@@ -384,6 +389,64 @@ fun ModuleCard(
             }
         }
         Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = WarehouseStatusColors.text1)
+    }
+}
+
+/**
+ * A screen's own tabs under the bar - Activity's Needs attention / Registration queue, a count
+ * list's To count / Recount / Done: accent and underlined when selected, an optional red badge.
+ */
+@Composable
+fun SegmentTabs(
+    labels: List<String>,
+    selected: Int,
+    onSelect: (Int) -> Unit,
+    modifier: Modifier = Modifier,
+    badges: Map<Int, Int> = emptyMap(),
+) {
+    Column(modifier = modifier.fillMaxWidth().background(Color.White)) {
+        Row(modifier = Modifier.fillMaxWidth()) {
+            labels.forEachIndexed { i, label ->
+                val on = i == selected
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.weight(1f).clickable(role = Role.Tab) { onSelect(i) },
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(5.dp),
+                        modifier = Modifier.heightIn(min = WarehouseDimens.MinTouchTarget - 3.dp).padding(horizontal = 4.dp),
+                    ) {
+                        Text(
+                            label,
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = if (on) FontWeight.ExtraBold else FontWeight.Bold,
+                            color = if (on) WarehouseStatusColors.accent else WarehouseStatusColors.text3,
+                            textAlign = TextAlign.Center,
+                        )
+                        badges[i]?.takeIf { it > 0 }?.let {
+                            Text(
+                                "$it",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = Color.White,
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(if (i == 0) WarehouseStatusColors.red else WarehouseStatusColors.accent)
+                                    .padding(horizontal = 5.dp),
+                            )
+                        }
+                    }
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 3.dp, max = 3.dp)
+                            .background(if (on) WarehouseStatusColors.accent else Color.Transparent),
+                    )
+                }
+            }
+        }
+        HorizontalDivider(color = WarehouseStatusColors.overlay)
     }
 }
 

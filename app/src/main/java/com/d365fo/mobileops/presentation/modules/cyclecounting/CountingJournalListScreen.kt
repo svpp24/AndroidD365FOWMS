@@ -270,36 +270,31 @@ fun CountingJournalListScreen(
             )
         }
         Column(modifier = Modifier.fillMaxSize().padding(padding)) {
-            // Wraps to a second row on a narrow screen rather than clipping a chip.
-            androidx.compose.foundation.layout.FlowRow(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = WarehouseDimens.ScreenPadding),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                androidx.compose.material3.FilterChip(
-                    selected = tab == 0,
-                    onClick = { tab = 0 },
-                    label = { Text(if (kind == null) "Cycle" else "To count") },
-                    modifier = Modifier.heightIn(min = WarehouseDimens.MinTouchTarget),
-                )
-                if (1 in tabs) androidx.compose.material3.FilterChip(
-                    selected = tab == 1,
-                    onClick = { tab = 1 },
-                    label = { Text(if (recountLineTotal > 0) "Recount ($recountLineTotal)" else "Recount") },
-                    modifier = Modifier.heightIn(min = WarehouseDimens.MinTouchTarget),
-                )
-                if (2 in tabs) androidx.compose.material3.FilterChip(
-                    selected = tab == 2,
-                    onClick = { tab = 2 },
-                    label = { Text(if (wallToWallCount > 0) "Wall-to-wall ($wallToWallCount)" else "Wall-to-wall") },
-                    modifier = Modifier.heightIn(min = WarehouseDimens.MinTouchTarget),
-                )
-                androidx.compose.material3.FilterChip(
-                    selected = tab == 3,
-                    onClick = { tab = 3 },
-                    label = { Text(if (doneJournals.isNotEmpty()) "Done (${doneJournals.size})" else "Done") },
-                    modifier = Modifier.heightIn(min = WarehouseDimens.MinTouchTarget),
-                )
-            }
+            // Tabs under the bar, the same as Activity's (Harbour).
+            val shown = listOf(0) + listOfNotNull(1.takeIf { 1 in tabs }, 2.takeIf { 2 in tabs }) + 3
+            com.d365fo.mobileops.presentation.common.components.SegmentTabs(
+                labels = shown.map {
+                    when (it) {
+                        0 -> if (kind == null) "Cycle" else "To count"
+                        1 -> "Recount"
+                        2 -> "Wall-to-wall"
+                        else -> "Done"
+                    }
+                },
+                selected = shown.indexOf(tab).coerceAtLeast(0),
+                onSelect = { tab = shown[it] },
+                badges = buildMap {
+                    shown.forEachIndexed { i, t ->
+                        val n = when (t) {
+                            1 -> recountLineTotal
+                            2 -> wallToWallCount
+                            3 -> doneJournals.size
+                            else -> 0
+                        }
+                        if (n > 0 && i > 0) put(i, n)
+                    }
+                },
+            )
         Box(modifier = Modifier.fillMaxSize()) {
             when {
                 state.busy && state.journals.isEmpty() -> {
@@ -447,7 +442,8 @@ private fun CountingJournalRow(
                 }
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = journal.journalId,
+                        // Breaks after a hyphen, never inside the number.
+                        text = with(com.d365fo.mobileops.presentation.common.components.Breakable) { journal.journalId.code() },
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.ExtraBold,
                         // The document in the accent, as every Harbour row.
@@ -536,10 +532,10 @@ private fun CountingJournalRow(
                     message = (myClaim.lostReason ?: "Claim lost.") +
                         if (countState != null) " Counts are kept - claim again to send." else " Claim again to count.",
                 )
-                Button(
+                com.d365fo.mobileops.presentation.common.components.GradientButton(
                     onClick = onReclaim,
                     enabled = !busy,
-                    modifier = Modifier.fillMaxWidth().heightIn(min = WarehouseDimens.MinTouchTarget),
+                    modifier = Modifier.fillMaxWidth(),
                 ) { Text(if (busy) "Claiming…" else "Claim again") }
             }
             if (busy && myClaim?.lost != true) {
@@ -663,32 +659,34 @@ private fun CountControls(
             )
         }
 
+        // The Harbour pair: outlined View lines beside the gradient main action.
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-            OutlinedButton(
+            com.d365fo.mobileops.presentation.common.components.DockOutlinedButton(
                 onClick = onViewLines,
-                modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget),
-            ) { Text("View lines") }
-
+                text = "View lines",
+                modifier = Modifier.weight(1f),
+            )
             when {
                 submitting || phase == CountPhase.POSTED -> Unit
-                finished -> Button(
+                finished -> com.d365fo.mobileops.presentation.common.components.GradientButton(
                     onClick = onReopen,
-                    modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget),
+                    modifier = Modifier.weight(1f),
                 ) { Text("Reopen") }
-                else -> Button(
+                else -> com.d365fo.mobileops.presentation.common.components.GradientButton(
                     onClick = onStartCounting,
-                    modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget),
+                    modifier = Modifier.weight(1f),
                 ) { Text(if (phase == CountPhase.READY) "Start counting" else "Continue counting") }
             }
         }
 
         // End count only exists while a count is under way (or a submission needs another go).
         if (phase == CountPhase.COUNTING || phase == CountPhase.FAILED) {
-            OutlinedButton(
+            com.d365fo.mobileops.presentation.common.components.DockOutlinedButton(
                 onClick = onEndCount,
                 enabled = !submitBlocked,
-                modifier = Modifier.fillMaxWidth().heightIn(min = WarehouseDimens.MinTouchTarget),
-            ) { Text("End count") }
+                text = "End count",
+                modifier = Modifier.fillMaxWidth(),
+            )
         }
     }
 }
