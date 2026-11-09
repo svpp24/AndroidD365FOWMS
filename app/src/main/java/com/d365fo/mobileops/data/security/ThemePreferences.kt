@@ -20,9 +20,8 @@ class ThemePreferences @Inject constructor(
     val palette: StateFlow<ColorPalette> = _palette.asStateFlow()
 
     /**
-     * Always Industrial - the navy default of the 9 Nov handheld redesign (was Petrol from
-     * 21 Oct). The palette picker was removed on request, so a colour saved by an older build is
-     * ignored rather than kept.
+     * Always Indigo - the navy look the app was restyled to (user, 20 Oct); the palette picker
+     * was removed on request, so a colour saved by an older build is ignored rather than kept.
      */
-    private fun loadPalette(): ColorPalette = ColorPalette.INDUSTRIAL
+    private fun loadPalette(): ColorPalette = ColorPalette.PETROL
 }

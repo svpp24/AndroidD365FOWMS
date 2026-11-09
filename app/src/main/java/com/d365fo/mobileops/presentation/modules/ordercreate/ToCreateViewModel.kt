@@ -14,19 +14,9 @@ import com.d365fo.mobileops.data.repository.TransferDraft
 import com.d365fo.mobileops.data.repository.WorkerSessionRepository
 import com.d365fo.mobileops.data.sync.SyncStatusProvider
 import com.d365fo.mobileops.domain.order.QuantityRules
-import com.d365fo.mobileops.domain.order.checkQuantity
-import com.d365fo.mobileops.domain.order.qtyText
-import com.d365fo.mobileops.presentation.common.components.StatusKind
 import com.d365fo.mobileops.presentation.common.scan.HidScannerBridge
-import com.d365fo.mobileops.presentation.common.scan.RejectReason
-import com.d365fo.mobileops.presentation.common.scan.ScanContext
-import com.d365fo.mobileops.presentation.common.scan.ScanFeedback
-import com.d365fo.mobileops.presentation.common.scan.ScanKind
-import com.d365fo.mobileops.presentation.common.scan.ScanRoute
-import com.d365fo.mobileops.presentation.common.scan.ScanRouter
 import com.d365fo.mobileops.util.NetworkResult
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -37,7 +27,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
-/** A line waiting for its variant and stock row (transfers and returns). */
+/** A transfer line waiting for its variant, stock row and quantity. */
 data class PendingTransferLine(
     val item: OrderItem,
     val variant: OrderVariant? = null,
@@ -51,28 +41,27 @@ data class PendingTransferLine(
 data class ToCreateState(
     val draft: TransferDraft = TransferDraft(),
     val warehouses: List<AssignedWarehouse> = emptyList(),
-    /** False while To is being chosen - Start (or the first item scan) begins. */
+    /** False while From / To are being chosen. */
     val routeChosen: Boolean = false,
     val busy: Boolean = false,
-    val notice: OrderNotice? = null,
+    val error: String? = null,
     val choosingVariant: OrderItem? = null,
-    val choosingStock: PendingTransferLine? = null,
-    val lastAdd: LineAdd? = null,
-    val showingLines: Boolean = false,
-    /** The transfer just sent - the band follows it, and offers Ship it now once created. */
+    val pending: PendingTransferLine? = null,
+    val enteringQty: Boolean = false,
+    val editing: DraftLine? = null,
     val submittedId: String? = null,
+    /**
+     * Transfers still to ship from this warehouse, from D365FO - null until known (offline).
+     * "Ship it now" was offered on every order made here, shipped or not, and on ones that
+     * ship from another warehouse (TO-33, AAS → AAC, shown at AAC after it was received).
+     */
+    val shippableIds: Set<String>? = null,
 )
 
 /**
- * Create transfer, scan only (redesign brief §4, phase 7): From is the store the worker is in,
- * To is filled in when there is only one other; Start (or the first item scan) begins, each scan
- * adds one of the item from what is at From, and the transfer is created when the worker leaves
- * (Back, F1) - the screen stays to show it go, then **Ship it now** opens Ship on it.
- *
- * Online, the stock at From is asked per batch and serial: the only row is taken, several are a
- * real choice, a quantity above it is refused here. Offline it is not known and D365FO refuses a
- * short order when it is sent. The creation path - the draft, [OrderCreationRepository.submitTransfer],
- * the queue - is unchanged.
+ * TO creation: From and To from the worker's own warehouses, then scan items. Online, the stock
+ * at From is shown per batch and serial and a quantity above it is refused here; offline it is
+ * not known, and D365FO refuses a short order when it is sent.
  */
 @HiltViewModel
 class ToCreateViewModel @Inject constructor(
@@ -80,10 +69,8 @@ class ToCreateViewModel @Inject constructor(
     private val sessions: WorkerSessionRepository,
     private val scannerBridge: HidScannerBridge,
     private val pendingFlowResume: com.d365fo.mobileops.data.repository.PendingFlowResume,
+    private val transferList: com.d365fo.mobileops.data.repository.TransferListRepository,
     syncStatusProvider: SyncStatusProvider,
-    private val scanFeedback: ScanFeedback,
-    private val appScope: CoroutineScope,
-    scanRouter: ScanRouter,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(ToCreateState())
@@ -96,8 +83,6 @@ class ToCreateViewModel @Inject constructor(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     private val userName: String get() = sessions.session.value?.userName.orEmpty()
-
-    private val scanning = OrderFlowScanning(scanRouter, ::scanContext, ::onRoute)
 
     init {
         viewModelScope.launch {
@@ -114,108 +99,69 @@ class ToCreateViewModel @Inject constructor(
                 )
             }
         }
+        viewModelScope.launch { scannerBridge.scans.collect { onCode(it.value) } }
+        refreshShippable()
     }
 
-    // -- Scans -------------------------------------------------------------------------------------
-
-    fun scannerOnScreen(visible: Boolean) = scanning.onScreen(visible)
-
-    override fun onCleared() {
-        scanning.close()
-        super.onCleared()
-    }
-
-    private fun scanContext(): ScanContext = ScanContext.Flow(
-        accepts = setOf(ScanKind.ITEM),
-        acceptUnknown = true,
-        expecting = "Scan an item to send",
-    )
-
-    private suspend fun onRoute(route: ScanRoute) {
-        when (route) {
-            is ScanRoute.Accept -> onCode(itemCodeFor(route.identity))
-            is ScanRoute.Leave, is ScanRoute.SwitchDocument -> {
-                scanFeedback.error()
-                notice(StatusKind.Warn, "That's ${documentNoun(route.identity.kind)}", "Scan it on Home - this screen makes a new transfer")
-            }
-            is ScanRoute.Reject -> {
-                scanFeedback.error()
-                notice(if (route.reason == RejectReason.NOT_EXPECTED) StatusKind.Warn else StatusKind.Bad, route.title, route.line)
-            }
-            else -> Unit
+    private fun refreshShippable() {
+        val warehouseId = sessions.session.value?.selected?.warehouseId?.takeIf { it.isNotBlank() } ?: return
+        viewModelScope.launch {
+            (transferList.openTransferOrders(warehouseId) as? NetworkResult.Success)
+                ?.data?.let { open ->
+                    _state.update { s -> s.copy(shippableIds = open.filter { it.outbound }.map { it.transferId.uppercase() }.toSet()) }
+                }
         }
     }
 
     fun onCameraDecoded(value: String) = scannerBridge.submitCameraScan(value)
 
-    fun onTyped(value: String) = scannerBridge.submitCameraScan(value)
+    // -- Route -----------------------------------------------------------------------------------
 
-    fun justScanned(): Boolean = scannerBridge.justScanned()
-
-    private fun notice(kind: StatusKind, title: String, line: String? = null, undoable: Boolean = false) =
-        _state.update { it.copy(notice = OrderNotice(kind, title, line, undoable), busy = false) }
-
-    private fun refuse(title: String, line: String) {
-        scanFeedback.error()
-        notice(StatusKind.Bad, title, "$line - nothing was added")
+    fun pickFrom(warehouseId: String) = updateDraft {
+        val to = if (it.toWarehouseId == warehouseId) "" else it.toWarehouseId
+        it.copy(fromWarehouseId = warehouseId, toWarehouseId = to.ifBlank { onlyOtherWarehouse(_state.value.warehouses, warehouseId) })
     }
-
-    // -- Route -------------------------------------------------------------------------------------
 
     /** The To warehouse when the worker has just one other - nothing to choose. */
     private fun onlyOtherWarehouse(warehouses: List<AssignedWarehouse>, from: String): String =
         warehouses.filter { it.warehouseId != from }.singleOrNull()?.warehouseId.orEmpty()
 
-    fun pickTo(warehouseId: String) {
-        if (_state.value.draft.lines.isNotEmpty()) return
-        updateDraft { it.copy(toWarehouseId = warehouseId) }
-    }
+    fun pickTo(warehouseId: String) = updateDraft { it.copy(toWarehouseId = warehouseId) }
 
-    /** Start: From and To set - scan items. */
-    fun start(): Boolean {
+    fun confirmRoute() {
         val d = _state.value.draft
-        if (d.fromWarehouseId.isBlank() || d.toWarehouseId.isBlank() || d.fromWarehouseId == d.toWarehouseId) return false
-        _state.update { it.copy(routeChosen = true, notice = null) }
-        return true
+        if (d.fromWarehouseId.isBlank() || d.toWarehouseId.isBlank() || d.fromWarehouseId == d.toWarehouseId) return
+        _state.update { it.copy(routeChosen = true) }
     }
 
     fun changeRoute() {
-        if (_state.value.draft.lines.isEmpty()) _state.update { it.copy(routeChosen = false, notice = null) }
+        if (_state.value.draft.lines.isEmpty()) _state.update { it.copy(routeChosen = false) }
     }
 
-    // -- Lines -------------------------------------------------------------------------------------
+    // -- Lines -----------------------------------------------------------------------------------
 
-    private suspend fun onCode(code: String) {
+    fun onCode(code: String) {
         val s = _state.value
-        // The first item scan is Start, when To is known.
-        if (!s.routeChosen && !start()) {
-            scanFeedback.error()
-            notice(StatusKind.Warn, "Choose where it goes first", "Tap the To store, then scan")
-            return
-        }
-        if (s.choosingVariant != null || s.choosingStock != null) {
-            scanFeedback.error()
-            notice(StatusKind.Warn, "Pick one below first", "Or Undo to drop it")
-            return
-        }
-        _state.update { it.copy(busy = true, notice = null) }
-        when (val result = repository.findItem(code, _state.value.draft.fromWarehouseId)) {
-            is NetworkResult.Success -> {
-                val item = result.data
-                val scanned = item.scannedVariant
-                when {
-                    !item.hasProductDimensions -> withVariant(item, OrderVariant())
-                    scanned != null -> withVariant(item, scanned)
-                    item.variants.isEmpty() -> refuse("No variants", "${item.itemId} has no released variants")
-                    item.variants.size == 1 -> withVariant(item, item.variants.single())
-                    else -> _state.update { it.copy(busy = false, choosingVariant = item) }
+        if (!s.routeChosen || s.busy || s.pending != null || s.choosingVariant != null) return
+        viewModelScope.launch {
+            _state.update { it.copy(busy = true, error = null) }
+            when (val result = repository.findItem(code, _state.value.draft.fromWarehouseId)) {
+                is NetworkResult.Success -> {
+                    val item = result.data
+                    val scanned = item.scannedVariant
+                    when {
+                        !item.hasProductDimensions -> withVariant(item, OrderVariant())
+                        scanned != null -> withVariant(item, scanned)
+                        item.variants.isEmpty() -> _state.update { it.copy(busy = false, error = "${item.itemId} has no released variants") }
+                        item.variants.size == 1 -> withVariant(item, item.variants.single())
+                        else -> _state.update { it.copy(busy = false, choosingVariant = item) }
+                    }
                 }
+                is NetworkResult.Error -> _state.update {
+                    it.copy(busy = false, error = if (!online.value) "$code not saved - look it up online once." else result.failure.message)
+                }
+                NetworkResult.Loading -> Unit
             }
-            is NetworkResult.Error -> refuse(
-                "Item not found",
-                if (!online.value) "$code isn't saved on this device - look it up online once" else result.failure.message,
-            )
-            NetworkResult.Loading -> Unit
         }
     }
 
@@ -225,7 +171,7 @@ class ToCreateViewModel @Inject constructor(
         viewModelScope.launch { withVariant(item, variant) }
     }
 
-    /** Asks D365FO what is at From (online); a tracked item takes its only batch / serial, or asks. */
+    /** Asks D365FO what is at From (online); then a batch / serial choice when tracked, then the quantity. */
     private suspend fun withVariant(item: OrderItem, variant: OrderVariant) {
         val from = _state.value.draft.fromWarehouseId
         val stock = if (online.value) {
@@ -235,150 +181,110 @@ class ToCreateViewModel @Inject constructor(
         }
         // An item allowed physical negative inventory may be transferred without stock on hand,
         // as D365FO allows - so neither this refusal nor the quantity cap applies to it.
-        val withStock = stock?.filter { it.available > 0 }
-        if (withStock != null && withStock.isEmpty() && !item.negativePhysical) {
-            refuse("No stock at $from", "No ${item.itemId} ${variant.label} at $from".replace("  ", " "))
+        if (stock != null && stock.isEmpty() && !item.negativePhysical) {
+            _state.update { it.copy(busy = false, error = "No stock of ${item.itemId} ${variant.label} at $from".trim()) }
             return
         }
         val tracked = item.batchActive || item.serialActive
         val pending = PendingTransferLine(item, variant, stock)
-        when {
-            withStock != null && tracked && withStock.isNotEmpty() -> {
-                val only = onlyStockRow(withStock)
-                if (only != null) addLine(pending.copy(pick = only))
-                else _state.update { it.copy(busy = false, choosingStock = pending.copy(stock = withStock, choosingStock = true)) }
+        _state.update {
+            when {
+                stock != null && tracked -> it.copy(busy = false, pending = pending.copy(choosingStock = true))
+                else -> it.copy(busy = false, pending = pending, enteringQty = true)
             }
-            else -> addLine(pending)
         }
     }
 
-    fun pickStock(row: StockRow) {
-        val pending = _state.value.choosingStock ?: return
-        _state.update { it.copy(choosingStock = null) }
-        addLine(pending.copy(pick = row, choosingStock = false))
+    fun pickStock(row: StockRow?) {
+        val pending = _state.value.pending ?: return
+        _state.update { it.copy(pending = pending.copy(pick = row, choosingStock = false), enteringQty = true) }
     }
 
-    /** What may still go: the stock picked (or all of it), less the rest of this transfer. */
-    private fun availableLeft(itemId: String, variant: OrderVariant, batchId: String, serialId: String, available: Double?, excluding: String? = null): Double? {
-        available ?: return null
-        val already = _state.value.draft.lines
-            .filter { it.id != excluding && it.itemId == itemId && it.variant == variant && it.batchId == batchId && it.serialId == serialId }
-            .sumOf { it.qty }
-        return (available - already).coerceAtLeast(0.0)
-    }
+    fun cancelPending() = _state.update { it.copy(choosingVariant = null, pending = null, enteringQty = false) }
 
-    /** One scan, one unit - the scan is the confirm; the keypad changes it. */
-    private fun addLine(pending: PendingTransferLine) {
-        val variant = pending.variant ?: OrderVariant()
+    /** What the quantity may be: the stock picked (or all of it), when D365FO could be asked. */
+    fun quantityRules(pending: PendingTransferLine): QuantityRules {
         val available = if (pending.item.negativePhysical) null else pending.pick?.available ?: pending.stock?.sumOf { it.available }
-        val left = availableLeft(pending.item.itemId, variant, pending.pick?.batchId.orEmpty(), pending.pick?.serialId.orEmpty(), available)
-        if (left != null && left < 1.0) {
-            refuse("No more at ${_state.value.draft.fromWarehouseId}", "All ${qtyText(available ?: 0.0)} of ${pending.item.itemId} are on this transfer")
-            return
-        }
+        val alreadyOnOrder = _state.value.draft.lines
+            .filter { it.itemId == pending.item.itemId && it.variant == pending.variant && it.batchId == pending.pick?.batchId.orEmpty() && it.serialId == pending.pick?.serialId.orEmpty() }
+            .sumOf { it.qty }
+        return QuantityRules(available = available?.let { (it - alreadyOnOrder).coerceAtLeast(0.0) })
+    }
+
+    fun addLine(qty: Double) {
+        val pending = _state.value.pending ?: return
         val line = DraftLine(
             itemId = pending.item.itemId,
             itemName = pending.item.itemName,
-            variant = variant,
-            qty = 1.0,
+            variant = pending.variant ?: OrderVariant(),
+            qty = qty,
             unitId = pending.item.inventUnit,
             batchId = pending.pick?.batchId.orEmpty(),
             serialId = pending.pick?.serialId.orEmpty(),
             available = pending.pick?.available ?: pending.stock?.sumOf { it.available },
             allowsNegative = pending.item.negativePhysical,
         )
-        var added: LineAdd? = null
-        var lineNow = line
-        updateDraft { d ->
-            val (lines, add) = addOrMerge(d.lines, line)
-            added = add
-            lineNow = lines.first { it.id == add.lineId }
-            d.copy(lines = lines)
-        }
-        scanFeedback.success()
-        _state.update {
-            it.copy(
-                busy = false,
-                lastAdd = added,
-                choosingVariant = null,
-                choosingStock = null,
-                notice = OrderNotice(StatusKind.Ok, "Added ${pending.item.itemId}", addedLine(lineNow, 1.0), undoable = true),
-            )
-        }
+        _state.update { it.copy(pending = null, enteringQty = false) }
+        updateDraft { d -> d.copy(lines = d.lines + line) }
     }
 
-    fun cancelChoice() = _state.update { it.copy(choosingVariant = null, choosingStock = null, notice = null) }
+    fun editLine(line: DraftLine?) = _state.update { it.copy(editing = line) }
 
-    fun undo() {
-        val s = _state.value
-        when {
-            s.choosingVariant != null || s.choosingStock != null -> cancelChoice()
-            s.draft.lines.isNotEmpty() -> {
-                val gone = lineInHand(s.draft.lines, s.lastAdd)
-                updateDraft { d -> d.copy(lines = undoAdd(d.lines, s.lastAdd)) }
-                _state.update { it.copy(lastAdd = null, notice = OrderNotice(StatusKind.Info, "Undone", "${gone?.itemId.orEmpty()} taken off - scan it again".trim())) }
-            }
-        }
-    }
-
-    val canUndo: Boolean
-        get() = _state.value.let { it.choosingVariant != null || it.choosingStock != null || it.draft.lines.isNotEmpty() }
-
-    fun keypadLine(): DraftLine? = _state.value.let {
-        if (it.choosingVariant == null && it.choosingStock == null) lineInHand(it.draft.lines, it.lastAdd) else null
-    }
-
-    fun keypadRules(line: DraftLine): QuantityRules {
-        val available = if (line.allowsNegative) null else line.available
-        return QuantityRules(available = availableLeft(line.itemId, line.variant, line.batchId, line.serialId, available, excluding = line.id))
-    }
-
-    fun keypadError(line: DraftLine, value: String): String? {
-        val qty = value.replace(',', '.').toDoubleOrNull() ?: return "Enter a number"
-        return checkQuantity(qty, keypadRules(line))
-    }
-
-    fun changeQuantity(line: DraftLine, value: String) {
-        if (keypadError(line, value) != null) return
-        val qty = value.replace(',', '.').toDouble()
+    fun changeQuantity(line: DraftLine, qty: Double) {
+        _state.update { it.copy(editing = null) }
         updateDraft { d -> d.copy(lines = d.lines.map { if (it.id == line.id) it.copy(qty = qty) else it }) }
-        _state.update { it.copy(lastAdd = LineAdd(line.id, qty), notice = OrderNotice(StatusKind.Ok, "${line.itemId} changed", "${qtyText(qty)} ${line.unitId}".trim())) }
     }
 
     fun removeLine(line: DraftLine) {
+        _state.update { it.copy(editing = null) }
         updateDraft { d -> d.copy(lines = d.lines.filterNot { it.id == line.id }) }
-        _state.update { it.copy(lastAdd = null, notice = OrderNotice(StatusKind.Info, "${line.itemId} removed")) }
     }
 
-    fun showLines(show: Boolean) = _state.update { it.copy(showingLines = show) }
+    // -- Create ----------------------------------------------------------------------------------
 
-    // -- Create (on leave) -------------------------------------------------------------------------
-
-    val hasOrderToSend: Boolean get() = _state.value.draft.lines.isNotEmpty()
-
-    /** Creates the transfer: saved and queued (the existing path), on the app's scope. */
-    fun submit() {
-        val s = _state.value
-        val draft = s.draft
-        if (draft.lines.isEmpty() || s.busy) return
-        _state.update { it.copy(busy = true, notice = null, showingLines = false, choosingStock = null, choosingVariant = null) }
-        appScope.launch {
+    fun create() {
+        val draft = _state.value.draft
+        if (draft.lines.isEmpty() || _state.value.busy) return
+        viewModelScope.launch {
+            _state.update { it.copy(busy = true, error = null) }
             val id = repository.submitTransfer(userName, draft)
             _state.update {
-                it.copy(
-                    draft = TransferDraft(fromWarehouseId = draft.fromWarehouseId, toWarehouseId = draft.toWarehouseId),
-                    routeChosen = false,
-                    busy = false,
-                    lastAdd = null,
+                ToCreateState(
+                    draft = TransferDraft(
+                        fromWarehouseId = draft.fromWarehouseId,
+                        toWarehouseId = onlyOtherWarehouse(it.warehouses, draft.fromWarehouseId),
+                    ),
+                    warehouses = it.warehouses,
                     submittedId = id,
                 )
             }
         }
     }
 
+    fun discard() {
+        viewModelScope.launch {
+            repository.discardDraft(OrderKind.TRANSFER, userName)
+            val from = _state.value.draft.fromWarehouseId
+            _state.update {
+                it.copy(
+                    draft = TransferDraft(fromWarehouseId = from, toWarehouseId = onlyOtherWarehouse(it.warehouses, from)),
+                    routeChosen = false,
+                    error = null,
+                )
+            }
+        }
+    }
+
+    fun dismissResult() {
+        _state.update { it.copy(submittedId = null) }
+        refreshShippable()
+    }
+
     /** Hands the created order to Transfer - Ship; the caller navigates there. */
     fun ship(transferId: String) =
         pendingFlowResume.set(com.d365fo.mobileops.data.local.entity.FlowType.TRANSFER_SHIP, transferId)
+
+    fun dismissError() = _state.update { it.copy(error = null) }
 
     private fun updateDraft(change: (TransferDraft) -> TransferDraft) {
         _state.update { it.copy(draft = change(it.draft)) }

@@ -267,20 +267,7 @@ fun HomeScreen(
     unfinishedViewModel: UnfinishedWorkViewModel = hiltViewModel(),
     dashboardViewModel: HomeDashboardViewModel = hiltViewModel(),
     accessViewModel: HomeAccessViewModel = hiltViewModel(),
-    scanViewModel: HomeScanViewModel = hiltViewModel(),
 ) {
-    // Scanning on Home opens the process the barcode belongs to (redesign phase 8).
-    androidx.compose.runtime.DisposableEffect(scanViewModel) {
-        scanViewModel.onScreen(true)
-        onDispose { scanViewModel.onScreen(false) }
-    }
-    androidx.compose.runtime.LaunchedEffect(scanViewModel) {
-        scanViewModel.navigate.collect { route -> onModuleSelected(route) }
-    }
-    val scanBand by scanViewModel.band.collectAsStateWithLifecycle()
-    val askDirection by scanViewModel.askDirection.collectAsStateWithLifecycle()
-    var showCamera by remember { mutableStateOf(false) }
-    var chooseFrom by remember { mutableStateOf<HomeTask?>(null) }
     var infoFor by remember { mutableStateOf<ModuleTile?>(null) }
     var confirmSignOut by remember { mutableStateOf(false) }
     val unfinished by unfinishedViewModel.unfinished.collectAsStateWithLifecycle()
@@ -307,42 +294,6 @@ fun HomeScreen(
     }
     val figures by dashboardViewModel.figures.collectAsStateWithLifecycle()
     val usage = rememberModuleUsage(warehouseId)
-    // The tasks this worker may open - the tiles, the list under them, and what a scan may open.
-    val visible = visibleModules(handheldMenu, blockedWorkflows)
-    androidx.compose.runtime.SideEffect {
-        scanViewModel.allowed = visible.mapNotNull { it.workflow }.toSet()
-    }
-    val openModule: (ModuleTile) -> Unit = { module ->
-        if (!unfinishedViewModel.justScanned()) module.route?.let { route ->
-            usage.record(module.title)
-            onModuleSelected(route)
-        }
-    }
-    askDirection?.let { ask ->
-        TransferDirectionDialog(
-            transferId = ask.transferId,
-            choices = ask.choices,
-            onChoose = { scanViewModel.chooseDirection(ask, it) },
-            onDismiss = scanViewModel::dismissAsk,
-        )
-    }
-    chooseFrom?.let { task ->
-        ModuleChooserDialog(
-            title = task.title,
-            modules = task.modules,
-            onPick = { chooseFrom = null; openModule(it) },
-            onDismiss = { chooseFrom = null },
-        )
-    }
-    if (showCamera) {
-        com.d365fo.mobileops.presentation.common.scan.CameraScannerSheet(
-            onDecoded = {
-                showCamera = false
-                scanViewModel.onCameraDecoded(it)
-            },
-            onDismiss = { showCamera = false },
-        )
-    }
     infoFor?.let { module ->
         val enabled = module.workflow == null || module.workflow !in blockedWorkflows
         ModuleInfoDialog(module = module, enabled = enabled, onDismiss = { infoFor = null })
@@ -411,36 +362,10 @@ fun HomeScreen(
             contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 20.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            // Scan to start (9 Nov redesign): any PO, transfer, bin or item opens its process.
-            item(key = "scan", contentType = "scan") {
-                ScanToStartCard(
-                    onCamera = { showCamera = true },
+            item(key = "hero", contentType = "hero") {
+                HomeHero(
                     onSearch = { onModuleSelected(Routes.SEARCH) },
-                    modifier = side.padding(top = 12.dp),
                 )
-            }
-            scanBand?.let { band ->
-                item(key = "scan-band", contentType = "band") {
-                    com.d365fo.mobileops.presentation.common.components.StatusBand(
-                        kind = band.kind,
-                        title = band.title,
-                        line = band.line,
-                        modifier = side.clickable(onClickLabel = "Dismiss", onClick = scanViewModel::dismissBand),
-                    )
-                }
-            }
-            // The four tasks with today's counts - those on this worker's menu.
-            val tasks = homeTasks(visible, counts)
-            if (tasks.isNotEmpty()) {
-                item(key = "tasks", contentType = "tasks") {
-                    HomeTaskGrid(
-                        tasks = tasks,
-                        modifier = side.tourTarget("tiles"),
-                        onTask = { task ->
-                            if (task.modules.size == 1) openModule(task.modules.single()) else chooseFrom = task
-                        },
-                    )
-                }
             }
             // Work saved in D365FO from another device or an earlier install of this app.
             item(key = "restore", contentType = "restore") {
@@ -504,14 +429,22 @@ fun HomeScreen(
                 }
             }
 
-            // The rest of the tasks by area (Transfer - Receive and the like) - those the tiles
-            // above don't open; look-ups on the Enquiry tab (30 Oct).
+            // The tasks by area, with today's counts; look-ups on the Enquiry tab (30 Oct).
+            val visible = visibleModules(handheldMenu, blockedWorkflows)
+            var first = true
             listOf(ModuleArea.INBOUND, ModuleArea.OUTBOUND, ModuleArea.INVENTORY).forEach { area ->
-                val inArea = modulesIn(area, visible).filter { it.workflow !in HOME_TASK_WORKFLOWS }
+                val inArea = modulesIn(area, visible)
                 if (inArea.isNotEmpty()) {
+                    val tour = if (first) Modifier.tourTarget("tiles") else Modifier
+                    first = false
                     item(key = "area-title-${area.name}") { HomeSectionTitle(area.title, modifier = side) }
                     item(key = "area-${area.name}") {
-                        ModuleListCard(inArea, modifier = side, counts = counts, onOpen = openModule)
+                        ModuleListCard(inArea, modifier = side.then(tour), counts = counts) { module ->
+                            if (!unfinishedViewModel.justScanned()) module.route?.let { route ->
+                                usage.record(module.title)
+                                onModuleSelected(route)
+                            }
+                        }
                     }
                 }
             }

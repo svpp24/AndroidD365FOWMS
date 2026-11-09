@@ -23,7 +23,6 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
@@ -60,7 +59,6 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavDestination.Companion.hierarchy
@@ -684,40 +682,26 @@ fun AppNavGraph(
  * White bar with a soft top shadow, matching the white top bar ([AppTopBar]); the selected tab
  * gets a round accent-filled icon (the reference layout's round Home button, generalised to
  * whichever tab is current) and an accent label, the rest sit in muted grey.
- *
- * 9 Nov redesign (brief §2): comfort colours (the `surface` white, `inkMuted` for the resting
- * tabs), 15sp labels, and the red scan button at a fixed 56dp. [WarehouseDimens.BottomBarHeight]
- * is now the bar's *minimum*, so it grows rather than clips if a label ever needs more room.
  */
 @Composable
-internal fun AppBottomBar(
+private fun AppBottomBar(
     currentRoute: String?,
     failedCount: Int,
     onTabSelected: (String) -> Unit,
     onScan: () -> Unit,
 ) {
   Box(modifier = Modifier.fillMaxWidth()) {
-    // Fixed 56dp (brief §2), not MinTouchTarget: that grows with the text size, and at 130% a 73dp
-    // button took the width the four tab labels needed. 56dp is still a full gloved-finger target.
-    val fabSize = 56.dp
     Surface(
-        color = WarehouseStatusColors.surface,
+        color = Color.White,
         shadowElevation = 8.dp,
         modifier = Modifier
             .fillMaxWidth()
-            .heightIn(min = WarehouseDimens.BottomBarHeight),
+            .height(WarehouseDimens.BottomBarHeight),
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(androidx.compose.foundation.layout.IntrinsicSize.Min)
-                .heightIn(min = WarehouseDimens.BottomBarHeight)
-                // Room for the scan button over the bar's right end.
-                .padding(end = fabSize + 20.dp),
-        ) {
+        Row(modifier = Modifier.fillMaxWidth().fillMaxHeight().padding(end = 76.dp)) {
             BOTTOM_TABS.forEach { tab ->
                 val selected = currentRoute == tab.route
-                val tint = if (selected) WarehouseStatusColors.accent else WarehouseStatusColors.inkMuted
+                val tint = if (selected) WarehouseStatusColors.accent else WarehouseStatusColors.text3
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center,
@@ -767,17 +751,9 @@ internal fun AppBottomBar(
                     }
                     Text(
                         text = tab.label,
-                        // 15sp at every text size, not scaled: four tabs beside the scan button
-                        // leave ~71dp each, and at 130% "Settings" no longer fits a line - it
-                        // broke mid-word (ComponentLayoutTest screenshot, 9 Nov). Still larger
-                        // than the old 11sp label was even at 130% (14.3sp), and each sits under
-                        // its own icon.
-                        style = com.d365fo.mobileops.presentation.common.theme.WarehouseType.label
-                            .copy(fontSize = 15.sp, lineHeight = 20.sp),
+                        style = MaterialTheme.typography.labelMedium,
                         fontWeight = if (selected) androidx.compose.ui.text.font.FontWeight.Bold else androidx.compose.ui.text.font.FontWeight.Medium,
                         color = tint,
-                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                        modifier = Modifier.padding(horizontal = 2.dp, vertical = 2.dp),
                     )
                 }
             }
@@ -789,37 +765,18 @@ internal fun AppBottomBar(
         onClick = onScan,
         // The logo's red, in a rounded square (21 Oct) - a round teal button was the reference app's.
         shape = androidx.compose.foundation.shape.RoundedCornerShape(18.dp),
-        containerColor = com.d365fo.mobileops.presentation.common.theme.WarehouseStatusColors.scanButton,
+        containerColor = Color(0xFFB5222D),
         contentColor = Color.White,
         modifier = Modifier
             .align(Alignment.TopEnd)
             .padding(end = 12.dp)
             .offset(y = (-14).dp)
-            .size(fabSize)
+            .size(60.dp)
             .tourTarget("tab_onhand"),
     ) {
         Icon(Icons.Outlined.QrCodeScanner, contentDescription = "Scan an item", modifier = Modifier.size(28.dp))
     }
   }
-}
-
-@androidx.compose.ui.tooling.preview.Preview(name = "AppBottomBar", widthDp = 360, heightDp = 120, showBackground = true)
-@Composable
-private fun AppBottomBarPreview() =
-    com.d365fo.mobileops.presentation.common.components.PreviewSurface(padded = false) { AppBottomBarSamples() }
-
-@androidx.compose.ui.tooling.preview.Preview(name = "AppBottomBar - 130%", widthDp = 360, heightDp = 140, showBackground = true)
-@Composable
-private fun AppBottomBarPreviewLarge() =
-    com.d365fo.mobileops.presentation.common.components.PreviewSurface(large = true, padded = false) { AppBottomBarSamples() }
-
-/** Home selected, two failed postings on Activity - also rendered by the on-device layout test. */
-@Composable
-internal fun AppBottomBarSamples() {
-    // Top padding so the raised scan button has room above the bar, as it does on screen.
-    Box(Modifier.padding(top = 20.dp)) {
-        AppBottomBar(currentRoute = Routes.HOME, failedCount = 2, onTabSelected = {}, onScan = {})
-    }
 }
 
 /** How long the connection must stay down before the offline dialog shows. */

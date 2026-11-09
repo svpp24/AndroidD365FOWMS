@@ -1,48 +1,52 @@
 package com.d365fo.mobileops.presentation.modules.ordercreate
 
-import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material.icons.filled.PhotoCamera
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import com.d365fo.mobileops.presentation.common.components.SquareTextButton as TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.d365fo.mobileops.data.local.entity.CreatedOrderStatus
-import com.d365fo.mobileops.data.repository.DraftLine
-import com.d365fo.mobileops.domain.order.qtyText
-import com.d365fo.mobileops.presentation.common.components.FlowAction
-import com.d365fo.mobileops.presentation.common.components.FlowKeyHandler
-import com.d365fo.mobileops.presentation.common.components.ListRow
-import com.d365fo.mobileops.presentation.common.components.NextCard
-import com.d365fo.mobileops.presentation.common.components.QuantityPicker
+import com.d365fo.mobileops.presentation.common.components.AppCard
+import com.d365fo.mobileops.presentation.common.components.ErrorBanner
+import com.d365fo.mobileops.presentation.common.components.PromptHeroCard
 import com.d365fo.mobileops.presentation.common.components.SquareButton
-import com.d365fo.mobileops.presentation.common.components.StatusKind
+import com.d365fo.mobileops.presentation.common.components.SquareOutlinedButton
 import com.d365fo.mobileops.presentation.common.scan.CameraScannerSheet
 import com.d365fo.mobileops.presentation.common.theme.WarehouseDimens
 import com.d365fo.mobileops.presentation.common.theme.WarehouseStatusColors
+import com.d365fo.mobileops.presentation.common.components.AppTopBar as TopAppBar
 
-/**
- * Create transfer on the redesign's flow layout (brief §4, phase 7) - see [ToCreateViewModel].
- * From is the current store; the To stores are [ListRow]s (the only one ticked already) above
- * **Start**. Items are then scanned one by one; Back creates the transfer and stays, and once
- * D365FO has numbered it **Ship it now** opens Transfer - Ship on it ([onShip]). Back again leaves.
- */
+/** TO creation - see [ToCreateViewModel]. [onShip] opens Transfer - Ship for a created order. */
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun ToCreateScreen(onBack: () -> Unit, onShip: () -> Unit, viewModel: ToCreateViewModel = hiltViewModel()) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -50,184 +54,205 @@ fun ToCreateScreen(onBack: () -> Unit, onShip: () -> Unit, viewModel: ToCreateVi
     val orders by viewModel.orders.collectAsStateWithLifecycle()
     var showCamera by remember { mutableStateOf(false) }
     var typing by remember { mutableStateOf(false) }
-    var keypadFor by remember { mutableStateOf<DraftLine?>(null) }
+    var confirmDiscard by remember { mutableStateOf(false) }
     val draft = state.draft
 
-    DisposableEffect(viewModel) {
-        viewModel.scannerOnScreen(true)
-        onDispose { viewModel.scannerOnScreen(false) }
-    }
-
-    val goBack: () -> Unit = {
-        if (!viewModel.justScanned() && !state.busy) {
-            when {
-                state.showingLines -> viewModel.showLines(false)
-                state.choosingVariant != null || state.choosingStock != null -> viewModel.cancelChoice()
-                viewModel.hasOrderToSend -> viewModel.submit()
-                else -> onBack()
-            }
-        }
-    }
-    BackHandler(onBack = goBack)
-
-    val onAction: (FlowAction) -> Unit = { action ->
-        when (action) {
-            FlowAction.Back -> goBack()
-            FlowAction.Lines -> if (state.routeChosen) viewModel.showLines(!state.showingLines)
-            FlowAction.Undo -> viewModel.undo()
-            FlowAction.Keypad -> viewModel.keypadLine()?.let { keypadFor = it }
-        }
-    }
-    FlowKeyHandler(onAction)
-
-    val sent = state.submittedId?.let { id -> orders.firstOrNull { it.id == id } }
-    val shipNumber = sent?.takeIf { it.status == CreatedOrderStatus.CREATED && draft.lines.isEmpty() }?.documentNumber
-    val route = "${draft.fromWarehouseId} → ${draft.toWarehouseId.ifBlank { "?" }}"
-    val others = state.warehouses.filter { it.warehouseId != draft.fromWarehouseId }
-    val band = when {
-        state.notice != null -> OrderBand.of(state.notice!!)
-        state.choosingVariant != null -> OrderBand(StatusKind.Warn, "Which ${state.choosingVariant!!.itemId}?", "Tap the variant to send")
-        state.choosingStock != null -> OrderBand(StatusKind.Warn, "Which batch or serial?", "${state.choosingStock!!.item.itemId} has several at ${draft.fromWarehouseId}")
-        sent != null && draft.lines.isEmpty() && !state.routeChosen -> sentOrderBand(sent, "Transfer", online)
-        !state.routeChosen && others.isEmpty() -> OrderBand(StatusKind.Warn, "No other store to send to", "You need two warehouses - ask a supervisor")
-        !state.routeChosen && draft.toWarehouseId.isBlank() -> OrderBand(StatusKind.Idle, "Where does it go?", "Tap the To store, then Start")
-        !state.routeChosen -> OrderBand(StatusKind.Idle, "Ready · $route", "Start - or just scan the first item")
-        draft.lines.isEmpty() -> OrderBand(StatusKind.Info, route, "Scan the items to send")
-        else -> OrderBand(StatusKind.Info, "Scan the next item", "${linesWord(draft.lines.size)} · Back creates the transfer")
-    }
-
-    // Created: Ship it now opens Transfer - Ship on it (the existing route; PendingFlowResume hands it over).
-    val shipAction: (@Composable RowScope.() -> Unit)? = shipNumber?.takeIf { state.notice == null && !state.routeChosen }?.let { number ->
-        { SquareButton(onClick = { viewModel.ship(number); onShip() }) { Text("Ship it now") } }
-    }
-
-    OrderFlowLayout(
-        title = if (state.routeChosen) "Transfer · $route" else "Create transfer",
-        progress = draft.lines.takeIf { it.isNotEmpty() }?.let { linesWord(it.size) },
-        onBack = goBack,
-        busy = state.busy,
-        band = band,
-        onUndo = viewModel::undo,
-        lastSent = sent?.takeIf { it.status == CreatedOrderStatus.CREATED }?.documentNumber,
-        onAction = onAction,
-        highlighted = if (draft.lines.isNotEmpty() && state.notice?.undoable == true) FlowAction.Undo else null,
-        enabled = buildSet {
-            add(FlowAction.Back)
-            if (state.routeChosen) add(FlowAction.Lines)
-            if (viewModel.canUndo) add(FlowAction.Undo)
-            if (viewModel.keypadLine() != null) add(FlowAction.Keypad)
-        },
-        menuItems = { close ->
-            DropdownMenuItem(
-                text = { Text("Type it in") },
-                leadingIcon = { Icon(Icons.Default.Keyboard, contentDescription = null) },
-                onClick = { close(); typing = true },
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("TO creation") },
+                expandedHeight = WarehouseDimens.TopBarHeight,
+                navigationIcon = {
+                    IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back") }
+                },
             )
-            DropdownMenuItem(
-                text = { Text("Scan with camera") },
-                leadingIcon = { Icon(Icons.Default.PhotoCamera, contentDescription = null) },
-                onClick = { close(); showCamera = true },
-            )
-            if (state.routeChosen && draft.lines.isEmpty()) {
-                DropdownMenuItem(
-                    text = { Text("Change where it goes") },
-                    leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null) },
-                    onClick = { close(); viewModel.changeRoute() },
-                )
-            }
         },
-        bandActions = shipAction,
-        footer = if (!state.routeChosen && others.isNotEmpty()) {
-            {
-                SquareButton(
-                    onClick = { viewModel.start() },
-                    enabled = draft.toWarehouseId.isNotBlank(),
-                    modifier = Modifier.fillMaxWidth().heightIn(min = WarehouseDimens.StepperButton),
-                ) { Text(if (draft.toWarehouseId.isBlank()) "Start" else "Start · $route") }
-            }
-        } else {
-            null
-        },
-    ) {
-        when {
-            state.showingLines -> DraftLinesView(
-                lines = draft.lines,
-                showPrice = false,
-                currency = "",
-                onEdit = { keypadFor = it },
-                onRemove = viewModel::removeLine,
-            )
-            state.choosingVariant != null -> VariantChoice(state.choosingVariant!!, viewModel::pickVariant)
-            state.choosingStock != null -> StockChoice(state.choosingStock!!.item, state.choosingStock!!.stock.orEmpty(), viewModel::pickStock)
-            !state.routeChosen -> ListCard {
-                sectionLabel("From ${draft.fromWarehouseId} (this store) - to")
-                items(others, key = { it.warehouseId }) { wh ->
-                    val chosen = wh.warehouseId == draft.toWarehouseId
-                    ListRow(
-                        title = wh.label,
-                        status = if (chosen) StatusKind.Ok else null,
-                        subtitles = listOfNotNull("Chosen".takeIf { chosen }),
-                        onClick = { viewModel.pickTo(wh.warehouseId) },
-                    )
-                    HorizontalDivider(color = WarehouseStatusColors.divider)
+    ) { padding ->
+        LazyColumn(
+            modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = WarehouseDimens.ScreenPadding),
+            verticalArrangement = Arrangement.spacedBy(WarehouseDimens.ItemSpacing),
+        ) {
+            item { androidx.compose.foundation.layout.Box(Modifier.fillMaxWidth().height(4.dp)) { if (state.busy) LinearProgressIndicator(modifier = Modifier.fillMaxWidth()) } }
+            // Below the scan card on a step that has one - see the item after it in step 2.
+            if (!state.routeChosen) state.error?.let { message -> item { ErrorBanner(message = message, onDismiss = viewModel::dismissError) } }
+
+            state.submittedId?.let { id ->
+                val order = orders.firstOrNull { it.id == id }
+                if (order != null) {
+                    item { Text("Order saved", style = MaterialTheme.typography.titleMedium) }
+                    item { CreatedOrderCard(order) }
+                    if (order.status == CreatedOrderStatus.CREATED) {
+                        item { SquareButton(onClick = { viewModel.ship(order.documentNumber.orEmpty()); onShip() }, modifier = Modifier.fillMaxWidth()) { Text("Ship ${order.documentNumber} now") } }
+                    }
+                    item { SquareOutlinedButton(onClick = viewModel::dismissResult, modifier = Modifier.fillMaxWidth()) { Text("Start another order") } }
                 }
             }
-            else -> {
-                val line = lineInHand(draft.lines, state.lastAdd)
-                if (line == null) {
-                    NextCard(
-                        label = "Next",
-                        code = "Scan an item",
-                        description = "From ${draft.fromWarehouseId} to ${draft.toWarehouseId}. Each scan sends one; F4 changes the quantity.",
-                        quantity = null,
-                        modifier = Modifier.fillMaxSize(),
-                    )
+
+            if (!state.routeChosen) {
+                // -- Step 1: From and To --------------------------------------------------------
+                if (state.warehouses.size < 2) {
+                    item {
+                        Text(
+                            "You need two warehouses - ask a supervisor.",
+                            style = MaterialTheme.typography.bodyLarge,
+                        )
+                    }
                 } else {
-                    LineCard(
-                        label = "Last scanned · ${linesWord(draft.lines.size)} on the transfer",
-                        line = line,
-                        location = listOfNotNull(
-                            line.batchId.takeIf { it.isNotBlank() }?.let { "Batch $it" },
-                            line.serialId.takeIf { it.isNotBlank() }?.let { "Serial $it" },
-                            line.available?.let { "${qtyText(it)} at ${draft.fromWarehouseId}" },
-                        ).joinToString(" · ").ifBlank { null },
-                        locationLabel = "Stock",
-                        onQuantityClick = { keypadFor = line },
-                    )
+                    // Dropdowns, not a chip per warehouse: a worker assigned many warehouses got
+                    // two walls of chips before the first item (feedback, 10 Oct).
+                    item { Text("From", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 8.dp)) }
+                    item {
+                        WarehouseDropdown(
+                            options = state.warehouses,
+                            selectedId = draft.fromWarehouseId,
+                            placeholder = "Choose the warehouse it ships from",
+                            onPick = viewModel::pickFrom,
+                        )
+                    }
+                    item { Text("To", style = MaterialTheme.typography.titleMedium) }
+                    item {
+                        WarehouseDropdown(
+                            options = state.warehouses.filter { it.warehouseId != draft.fromWarehouseId },
+                            selectedId = draft.toWarehouseId,
+                            placeholder = "Choose the warehouse it goes to",
+                            onPick = viewModel::pickTo,
+                        )
+                    }
+                    item {
+                        SquareButton(
+                            onClick = viewModel::confirmRoute,
+                            enabled = draft.fromWarehouseId.isNotBlank() && draft.toWarehouseId.isNotBlank(),
+                            modifier = Modifier.fillMaxWidth().heightIn(min = WarehouseDimens.MinTouchTarget),
+                        ) { Text("Continue to items") }
+                    }
+                }
+                // Below the route and Continue - what the worker acts on comes first; then the
+                // latest three, the same as PO creation and Purchase return.
+                if (orders.isNotEmpty() && state.submittedId == null) {
+                    item { Text("Made on this device", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 8.dp)) }
+                    items(orders.take(3), key = { it.id }) { order ->
+                        val shippable = state.shippableIds?.let { ids -> order.documentNumber?.uppercase() in ids } ?: true
+                        // No longer to ship from here: it shipped - the card still said "Created".
+                        val shipped = state.shippableIds != null && !shippable && order.status == com.d365fo.mobileops.data.local.entity.CreatedOrderStatus.CREATED
+                        CreatedOrderCard(order, actionLabel = "Ship it now".takeIf { shippable }, laterStatus = "Shipped".takeIf { shipped }, onAction = {
+                            viewModel.ship(order.documentNumber.orEmpty()); onShip()
+                        })
+                    }
+                }
+            } else {
+                // -- Step 2: lines --------------------------------------------------------------
+                // Scan card first: it stays in one place however the cards below change (feedback, 10 Oct).
+                item {
+                    PromptHeroCard(
+                        prompt = "Scan item",
+                    ) {
+                        OrderScanField(onType = { typing = true }, onCamera = { showCamera = true }, enabled = !state.busy)
+                    }
+                }
+                state.error?.let { message -> item { ErrorBanner(message = message, onDismiss = viewModel::dismissError) } }
+                item {
+                    AppCard(modifier = Modifier.fillMaxWidth()) {
+                        Column(modifier = Modifier.padding(14.dp)) {
+                            Text("${draft.fromWarehouseId} → ${draft.toWarehouseId}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                            Text("Ships ${draft.shipDate}", style = MaterialTheme.typography.bodySmall, color = WarehouseStatusColors.text3)
+                            if (draft.lines.isEmpty()) TextButton(onClick = viewModel::changeRoute) { Text("Change warehouses") }
+                        }
+                    }
+                }
+                items(draft.lines, key = { it.id }) { line ->
+                    OrderLineCard(line, showPrice = false, currency = "") { viewModel.editLine(line) }
+                }
+                if (draft.lines.isNotEmpty()) {
+                    item {
+                        SquareButton(onClick = viewModel::create, enabled = !state.busy, modifier = Modifier.fillMaxWidth().heightIn(min = WarehouseDimens.MinTouchTarget)) {
+                            Text("Create transfer order")
+                        }
+                    }
+                    item {
+                        TextButton(onClick = { confirmDiscard = true }, modifier = Modifier.fillMaxWidth()) {
+                            Text("Discard this order", color = WarehouseStatusColors.red)
+                        }
+                    }
                 }
             }
         }
     }
 
-    keypadFor?.let { line ->
-        QuantityPicker(
-            subtitle = listOf(line.itemId, line.variant.label, line.batchId, line.unitId).filter { it.isNotBlank() }.joinToString(" · "),
-            hint = viewModel.keypadRules(line).hint.ifBlank { "Quantity to send" },
-            initial = qtyText(line.qty),
-            replaceInitial = true,
+    state.choosingVariant?.let { item ->
+        VariantPickerDialog(item = item, onPick = viewModel::pickVariant, onDismiss = viewModel::cancelPending)
+    }
+    state.pending?.let { pending ->
+        if (pending.choosingStock && pending.stock != null) {
+            StockPickerDialog(item = pending.item, rows = pending.stock, onPick = viewModel::pickStock, onDismiss = viewModel::cancelPending)
+        } else if (state.enteringQty) {
+            NumberDialog(
+                title = "Quantity",
+                subtitle = listOf(
+                    pending.item.itemId,
+                    pending.variant?.label.orEmpty(),
+                    pending.pick?.batchId?.takeIf { it.isNotBlank() }?.let { "Batch $it" }.orEmpty(),
+                    pending.pick?.serialId?.takeIf { it.isNotBlank() }?.let { "Serial $it" }.orEmpty(),
+                    pending.item.inventUnit,
+                ).filter { it.isNotBlank() }.joinToString(" · "),
+                initial = if (pending.pick?.serialId?.isNotBlank() == true) 1.0 else null,
+                rules = viewModel.quantityRules(pending),
+                confirmLabel = "Add line",
+                onConfirm = viewModel::addLine,
+                onDismiss = viewModel::cancelPending,
+            )
+        }
+    }
+    state.editing?.let { line ->
+        NumberDialog(
+            title = "Quantity",
+            subtitle = listOf(line.itemId, line.variant.label).filter { it.isNotBlank() }.joinToString(" · "),
+            initial = line.qty,
+            // The same rule as adding the line: an item allowed negative stock is not capped by
+            // what is on hand (adding 50 with 3 there was allowed, editing it then refused).
+            rules = line.available?.takeUnless { line.allowsNegative }
+                ?.let { com.d365fo.mobileops.domain.order.QuantityRules(available = it) },
             confirmLabel = "Save",
-            validate = { viewModel.keypadError(line, it) },
-            onConfirm = { value ->
-                keypadFor = null
-                viewModel.changeQuantity(line, value)
-            },
-            onDismiss = { if (!viewModel.justScanned()) keypadFor = null },
-            removeLabel = "Remove line",
-            onRemove = {
-                keypadFor = null
-                viewModel.removeLine(line)
-            },
+            onConfirm = { viewModel.changeQuantity(line, it) },
+            onDismiss = { viewModel.editLine(null) },
+            onRemove = { viewModel.removeLine(line) },
         )
     }
     if (typing) {
         CodeEntryDialog(
             title = "Item",
             label = "Item number or barcode",
-            onSubmit = { typing = false; viewModel.onTyped(it) },
+            onSubmit = { typing = false; viewModel.onCode(it) },
             onDismiss = { typing = false },
+        )
+    }
+    if (confirmDiscard) {
+        AlertDialog(
+            onDismissRequest = { confirmDiscard = false },
+            title = { Text("Discard this order?") },
+            text = { Text("${linesText(draft.lines.size)} removed. Nothing was sent.") },
+            confirmButton = {
+                com.d365fo.mobileops.presentation.common.components.DialogButtonRow(
+                    dismiss = { com.d365fo.mobileops.presentation.common.components.CancelOutlinedButton(onClick = { confirmDiscard = false }, modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget)) { Text("Keep") } },
+                    confirm = { com.d365fo.mobileops.presentation.common.components.CancelButton(onClick = { confirmDiscard = false; viewModel.discard() }, modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget)) { Text("Discard") } },
+                )
+            },
         )
     }
     if (showCamera) {
         CameraScannerSheet(onDecoded = { viewModel.onCameraDecoded(it); showCamera = false }, onDismiss = { showCamera = false })
     }
 }
+
+/** One warehouse out of the worker's assigned ones - see [DropdownField]. */
+@Composable
+private fun WarehouseDropdown(
+    options: List<com.d365fo.mobileops.data.repository.AssignedWarehouse>,
+    selectedId: String,
+    placeholder: String,
+    onPick: (String) -> Unit,
+) = com.d365fo.mobileops.presentation.common.components.DropdownField(
+    options = options.map { com.d365fo.mobileops.presentation.common.components.DropdownOption(it.warehouseId, it.label) },
+    selectedId = selectedId,
+    placeholder = placeholder,
+    onPick = onPick,
+)

@@ -11,24 +11,12 @@ import com.d365fo.mobileops.data.repository.OrderItem
 import com.d365fo.mobileops.data.repository.OrderVariant
 import com.d365fo.mobileops.data.repository.ReturnDraft
 import com.d365fo.mobileops.data.repository.ReturnReason
-import com.d365fo.mobileops.data.repository.StockRow
 import com.d365fo.mobileops.data.repository.WorkerSessionRepository
 import com.d365fo.mobileops.data.sync.SyncStatusProvider
 import com.d365fo.mobileops.domain.order.QuantityRules
-import com.d365fo.mobileops.domain.order.checkQuantity
-import com.d365fo.mobileops.domain.order.qtyText
-import com.d365fo.mobileops.presentation.common.components.StatusKind
 import com.d365fo.mobileops.presentation.common.scan.HidScannerBridge
-import com.d365fo.mobileops.presentation.common.scan.RejectReason
-import com.d365fo.mobileops.presentation.common.scan.ScanContext
-import com.d365fo.mobileops.presentation.common.scan.ScanFeedback
-import com.d365fo.mobileops.presentation.common.scan.ScanIdentity
-import com.d365fo.mobileops.presentation.common.scan.ScanKind
-import com.d365fo.mobileops.presentation.common.scan.ScanRoute
-import com.d365fo.mobileops.presentation.common.scan.ScanRouter
 import com.d365fo.mobileops.util.NetworkResult
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -41,29 +29,22 @@ import javax.inject.Inject
 
 data class ReturnCreateState(
     val draft: ReturnDraft = ReturnDraft(),
-    /** The original purchase order scanned - the vendor came from it. */
-    val sourcePo: String? = null,
     val vendorQuery: String = "",
     val vendors: List<VendorEntity> = emptyList(),
     val vendorCount: Int = 0,
-    /** Picking the vendor from the list instead of scanning the PO (⋮). */
-    val pickingVendor: Boolean = false,
     val reasons: List<ReturnReason> = emptyList(),
     val actions: List<ReturnReason> = emptyList(),
-    /** Changing the reason and action (⋮, or when there is no last-used one to default to). */
-    val pickingCodes: Boolean = false,
     val busy: Boolean = false,
-    val notice: OrderNotice? = null,
+    val error: String? = null,
     val choosingVariant: OrderItem? = null,
-    /** Several locations / batches hold the item - which one it comes from. */
-    val choosingStock: PendingTransferLine? = null,
-    val lastAdd: LineAdd? = null,
-    val showingLines: Boolean = false,
+    /** Same shape as a transfer line: item, variant, the stock per bin / batch / serial and the pick. */
+    val pending: PendingTransferLine? = null,
+    val enteringQty: Boolean = false,
+    val editing: DraftLine? = null,
     val editingRma: Boolean = false,
-    /** The return just posted - the band follows it. */
     val submittedId: String? = null,
 ) {
-    /** What still stops the return being posted, or null when it can go. */
+    /** What still stops the return being sent, or null when it can go. */
     val missing: String?
         get() = when {
             draft.lines.isEmpty() -> "Scan what goes back"
@@ -71,18 +52,14 @@ data class ReturnCreateState(
             actions.isNotEmpty() && draft.actionCode.isBlank() -> "Pick a return action"
             else -> null
         }
-
-    val reasonLabel: String? get() = reasons.firstOrNull { it.code == draft.reasonCode }?.label ?: draft.reasonCode.ifBlank { null }
-    val actionLabel: String? get() = actions.firstOrNull { it.code == draft.actionCode }?.label ?: draft.actionCode.ifBlank { null }
 }
 
 /**
- * Return to vendor, scan only (redesign brief §4, phase 7): scan the original purchase order -
- * its vendor is the return's - with the reason and action the worker used last; then each item
- * scan takes one from the only location holding it (a real choice is asked only when several
- * do), and **Hold to post return** sends it. D365FO creates the return order, confirms it and
- * posts its packing slip (HSMobileOpsOrderCreateService::createPurchaseReturn) - that path, the
- * draft and the queue are unchanged.
+ * Purchase return (return to vendor): pick the vendor - or scan the original PO and its vendor is
+ * picked - and a return reason, then scan what goes back. Online, the stock at the warehouse is
+ * listed per bin, batch and serial and the worker picks what is taken; offline the line names
+ * only the item and D365FO checks the stock when the return is sent. D365FO creates the return
+ * order, confirms it and posts the packing slip - see HSMobileOpsOrderCreateService::createPurchaseReturn.
  */
 @HiltViewModel
 class ReturnCreateViewModel @Inject constructor(
@@ -91,10 +68,6 @@ class ReturnCreateViewModel @Inject constructor(
     private val scannerBridge: HidScannerBridge,
     syncStatusProvider: SyncStatusProvider,
     private val freezes: com.d365fo.mobileops.data.repository.WarehouseFreezeRepository,
-    private val scanFeedback: ScanFeedback,
-    private val memory: OrderCreateMemory,
-    private val appScope: CoroutineScope,
-    scanRouter: ScanRouter,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(ReturnCreateState())
@@ -108,8 +81,6 @@ class ReturnCreateViewModel @Inject constructor(
 
     private val userName: String get() = sessions.session.value?.userName.orEmpty()
 
-    private val scanning = OrderFlowScanning(scanRouter, ::scanContext, ::onRoute)
-
     init {
         viewModelScope.launch {
             val warehouse = sessions.session.value?.selected?.warehouseId.orEmpty()
@@ -120,93 +91,19 @@ class ReturnCreateViewModel @Inject constructor(
             repository.refreshVendors(force = false)
             loadVendors()
         }
-    }
-
-    // -- Scans -------------------------------------------------------------------------------------
-
-    fun scannerOnScreen(visible: Boolean) = scanning.onScreen(visible)
-
-    override fun onCleared() {
-        scanning.close()
-        super.onCleared()
-    }
-
-    /** The original PO first; then items - another PO switches the vendor while nothing is scanned. */
-    private fun scanContext(): ScanContext {
-        val s = _state.value
-        return if (s.draft.vendorAccount.isBlank()) {
-            ScanContext.Flow(
-                accepts = setOf(ScanKind.PURCHASE_ORDER),
-                documentKind = ScanKind.PURCHASE_ORDER,
-                // A PO number without its prefix still reaches the lookup.
-                acceptUnknown = true,
-                expecting = "Scan the original purchase order",
-            )
-        } else {
-            ScanContext.Flow(
-                accepts = setOf(ScanKind.ITEM),
-                documentKind = ScanKind.PURCHASE_ORDER,
-                currentDocument = s.sourcePo,
-                acceptUnknown = true,
-                expecting = "Scan an item to return",
-            )
-        }
-    }
-
-    private suspend fun onRoute(route: ScanRoute) {
-        val s = _state.value
-        when (route) {
-            is ScanRoute.Accept -> when {
-                s.draft.vendorAccount.isBlank() -> vendorFromPurchaseOrder(itemCodeFor(route.identity).let { (route.identity as? ScanIdentity.Document)?.documentId ?: it })
-                route.identity is ScanIdentity.Document && route.identity.documentId.equals(s.sourcePo, ignoreCase = true) ->
-                    notice(StatusKind.Info, "Already returning against ${route.identity.documentId}", "Scan the items that go back")
-                route.identity is ScanIdentity.Document -> otherPurchaseOrder(route.identity.documentId)
-                else -> onItem(itemCodeFor(route.identity))
-            }
-            is ScanRoute.SwitchDocument -> otherPurchaseOrder(route.documentId)
-            is ScanRoute.Leave -> {
-                scanFeedback.error()
-                notice(StatusKind.Warn, "That's ${documentNoun(route.identity.kind)}", "Scan it on Home - this screen returns stock")
-            }
-            is ScanRoute.Reject -> {
-                scanFeedback.error()
-                notice(if (route.reason == RejectReason.NOT_EXPECTED) StatusKind.Warn else StatusKind.Bad, route.title, route.line)
-            }
-            else -> Unit
-        }
-    }
-
-    /** Another PO: its vendor while nothing is scanned yet; with lines, this return posts first. */
-    private suspend fun otherPurchaseOrder(purchId: String) {
-        val s = _state.value
-        if (s.draft.lines.isEmpty()) {
-            vendorFromPurchaseOrder(purchId)
-        } else {
-            scanFeedback.error()
-            notice(StatusKind.Warn, "Post this return first", "${linesWord(s.draft.lines.size)} for ${s.draft.vendorAccount} - hold to post, then scan $purchId")
-        }
+        viewModelScope.launch { scannerBridge.scans.collect { onCode(it.value) } }
     }
 
     fun onCameraDecoded(value: String) = scannerBridge.submitCameraScan(value)
 
-    fun onTyped(value: String) = scannerBridge.submitCameraScan(value)
-
-    fun justScanned(): Boolean = scannerBridge.justScanned()
-
-    private fun notice(kind: StatusKind, title: String, line: String? = null, undoable: Boolean = false) =
-        _state.update { it.copy(notice = OrderNotice(kind, title, line, undoable), busy = false) }
-
-    private fun refuse(title: String, line: String) {
-        scanFeedback.error()
-        notice(StatusKind.Bad, title, "$line - nothing was added")
-    }
-
-    // -- Vendor, reason, action ----------------------------------------------------------------------
+    // -- Vendor and reason -----------------------------------------------------------------------
 
     private var vendorSearch: kotlinx.coroutines.Job? = null
 
     fun onVendorQuery(value: String) {
         _state.update { it.copy(vendorQuery = value) }
+        // One search at a time, applied only if the text is still what was searched: each letter
+        // started its own, and an earlier one ("19") finishing last showed its results for "19721".
         vendorSearch?.cancel()
         vendorSearch = viewModelScope.launch { loadVendors() }
     }
@@ -218,42 +115,23 @@ class ReturnCreateViewModel @Inject constructor(
         _state.update { it.copy(vendors = list, vendorCount = repository.vendorCount()) }
     }
 
-    /** D365FO's reasons and actions; the draft's, else the last used, else the only one, filled in. */
     private suspend fun loadReasons() {
         val result = repository.returnCodes()
         if (result is NetworkResult.Success) {
             val codes = result.data
             _state.update { s ->
-                s.copy(
-                    reasons = codes.reasons,
-                    actions = codes.actions,
-                    draft = s.draft.copy(
-                        reasonCode = defaultCode(s.draft.reasonCode, memory.lastReturnReason(userName), codes.reasons),
-                        actionCode = defaultCode(s.draft.actionCode, memory.lastReturnAction(userName), codes.actions),
-                    ),
-                )
+                // Only one to choose from - nothing to choose.
+                val reason = s.draft.reasonCode.ifBlank { codes.reasons.singleOrNull()?.code.orEmpty() }
+                val action = s.draft.actionCode.ifBlank { codes.actions.singleOrNull()?.code.orEmpty() }
+                s.copy(reasons = codes.reasons, actions = codes.actions, draft = s.draft.copy(reasonCode = reason, actionCode = action))
             }
         }
     }
 
-    fun showVendorList(show: Boolean) = _state.update { it.copy(pickingVendor = show, vendorQuery = if (show) it.vendorQuery else "") }
+    fun pickVendor(vendor: VendorEntity) = updateDraft { it.copy(vendorAccount = vendor.accountNum, vendorName = vendor.name) }
 
-    fun pickVendor(vendor: VendorEntity) {
-        updateDraft { it.copy(vendorAccount = vendor.accountNum, vendorName = vendor.name) }
-        _state.update {
-            it.copy(pickingVendor = false, sourcePo = null, notice = OrderNotice(StatusKind.Info, "${vendor.accountNum} ${vendor.name}".trim(), "Scan the items that go back"))
-        }
-    }
+    fun changeVendor() = updateDraft { it.copy(vendorAccount = "", vendorName = "") }
 
-    fun changeVendor() {
-        if (_state.value.draft.lines.isNotEmpty()) return
-        updateDraft { it.copy(vendorAccount = "", vendorName = "") }
-        _state.update { it.copy(sourcePo = null, notice = null) }
-    }
-
-    fun showCodes(show: Boolean) = _state.update { it.copy(pickingCodes = show) }
-
-    /** A tap picks; the list stays until Back (opened from ⋮) or until nothing is missing. */
     fun pickReason(code: String) = updateDraft { it.copy(reasonCode = code) }
 
     fun pickAction(code: String) = updateDraft { it.copy(actionCode = code) }
@@ -265,58 +143,50 @@ class ReturnCreateViewModel @Inject constructor(
         updateDraft { it.copy(rmaNumber = value.trim().take(10)) }
     }
 
-    /** The original purchase order: its vendor is the return's. */
+    /** A scan before the vendor is known is the original purchase order: its vendor is picked. */
     private suspend fun vendorFromPurchaseOrder(code: String) {
-        _state.update { it.copy(busy = true, notice = null) }
+        _state.update { it.copy(busy = true, error = null) }
         when (val result = repository.purchaseOrder(userName, code)) {
             is NetworkResult.Success -> {
                 val po = result.data.summary
-                scanFeedback.success()
+                _state.update { it.copy(busy = false) }
                 updateDraft { it.copy(vendorAccount = po.vendorAccount, vendorName = po.vendorName) }
-                _state.update {
-                    it.copy(
-                        busy = false,
-                        sourcePo = po.purchId,
-                        pickingVendor = false,
-                        notice = OrderNotice(StatusKind.Info, "${po.purchId} · ${po.vendorAccount}", "${po.vendorName} - scan the items that go back".trimStart(' ', '-')),
-                    )
-                }
             }
-            is NetworkResult.Error -> refuse(
-                "Order not found",
-                if (!online.value) "Offline - ⋮ Pick the vendor instead" else "$code: ${result.failure.message}",
-            )
+            is NetworkResult.Error -> _state.update {
+                it.copy(busy = false, error = if (!online.value) "Offline - pick from the list." else "$code: ${result.failure.message}")
+            }
             NetworkResult.Loading -> Unit
         }
     }
 
-    // -- Lines ---------------------------------------------------------------------------------------
+    // -- Lines -----------------------------------------------------------------------------------
 
-    private suspend fun onItem(code: String) {
+    fun onCode(code: String) {
         val s = _state.value
-        if (s.choosingVariant != null || s.choosingStock != null) {
-            scanFeedback.error()
-            notice(StatusKind.Warn, "Pick one below first", "Or Undo to drop it")
-            return
-        }
-        _state.update { it.copy(busy = true, notice = null) }
-        when (val result = repository.findItem(code)) {
-            is NetworkResult.Success -> {
-                val item = result.data
-                val scanned = item.scannedVariant
-                when {
-                    !item.hasProductDimensions -> withVariant(item, OrderVariant())
-                    scanned != null -> withVariant(item, scanned)
-                    item.variants.isEmpty() -> refuse("No variants", "${item.itemId} has no released variants")
-                    item.variants.size == 1 -> withVariant(item, item.variants.single())
-                    else -> _state.update { it.copy(busy = false, choosingVariant = item) }
-                }
+        if (s.busy || s.pending != null || s.choosingVariant != null || code.isBlank()) return
+        viewModelScope.launch {
+            if (s.draft.vendorAccount.isBlank()) {
+                vendorFromPurchaseOrder(code.trim())
+                return@launch
             }
-            is NetworkResult.Error -> refuse(
-                "Item not found",
-                if (!online.value) "$code isn't saved on this device - look it up online once" else result.failure.message,
-            )
-            NetworkResult.Loading -> Unit
+            _state.update { it.copy(busy = true, error = null) }
+            when (val result = repository.findItem(code)) {
+                is NetworkResult.Success -> {
+                    val item = result.data
+                    val scanned = item.scannedVariant
+                    when {
+                        !item.hasProductDimensions -> withVariant(item, OrderVariant())
+                        scanned != null -> withVariant(item, scanned)
+                        item.variants.isEmpty() -> _state.update { it.copy(busy = false, error = "${item.itemId} has no released variants") }
+                        item.variants.size == 1 -> withVariant(item, item.variants.single())
+                        else -> _state.update { it.copy(busy = false, choosingVariant = item) }
+                    }
+                }
+                is NetworkResult.Error -> _state.update {
+                    it.copy(busy = false, error = if (!online.value) "$code not saved - look it up online once." else result.failure.message)
+                }
+                NetworkResult.Loading -> Unit
+            }
         }
     }
 
@@ -326,11 +196,7 @@ class ReturnCreateViewModel @Inject constructor(
         viewModelScope.launch { withVariant(item, variant) }
     }
 
-    /**
-     * Online: the stock here per location, batch and serial. The only row with stock is taken
-     * without asking; several are a real choice. Offline the line names only the item, and
-     * D365FO checks the stock when the return is sent.
-     */
+    /** Online: the stock here per bin, batch and serial to pick from (one row is picked for you). */
     private suspend fun withVariant(item: OrderItem, variant: OrderVariant) {
         val warehouse = _state.value.draft.warehouseId
         val stock = if (online.value) {
@@ -338,159 +204,126 @@ class ReturnCreateViewModel @Inject constructor(
         } else {
             null
         }
-        val withStock = stock?.filter { it.available > 0 }
-        when {
-            withStock != null && withStock.isEmpty() -> refuse("No stock here", "No ${item.itemId} ${variant.label} at $warehouse".replace("  ", " "))
-            withStock == null -> addLine(PendingTransferLine(item, variant, null))
-            else -> {
-                val only = onlyStockRow(withStock)
-                if (only != null) addLine(PendingTransferLine(item, variant, stock, pick = only))
-                else _state.update { it.copy(busy = false, choosingStock = PendingTransferLine(item, variant, withStock, choosingStock = true)) }
-            }
-        }
-    }
-
-    fun pickStock(row: StockRow) {
-        val pending = _state.value.choosingStock ?: return
-        _state.update { it.copy(choosingStock = null) }
-        addLine(pending.copy(pick = row, choosingStock = false))
-    }
-
-    /** What is left to take from [pick] - its stock less what this return already takes. */
-    private fun availableLeft(itemId: String, variant: OrderVariant, pick: StockRow?, excluding: String? = null): Double? {
-        val available = pick?.available ?: return null
-        val already = _state.value.draft.lines
-            .filter {
-                it.id != excluding && it.itemId == itemId && it.variant == variant &&
-                    it.locationId == pick.locationId && it.batchId == pick.batchId && it.serialId == pick.serialId
-            }
-            .sumOf { it.qty }
-        return (available - already).coerceAtLeast(0.0)
-    }
-
-    /** One scan, one unit back - the scan is the confirm; the keypad changes it. */
-    private fun addLine(pending: PendingTransferLine) {
-        val pick = pending.pick
-        val variant = pending.variant ?: OrderVariant()
-        val left = availableLeft(pending.item.itemId, variant, pick)
-        if (left != null && left < 1.0) {
-            refuse("No more at ${pick?.locationId.orEmpty()}".trim(), "All ${qtyText(pick?.available ?: 0.0)} of ${pending.item.itemId} there are on this return")
+        if (stock != null && stock.isEmpty()) {
+            _state.update { it.copy(busy = false, error = "No stock of ${item.itemId} ${variant.label}".trim()) }
             return
         }
+        val pending = PendingTransferLine(item, variant, stock)
+        _state.update {
+            when {
+                stock != null && stock.size == 1 -> it.copy(busy = false, pending = pending.copy(pick = stock.single()), enteringQty = true)
+                stock != null -> it.copy(busy = false, pending = pending.copy(choosingStock = true))
+                else -> it.copy(busy = false, pending = pending, enteringQty = true)
+            }
+        }
+    }
+
+    fun pickStock(row: com.d365fo.mobileops.data.repository.StockRow?) {
+        val pending = _state.value.pending ?: return
+        _state.update { it.copy(pending = pending.copy(pick = row, choosingStock = false), enteringQty = true) }
+    }
+
+    fun cancelPending() = _state.update { it.copy(choosingVariant = null, pending = null, enteringQty = false) }
+
+    /** Up to what is in the bin / batch / serial picked, less what this return already takes. */
+    fun quantityRules(pending: PendingTransferLine): QuantityRules {
+        val pick = pending.pick
+        val available = pick?.available ?: pending.stock?.sumOf { it.available }
+        val already = _state.value.draft.lines
+            .filter {
+                it.itemId == pending.item.itemId && it.variant == pending.variant &&
+                    it.locationId == pick?.locationId.orEmpty() && it.batchId == pick?.batchId.orEmpty() && it.serialId == pick?.serialId.orEmpty()
+            }
+            .sumOf { it.qty }
+        return QuantityRules(
+            available = available?.let { (it - already).coerceAtLeast(0.0) },
+            availableWhere = pick?.locationId?.takeIf { it.isNotBlank() }?.let { "at location $it" } ?: "to return",
+        )
+    }
+
+    fun addLine(qty: Double) {
+        val pending = _state.value.pending ?: return
+        val pick = pending.pick
         val line = DraftLine(
             itemId = pending.item.itemId,
             itemName = pending.item.itemName,
-            variant = variant,
-            qty = 1.0,
+            variant = pending.variant ?: OrderVariant(),
+            qty = qty,
             unitId = pending.item.inventUnit,
             batchId = pick?.batchId.orEmpty(),
             serialId = pick?.serialId.orEmpty(),
             locationId = pick?.locationId.orEmpty(),
-            available = pick?.available,
+            available = pick?.available ?: pending.stock?.sumOf { it.available },
         )
-        var added: LineAdd? = null
-        var lineNow = line
+        _state.update { it.copy(pending = null, enteringQty = false) }
         updateDraft { d ->
-            val (lines, add) = addOrMerge(d.lines, line)
-            added = add
-            lineNow = lines.first { it.id == add.lineId }
-            d.copy(lines = lines)
-        }
-        scanFeedback.success()
-        _state.update {
-            it.copy(
-                busy = false,
-                lastAdd = added,
-                choosingVariant = null,
-                choosingStock = null,
-                notice = OrderNotice(
-                    StatusKind.Ok,
-                    "Returning ${pending.item.itemId}",
-                    listOfNotNull(addedLine(lineNow, 1.0), pick?.locationId?.takeIf { l -> l.isNotBlank() }?.let { l -> "from $l" }).joinToString(" · "),
-                    undoable = true,
-                ),
-            )
-        }
-    }
-
-    fun cancelChoice() = _state.update { it.copy(choosingVariant = null, choosingStock = null, notice = null) }
-
-    fun undo() {
-        val s = _state.value
-        when {
-            s.choosingVariant != null || s.choosingStock != null -> cancelChoice()
-            s.draft.lines.isNotEmpty() -> {
-                val gone = lineInHand(s.draft.lines, s.lastAdd)
-                updateDraft { d -> d.copy(lines = undoAdd(d.lines, s.lastAdd)) }
-                _state.update { it.copy(lastAdd = null, notice = OrderNotice(StatusKind.Info, "Undone", "${gone?.itemId.orEmpty()} taken off - scan it again".trim())) }
+            // The same stock again adds to its line.
+            val same = d.lines.indexOfFirst {
+                it.itemId == line.itemId && it.variant == line.variant && it.locationId == line.locationId &&
+                    it.batchId == line.batchId && it.serialId == line.serialId
             }
+            if (same >= 0) d.copy(lines = d.lines.mapIndexed { i, l -> if (i == same) l.copy(qty = l.qty + qty) else l })
+            else d.copy(lines = d.lines + line)
         }
     }
 
-    val canUndo: Boolean
-        get() = _state.value.let { it.choosingVariant != null || it.choosingStock != null || it.draft.lines.isNotEmpty() }
+    fun editLine(line: DraftLine?) = _state.update { it.copy(editing = line) }
 
-    fun keypadLine(): DraftLine? = _state.value.let {
-        if (it.choosingVariant == null && it.choosingStock == null) lineInHand(it.draft.lines, it.lastAdd) else null
-    }
-
-    /** Up to what is in the location / batch / serial, less the rest of this return. */
-    fun keypadRules(line: DraftLine): QuantityRules {
-        val pick = line.available?.let { StockRow(line.batchId, line.serialId, it, line.locationId) }
-        val left = availableLeft(line.itemId, line.variant, pick, excluding = line.id)
-        return QuantityRules(
-            available = left,
-            availableWhere = line.locationId.takeIf { it.isNotBlank() }?.let { "at location $it" } ?: "to return",
-        )
-    }
-
-    fun keypadError(line: DraftLine, value: String): String? {
-        val qty = value.replace(',', '.').toDoubleOrNull() ?: return "Enter a number"
-        return checkQuantity(qty, keypadRules(line))
-    }
-
-    fun changeQuantity(line: DraftLine, value: String) {
-        if (keypadError(line, value) != null) return
-        val qty = value.replace(',', '.').toDouble()
+    fun changeQuantity(line: DraftLine, qty: Double) {
+        _state.update { it.copy(editing = null) }
         updateDraft { d -> d.copy(lines = d.lines.map { if (it.id == line.id) it.copy(qty = qty) else it }) }
-        _state.update { it.copy(lastAdd = LineAdd(line.id, qty), notice = OrderNotice(StatusKind.Ok, "${line.itemId} changed", "${qtyText(qty)} ${line.unitId}".trim())) }
     }
 
     fun removeLine(line: DraftLine) {
+        _state.update { it.copy(editing = null) }
         updateDraft { d -> d.copy(lines = d.lines.filterNot { it.id == line.id }) }
-        _state.update { it.copy(lastAdd = null, notice = OrderNotice(StatusKind.Info, "${line.itemId} removed")) }
     }
 
-    fun showLines(show: Boolean) = _state.update { it.copy(showingLines = show) }
+    // -- Return ----------------------------------------------------------------------------------
 
-    // -- Post (Hold to post return) ---------------------------------------------------------------
-
-    fun post() {
-        val s = _state.value
-        val draft = s.draft
-        if (s.missing != null || s.busy) return
-        _state.update { it.copy(busy = true, notice = null, showingLines = false) }
-        appScope.launch {
+    fun create() {
+        val draft = _state.value.draft
+        if (_state.value.missing != null || _state.value.busy) return
+        viewModelScope.launch {
+            _state.update { it.copy(busy = true, error = null) }
             // A return ships stock out at once: not while a wall-to-wall count freezes the warehouse.
             freezes.frozenMessage(draft.warehouseId)?.let { reason ->
-                scanFeedback.error()
-                _state.update { it.copy(busy = false, notice = OrderNotice(StatusKind.Bad, "Not posted", reason)) }
+                _state.update { it.copy(busy = false, error = reason) }
                 return@launch
             }
-            memory.setLastReturnCodes(userName, draft.reasonCode, draft.actionCode)
             val id = repository.submitReturn(userName, draft)
             _state.update {
                 ReturnCreateState(
-                    draft = ReturnDraft(warehouseId = draft.warehouseId, reasonCode = draft.reasonCode, actionCode = draft.actionCode),
+                    draft = ReturnDraft(warehouseId = draft.warehouseId, reasonCode = it.reasons.singleOrNull()?.code.orEmpty(), actionCode = it.actions.singleOrNull()?.code.orEmpty()),
                     vendorCount = it.vendorCount,
-                    vendors = it.vendors,
                     reasons = it.reasons,
                     actions = it.actions,
                     submittedId = id,
                 )
             }
+            loadVendors()
         }
     }
+
+    fun discard() {
+        viewModelScope.launch {
+            repository.discardDraft(OrderKind.RETURN, userName)
+            _state.update {
+                it.copy(
+                    draft = ReturnDraft(
+                        warehouseId = it.draft.warehouseId,
+                        reasonCode = it.reasons.singleOrNull()?.code.orEmpty(),
+                        actionCode = it.actions.singleOrNull()?.code.orEmpty(),
+                    ),
+                    error = null,
+                )
+            }
+        }
+    }
+
+    fun dismissResult() = _state.update { it.copy(submittedId = null) }
+
+    fun dismissError() = _state.update { it.copy(error = null) }
 
     private fun updateDraft(change: (ReturnDraft) -> ReturnDraft) {
         _state.update { it.copy(draft = change(it.draft)) }
@@ -500,14 +333,4 @@ class ReturnCreateViewModel @Inject constructor(
             else repository.saveReturnDraft(userName, draft)
         }
     }
-}
-
-/**
- * A reason or action code to start with: the one already on the draft, else the worker's last
- * used (while D365FO still has it), else the only one there is; blank when there is a choice.
- */
-fun defaultCode(current: String, lastUsed: String?, codes: List<ReturnReason>): String = when {
-    current.isNotBlank() -> current
-    lastUsed != null && codes.any { it.code == lastUsed } -> lastUsed
-    else -> codes.singleOrNull()?.code.orEmpty()
 }

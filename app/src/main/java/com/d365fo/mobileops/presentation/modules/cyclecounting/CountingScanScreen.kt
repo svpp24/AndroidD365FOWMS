@@ -91,7 +91,7 @@ import kotlinx.coroutines.delay
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun LegacyCountingScanScreen(
+fun CountingScanScreen(
     onBack: () -> Unit,
     viewModel: CountingScanViewModel = hiltViewModel(),
 ) {
@@ -121,11 +121,6 @@ internal fun LegacyCountingScanScreen(
         runCatching { scanFocus.requestFocus() }
     }
     LaunchedEffect(viewModel) { viewModel.leave.collect { onBack() } }
-    // Scans come through ScanRouter while this screen is on top (redesign phase 6).
-    androidx.compose.runtime.DisposableEffect(viewModel) {
-        viewModel.scannerOnScreen(true, flow = false)
-        onDispose { viewModel.scannerOnScreen(false, flow = false) }
-    }
     LaunchedEffect(state.refocusNonce) {
         if (state.refocusNonce > 0) {
             typing = false
@@ -197,12 +192,9 @@ internal fun LegacyCountingScanScreen(
                     state.binsRequired && state.currentBin == null -> steps.indexOf("Bin")
                     else -> steps.lastIndex
                 }
-                // Plain progress text, as the redesign's FlowHeader shows it - the step trail is
-                // retired (brief §2). This screen is kept for wall-to-wall and triggered counts.
-                androidx.compose.material3.Text(
-                    text = "Step ${current + 1} of ${steps.size} · ${steps[current]}",
-                    style = com.d365fo.mobileops.presentation.common.theme.WarehouseType.label,
-                    color = com.d365fo.mobileops.presentation.common.theme.WarehouseStatusColors.inkMuted,
+                com.d365fo.mobileops.presentation.common.components.StepTrail(
+                    names = steps,
+                    current = current,
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = WarehouseDimens.ScreenPadding)
@@ -281,6 +273,29 @@ internal fun LegacyCountingScanScreen(
                 // The shared scan card, first under the top bar - the same place as every other
                 // scan screen. It sat below the progress, filters, "Count by location" and the
                 // location bar, so it moved whenever one of those appeared (feedback, 10 Oct).
+                state.addBinPrompt?.let { bin ->
+                    androidx.compose.material3.AlertDialog(
+                        onDismissRequest = viewModel::cancelAddBin,
+                        title = { Text("Add bin $bin?") },
+                        text = { Text("$bin is not on this store's list. Add it, and count in it now?") },
+                        confirmButton = {
+                            com.d365fo.mobileops.presentation.common.components.DialogButtonRow(
+                                dismiss = {
+                                    com.d365fo.mobileops.presentation.common.components.CancelOutlinedButton(
+                                        onClick = viewModel::cancelAddBin,
+                                        modifier = Modifier.weight(1f).heightIn(min = 48.dp),
+                                    ) { Text("Cancel") }
+                                },
+                                confirm = {
+                                    com.d365fo.mobileops.presentation.common.components.ConfirmButton(
+                                        onClick = viewModel::confirmAddBin,
+                                        modifier = Modifier.weight(1f).heightIn(min = 48.dp),
+                                    ) { Text("Add bin") }
+                                },
+                            )
+                        },
+                    )
+                }
                 val needsBin = state.binsRequired && state.currentBin == null
                 com.d365fo.mobileops.presentation.common.components.PromptHeroCard(
                     // Location, then bin, then item.
@@ -433,45 +448,6 @@ internal fun LegacyCountingScanScreen(
         }
     }
 
-    CountingDialogs(state, viewModel)
-
-    if (showCamera) {
-        CameraScannerSheet(
-            onDecoded = {
-                viewModel.onCameraDecoded(it)
-                showCamera = false
-            },
-            onDismiss = { showCamera = false },
-        )
-    }
-}
-
-/** The counting popups - shared by the legacy screen and the cycle-count flow (redesign phase 6). */
-@Composable
-internal fun CountingDialogs(state: CountingScanState, viewModel: CountingScanViewModel) {
-    state.addBinPrompt?.let { bin ->
-        androidx.compose.material3.AlertDialog(
-            onDismissRequest = viewModel::cancelAddBin,
-            title = { Text("Add bin $bin?") },
-            text = { Text("$bin is not on this store's list. Add it, and count in it now?") },
-            confirmButton = {
-                com.d365fo.mobileops.presentation.common.components.DialogButtonRow(
-                    dismiss = {
-                        com.d365fo.mobileops.presentation.common.components.CancelOutlinedButton(
-                            onClick = viewModel::cancelAddBin,
-                            modifier = Modifier.weight(1f).heightIn(min = 48.dp),
-                        ) { Text("Cancel") }
-                    },
-                    confirm = {
-                        com.d365fo.mobileops.presentation.common.components.ConfirmButton(
-                            onClick = viewModel::confirmAddBin,
-                            modifier = Modifier.weight(1f).heightIn(min = 48.dp),
-                        ) { Text("Add bin") }
-                    },
-                )
-            },
-        )
-    }
     state.prompt?.let { prompt ->
         QuantityDialog(
             prompt = prompt,
@@ -598,6 +574,15 @@ internal fun CountingDialogs(state: CountingScanState, viewModel: CountingScanVi
         )
     }
 
+    if (showCamera) {
+        CameraScannerSheet(
+            onDecoded = {
+                viewModel.onCameraDecoded(it)
+                showCamera = false
+            },
+            onDismiss = { showCamera = false },
+        )
+    }
 }
 
 /**
