@@ -93,7 +93,7 @@ fun ToCreateScreen(onBack: () -> Unit, onShip: () -> Unit, viewModel: ToCreateVi
                 if (state.warehouses.size < 2) {
                     item {
                         Text(
-                            "A transfer needs two warehouses assigned to you. Ask a supervisor to add another in Mobile device users.",
+                            "You need two warehouses - ask a supervisor.",
                             style = MaterialTheme.typography.bodyLarge,
                         )
                     }
@@ -229,7 +229,7 @@ fun ToCreateScreen(onBack: () -> Unit, onShip: () -> Unit, viewModel: ToCreateVi
         AlertDialog(
             onDismissRequest = { confirmDiscard = false },
             title = { Text("Discard this order?") },
-            text = { Text("${linesText(draft.lines.size)} will be removed from this device. Nothing was sent to D365FO.") },
+            text = { Text("${linesText(draft.lines.size)} removed. Nothing was sent.") },
             confirmButton = {
                 com.d365fo.mobileops.presentation.common.components.DialogButtonRow(
                     dismiss = { com.d365fo.mobileops.presentation.common.components.CancelOutlinedButton(onClick = { confirmDiscard = false }, modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget)) { Text("Keep") } },

@@ -204,6 +204,41 @@ data class CountExceptionEntity(
     val styleId: String? = null,
 )
 
+/** A store's virtual bin for counting. The device's copy of D365FO's list, usable with no connection. */
+@Entity(tableName = "count_bin", primaryKeys = ["warehouseId", "binId"])
+data class CountBinEntity(
+    val warehouseId: String,
+    val binId: String,
+    val description: String? = null,
+    /** The location the bin is in; blank: any location (set up before bins had one). */
+    val locationId: String? = null,
+) {
+    /** A bin is counted only in its own location (user, 8 Nov: bins are per location). */
+    fun isIn(location: String?): Boolean =
+        locationId.isNullOrBlank() || location.isNullOrBlank() || locationId.equals(location, ignoreCase = true)
+}
+
+/** What was counted of one line in one bin. The line's own count is the total across its bins. */
+@Entity(
+    tableName = "count_line_bin",
+    primaryKeys = ["journalLineId", "binId"],
+    foreignKeys = [
+        ForeignKey(
+            entity = JournalEntity::class,
+            parentColumns = ["journalId"],
+            childColumns = ["journalId"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+    ],
+    indices = [androidx.room.Index("journalId")],
+)
+data class CountLineBinEntity(
+    val journalLineId: String,
+    val binId: String,
+    val journalId: String,
+    val quantity: String,
+)
+
 /** A location the counter confirmed empty: every line there counted as zero, and who said so. */
 @Entity(
     tableName = "count_location_check",

@@ -226,6 +226,13 @@ public class HSMobileOpsMenuLine extends common
 			<Label>Sub-menu</Label>
 			<StringSize>20</StringSize>
 		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>CountLocationId</Name>
+			<ExtendedDataType>WMSLocationId</ExtendedDataType>
+			<HelpText>Counting lines: the location a store count starts in, e.g. the stock location. The counter changes location on the handheld to count the others.</HelpText>
+			<Label>Count starts in</Label>
+		</AxTableField>
 	</Fields>
 	<FullTextIndexes />
 	<Indexes>

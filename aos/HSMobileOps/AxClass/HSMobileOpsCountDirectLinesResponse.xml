@@ -12,10 +12,23 @@ class HSMobileOpsCountDirectLinesResponse
     boolean success;
     str     errorCode;
     List    lines;
+    real    nextLine;
 
 }
 ]]></Declaration>
 		<Methods>
+			<Method>
+				<Name>parmNextLine</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('NextLine')]
+    public real parmNextLine(real _value = nextLine)
+    {
+        nextLine = _value;
+        return nextLine;
+    }
+]]></Source>
+			</Method>
 			<Method>
 				<Name>parmSuccess</Name>
 				<Source><![CDATA[

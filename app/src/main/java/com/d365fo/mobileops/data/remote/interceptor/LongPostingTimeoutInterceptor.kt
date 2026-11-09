@@ -22,6 +22,11 @@ object LongPostingTimeoutInterceptor : Interceptor {
         "HSMobileOpsPostingSvc/postProductReceipt",
         "HSMobileOpsPostingSvc/postTransferShipment",
         "HSMobileOpsPostingSvc/postTransferReceipt",
+        // The last batch of a big count also works out the whole count's duplicates.
+        "HSMobileOpsCountStageSvc/submitLines",
+        // A batch of second counts writes each one into the journal.
+        "HSMobileOpsCountTaskSvc/submitCounts",
+        "HSMobileOpsCountTaskSvc/submitBinCounts",
     )
     private const val LONG_READ_SECONDS = 180
 

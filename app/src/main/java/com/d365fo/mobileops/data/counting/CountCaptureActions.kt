@@ -87,7 +87,7 @@ class CountCaptureActions @Inject constructor(private val store: CountCaptureSto
         val item = itemId.trim()
         if (item.isEmpty()) return UnexpectedItemResult.Invalid("Enter the item number.")
         if (variantRequired && variant.isEmpty) {
-            return UnexpectedItemResult.Invalid("$item comes in variants - choose the one you found.")
+            return UnexpectedItemResult.Invalid("Choose the variant")
         }
         val digits = quantityText.trim()
         if (digits.isEmpty() || digits.any { !it.isDigit() }) {

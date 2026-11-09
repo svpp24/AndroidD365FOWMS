@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxEnum xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsCountStatus</Name>
+	<Label>Count status</Label>
+	<HelpText>Where a counting journal line is in dual counting.</HelpText>
+	<EnumValues>
+		<AxEnumValue>
+			<Name>Open</Name>
+			<Label>Open</Label>
+			<Value>0</Value>
+		</AxEnumValue>
+		<AxEnumValue>
+			<Name>FirstCounted</Name>
+			<Label>First counted</Label>
+			<Value>1</Value>
+		</AxEnumValue>
+		<AxEnumValue>
+			<Name>Matched</Name>
+			<Label>Matched</Label>
+			<Value>2</Value>
+		</AxEnumValue>
+		<AxEnumValue>
+			<Name>Mismatch</Name>
+			<Label>Mismatch</Label>
+			<Value>3</Value>
+		</AxEnumValue>
+		<AxEnumValue>
+			<Name>Recount</Name>
+			<Label>Recount</Label>
+			<Value>4</Value>
+		</AxEnumValue>
+		<AxEnumValue>
+			<Name>Approved</Name>
+			<Label>Approved</Label>
+			<Value>5</Value>
+		</AxEnumValue>
+		<AxEnumValue>
+			<Name>EmptyConfirmed</Name>
+			<Label>Empty confirmed</Label>
+			<Value>6</Value>
+		</AxEnumValue>
+	</EnumValues>
+</AxEnum>

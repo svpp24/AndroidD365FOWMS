@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxSecurityRole xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsAdministrator</Name>
+	<Description>Sets up and maintains handheld users. Typically a warehouse manager or supervisor, not an IT administrator - the people who know which workers exist and which warehouses they cover.</Description>
+	<Label>Mobile operations administrator</Label>
+	<DirectAccessPermissions />
+	<Duties>
+		<AxSecurityDutyReference>
+			<Name>HSMobileOpsMaintainUsers</Name>
+		</AxSecurityDutyReference>
+		<AxSecurityDutyReference>
+			<Name>HSMobileOpsMaintainDevices</Name>
+		</AxSecurityDutyReference>
+		<AxSecurityDutyReference>
+			<Name>HSMobileOpsMaintainLicense</Name>
+		</AxSecurityDutyReference>
+		<AxSecurityDutyReference>
+			<Name>HSMobileOpsViewWorkspace</Name>
+		</AxSecurityDutyReference>
+	</Duties>
+	<Privileges>
+		<AxSecurityPrivilegeReference>
+			<Name>HSMobileOpsCountToleranceMaintain</Name>
+		</AxSecurityPrivilegeReference>
+		<AxSecurityPrivilegeReference>
+			<Name>HSMobileOpsCountControlCenterMaintain</Name>
+		</AxSecurityPrivilegeReference>
+		<AxSecurityPrivilegeReference>
+			<Name>HSMobileOpsFeedbackMaintain</Name>
+		</AxSecurityPrivilegeReference>
+		<AxSecurityPrivilegeReference>
+			<Name>HSMobileOpsAiSampleMaintain</Name>
+		</AxSecurityPrivilegeReference>
+		<AxSecurityPrivilegeReference>
+			<Name>HSMobileOpsDeviceWorkView</Name>
+		</AxSecurityPrivilegeReference>
+		<AxSecurityPrivilegeReference>
+			<Name>HSMobileOpsModuleSwitchMaintain</Name>
+		</AxSecurityPrivilegeReference>
+		<AxSecurityPrivilegeReference>
+			<Name>HSMobileOpsCleanupSetupMaintain</Name>
+		</AxSecurityPrivilegeReference>
+		<AxSecurityPrivilegeReference>
+			<Name>HSMobileOpsProcessSetupMaintain</Name>
+		</AxSecurityPrivilegeReference>
+		<AxSecurityPrivilegeReference>
+			<Name>HSMobileOpsCountWarehouseMaintain</Name>
+		</AxSecurityPrivilegeReference>
+		<AxSecurityPrivilegeReference>
+			<Name>HSMobileOpsCountDualToleranceMaintain</Name>
+		</AxSecurityPrivilegeReference>
+		<AxSecurityPrivilegeReference>
+			<Name>HSMobileOpsCountBinMaintain</Name>
+		</AxSecurityPrivilegeReference>
+		<AxSecurityPrivilegeReference>
+			<Name>HSMobileOpsCountBinLineView</Name>
+		</AxSecurityPrivilegeReference>
+		<AxSecurityPrivilegeReference>
+			<Name>HSMobileOpsCountDualGroupMaintain</Name>
+		</AxSecurityPrivilegeReference>
+		<AxSecurityPrivilegeReference>
+			<Name>HSMobileOpsPostQueueView</Name>
+		</AxSecurityPrivilegeReference>
+		<AxSecurityPrivilegeReference>
+			<Name>HSMobileOpsPostQueueManage</Name>
+		</AxSecurityPrivilegeReference>
+	</Privileges>
+	<SubRoles />
+</AxSecurityRole>

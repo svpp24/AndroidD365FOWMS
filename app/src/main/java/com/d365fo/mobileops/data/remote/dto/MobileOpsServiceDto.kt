@@ -259,6 +259,8 @@ data class JournalListRequestBody(
     @SerialName("WarehouseId") val warehouseId: String,
     /** Who is asking - an external counter only sees their team's journals (server-side). */
     @SerialName("UserId") val userId: String? = null,
+    /** Also list journals finished for this user - the list's Done tab. Each comes with a DoneNote. */
+    @SerialName("IncludeDone") val includeDone: Boolean = false,
 )
 
 @Serializable
@@ -289,6 +291,8 @@ data class JournalSummaryServiceRow(
     /** SINGLE or DOUBLE_BLIND. */
     @SerialName("CountMode") val countMode: String? = null,
     @SerialName("PassNumber") val passNumber: Int = 1,
+    /** Dual count: how many of this person's lines are recounts. */
+    @SerialName("RecountLines") val recountLines: Int = 0,
     @SerialName("RecountOf") val recountOf: String? = null,
     @SerialName("OriginType") val originType: String? = null,
     @SerialName("Priority") val priority: Int = 0,
@@ -300,6 +304,8 @@ data class JournalSummaryServiceRow(
     @SerialName("SnapshotAtUtc") val snapshotAtUtc: String? = null,
     @SerialName("ControlGroupId") val controlGroupId: String? = null,
     @SerialName("RepeatInfo") val repeatInfo: String? = null,
+    /** Set only on a finished journal (IncludeDone): "Posted 5 Nov 2026", or why it is waiting. */
+    @SerialName("DoneNote") val doneNote: String? = null,
 )
 
 // -- Counting journal export -- one AOS call creates a request-private DMF project scoped to one

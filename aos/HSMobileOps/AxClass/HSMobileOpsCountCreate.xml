@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsCountCreate</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// D365FO's "Create by counting group" run without its dialog, for HSMobileOpsCountJournalCreateBatch.
+/// A subclass only because the settings the dialog fills are internal to D365FO's own model.
+/// </summary>
+class HSMobileOpsCountCreate extends InventCountCreate
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>newCycleCount</Name>
+				<Source><![CDATA[
+
+    /// <summary>Items due by their counting group, for this journal, whatever was run before.</summary>
+    public static HSMobileOpsCountCreate newCycleCount(InventJournalId _journalId, TransDate _countDate,
+        InventDimParm _inventDimParm, NoYes _includeZeroOnHand)
+    {
+        HSMobileOpsCountCreate countCreate = new HSMobileOpsCountCreate();
+
+        countCreate.getLast();
+        countCreate.parmJournalId(_journalId);
+        countCreate.parmCountDate(_countDate);
+        countCreate.parmInventDimParm(_inventDimParm);
+        countCreate.setCycleCount(_includeZeroOnHand);
+        return countCreate;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>setCycleCount</Name>
+				<Source><![CDATA[
+
+    private void setCycleCount(NoYes _includeZeroOnHand)
+    {
+        activateCountSystem = NoYes::Yes;
+        includeZeroOnHand   = _includeZeroOnHand;
+        // D365FO stops at 999 lines unless told otherwise, without saying so: the rest of the
+        // warehouse would quietly never be counted.
+        maxLines            = maxInt();
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

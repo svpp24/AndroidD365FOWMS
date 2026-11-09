@@ -68,8 +68,7 @@ class PoLinesViewModel @Inject constructor(
                         _state.update {
                             it.copy(
                                 busy = false,
-                                error = "Can't reach D365FO to look up $purchId. An item's lines are kept on this " +
-                                    "device once they have been looked up while connected.",
+                                error = "Offline - can't look up $purchId",
                             )
                         }
                     }
@@ -146,8 +145,8 @@ data class PoLinesState(
 
 /** [com.d365fo.mobileops.domain.repository.OrderLookup.blockReason], for the operator. */
 internal fun blockNotice(reason: String): String = when (reason) {
-    "NOT_CONFIRMED" -> "Not confirmed yet - purchasing has not sent it to the vendor, so it can't be received."
-    "NOT_APPROVED" -> "Not approved yet - it can't be received until a manager approves it."
+    "NOT_CONFIRMED" -> "Not confirmed yet."
+    "NOT_APPROVED" -> "Not approved yet."
     "NOT_OPEN" -> "Not open for receiving."
     else -> "Can't be received yet ($reason)."
 }

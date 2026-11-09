@@ -154,7 +154,7 @@ fun SettingsScreen(
         AlertDialog(
             onDismissRequest = { confirmSignOut = false },
             title = { Text("Sign out?") },
-            text = { Text("Anything you posted is still sent to D365FO. Scans you have not posted yet stay on this device for when you sign back in.") },
+            text = { Text("Posted work still goes to D365FO. Unposted scans stay here.") },
             confirmButton = {
                 com.d365fo.mobileops.presentation.common.components.DialogButtonRow(
                     dismiss = { com.d365fo.mobileops.presentation.common.components.CancelOutlinedButton(onClick = { confirmSignOut = false }, modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget)) { Text("Cancel") } },
@@ -233,8 +233,7 @@ fun SettingsScreen(
                 // profile (or updates it) and makes it the one in use.
                 SettingsSection("Connection") {
                     Text(
-                        text = "Each profile is one D365FO environment - its URL, company and app registrations " +
-                            "come from its connection QR code. Scan a code to add a profile or update it.",
+                        text = "Scan a connection QR code to add or update a profile.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = WarehouseStatusColors.text3,
                     )
@@ -260,10 +259,9 @@ fun SettingsScreen(
                     ToggleRow(
                         title = "Allow posting to D365FO",
                         detail = if (postingEnabled) {
-                            "Captures post to D365FO. The custom AOS services must be deployed."
+                            "Work is sent to D365FO."
                         } else {
-                            "Off: captures are saved and held on this device. Nothing is sent to D365FO until " +
-                                "this is switched on - then everything held is sent."
+                            "Off: work is held here until switched on."
                         },
                         checked = postingEnabled,
                         onToggle = { viewModel.setPostingEnabled(!postingEnabled) },
@@ -329,6 +327,29 @@ fun SettingsScreen(
                 LogsSection()
             }
 
+            // Before or after sign-in: a copy in D365FO, or a PIN-protected file (29 Oct).
+            if (openSection == SettingsMenuItem.UnsentWork) {
+                SettingsSection("Unsent work") {
+                    val work: com.d365fo.mobileops.presentation.recovery.WorkSaveViewModel = hiltViewModel()
+                    val saveState by work.state.collectAsStateWithLifecycle()
+                    val lastBackup by work.lastBackupAt.collectAsStateWithLifecycle()
+                    val waiting by work.waiting.collectAsStateWithLifecycle()
+                    Text(
+                        text = listOfNotNull(
+                            saveState.unsent ?: "Nothing unsent on this device",
+                            when {
+                                waiting -> "Not in D365FO yet - waiting for a connection"
+                                lastBackup != null -> "Saved in D365FO at " + com.d365fo.mobileops.util.Formatters.clockTime(lastBackup!!)
+                                else -> null
+                            },
+                        ).joinToString("\n"),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = WarehouseStatusColors.text3,
+                    )
+                    com.d365fo.mobileops.presentation.recovery.WorkSaveButtons(viewModel = work)
+                }
+            }
+
             // Signed in, so it can be changed during a shift (feedback 301e5d0e); whether the
             // device posts at all stays a commissioning switch on the sign-in screen.
             if (openSection == SettingsMenuItem.Posting && onSignOut != null) {
@@ -337,11 +358,9 @@ fun SettingsScreen(
                     ToggleRow(
                         title = "Post immediately",
                         detail = if (postImmediately) {
-                            "On: each receipt or transfer is posted in D365FO while the worker waits, and a " +
-                                "refusal shows at once with D365FO's reason. Slower on a busy D365FO."
+                            "On: posts while you wait; a refusal shows at once."
                         } else {
-                            "Off: D365FO takes each receipt or transfer at once and posts it in the background " +
-                                "within a few minutes (or with Process pending on the Activity screen)."
+                            "Off: posts in the background within minutes."
                         },
                         checked = postImmediately,
                         onToggle = { viewModel.setPostImmediately(!postImmediately) },
@@ -351,9 +370,7 @@ fun SettingsScreen(
                     // capture was still being held.
                     if (!postingEnabled) {
                         Text(
-                            text = "Posting to D365FO is switched off for this connection, so captures and counts " +
-                                "are held on this device. Switch on \"Allow posting to D365FO\" under Connection " +
-                                "settings on the sign-in screen.",
+                            text = "Posting is off - work is held here. Turn it on in Connection settings.",
                             style = MaterialTheme.typography.bodyMedium,
                             color = WarehouseStatusColors.amber,
                         )
@@ -379,6 +396,7 @@ private enum class SettingsMenuItem(val title: String, val icon: androidx.compos
     Logs("Logs", LineIcons.About),
     Posting("Data posting", LineIcons.Posting),
     Feedback("Send feedback", LineIcons.Feedback),
+    UnsentWork("Unsent work", LineIcons.Upload),
 }
 
 /**
@@ -411,9 +429,9 @@ private fun SettingsMenu(
         }
         if (showSignedInSections) {
             SettingsGroup("Settings", listOf(SettingsMenuItem.Session, SettingsMenuItem.Posting), onOpen, values)
-            SettingsGroup("Support", listOf(SettingsMenuItem.Feedback, SettingsMenuItem.Logs), onOpen)
+            SettingsGroup("Support", listOf(SettingsMenuItem.Feedback, SettingsMenuItem.UnsentWork, SettingsMenuItem.Logs), onOpen)
         } else {
-            SettingsGroup("Support", listOf(SettingsMenuItem.Logs), onOpen)
+            SettingsGroup("Support", listOf(SettingsMenuItem.UnsentWork, SettingsMenuItem.Logs), onOpen)
         }
     }
 }
@@ -675,7 +693,7 @@ private fun ConnectionProfiles(
     if (profiles.isEmpty()) {
         SettingsSection("Profiles") {
             Text(
-                text = "No profile yet. Scan a connection QR code above to connect this device to D365FO.",
+                text = "No profile yet. Scan a connection QR code.",
                 style = MaterialTheme.typography.bodyMedium,
             )
         }
@@ -712,7 +730,7 @@ private fun ConnectionProfiles(
                 )
                 if (registrations == 0) {
                     Text(
-                        text = "No credentials - scan this environment's connection QR code.",
+                        text = "No credentials - scan its QR code.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = WarehouseStatusColors.amber,
                     )
@@ -760,8 +778,7 @@ private fun ConnectionProfiles(
             title = { Text("Use $label?") },
             text = {
                 Text(
-                    "This device will work in $label from now on. Order and item data from $activeLabel on this " +
-                        "device is cleared first - data from two environments must never mix.",
+                    "Data from $activeLabel is cleared from this device first.",
                 )
             },
             confirmButton = {
@@ -784,10 +801,10 @@ private fun ConnectionProfiles(
             title = { Text("Delete $label?") },
             text = {
                 Text(
-                    "Removes $label's environment URL, company and app registrations from this device." +
+                    "Removes $label from this device." +
                         if (active) {
-                            " " + (next?.let { "The device switches to $it" } ?: "The device has no connection until a QR code is scanned") +
-                                ", and order and item data on it is cleared."
+                            " " + (next?.let { "Switches to $it" } ?: "No connection until a QR code is scanned") +
+                                "; data here is cleared."
                         } else {
                             ""
                         },
@@ -815,8 +832,7 @@ private fun ConnectionReset(hasCredentials: Boolean, viewModel: SettingsViewMode
 
     SettingsSection("Reset") {
         Text(
-            text = "Clears the client IDs and secrets of every profile, and the offline sign-ins. Profiles, company " +
-                "and all data on this device stay.",
+            text = "Clears secrets and offline sign-ins. Profiles and data stay.",
             style = MaterialTheme.typography.bodyMedium,
             color = WarehouseStatusColors.text3,
         )
@@ -830,9 +846,8 @@ private fun ConnectionReset(hasCredentials: Boolean, viewModel: SettingsViewMode
         title = { Text("Reset connection?") },
         text = {
             Text(
-                "Removes the tenant, client IDs and secrets of every profile, and the offline sign-ins. Scan a " +
-                    "connection QR code to use the device again." +
-                    (unsent?.let { " This device has $it - it stays here and is sent once a connection is set up again." } ?: ""),
+                "Scan a connection QR code afterwards to use the device again." +
+                    (unsent?.let { " $it stays here and is sent later." } ?: ""),
             )
         },
         confirmButton = {
@@ -1015,21 +1030,19 @@ private fun OfflineSection(warehouseId: String?, viewModel: OfflineReadyViewMode
     val readiness by viewModel.readiness.collectAsStateWithLifecycle()
     SettingsSection("Offline use") {
         Text(
-            text = "If D365FO can't be reached, workers who signed in on this device in the last " +
-                "${viewModel.offlineSignInDays} days can still sign in. Receipts, transfers and counts " +
-                "are saved on the device and sent when the connection is back.",
+            text = "Offline: sign-ins from the last ${viewModel.offlineSignInDays} days still work. Work is sent when back online.",
             style = MaterialTheme.typography.bodyMedium,
         )
         Text(
             text = when {
-                readiness.running -> "Saving today's orders for offline use..."
+                readiness.running -> "Saving today's orders..."
                 readiness.savedAt != null && readiness.warehouseId == warehouseId ->
                     "Saved for offline: ${readiness.purchaseOrders} purchase " +
                         (if (readiness.purchaseOrders == 1) "order" else "orders") +
                         " for today, ${readiness.transferOrders} transfer " +
                         (if (readiness.transferOrders == 1) "order" else "orders") +
                         " · ${com.d365fo.mobileops.util.Formatters.clockTime(readiness.savedAt!!)}"
-                else -> "Today's orders are saved automatically while you are connected."
+                else -> "Today's orders save while online."
             },
             style = MaterialTheme.typography.bodyMedium,
             color = WarehouseStatusColors.text3,
@@ -1039,7 +1052,9 @@ private fun OfflineSection(warehouseId: String?, viewModel: OfflineReadyViewMode
         }
         // Item data for offline scanning: what the last sync brought, how long it took and what
         // it cost the device (feedback: record count, time taken, app memory).
-        val sku = androidx.compose.runtime.remember { viewModel.lastSkuSync() }
+        val mastersSync by viewModel.mastersSync.collectAsStateWithLifecycle()
+        // Read again whenever a manual sync starts or ends, so its result shows here.
+        val sku = androidx.compose.runtime.remember(mastersSync) { viewModel.lastSkuSync() }
         Text(
             text = sku?.let { s ->
                 val n = java.text.NumberFormat.getIntegerInstance()
@@ -1047,11 +1062,57 @@ private fun OfflineSection(warehouseId: String?, viewModel: OfflineReadyViewMode
                     "${n.format(s.itemCount)} items, ${n.format(s.barcodeCount)} barcodes, ${n.format(s.variantCount)} variants · " +
                     "${s.activeSeconds} s" + (if (s.seconds > s.activeSeconds + 5) " (${s.seconds} s with pauses)" else "") +
                     " · peak memory ${s.peakMemoryBytes / (1024 * 1024)} MB · stored ${s.storedBytes / (1024 * 1024)} MB"
-            } ?: "Item data: not synced on this device yet - it syncs daily on Wi-Fi while charging.",
+            } ?: "Item data: not synced yet (daily, on Wi-Fi and charging).",
             style = MaterialTheme.typography.bodyMedium,
             color = WarehouseStatusColors.text3,
         )
         val online = com.d365fo.mobileops.presentation.common.components.LocalSyncStatus.current?.fullyOnline != false
+        // Sync masters now (30 Oct): items, barcodes and variants at once, on any connection,
+        // instead of waiting for the daily sync on Wi-Fi and charging.
+        val syncing = mastersSync is com.d365fo.mobileops.data.sync.MasterSyncState.Running
+        when (val s = mastersSync) {
+            com.d365fo.mobileops.data.sync.MasterSyncState.Running -> Text(
+                text = "Syncing masters... It carries on if you leave this screen.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = WarehouseStatusColors.accent,
+            )
+            is com.d365fo.mobileops.data.sync.MasterSyncState.Failed -> Text(
+                text = "Master sync failed: ${s.reason}",
+                style = MaterialTheme.typography.bodySmall,
+                color = WarehouseStatusColors.red,
+            )
+            com.d365fo.mobileops.data.sync.MasterSyncState.Idle -> Unit
+        }
+        var confirmFull by androidx.compose.runtime.remember { mutableStateOf(false) }
+        com.d365fo.mobileops.presentation.common.components.SquareOutlinedButton(
+            onClick = { viewModel.syncMastersNow(full = false) },
+            enabled = !syncing && online,
+            modifier = Modifier.fillMaxWidth(),
+        ) { Text(if (online) "Sync masters now" else "Syncing needs a connection") }
+        TextButton(
+            onClick = { confirmFull = true },
+            enabled = !syncing && online,
+            modifier = Modifier.fillMaxWidth(),
+        ) { Text("Full re-sync of all items") }
+        if (confirmFull) {
+            AlertDialog(
+                onDismissRequest = { confirmFull = false },
+                title = { Text("Full re-sync?") },
+                text = {
+                    Text(
+                        "Downloads every item, barcode and variant again, not only the changes. " +
+                            "It can take a long time and a lot of data - use Wi-Fi.",
+                    )
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        confirmFull = false
+                        viewModel.syncMastersNow(full = true)
+                    }) { Text("Re-sync all") }
+                },
+                dismissButton = { TextButton(onClick = { confirmFull = false }) { Text("Cancel") } },
+            )
+        }
         if (warehouseId != null) {
             com.d365fo.mobileops.presentation.common.components.SquareOutlinedButton(
                 onClick = { viewModel.saveNow(warehouseId) },

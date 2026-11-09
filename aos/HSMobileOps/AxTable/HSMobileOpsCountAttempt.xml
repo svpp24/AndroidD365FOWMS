@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxTable xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsCountAttempt</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// One count of one counting journal line in dual counting: who counted what, on which device,
+/// and when. Never returned to a counter - only a supervisor sees it (see HSMobileOpsCountDualEngine).
+/// </summary>
+public class HSMobileOpsCountAttempt extends common
+{
+}
+]]></Declaration>
+		<Methods />
+	</SourceCode>
+	<Label>Count attempt</Label>
+	<TableGroup>Transaction</TableGroup>
+	<Fields>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>JournalId</Name>
+			<AllowEdit>No</AllowEdit>
+			<ExtendedDataType>InventJournalId</ExtendedDataType>
+			<Label>Journal</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldInt64">
+			<Name>InventJournalTransRecId</Name>
+			<AllowEdit>No</AllowEdit>
+			<ExtendedDataType>RefRecId</ExtendedDataType>
+			<Label>Journal line</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldInt">
+			<Name>AttemptNo</Name>
+			<AllowEdit>No</AllowEdit>
+			<Label>Attempt</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldReal">
+			<Name>CountedQty</Name>
+			<AllowEdit>No</AllowEdit>
+			<ExtendedDataType>InventQty</ExtendedDataType>
+			<Label>Counted</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>UserId</Name>
+			<AllowEdit>No</AllowEdit>
+			<ExtendedDataType>HSMobileOpsUserName</ExtendedDataType>
+			<Label>Counter</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>DeviceId</Name>
+			<AllowEdit>No</AllowEdit>
+			<Label>Device</Label>
+			<StringSize>64</StringSize>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldUtcDateTime">
+			<Name>CountedDateTime</Name>
+			<AllowEdit>No</AllowEdit>
+			<Label>Counted at</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>ClientRequestId</Name>
+			<AllowEdit>No</AllowEdit>
+			<Label>Submission</Label>
+			<StringSize>64</StringSize>
+		</AxTableField>
+	</Fields>
+	<FullTextIndexes />
+	<Indexes>
+		<AxTableIndex>
+			<Name>TransAttemptIdx</Name>
+			<AlternateKey>Yes</AlternateKey>
+			<Fields>
+				<AxTableIndexField>
+					<DataField>InventJournalTransRecId</DataField>
+				</AxTableIndexField>
+				<AxTableIndexField>
+					<DataField>AttemptNo</DataField>
+				</AxTableIndexField>
+			</Fields>
+		</AxTableIndex>
+		<AxTableIndex>
+			<Name>TransUserIdx</Name>
+			<AllowDuplicates>Yes</AllowDuplicates>
+			<Fields>
+				<AxTableIndexField>
+					<DataField>InventJournalTransRecId</DataField>
+				</AxTableIndexField>
+				<AxTableIndexField>
+					<DataField>UserId</DataField>
+				</AxTableIndexField>
+			</Fields>
+		</AxTableIndex>
+		<AxTableIndex>
+			<Name>JournalIdx</Name>
+			<AllowDuplicates>Yes</AllowDuplicates>
+			<Fields>
+				<AxTableIndexField>
+					<DataField>JournalId</DataField>
+				</AxTableIndexField>
+			</Fields>
+		</AxTableIndex>
+	</Indexes>
+	<Mappings />
+	<Relations />
+	<StateMachines />
+</AxTable>

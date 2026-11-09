@@ -87,7 +87,7 @@ class PoConfirmViewModel @Inject constructor(
                     it.copy(
                         loading = false,
                         listError = if (result.failure.retryable) {
-                            "Can't reach D365FO - the list shows once it can be reached. A PO you scan is still shown if it was opened here before."
+                            "Offline - list shows when back."
                         } else {
                             result.failure.message
                         },
@@ -111,7 +111,7 @@ class PoConfirmViewModel @Inject constructor(
                     it.copy(
                         opening = false,
                         error = if (result.failure.retryable) {
-                            "Can't reach D365FO to open $id. A PO opened here before can be confirmed offline."
+                            "Offline - can't open $id."
                         } else {
                             result.failure.message
                         },

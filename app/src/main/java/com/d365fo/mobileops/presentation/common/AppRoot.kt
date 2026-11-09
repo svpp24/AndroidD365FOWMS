@@ -90,7 +90,11 @@ fun AppRoot(
     var settingsWhileSignedOut by remember { mutableStateOf(false) }
 
     if (settingsWhileSignedOut) {
-        BackHandler { settingsWhileSignedOut = false }
+        // The system Back re-checks too, as the screen's own back arrow does.
+        BackHandler {
+            settingsWhileSignedOut = false
+            sessionViewModel.refresh()
+        }
         SettingsScreen(
             onBack = {
                 settingsWhileSignedOut = false

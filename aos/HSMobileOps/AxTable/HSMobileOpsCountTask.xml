@@ -1,0 +1,141 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxTable xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsCountTask</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Wall-to-wall count tasks: one per location of the count's journal. The handheld picks up a
+/// task, not raw lines; the counter marks the location complete, or empty. A journal cannot post
+/// until every task is Completed.
+/// </summary>
+public class HSMobileOpsCountTask extends common
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>find</Name>
+				<Source><![CDATA[
+
+    public static HSMobileOpsCountTask find(InventJournalId _journalId, WMSLocationId _location, boolean _forUpdate = false)
+    {
+        HSMobileOpsCountTask task;
+
+        task.selectForUpdate(_forUpdate);
+        select firstOnly task
+            where task.JournalId     == _journalId
+               && task.WMSLocationId == _location;
+        return task;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>openTasks</Name>
+				<Source><![CDATA[
+
+    /// <summary>Tasks of this journal not yet Completed.</summary>
+    public static int openTasks(InventJournalId _journalId)
+    {
+        HSMobileOpsCountTask task;
+
+        select count(RecId) from task
+            where task.JournalId == _journalId
+               && task.Status    != HSMobileOpsCountTaskStatus::Completed;
+        return int642int(task.RecId);
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+	<Label>Count tasks</Label>
+	<TableGroup>Transaction</TableGroup>
+	<TitleField1>JournalId</TitleField1>
+	<TitleField2>WMSLocationId</TitleField2>
+	<Fields>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>JournalId</Name>
+			<AllowEdit>No</AllowEdit>
+			<ExtendedDataType>InventJournalId</ExtendedDataType>
+			<Mandatory>Yes</Mandatory>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>InventLocationId</Name>
+			<AllowEdit>No</AllowEdit>
+			<ExtendedDataType>InventLocationId</ExtendedDataType>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>WMSLocationId</Name>
+			<AllowEdit>No</AllowEdit>
+			<ExtendedDataType>WMSLocationId</ExtendedDataType>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldEnum">
+			<Name>Status</Name>
+			<AllowEdit>No</AllowEdit>
+			<EnumType>HSMobileOpsCountTaskStatus</EnumType>
+			<Label>Status</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldInt">
+			<Name>LineCount</Name>
+			<AllowEdit>No</AllowEdit>
+			<Label>Lines</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>AssignedUserId</Name>
+			<AllowEdit>No</AllowEdit>
+			<ExtendedDataType>HSMobileOpsUserName</ExtendedDataType>
+			<HelpText>The handheld user counting it.</HelpText>
+			<Label>Counter</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldUtcDateTime">
+			<Name>StartedUtc</Name>
+			<AllowEdit>No</AllowEdit>
+			<Label>Started</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>CompletedBy</Name>
+			<AllowEdit>No</AllowEdit>
+			<ExtendedDataType>HSMobileOpsUserName</ExtendedDataType>
+			<Label>Completed by</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldUtcDateTime">
+			<Name>CompletedUtc</Name>
+			<AllowEdit>No</AllowEdit>
+			<Label>Completed</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldEnum">
+			<Name>EmptyConfirmed</Name>
+			<AllowEdit>No</AllowEdit>
+			<EnumType>NoYes</EnumType>
+			<HelpText>Completed as empty: its lines were set to 0.</HelpText>
+			<Label>Empty</Label>
+		</AxTableField>
+	</Fields>
+	<FullTextIndexes />
+	<Indexes>
+		<AxTableIndex>
+			<Name>JournalLocationIdx</Name>
+			<AlternateKey>Yes</AlternateKey>
+			<Fields>
+				<AxTableIndexField>
+					<DataField>JournalId</DataField>
+				</AxTableIndexField>
+				<AxTableIndexField>
+					<DataField>WMSLocationId</DataField>
+				</AxTableIndexField>
+			</Fields>
+		</AxTableIndex>
+	</Indexes>
+	<Mappings />
+	<Relations />
+	<StateMachines />
+</AxTable>

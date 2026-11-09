@@ -40,7 +40,7 @@ fun PickWarehouseScreen(
     ) {
         Text("Choose your warehouse", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
         Text(
-            "You can work in ${warehouses.size} warehouses. Pick where you are today - you can change it later from the title bar.",
+            "Where are you today?",
             style = MaterialTheme.typography.bodyMedium,
             color = WarehouseStatusColors.text3,
         )

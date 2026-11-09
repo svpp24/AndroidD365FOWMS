@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxMenuItemDisplay xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsProcessSetup</Name>
+	<Label>Mobile process setup</Label>
+	<HelpText>How each handheld process works - several workers on one order, location capture, and Auto GRN for receiving.</HelpText>
+	<Object>HSMobileOpsProcessSetup</Object>
+	<ObjectType>Form</ObjectType>
+</AxMenuItemDisplay>

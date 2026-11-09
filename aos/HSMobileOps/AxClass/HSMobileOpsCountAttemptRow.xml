@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsCountAttemptRow</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// One count of a line, for the supervisor only.
+/// </summary>
+[DataContractAttribute]
+class HSMobileOpsCountAttemptRow
+{
+    int attemptNo;
+    real countedQty;
+    str userId;
+    str countedDateTime;
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmAttemptNo</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('AttemptNo')]
+    public int parmAttemptNo(int _value = attemptNo)
+    {
+        attemptNo = _value;
+        return attemptNo;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmCountedQty</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('CountedQty')]
+    public real parmCountedQty(real _value = countedQty)
+    {
+        countedQty = _value;
+        return countedQty;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmUserId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('UserId')]
+    public str parmUserId(str _value = userId)
+    {
+        userId = _value;
+        return userId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmCountedDateTime</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('CountedDateTime')]
+    public str parmCountedDateTime(str _value = countedDateTime)
+    {
+        countedDateTime = _value;
+        return countedDateTime;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

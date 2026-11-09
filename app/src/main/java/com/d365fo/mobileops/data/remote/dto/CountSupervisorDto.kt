@@ -84,6 +84,62 @@ data class PostJournalRequestBody(
 )
 
 @Serializable
+data class CountAttemptDto(
+    @SerialName("AttemptNo") val attemptNo: Int = 0,
+    @SerialName("CountedQty") val countedQty: Double = 0.0,
+    @SerialName("UserId") val userId: String? = null,
+    @SerialName("CountedDateTime") val countedDateTime: String? = null,
+)
+
+@Serializable
+data class VarianceSummaryLineDto(
+    @SerialName("LineNumber") val lineNumber: Double = 0.0,
+    @SerialName("ItemNumber") val itemNumber: String = "",
+    @SerialName("ItemName") val itemName: String? = null,
+    @SerialName("LocationId") val locationId: String? = null,
+    @SerialName("BatchId") val batchId: String? = null,
+    @SerialName("SerialId") val serialId: String? = null,
+    @SerialName("ConfigId") val configId: String? = null,
+    @SerialName("SizeId") val sizeId: String? = null,
+    @SerialName("ColorId") val colorId: String? = null,
+    @SerialName("StyleId") val styleId: String? = null,
+    @SerialName("Status") val status: String? = null,
+    @SerialName("SystemQty") val systemQty: Double = 0.0,
+    @SerialName("NeedsApproval") val needsApproval: Boolean = false,
+    @SerialName("Attempts") val attempts: List<CountAttemptDto> = emptyList(),
+)
+
+@Serializable
+data class VarianceSummaryServiceResponse(
+    @SerialName("Success") val success: Boolean = false,
+    @SerialName("ErrorCode") val errorCode: String? = null,
+    @SerialName("TotalLines") val totalLines: Int = 0,
+    @SerialName("OpenLines") val openLines: Int = 0,
+    @SerialName("FirstCounted") val firstCounted: Int = 0,
+    @SerialName("Matched") val matched: Int = 0,
+    @SerialName("Mismatch") val mismatch: Int = 0,
+    @SerialName("Recount") val recount: Int = 0,
+    @SerialName("Approved") val approved: Int = 0,
+    @SerialName("EmptyConfirmed") val emptyConfirmed: Int = 0,
+    @SerialName("Truncated") val truncated: Boolean = false,
+    @SerialName("Lines") val lines: List<VarianceSummaryLineDto> = emptyList(),
+)
+
+@Serializable
+data class ApproveLineServiceRequest(@SerialName("_request") val request: ApproveLineRequestBody)
+
+@Serializable
+data class ApproveLineRequestBody(
+    @SerialName("DataAreaId") val dataAreaId: String,
+    @SerialName("JournalId") val journalId: String,
+    @SerialName("UserId") val userId: String,
+    @SerialName("LineNumber") val lineNumber: Double,
+    @SerialName("Action") val action: String,
+    @SerialName("FinalQty") val finalQty: Double = 0.0,
+    @SerialName("ReasonCode") val reasonCode: String? = null,
+)
+
+@Serializable
 data class SupervisorServiceResponse(
     @SerialName("Success") val success: Boolean = false,
     @SerialName("ErrorCode") val errorCode: String? = null,

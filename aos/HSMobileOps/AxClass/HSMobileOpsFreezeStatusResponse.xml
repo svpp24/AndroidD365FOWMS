@@ -1,0 +1,108 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsFreezeStatusResponse</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// getFreezeStatus' answer. Message is the text a refused movement shows.
+/// </summary>
+[DataContractAttribute]
+class HSMobileOpsFreezeStatusResponse
+{
+    boolean success;
+    str errorCode;
+    boolean frozen;
+    str journalId;
+    str status;
+    str message;
+    utcdatetime frozenSinceUtc;
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmSuccess</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Success')]
+    public boolean parmSuccess(boolean _value = success)
+    {
+        success = _value;
+        return success;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmErrorCode</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ErrorCode')]
+    public str parmErrorCode(str _value = errorCode)
+    {
+        errorCode = _value;
+        return errorCode;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmFrozen</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Frozen')]
+    public boolean parmFrozen(boolean _value = frozen)
+    {
+        frozen = _value;
+        return frozen;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmJournalId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('JournalId')]
+    public str parmJournalId(str _value = journalId)
+    {
+        journalId = _value;
+        return journalId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmStatus</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Status')]
+    public str parmStatus(str _value = status)
+    {
+        status = _value;
+        return status;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmMessage</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Message')]
+    public str parmMessage(str _value = message)
+    {
+        message = _value;
+        return message;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmFrozenSinceUtc</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('FrozenSinceUtc')]
+    public utcdatetime parmFrozenSinceUtc(utcdatetime _value = frozenSinceUtc)
+    {
+        frozenSinceUtc = _value;
+        return frozenSinceUtc;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

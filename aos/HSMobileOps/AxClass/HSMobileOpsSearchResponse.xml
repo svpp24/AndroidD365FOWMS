@@ -83,7 +83,7 @@ class HSMobileOpsSearchResponse
 				<Source><![CDATA[
 
     [DataMemberAttribute('Hits'),
-     ['DataCollectionAttribute(Types::Class, classStr(HSMobileOpsSearchHitRow))']]
+     DataCollectionAttribute(Types::Class, classStr(HSMobileOpsSearchHitRow))]
     public List parmHits(List _value = hits)
     {
         hits = _value;

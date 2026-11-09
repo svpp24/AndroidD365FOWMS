@@ -184,6 +184,13 @@ public class HSMobileOpsCountStageLine extends common
 			<Label>Goes to the journal</Label>
 			<EnumType>NoYes</EnumType>
 		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>BinId</Name>
+			<HelpText>The bin the count was made in - for counting only. Transfer adds the bins of a location together.</HelpText>
+			<Label>Bin</Label>
+			<StringSize>20</StringSize>
+		</AxTableField>
 	</Fields>
 	<FullTextIndexes />
 	<Indexes>

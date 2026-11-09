@@ -13,12 +13,9 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -27,10 +24,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -39,18 +33,60 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.d365fo.mobileops.domain.model.HandheldMenu
 import com.d365fo.mobileops.domain.model.WarehouseWorkflow
 import com.d365fo.mobileops.presentation.common.components.AppTopBar
 import com.d365fo.mobileops.presentation.common.theme.WarehouseDimens
 import com.d365fo.mobileops.presentation.common.theme.WarehouseStatusColors
 
-/** One accordion group on Services: a menu folder (or a fixed group) and what it opens. */
-private data class ServiceGroup(val head: ModuleTile, val children: List<ModuleTile>)
+/**
+ * Where a module lives (30 Oct): Inbound, Outbound and Inventory management on Home, look-ups on
+ * the Enquiry tab.
+ */
+internal enum class ModuleArea(val title: String) {
+    INBOUND("Inbound"),
+    OUTBOUND("Outbound"),
+    INVENTORY("Inventory management"),
+    ENQUIRY("Enquiry"),
+}
+
+internal fun areaOf(workflow: WarehouseWorkflow?): ModuleArea? = when (workflow) {
+    WarehouseWorkflow.PO_RECEIVING, WarehouseWorkflow.TRANSFER_RECEIVE,
+    WarehouseWorkflow.PO_CREATE, WarehouseWorkflow.PO_CONFIRM -> ModuleArea.INBOUND
+    WarehouseWorkflow.TRANSFER_SHIP, WarehouseWorkflow.TO_CREATE, WarehouseWorkflow.PURCHASE_RETURN -> ModuleArea.OUTBOUND
+    WarehouseWorkflow.INVENTORY_COUNT -> ModuleArea.INVENTORY
+    WarehouseWorkflow.LOCATION_INQUIRY, WarehouseWorkflow.PO_OF_TODAY, WarehouseWorkflow.PO_LINES,
+    WarehouseWorkflow.TRANSFER_ORDERS, WarehouseWorkflow.TRANSFERS_BY_STORE, WarehouseWorkflow.PICKED_SERIALS -> ModuleArea.ENQUIRY
+    null -> null
+}
 
 /**
- * Services (20 Oct restyle, the mock's "All Services"): every menu entry the worker may open,
- * as white accordion cards - a folder opens to its modules in place. The D365FO handheld menu
- * when there is one, else the modules grouped by kind of work. Menu access applies as on Home.
+ * The modules this worker may open, in order: the D365FO handheld menu's modules (folders
+ * opened, in the menu's order) when there is one, else every built module. Menu access and
+ * module switches ([blocked]) apply either way.
+ */
+internal fun visibleModules(menu: HandheldMenu?, blocked: Set<WarehouseWorkflow>): List<ModuleTile> {
+    if (menu == null) return MODULES.filter { it.available && (it.workflow == null || it.workflow !in blocked) }
+    val seen = mutableSetOf<String>()
+    val out = mutableListOf<ModuleTile>()
+    fun walk(menuId: String) {
+        if (!seen.add(menuId)) return
+        menuTiles(menu, menuId, blocked).forEach { tile ->
+            val sub = tile.route?.takeIf { it.startsWith("menu/") }?.removePrefix("menu/")?.let { android.net.Uri.decode(it) }
+            if (sub != null) walk(sub) else if (tile.available && out.none { it.title == tile.title }) out += tile
+        }
+    }
+    walk(menu.rootId)
+    return out
+}
+
+/** The modules of one area, for Home's sections and the Enquiry tab. */
+internal fun modulesIn(area: ModuleArea, modules: List<ModuleTile>): List<ModuleTile> =
+    modules.filter { areaOf(it.workflow) == area }
+
+/**
+ * The Enquiry tab (30 Oct, was "Modules"): the look-ups - locations, POs, transfers, serials.
+ * The tasks themselves are on Home.
  */
 @Composable
 fun ServicesScreen(
@@ -61,19 +97,7 @@ fun ServicesScreen(
     val menu by accessViewModel.menu.collectAsStateWithLifecycle()
     LaunchedEffect(Unit) { accessViewModel.refresh() }
 
-    val groups = remember(menu, blocked) {
-        val m = menu
-        if (m != null) {
-            menuTiles(m, m.rootId, blocked).map { tile ->
-                val id = tile.route?.takeIf { it.startsWith("menu/") }?.removePrefix("menu/")?.let { android.net.Uri.decode(it) }
-                ServiceGroup(tile, if (id != null) menuTiles(m, id, blocked) else emptyList())
-            }
-        } else {
-            flatGroups(blocked)
-        }
-    }
-    // One group open at a time, like the reference app (video, 20 Oct).
-    var open by rememberSaveable { mutableStateOf<String?>(null) }
+    val enquiries = remember(menu, blocked) { modulesIn(ModuleArea.ENQUIRY, visibleModules(menu, blocked)) }
 
     Scaffold(
         topBar = { AppTopBar(title = { HomeGreeting() }, expandedHeight = WarehouseDimens.TopBarHeight) },
@@ -83,95 +107,66 @@ fun ServicesScreen(
             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 14.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            item(key = "title") { HomeSectionTitle("All Services") }
-            items(groups, key = { it.head.title }) { group ->
-                val expandable = group.children.isNotEmpty()
-                val expanded = group.head.title == open
-                Column(modifier = Modifier.fillMaxWidth().background(Color.White, RoundedCornerShape(10.dp))) {
-                    Row(
-                        verticalAlignment = Alignment.Top,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable(role = Role.Button) {
-                                if (expandable) {
-                                    open = if (expanded) null else group.head.title
-                                } else {
-                                    group.head.route?.let(onModuleSelected)
-                                }
-                            }
-                            .padding(14.dp),
-                    ) {
-                        Box(
-                            contentAlignment = Alignment.Center,
-                            modifier = Modifier.size(32.dp).background(moduleTint(group.head), RoundedCornerShape(8.dp)),
-                        ) {
-                            Icon(group.head.icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(19.dp))
-                        }
-                        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                            Text(group.head.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                            Text(group.head.summary, style = MaterialTheme.typography.bodyMedium, color = WarehouseStatusColors.text3)
-                        }
-                        Icon(
-                            when {
-                                !expandable -> Icons.AutoMirrored.Filled.KeyboardArrowRight
-                                expanded -> Icons.Default.KeyboardArrowUp
-                                else -> Icons.Default.KeyboardArrowDown
-                            },
-                            contentDescription = if (expandable) (if (expanded) "Collapse" else "Expand") else null,
-                            modifier = Modifier.padding(top = 4.dp),
-                        )
-                    }
-                    // The group's tasks in a light inset panel inside the card, divided, sliding open.
-                    androidx.compose.animation.AnimatedVisibility(visible = expandable && expanded) {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(start = 10.dp, end = 10.dp, bottom = 10.dp)
-                                .background(Color(0xFFF2F3F7), RoundedCornerShape(8.dp)),
-                        ) {
-                            group.children.forEachIndexed { i, child ->
-                                if (i > 0) HorizontalDivider(color = WarehouseStatusColors.border.copy(alpha = 0.45f), modifier = Modifier.padding(horizontal = 12.dp))
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .heightIn(min = WarehouseDimens.MinTouchTarget)
-                                        .clickable(role = Role.Button) { child.route?.let(onModuleSelected) }
-                                        .padding(horizontal = 14.dp),
-                                ) {
-                                    Text(child.title, style = MaterialTheme.typography.bodyLarge)
-                                }
-                            }
-                        }
-                    }
+            item(key = "title") { HomeSectionTitle("Enquiry") }
+            item(key = "list") {
+                if (enquiries.isEmpty()) {
+                    Text("No enquiries on your menu", style = MaterialTheme.typography.bodyMedium, color = WarehouseStatusColors.text3)
+                } else {
+                    ModuleListCard(enquiries, onOpen = { it.route?.let(onModuleSelected) })
                 }
             }
         }
     }
 }
 
-/** Without D365FO handheld menus: the built modules grouped by kind of work. */
-private fun flatGroups(blocked: Set<WarehouseWorkflow>): List<ServiceGroup> {
-    val usable = MODULES.filter { it.available && (it.workflow == null || it.workflow !in blocked) }
-    fun pick(vararg titles: String) = usable.filter { it.title in titles }
-    val groups = listOf(
-        "Inbound" to pick("PO receiving", "Transfer — Receive", "PO creation"),
-        "Outbound" to pick("Transfer — Ship", "TO creation", "Purchase return"),
-        "Inventory count" to pick("Inventory count"),
-        "Inquiries" to pick("Location inquiry", "PO's of today", "PO lines", "TO's by Store", "Transfer orders", "Picked serials"),
-    )
-    return groups.filter { it.second.isNotEmpty() }.map { (name, children) ->
-        ServiceGroup(
-            ModuleTile(
-                title = name,
-                summary = children.joinToString(", ") { it.title },
-                detail = "",
-                d365 = "",
-                icon = folderIcon(name),
-                route = null,
-            ),
-            children,
-        )
+/**
+ * A white card of modules, one row each: badge, title, one line, and a chevron - or today's count
+ * for the module ([counts], e.g. "9 to ship") as a tonal marker.
+ */
+@Composable
+internal fun ModuleListCard(
+    modules: List<ModuleTile>,
+    modifier: Modifier = Modifier,
+    counts: Map<WarehouseWorkflow, String> = emptyMap(),
+    onOpen: (ModuleTile) -> Unit,
+) {
+    Column(modifier = modifier.fillMaxWidth().background(Color.White, RoundedCornerShape(10.dp))) {
+        modules.forEachIndexed { i, module ->
+            if (i > 0) HorizontalDivider(color = WarehouseStatusColors.border.copy(alpha = 0.45f), modifier = Modifier.padding(horizontal = 14.dp))
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = WarehouseDimens.MinTouchTarget)
+                    .clickable(role = Role.Button) { onOpen(module) }
+                    .padding(horizontal = 14.dp, vertical = 10.dp),
+            ) {
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier.size(32.dp).background(moduleTint(module), RoundedCornerShape(8.dp)),
+                ) {
+                    Icon(module.icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(19.dp))
+                }
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(module.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Text(module.summary, style = MaterialTheme.typography.bodyMedium, color = WarehouseStatusColors.text3)
+                }
+                val count = module.workflow?.let(counts::get)
+                if (count != null) {
+                    Text(
+                        "$count  ›",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = WarehouseStatusColors.accent,
+                        modifier = Modifier
+                            .background(WarehouseStatusColors.accentDim, RoundedCornerShape(10.dp))
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                    )
+                } else {
+                    Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null)
+                }
+            }
+        }
     }
 }

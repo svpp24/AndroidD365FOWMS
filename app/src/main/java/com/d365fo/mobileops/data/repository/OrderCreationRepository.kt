@@ -93,7 +93,7 @@ data class OrderVariant(
 data class StockRow(val batchId: String, val serialId: String, val available: Double, val locationId: String = "") {
     val label: String
         get() = listOfNotNull(
-            locationId.takeIf { it.isNotBlank() }?.let { "Bin $it" },
+            locationId.takeIf { it.isNotBlank() }?.let { "Location $it" },
             batchId.takeIf { it.isNotBlank() }?.let { "Batch $it" },
             serialId.takeIf { it.isNotBlank() }?.let { "Serial $it" },
         ).joinToString(" · ")
@@ -295,7 +295,11 @@ class OrderCreationRepository @Inject constructor(
      * the last time it was looked up.
      */
     /** [fromWarehouseId]: a transfer's From warehouse, for [OrderItem.negativePhysical]. */
-    suspend fun findItem(code: String, fromWarehouseId: String = ""): NetworkResult<OrderItem> {
+    /**
+     * [offline]: D365FO is known to be out of reach - the device's item cache only, at once, rather
+     * than two calls that each wait for their timeout first ("D365FO is slow", store count, 8 Nov).
+     */
+    suspend fun findItem(code: String, fromWarehouseId: String = "", offline: Boolean = false): NetworkResult<OrderItem> {
         val value = code.trim()
         if (value.isBlank()) return NetworkResult.Error(AppFailure.Validation("Scan or type an item"))
 
@@ -305,7 +309,7 @@ class OrderCreationRepository @Inject constructor(
         if (local != null) {
             itemId = local.itemId
             scanned = OrderVariant(local.configId.orEmpty(), local.sizeId.orEmpty(), local.colorId.orEmpty(), local.styleId.orEmpty())
-        } else {
+        } else if (!offline) {
             val live = errorMapper.safeCall {
                 api.getBarcode(BarcodeServiceRequest(BarcodeRequestBody(dataAreaId = company(), barcode = value)))
             }
@@ -315,6 +319,10 @@ class OrderCreationRepository @Inject constructor(
             }
         }
 
+        if (offline) {
+            return offlineItem(itemId, scanned)
+                ?: NetworkResult.Error(AppFailure.Offline("$value is not on this device yet - offline, so it can't be looked up."))
+        }
         val result = errorMapper.safeCall {
             api.getOrderItem(OrderServiceRequest(OrderRequestBody(dataAreaId = company(), itemId = itemId, fromWarehouseId = fromWarehouseId)))
         }

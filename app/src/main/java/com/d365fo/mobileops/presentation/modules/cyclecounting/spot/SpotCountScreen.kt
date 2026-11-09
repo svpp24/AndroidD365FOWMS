@@ -171,8 +171,7 @@ fun SpotCountScreen(onBack: () -> Unit, onCreated: () -> Unit, viewModel: SpotCo
             // location; the fields below are for typing.
             com.d365fo.mobileops.presentation.common.components.PromptHeroCard(
                 prompt = if (state.itemId.isBlank()) "Scan item" else "Scan location",
-                hint = if (state.itemId.isBlank()) "Or type an item or a location below"
-                else "Optional - or create the count for the item everywhere",
+                hint = if (state.itemId.isBlank()) null else "Optional",
             ) {
                 com.d365fo.mobileops.presentation.common.components.HeroCameraButton(onClick = { showCamera = true }, enabled = !state.busy)
             }
@@ -191,8 +190,7 @@ fun SpotCountScreen(onBack: () -> Unit, onCreated: () -> Unit, viewModel: SpotCo
                 modifier = Modifier.fillMaxWidth(),
             )
             Text(
-                "Count an item, a location, or one item in one location, in ${state.warehouseId ?: "your warehouse"}. " +
-                    "D365FO creates the count; it appears in your journal list.",
+                "An item, a location, or both.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = WarehouseStatusColors.text3,
             )
@@ -202,8 +200,7 @@ fun SpotCountScreen(onBack: () -> Unit, onCreated: () -> Unit, viewModel: SpotCo
             val online = com.d365fo.mobileops.presentation.common.components.LocalSyncStatus.current?.fullyOnline != false
             if (!online) {
                 Text(
-                    text = "Creating a spot count needs a connection to D365FO. Journals already on this device " +
-                        "can still be counted offline.",
+                    text = "Needs a connection.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

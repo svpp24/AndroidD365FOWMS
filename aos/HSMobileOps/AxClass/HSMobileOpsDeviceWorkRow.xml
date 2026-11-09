@@ -1,0 +1,173 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsDeviceWorkRow</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// One piece of unsent work saved from a device (HSMobileOpsDeviceWork). Payload is the app's own JSON for it.
+/// </summary>
+[DataContractAttribute]
+class HSMobileOpsDeviceWorkRow
+{
+    str        workKey;
+    str        deviceId;
+    str        userName;
+    str        warehouseId;
+    str        kind;
+    str        reference;
+    str        summary;
+    int        lineCount;
+    int64      capturedMs;
+    str        updatedUtc;
+    str        appVersion;
+    str        payload;
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmKey</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Key')]
+    public str parmKey(str _value = workKey)
+    {
+        workKey = _value;
+        return workKey;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmDeviceId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('DeviceId')]
+    public str parmDeviceId(str _value = deviceId)
+    {
+        deviceId = _value;
+        return deviceId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmUserName</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('UserName')]
+    public str parmUserName(str _value = userName)
+    {
+        userName = _value;
+        return userName;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmWarehouseId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('WarehouseId')]
+    public str parmWarehouseId(str _value = warehouseId)
+    {
+        warehouseId = _value;
+        return warehouseId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmKind</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Kind')]
+    public str parmKind(str _value = kind)
+    {
+        kind = _value;
+        return kind;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmReference</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Reference')]
+    public str parmReference(str _value = reference)
+    {
+        reference = _value;
+        return reference;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmSummary</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Summary')]
+    public str parmSummary(str _value = summary)
+    {
+        summary = _value;
+        return summary;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmLineCount</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('LineCount')]
+    public int parmLineCount(int _value = lineCount)
+    {
+        lineCount = _value;
+        return lineCount;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmCapturedMs</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('CapturedMs')]
+    public int64 parmCapturedMs(int64 _value = capturedMs)
+    {
+        capturedMs = _value;
+        return capturedMs;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmUpdatedUtc</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('UpdatedUtc')]
+    public str parmUpdatedUtc(str _value = updatedUtc)
+    {
+        updatedUtc = _value;
+        return updatedUtc;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmAppVersion</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('AppVersion')]
+    public str parmAppVersion(str _value = appVersion)
+    {
+        appVersion = _value;
+        return appVersion;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmPayload</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Payload')]
+    public str parmPayload(str _value = payload)
+    {
+        payload = _value;
+        return payload;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

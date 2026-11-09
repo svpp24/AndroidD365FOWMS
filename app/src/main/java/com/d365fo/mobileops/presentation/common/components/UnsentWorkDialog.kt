@@ -18,9 +18,7 @@ fun UnsentWorkDialog(description: String, onKeep: () -> Unit, onDelete: () -> Un
         title = { Text("Work not yet in D365FO") },
         text = {
             Text(
-                "This device still has $description. Changing the connection deletes it from this " +
-                    "device, and it can't be recovered. Connect to the current D365FO first so it can be sent, " +
-                    "or finish and post it.",
+                "$description is still unsent and will be lost. Send it first.",
             )
         },
         confirmButton = {

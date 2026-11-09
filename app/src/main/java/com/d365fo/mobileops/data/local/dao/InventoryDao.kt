@@ -57,6 +57,17 @@ interface JournalDao {
     @Query("DELETE FROM invent_journal_line WHERE journalLineId = :journalLineId")
     suspend fun deleteLine(journalLineId: String)
 
+    /** A downloaded journal and its lines together: an app killed half way leaves neither. */
+    @androidx.room.Transaction
+    suspend fun saveDownloadedJournal(journal: JournalEntity, lines: List<JournalLineEntity>) {
+        upsertJournal(journal)
+        upsertLinesChunked(lines)
+    }
+
+    /** The journal, and by cascade its lines, on-hand references, attempts and exceptions. */
+    @Query("DELETE FROM invent_journal WHERE journalId = :journalId")
+    suspend fun deleteCountingJournal(journalId: String)
+
     // -- Counting workflow -----------------------------------------------------------------
 
     /** Every counting journal that has data on this device - the journal list's "has data" and

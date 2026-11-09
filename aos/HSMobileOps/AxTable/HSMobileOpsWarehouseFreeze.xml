@@ -1,0 +1,218 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxTable xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsWarehouseFreeze</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Wall-to-wall counts, one row each, kept as history. While a row is Building, Counting or Posting
+/// its warehouse is frozen: the handheld's movements and D365FO's stock postings there are refused,
+/// except the posting of the count's own journal. Started, cancelled and posted from Cycle count
+/// warehouses (HSMobileOpsCountWallToWall).
+/// </summary>
+public class HSMobileOpsWarehouseFreeze extends common
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>isActive</Name>
+				<Source><![CDATA[
+
+    public boolean isActive()
+    {
+        return this.RecId
+            && (this.Status == HSMobileOpsFreezeStatus::Building
+             || this.Status == HSMobileOpsFreezeStatus::Counting
+             || this.Status == HSMobileOpsFreezeStatus::Posting);
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>findActive</Name>
+				<Source><![CDATA[
+
+    /// <summary>The warehouse's wall-to-wall count while it is frozen, else an empty buffer.</summary>
+    public static HSMobileOpsWarehouseFreeze findActive(InventLocationId _warehouse, boolean _forUpdate = false)
+    {
+        HSMobileOpsWarehouseFreeze freeze;
+
+        if (!_warehouse)
+        {
+            return freeze;
+        }
+        freeze.selectForUpdate(_forUpdate);
+        select firstOnly freeze
+            order by StartedUtc desc
+            where freeze.InventLocationId == _warehouse
+               && (freeze.Status == HSMobileOpsFreezeStatus::Building
+                || freeze.Status == HSMobileOpsFreezeStatus::Counting
+                || freeze.Status == HSMobileOpsFreezeStatus::Posting);
+        return freeze;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>findByJournal</Name>
+				<Source><![CDATA[
+
+    public static HSMobileOpsWarehouseFreeze findByJournal(InventJournalId _journalId, boolean _forUpdate = false)
+    {
+        HSMobileOpsWarehouseFreeze freeze;
+
+        if (!_journalId)
+        {
+            return freeze;
+        }
+        freeze.selectForUpdate(_forUpdate);
+        select firstOnly freeze
+            order by StartedUtc desc
+            where freeze.JournalId == _journalId;
+        return freeze;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>frozenMessage</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Why a stock movement in this warehouse is refused, or empty when it is not frozen. The one
+    /// text every refusal uses, on the handheld and in D365FO alike.
+    /// </summary>
+    public static str frozenMessage(InventLocationId _warehouse)
+    {
+        HSMobileOpsWarehouseFreeze freeze = HSMobileOpsWarehouseFreeze::findActive(_warehouse);
+        utcdatetime                local;
+
+        if (!freeze.RecId)
+        {
+            return '';
+        }
+        // The company's time, readably: a handheld's call runs as the service user, whose own
+        // zone gave UTC as "2026-11-08T02:49:44" (seen 8 Nov).
+        local = DateTimeUtil::applyTimeZoneOffset(freeze.StartedUtc, DateTimeUtil::getCompanyTimeZone());
+        return strFmt('Warehouse %1 is frozen for a wall-to-wall count (%2) since %3 %4. Stock cannot move there until the count is posted or cancelled.',
+            _warehouse, freeze.JournalId ? freeze.JournalId : enum2Str(freeze.Status),
+            date2Str(DateTimeUtil::date(local), 123, DateDay::Digits1or2, DateSeparator::Space, DateMonth::Short, DateSeparator::Space, DateYear::Digits4),
+            strLTrim(time2StrHM(DateTimeUtil::time(local))));
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>checkNotFrozen</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// True when the warehouse is not frozen; else puts the reason in the infolog and answers false.
+    /// The wall-to-wall count's own journal is let through when given.
+    /// </summary>
+    public static boolean checkNotFrozen(InventLocationId _warehouse, InventJournalId _ownJournalId = '')
+    {
+        HSMobileOpsWarehouseFreeze freeze = HSMobileOpsWarehouseFreeze::findActive(_warehouse);
+
+        if (!freeze.RecId || (_ownJournalId && freeze.JournalId == _ownJournalId))
+        {
+            return true;
+        }
+        return checkFailed(HSMobileOpsWarehouseFreeze::frozenMessage(_warehouse));
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+	<Label>Wall-to-wall counts</Label>
+	<TableGroup>Transaction</TableGroup>
+	<TitleField1>InventLocationId</TitleField1>
+	<TitleField2>Status</TitleField2>
+	<Fields>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>InventLocationId</Name>
+			<AllowEdit>No</AllowEdit>
+			<ExtendedDataType>InventLocationId</ExtendedDataType>
+			<Mandatory>Yes</Mandatory>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldEnum">
+			<Name>Status</Name>
+			<AllowEdit>No</AllowEdit>
+			<EnumType>HSMobileOpsFreezeStatus</EnumType>
+			<Label>Status</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>JournalId</Name>
+			<AllowEdit>No</AllowEdit>
+			<ExtendedDataType>InventJournalId</ExtendedDataType>
+			<Label>Journal</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldUtcDateTime">
+			<Name>StartedUtc</Name>
+			<AllowEdit>No</AllowEdit>
+			<Label>Frozen since</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>StartedBy</Name>
+			<AllowEdit>No</AllowEdit>
+			<ExtendedDataType>UserId</ExtendedDataType>
+			<Label>Started by</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldInt64">
+			<Name>BatchJobId</Name>
+			<AllowEdit>No</AllowEdit>
+			<ExtendedDataType>RefRecId</ExtendedDataType>
+			<HelpText>The batch job building or posting its journal, while one is.</HelpText>
+			<Label>Running job</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>Message</Name>
+			<AllowEdit>No</AllowEdit>
+			<Label>Last result</Label>
+			<StringSize>250</StringSize>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldUtcDateTime">
+			<Name>ReleasedUtc</Name>
+			<AllowEdit>No</AllowEdit>
+			<Label>Released</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>ReleasedBy</Name>
+			<AllowEdit>No</AllowEdit>
+			<ExtendedDataType>UserId</ExtendedDataType>
+			<Label>Released by</Label>
+		</AxTableField>
+	</Fields>
+	<FullTextIndexes />
+	<Indexes>
+		<AxTableIndex>
+			<Name>WarehouseStatusIdx</Name>
+			<AllowDuplicates>Yes</AllowDuplicates>
+			<Fields>
+				<AxTableIndexField>
+					<DataField>InventLocationId</DataField>
+				</AxTableIndexField>
+				<AxTableIndexField>
+					<DataField>Status</DataField>
+				</AxTableIndexField>
+			</Fields>
+		</AxTableIndex>
+		<AxTableIndex>
+			<Name>JournalIdx</Name>
+			<AllowDuplicates>Yes</AllowDuplicates>
+			<Fields>
+				<AxTableIndexField>
+					<DataField>JournalId</DataField>
+				</AxTableIndexField>
+			</Fields>
+		</AxTableIndex>
+	</Indexes>
+	<Mappings />
+	<Relations />
+	<StateMachines />
+</AxTable>

@@ -686,15 +686,12 @@ private fun CapturedLines(
         val online = com.d365fo.mobileops.presentation.common.components.LocalSyncStatus.current?.fullyOnline != false
         Text(
             text = if (shipping && online) {
-                "Each line is picked in D365FO as you scan it. Confirm picking when you are done - " +
-                    "that posts the shipment, which cannot be undone from here."
+                "Picked as you scan. Confirm to ship - can't be undone."
             } else if (shipping) {
                 // Offline nothing is picked when scanned - the shipment posting picks it.
-                "D365FO can't be reached, so lines are kept on this device and picked when the " +
-                    "shipment posts. Confirm picking when you are done - it is sent as soon as D365FO is back."
+                "Offline - confirm to ship; sent when back."
             } else {
-                "Held on this device until you post it. Check every line before you do — " +
-                    "posting cannot be undone from here."
+                "Check the lines - posting can't be undone."
             },
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -773,9 +770,9 @@ private fun CapturedLines(
                             if (shipping) {
                                 Text(
                                     text = when {
-                                        entry.pickedEarlier -> "Was already picked in D365FO - check no other device is shipping it"
-                                        entry.picked -> "Picked in D365FO"
-                                        else -> "Not picked yet - picked when you confirm"
+                                        entry.pickedEarlier -> "Picked on another device"
+                                        entry.picked -> "Picked"
+                                        else -> "Picked on confirm"
                                     },
                                     style = MaterialTheme.typography.labelMedium,
                                     color = if (entry.picked && !entry.pickedEarlier) WarehouseStatusColors.green else WarehouseStatusColors.amber,
@@ -860,7 +857,7 @@ private fun CaptureSummary(state: TransferFlowState) {
                 "Quantity",
                 capture.quantity?.let { com.d365fo.mobileops.util.Formatters.qtyUnit(it, capture.unitSymbol) },
             )
-            Field("Bin location", capture.locationId)
+            Field("Location", capture.locationId)
             Field("Batch", capture.batchId)
             if (capture.serialIds.isNotEmpty()) {
                 val count = capture.serialIds.size
@@ -898,7 +895,7 @@ private fun titleFor(step: TransferStep, mode: TransferMode): String = when (ste
     TransferStep.TRANSFER_ORDER -> if (mode == TransferMode.SHIP) "Ship" else "Receive"
     TransferStep.ITEM -> "Item"
     TransferStep.QUANTITY -> "Quantity"
-    TransferStep.LOCATION -> "Bin location"
+    TransferStep.LOCATION -> "Location"
     TransferStep.BATCH -> "Batch"
     TransferStep.SERIAL -> "Serial"
     TransferStep.CONFIRM -> "Confirm"
@@ -908,7 +905,7 @@ private fun promptFor(state: TransferFlowState): String = when (state.step) {
     TransferStep.TRANSFER_ORDER -> "Scan transfer order"
     TransferStep.ITEM -> "Scan item"
     TransferStep.QUANTITY -> "Enter quantity"
-    TransferStep.LOCATION -> "Scan bin location"
+    TransferStep.LOCATION -> "Scan location"
     TransferStep.BATCH -> "Scan batch"
     TransferStep.SERIAL -> state.capture.serialsOutstanding
         .takeIf { it > 1 }
@@ -1020,7 +1017,7 @@ private fun TransferStep.shortName(): String = when (this) {
     TransferStep.TRANSFER_ORDER -> "Transfer"
     TransferStep.ITEM -> "Item"
     TransferStep.QUANTITY -> "Qty"
-    TransferStep.LOCATION -> "Bin"
+    TransferStep.LOCATION -> "Location"
     TransferStep.BATCH -> "Batch"
     TransferStep.SERIAL -> "Serial"
     TransferStep.CONFIRM -> "Confirm"

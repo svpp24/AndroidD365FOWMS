@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsWorkspaceFilter</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// The warehouse the signed-in user picked in the Mobile operations workspace filter. Empty means
+/// every store the user may see. Kept per user in the AOS global object cache, so it lasts until the
+/// AOS restarts. The tile queries read it through HSMobileOpsWorkspaceScope.
+/// </summary>
+public final class HSMobileOpsWorkspaceFilter
+{
+    private const str CacheOwner = 'HSMobileOpsWorkspaceFilter';
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>cache</Name>
+				<Source><![CDATA[
+    private static SysGlobalObjectCache cache()
+    {
+        if (classfactory)
+        {
+            return classfactory.globalObjectCache();
+        }
+
+        // The class factory is not initialised when a query range function runs under IL.
+        return new SysGlobalObjectCache();
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>current</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// The warehouse picked by the signed-in user, or an empty string for no filter.
+    /// </summary>
+    public static str current()
+    {
+        container value = HSMobileOpsWorkspaceFilter::cache().find(HSMobileOpsWorkspaceFilter::CacheOwner, [curUserId()]);
+
+        return conLen(value) > 0 ? conPeek(value, 1) : '';
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>set</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Remembers the warehouse the signed-in user picked. An empty string clears the filter.
+    /// </summary>
+    public static void set(str _warehouseId)
+    {
+        HSMobileOpsWorkspaceFilter::cache().insert(HSMobileOpsWorkspaceFilter::CacheOwner, [curUserId()], [strLRTrim(_warehouseId)]);
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

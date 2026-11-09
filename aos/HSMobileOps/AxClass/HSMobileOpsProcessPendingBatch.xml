@@ -5,10 +5,13 @@
 		<Declaration><![CDATA[
 /// <summary>
 /// The recurring batch job that registers and posts what handhelds have staged: every
-/// [recurrenceMinutes] it works the Pending rows of HSMobileOpsPostQueue in every company, the
-/// same work as "Process pending" on the Activity screen (HSMobileOpsPostingService::
-/// processCompany). Without it a receipt queued on a handheld - offline, or by a worker who signs
-/// out before opening Activity - stays Pending until someone presses the button.
+/// [recurrenceMinutes] it starts one task (HSMobileOpsPostingWorker) for each warehouse with
+/// Pending rows in HSMobileOpsPostQueue, in every company. Without it a receipt queued on a
+/// handheld - offline, or by a worker who signs out before opening Activity - stays Pending, and
+/// big postings are never worked at all.
+///
+/// How many run at once is the batch server's setting: its threads, in its batch group. Tasks
+/// beyond that wait their turn, and the job's next run waits for all of them.
 ///
 /// One job per environment, created by [ensureScheduled]: the first press of "Process pending",
 /// or on purpose from ?mi=SysClassRunner&amp;cls=HSMobileOpsProcessPendingBatch. Withholding or
@@ -126,20 +129,48 @@ class HSMobileOpsProcessPendingBatch extends RunBaseBatch
 				<Source><![CDATA[
 
     /// <summary>
-    /// Every company with rows still to do. Processing rows are included so a run that died
-    /// part way is failed for a person to check (HSMobileOpsPostQueue::failInterrupted), even
-    /// when nothing new has been staged since.
+    /// Rows left Processing by a run that died part way are failed for a person to check
+    /// (HSMobileOpsPostQueue::failInterrupted), then every warehouse with Pending rows gets a task.
+    /// Outside batch, with no tasks to add to, the warehouses are simply worked in turn.
     /// </summary>
     public void run()
     {
         HSMobileOpsPostQueue postQueue;
+        BatchHeader          batchHeader;
+        boolean              added;
 
         while select crossCompany DataAreaId from postQueue
             group by DataAreaId
-            where postQueue.Status == HSMobileOpsPostQueue::statusPending()
-               || postQueue.Status == HSMobileOpsPostQueue::statusProcessing()
+            where postQueue.Status == HSMobileOpsPostQueue::statusProcessing()
         {
-            HSMobileOpsPostingService::processCompany(postQueue.DataAreaId);
+            HSMobileOpsPostingService::failInterruptedIn(postQueue.DataAreaId);
+        }
+
+        if (this.isInBatch())
+        {
+            batchHeader = BatchHeader::construct(this.parmCurrentBatch().BatchJobId);
+        }
+
+        while select crossCompany DataAreaId, Warehouse from postQueue
+            group by DataAreaId, Warehouse
+            where postQueue.Status == HSMobileOpsPostQueue::statusPending()
+        {
+            if (batchHeader)
+            {
+                batchHeader.addRuntimeTask(
+                    HSMobileOpsPostingWorker::newTask(postQueue.DataAreaId, postQueue.Warehouse),
+                    this.parmCurrentBatch().RecId);
+                added = true;
+            }
+            else
+            {
+                HSMobileOpsPostingService::processWarehouse(postQueue.DataAreaId, postQueue.Warehouse);
+            }
+        }
+
+        if (added)
+        {
+            batchHeader.save();
         }
     }
 ]]></Source>

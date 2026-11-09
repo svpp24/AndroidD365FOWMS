@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxMenuItemDisplay xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns="Microsoft.Dynamics.AX.Metadata.V1">
+	<Name>HSMobileOpsPostCorrected</Name>
+	<Label>Postings corrected by a supervisor</Label>
+	<HelpText>Opens HSMobileOpsPostQueue filtered to: Postings corrected by a supervisor. Used by the Mobile operations workspace tile, which counts the same query.</HelpText>
+	<Object>HSMobileOpsPostQueue</Object>
+	<ObjectType>Form</ObjectType>
+	<Query>HSMobileOpsWorkspacePostCorrectedQuery</Query>
+</AxMenuItemDisplay>

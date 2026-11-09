@@ -1,0 +1,210 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsLoadSim</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Load test data, dev environments only: five years of Mobile ops rows in company BSP - 500
+/// postings a day, 50 sign-ins a day, 5 feedback rows a day. Not on any menu or role: run from
+/// ?mi=SysClassRunner&amp;cls=HSMobileOpsLoadSim, which schedules one batch run.
+///
+/// Every row is tagged: key, PO number and session start SIM-, device SIMLOAD. Nothing is Pending,
+/// and the PO numbers do not exist, so no real order, stock figure or staging check reads them;
+/// only list screens and the clean-up see them. One transaction a day, and a day already there is
+/// skipped, so a run that stops can simply be started again.
+/// </summary>
+class HSMobileOpsLoadSim extends RunBaseBatch
+{
+    #define.CurrentVersion(1)
+    #define.Days(1825)
+    #define.PostingsPerDay(500)
+    #define.SignInsPerDay(50)
+    #define.FeedbackPerDay(5)
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>main</Name>
+				<Source><![CDATA[
+
+    public static void main(Args _args)
+    {
+        BatchHeader batchHeader = BatchHeader::construct();
+
+        batchHeader.parmCaption('Mobile ops: load simulation');
+        batchHeader.addTask(new HSMobileOpsLoadSim());
+        batchHeader.save();
+        info('Mobile ops: load simulation scheduled, once.');
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>run</Name>
+				<Source><![CDATA[
+
+    public void run()
+    {
+        int day;
+
+        changecompany ('bsp')
+        {
+            for (day = 1; day <= #Days; day++)
+            {
+                if (!this.dayIsThere(day))
+                {
+                    this.insertDay(day);
+                }
+            }
+        }
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>dayIsThere</Name>
+				<Source><![CDATA[
+
+    private boolean dayIsThere(int _day)
+    {
+        HSMobileOpsPostQueue postQueue;
+
+        select firstOnly RecId from postQueue
+            where postQueue.IdempotencyKey == strFmt('SIM-%1-0', _day);
+
+        return postQueue.RecId != 0;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>insertDay</Name>
+				<Source><![CDATA[
+
+    private void insertDay(int _day)
+    {
+        HSMobileOpsPostQueue postQueue;
+        HSMobileOpsSignInLog signIn;
+        HSMobileOpsFeedback  feedback;
+        RecordInsertList     postings = new RecordInsertList(tableNum(HSMobileOpsPostQueue));
+        RecordInsertList     signIns  = new RecordInsertList(tableNum(HSMobileOpsSignInLog));
+        RecordInsertList     feedbacks = new RecordInsertList(tableNum(HSMobileOpsFeedback));
+        utcdatetime          dayStart = DateTimeUtil::addDays(DateTimeUtil::utcNow(), -_day);
+        str                  user;
+        int                  i;
+
+        ttsbegin;
+
+        for (i = 0; i < #PostingsPerDay; i++)
+        {
+            user = strFmt('SIM%1', i mod #SignInsPerDay);
+            postQueue.clear();
+            postQueue.IdempotencyKey  = strFmt('SIM-%1-%2', _day, i);
+            postQueue.DocumentType    = 'Registration';
+            postQueue.SourceId        = strFmt('SIM-PO-%1-%2', _day, i div 3);
+            postQueue.UserName        = user;
+            postQueue.DeviceId        = 'SIMLOAD';
+            postQueue.LinesJson       = strFmt('[{"LineNumber":1.0,"ItemId":"SIM-ITEM-%1","Quantity":%2.0,"UnitId":"Pack","SiteId":"AAC","WarehouseId":"AAC","LocationId":"AAC","BatchId":"SIM%3","BatchManufacturingDate":"","BatchExpiryDate":"","SerialIds":[]}]',
+                i mod 1000, 1 + i mod 20, _day);
+            postQueue.ReceivedUtc     = DateTimeUtil::addSeconds(dayStart, i * 100);
+            postQueue.ProcessedUtc    = DateTimeUtil::addSeconds(postQueue.ReceivedUtc, 5);
+            if (i mod 50 == 7)
+            {
+                postQueue.Status       = HSMobileOpsPostQueue::statusFailed();
+                postQueue.ErrorMessage = 'Line 1: 5 requested but only 2 left';
+            }
+            else if (i mod 100 == 9)
+            {
+                postQueue.Status       = HSMobileOpsPostQueue::statusCancelled();
+                postQueue.ErrorMessage = 'Cancelled by SIM: load test';
+            }
+            else
+            {
+                postQueue.Status = HSMobileOpsPostQueue::statusRegistered();
+                postQueue.GrnId  = strFmt('SIM-%1-%2', _day, i);
+            }
+            postings.add(postQueue);
+        }
+        postings.insertDatabase();
+
+        for (i = 0; i < #SignInsPerDay; i++)
+        {
+            signIn.clear();
+            signIn.SessionId       = strFmt('SIM-%1-%2', _day, i);
+            signIn.UserName        = strFmt('SIM%1', i);
+            signIn.CompanyId       = 'bsp';
+            signIn.WarehouseId     = 'AAC';
+            signIn.DeviceId        = 'SIMLOAD';
+            signIn.DeviceName      = 'Load simulation';
+            signIn.AppVersionName  = 'SIM';
+            signIn.SignInUtc       = DateTimeUtil::addSeconds(dayStart, i * 60);
+            signIn.SignOutUtc      = DateTimeUtil::addSeconds(signIn.SignInUtc, 28800);
+            signIn.DurationMinutes = 480;
+            signIn.DurationText    = '8h 0m';
+            signIn.EndReason       = 'SIM';
+            signIns.add(signIn);
+        }
+        signIns.insertDatabase();
+
+        for (i = 0; i < #FeedbackPerDay; i++)
+        {
+            feedback.clear();
+            feedback.FeedbackId   = strFmt('SIM-%1-%2', _day, i);
+            feedback.FeedbackType = HSMobileOpsFeedbackType::Idea;
+            feedback.Screen       = 'Load simulation';
+            feedback.Message      = 'Load simulation row';
+            feedback.Status       = HSMobileOpsFeedbackStatus::Done;
+            feedback.UserName     = strFmt('SIM%1', i);
+            feedback.WarehouseId  = 'AAC';
+            feedback.AppVersion   = 'SIM';
+            feedback.DeviceModel  = 'Load simulation';
+            feedback.DeviceId     = 'SIMLOAD';
+            feedback.SubmittedUtc = DateTimeUtil::addSeconds(dayStart, i * 600);
+            feedbacks.add(feedback);
+        }
+        feedbacks.insertDatabase();
+
+        ttscommit;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>description</Name>
+				<Source><![CDATA[
+
+    public static ClassDescription description()
+    {
+        return 'Mobile ops: load simulation';
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>canGoBatch</Name>
+				<Source><![CDATA[
+
+    public boolean canGoBatch()
+    {
+        return true;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>pack</Name>
+				<Source><![CDATA[
+
+    public container pack()
+    {
+        return [#CurrentVersion];
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>unpack</Name>
+				<Source><![CDATA[
+
+    public boolean unpack(container _packedClass)
+    {
+        return RunBase::getVersion(_packedClass) == #CurrentVersion;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

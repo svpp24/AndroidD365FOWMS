@@ -71,7 +71,7 @@ data class CountingSubmission(
             ImportJobStatus.Enqueued -> "Submitting counts…"
             is ImportJobStatus.Running -> status.percent?.let { "Submitting counts… $it%" } ?: "Submitting counts…"
             ImportJobStatus.Succeeded -> if (sentForReview) "Sent to the supervisor for review" else "Counts submitted to D365FO"
-            is ImportJobStatus.PartiallySucceeded -> "Counts submitted, but some lines were not accepted: ${status.warning}"
+            is ImportJobStatus.PartiallySucceeded -> "Some lines not accepted: ${status.warning}"
             is ImportJobStatus.Failed -> status.reason
         }
 }

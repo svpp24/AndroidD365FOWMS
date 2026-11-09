@@ -41,9 +41,12 @@ class StagedLineRepository @Inject constructor(
         )
     }
 
-    /** lineNumber -> total quantity staged and not yet confirmed off this order. */
+    /**
+     * lineNumber -> total quantity staged and not yet sent to D365FO. Holds already sent are
+     * dropped here too: D365FO's own outstanding figure includes them from then on.
+     */
     suspend fun stagedFor(flowType: FlowType, orderId: String): Map<Double, BigDecimal> =
-        dao.forOrder(flowType, orderId)
+        dao.also { it.clearSent() }.forOrder(flowType, orderId)
             .groupBy { it.lineNumber }
             .mapValues { (_, rows) -> rows.fold(BigDecimal.ZERO) { total, row -> total + BigDecimal(row.quantity) } }
 

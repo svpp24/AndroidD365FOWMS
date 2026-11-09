@@ -20,6 +20,17 @@ interface CountSupervisorServiceApi {
         @Tag tag: IdempotentRead = IdempotentRead,
     ): Response<VarianceServiceResponse>
 
+    @POST("HSMobileOpsServiceGroup/HSMobileOpsCountSupervisorSvc/getVarianceSummary")
+    suspend fun getVarianceSummary(
+        @Body body: VarianceServiceRequest,
+        @Tag tag: IdempotentRead = IdempotentRead,
+    ): Response<com.d365fo.mobileops.data.remote.dto.VarianceSummaryServiceResponse>
+
+    @POST("HSMobileOpsServiceGroup/HSMobileOpsCountSupervisorSvc/approveLine")
+    suspend fun approveLine(
+        @Body body: com.d365fo.mobileops.data.remote.dto.ApproveLineServiceRequest,
+    ): Response<SupervisorServiceResponse>
+
     @POST("HSMobileOpsServiceGroup/HSMobileOpsCountSupervisorSvc/reviewLines")
     suspend fun reviewLines(@Body body: ReviewServiceRequest): Response<SupervisorServiceResponse>
 

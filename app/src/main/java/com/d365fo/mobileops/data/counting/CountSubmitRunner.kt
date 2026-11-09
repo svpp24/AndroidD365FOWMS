@@ -59,6 +59,13 @@ interface CountTransport {
      * that reviews journal counts there. Null means the store does not: submit as usual.
      */
     suspend fun submitStaged(journalId: String, audit: SubmissionAudit): TransportResult<StagedCount>? = null
+
+    /** What was counted in which bin, before the counts themselves. */
+    suspend fun submitBins(journalId: String, audit: SubmissionAudit): TransportResult<Unit> = TransportResult.Ok(Unit)
+
+    /** Wall-to-wall: the claimed location's counts are in; its answer is what the counter is told. */
+    suspend fun completeLocation(journalId: String, audit: SubmissionAudit, locationId: String): TransportResult<String> =
+        TransportResult.Ok("")
     suspend fun submitExceptions(
         journalId: String,
         audit: SubmissionAudit,
@@ -84,12 +91,19 @@ interface SubmissionStore {
     suspend fun unsentConfirmations(journalId: String): List<com.d365fo.mobileops.data.local.entity.JournalLineEntity>
     suspend fun markExceptionsSent(journalId: String)
     suspend fun markExceptionsFailed(journalId: String, error: String)
+
+    /**
+     * After a dual count has landed: nothing of it stays on the device, or the next counter here
+     * would see it. D365FO lists the journal again for whoever still has lines to count.
+     */
+    suspend fun forgetBlindCount(journalId: String) = Unit
 }
 
 @Singleton
 class RoomSubmissionStore @Inject constructor(
     private val countingDao: CountingDao,
     private val journalDao: JournalDao,
+    private val blindCountNotices: BlindCountNotices,
 ) : SubmissionStore {
     private fun now() = System.currentTimeMillis()
     override suspend fun get(journalId: String) = countingDao.getSubmission(journalId)
@@ -116,6 +130,25 @@ class RoomSubmissionStore @Inject constructor(
     }
     override suspend fun markExceptionsFailed(journalId: String, error: String) =
         countingDao.markExceptionsFailed(journalId, error)
+
+    override suspend fun forgetBlindCount(journalId: String) {
+        val journal = journalDao.getJournal(journalId)?.journal ?: return
+        if (journal.countMode != com.d365fo.mobileops.domain.model.COUNT_MODE_DOUBLE_BLIND) return
+        val note = countingDao.getSubmission(journalId)?.resultNote
+        countingDao.deleteClaim(journalId)
+        countingDao.deleteSubmission(journalId)
+        journalDao.deleteCountingJournal(journalId)
+        blindCountNotices.post("$journalId sent. " + (note ?: "Your counts are in D365FO."))
+    }
+}
+
+/** What the last dual count came to, for the journal list: the journal itself has left the device. */
+@Singleton
+class BlindCountNotices @Inject constructor() {
+    private val latest = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
+    val notice: kotlinx.coroutines.flow.StateFlow<String?> = latest
+    fun post(text: String) { latest.value = text }
+    fun dismiss() { latest.value = null }
 }
 
 /** What the worker should tell WorkManager. */
@@ -143,7 +176,7 @@ class CountSubmitRunner @Inject constructor(
 
         store.countAttempt(journalId)
         if (submission.attempts + 1 > MAX_ATTEMPTS) {
-            return fail(journalId, CountSubmissionError.OTHER, "Gave up after $MAX_ATTEMPTS attempts. Tap End count to try again.")
+            return fail(journalId, CountSubmissionError.OTHER, "Failed - tap End count again.")
         }
 
         val claim = claims.localClaim(journalId)
@@ -157,6 +190,14 @@ class CountSubmitRunner @Inject constructor(
 
         var countsWarning = submission.countsWarning
         if (!submission.countsDone && !submission.exceptionsOnly) {
+            when (val bins = transport.submitBins(journalId, submission.audit())) {
+                is TransportResult.Ok -> Unit
+                is TransportResult.Retry -> {
+                    store.update(journalId, CountSubmissionState.QUEUED, message = "Waiting to retry: ${bins.reason}")
+                    return RunResult.RETRY
+                }
+                is TransportResult.Fail -> return fail(journalId, bins.error, bins.message)
+            }
             val staged = transport.submitStaged(journalId, submission.audit())
             val counts = if (staged != null) {
                 stagedStage(journalId, staged)
@@ -193,7 +234,10 @@ class CountSubmitRunner @Inject constructor(
         val exceptions = store.unsentExceptions(journalId)
         val emptyLocations = store.unsentLocationChecks(journalId)
         val confirmations = store.unsentConfirmations(journalId)
-        if (exceptions.isEmpty() && emptyLocations.isEmpty() && confirmations.isEmpty()) return succeed(journalId, warning)
+        if (exceptions.isEmpty() && emptyLocations.isEmpty() && confirmations.isEmpty()) {
+            completeWallToWallLocation(submission, exceptionsSent = true)
+            return succeed(journalId, warning)
+        }
 
         store.update(journalId, CountSubmissionState.UPLOADING, message = "Sending unexpected items and confirmations…")
         return when (
@@ -201,6 +245,7 @@ class CountSubmitRunner @Inject constructor(
         ) {
             is TransportResult.Ok -> {
                 store.markExceptionsSent(journalId)
+                completeWallToWallLocation(submission, exceptionsSent = true)
                 succeed(journalId, warning)
             }
             is TransportResult.Retry -> {
@@ -214,14 +259,45 @@ class CountSubmitRunner @Inject constructor(
                     emptyLocations.size.takeIf { it > 0 }?.let { "$it empty location${if (it == 1) "" else "s"}" },
                     confirmations.size.takeIf { it > 0 }?.let { "$it verified line${if (it == 1) "" else "s"}" },
                 ).joinToString(" and ")
+                completeWallToWallLocation(submission, exceptionsSent = false)
                 succeed(
                     journalId,
-                    warning = listOfNotNull(warning, "Counts submitted, but $what could not be sent: ${result.message}")
+                    warning = listOfNotNull(warning, "$what not sent")
                         .joinToString(" "),
                     error = CountSubmissionError.EXCEPTIONS_FAILED,
                 )
             }
         }
+    }
+
+    /**
+     * Wall-to-wall: a counter claims one location at a time. Once its counts (and empty check)
+     * are in, the location is completed on the server, which refuses while any line there has no
+     * count. What it says goes into the note the counter sees: done and how many are left, or why
+     * not. Before the claim is released and the journal leaves the device.
+     */
+    private suspend fun completeWallToWallLocation(submission: CountSubmissionEntity, exceptionsSent: Boolean) {
+        val journalId = submission.journalId
+        val claim = claims.localClaim(journalId) ?: return
+        val token = claim.claimToken
+        if (!token.startsWith(WALL_TO_WALL_TOKEN) || token == "${WALL_TO_WALL_TOKEN}0") return
+        val location = claim.locationFrom ?: return
+        val note = if (!exceptionsSent) {
+            "$location is not complete: its unexpected items or empty check did not go. Get the location again and end the count."
+        } else {
+            when (val result = transport.completeLocation(journalId, submission.audit(), location)) {
+                is TransportResult.Ok -> result.value
+                is TransportResult.Retry -> "$location could not be completed (${result.reason}). Get the location again and end the count to finish it."
+                is TransportResult.Fail -> "$location is not complete: ${result.message}"
+            }
+        }
+        if (note.isBlank()) return
+        val existing = store.get(journalId)
+        store.recordPassResult(
+            journalId,
+            listOfNotNull(existing?.resultNote?.takeIf { it.isNotBlank() }, note).joinToString(" "),
+            existing?.thirdCountNeeded ?: false,
+        )
     }
 
     private suspend fun runDmf(submission: CountSubmissionEntity, claimToken: String?): Stage {
@@ -274,8 +350,7 @@ class CountSubmitRunner @Inject constructor(
             val count = result.value
             store.recordPassResult(
                 journalId,
-                "Sent to the supervisor for review in ${count.masterId} - they move it into the journal." +
-                    if (count.duplicates > 0) " ${count.duplicates} item(s) in this stock count were counted more than once." else "",
+                "Sent for review" + if (count.duplicates > 0) " - ${count.duplicates} counted twice" else "",
                 false,
             )
             Stage.Continue(warning = null)
@@ -330,6 +405,7 @@ class CountSubmitRunner @Inject constructor(
         store.markJournalSubmitted(journalId, warning)
         // End count gives the claim back. Best effort - the server's own expiry covers a miss.
         runCatching { claims.release(journalId) }.onFailure { Timber.w(it, "claim release failed for %s", journalId) }
+        store.forgetBlindCount(journalId)
         return RunResult.DONE
     }
 
@@ -347,6 +423,9 @@ class CountSubmitRunner @Inject constructor(
 
     companion object {
         const val MAX_ATTEMPTS = 20
+
+        /** A wall-to-wall location claim's token, from the server: W2W-<task>, or W2W-0 for no location. */
+        const val WALL_TO_WALL_TOKEN = "W2W-"
     }
 }
 
@@ -356,30 +435,32 @@ fun AppFailure.toTransport(): TransportResult<Nothing> = when (this) {
     is AppFailure.BusinessRule -> when (d365ErrorCode) {
         "JOURNAL_POSTED" -> TransportResult.Fail(
             CountSubmissionError.ALREADY_POSTED,
-            "This journal has already been posted in D365FO - counts can no longer be sent to it.",
+            "Already posted.",
         )
         "JOURNAL_NOT_FOUND" -> TransportResult.Fail(
             CountSubmissionError.JOURNAL_NOT_FOUND,
-            "This journal is closed or no longer exists in D365FO.",
+            "Journal closed.",
         )
         // D365FO names who holds the journal ("... is being counted by Asha (001) on another
         // device") when it can; otherwise the generic line.
         "CLAIM_LOST", "CLAIM_EXPIRED" -> TransportResult.Fail(
             CountSubmissionError.CLAIM_LOST,
-            message.takeIf { it.contains("being counted by") }?.let { "$it. Your counts are kept on this device." }
-                ?: "Your claim on this journal is no longer valid. Claim it again to submit.",
+            message.takeIf { it.contains("being counted by") }?.let { "$it. Counts are kept." }
+                ?: "Claim lost - claim again.",
         )
         "NOTHING_COUNTED" -> TransportResult.Fail(CountSubmissionError.NOTHING_COUNTED, message)
+        // Nothing was applied: someone else was on the same lines. The same batch goes again.
+        "RETRY" -> TransportResult.Retry("D365FO was busy with the same lines")
         "RECOUNT_SAME_USER" -> TransportResult.Fail(
             CountSubmissionError.SAME_COUNTER,
-            "This recount must be done by someone other than the previous counter.",
+            "Someone else must do this recount.",
         )
         "NOT_IMPLEMENTED" -> TransportResult.Fail(
             CountSubmissionError.NOT_AVAILABLE,
-            "This server does not accept this kind of submission yet.",
+            "Not accepted by this server yet.",
         )
         else -> if (httpCode == 404) {
-            TransportResult.Fail(CountSubmissionError.NOT_AVAILABLE, "The counting service is not deployed on this environment.")
+            TransportResult.Fail(CountSubmissionError.NOT_AVAILABLE, "Counting service not available.")
         } else {
             TransportResult.Fail(CountSubmissionError.OTHER, message)
         }

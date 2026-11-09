@@ -13,6 +13,7 @@ class HSMobileOpsMenuLineRow
     str      lineType;
     str      module;
     str      subMenuId;
+    str      countLocationId;
 }
 ]]></Declaration>
 		<Methods>
@@ -49,6 +50,18 @@ class HSMobileOpsMenuLineRow
     {
         subMenuId = _value;
         return subMenuId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmCountLocationId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('CountLocationId')]
+    public str parmCountLocationId(str _value = countLocationId)
+    {
+        countLocationId = _value;
+        return countLocationId;
     }
 ]]></Source>
 			</Method>

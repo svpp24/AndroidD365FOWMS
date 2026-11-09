@@ -28,6 +28,39 @@
 		<AxSecurityPrivilegeReference>
 			<Name>HSMobileOpsAiSampleMaintain</Name>
 		</AxSecurityPrivilegeReference>
+		<AxSecurityPrivilegeReference>
+			<Name>HSMobileOpsDeviceWorkView</Name>
+		</AxSecurityPrivilegeReference>
+		<AxSecurityPrivilegeReference>
+			<Name>HSMobileOpsModuleSwitchMaintain</Name>
+		</AxSecurityPrivilegeReference>
+		<AxSecurityPrivilegeReference>
+			<Name>HSMobileOpsCleanupSetupMaintain</Name>
+		</AxSecurityPrivilegeReference>
+		<AxSecurityPrivilegeReference>
+			<Name>HSMobileOpsProcessSetupMaintain</Name>
+		</AxSecurityPrivilegeReference>
+		<AxSecurityPrivilegeReference>
+			<Name>HSMobileOpsCountWarehouseMaintain</Name>
+		</AxSecurityPrivilegeReference>
+		<AxSecurityPrivilegeReference>
+			<Name>HSMobileOpsCountDualToleranceMaintain</Name>
+		</AxSecurityPrivilegeReference>
+		<AxSecurityPrivilegeReference>
+			<Name>HSMobileOpsCountBinMaintain</Name>
+		</AxSecurityPrivilegeReference>
+		<AxSecurityPrivilegeReference>
+			<Name>HSMobileOpsCountBinLineView</Name>
+		</AxSecurityPrivilegeReference>
+		<AxSecurityPrivilegeReference>
+			<Name>HSMobileOpsCountDualGroupMaintain</Name>
+		</AxSecurityPrivilegeReference>
+		<AxSecurityPrivilegeReference>
+			<Name>HSMobileOpsPostQueueView</Name>
+		</AxSecurityPrivilegeReference>
+		<AxSecurityPrivilegeReference>
+			<Name>HSMobileOpsPostQueueManage</Name>
+		</AxSecurityPrivilegeReference>
 	</Privileges>
 	<SubRoles />
 </AxSecurityRole>

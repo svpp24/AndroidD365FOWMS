@@ -15,6 +15,7 @@ class HSMobileOpsPostRequest
     str        deviceId;
     str        linesJson;
     boolean    processNow;
+    boolean    resubmit;
 
 }
 ]]></Declaration>
@@ -173,6 +174,22 @@ class HSMobileOpsPostRequest
     {
         processNow = _value;
         return processNow;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmResubmit</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// A person asked for this posting again (Resubmit in Activity). A Failed row under this key is
+    /// reopened and worked again. Without it a known key is a replay: it only gets the old answer.
+    /// </summary>
+    [DataMemberAttribute('Resubmit')]
+    public boolean parmResubmit(boolean _value = resubmit)
+    {
+        resubmit = _value;
+        return resubmit;
     }
 ]]></Source>
 			</Method>

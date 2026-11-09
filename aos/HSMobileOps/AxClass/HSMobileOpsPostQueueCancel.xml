@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsPostQueueCancel</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Cancel posting on the Mobile posting queue form: closes the selected failed postings, one or
+/// many, with one reason. Nothing is posted, and the handhelds holding them clear their cards. Each
+/// row is cancelled on its own, and a selected row that is not Failed is left as it is and counted.
+/// </summary>
+class HSMobileOpsPostQueueCancel
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>main</Name>
+				<Source><![CDATA[
+
+    public static void main(Args _args)
+    {
+        HSMobileOpsPostQueue postQueue;
+        HSMobileOpsPostQueue selected;
+        FormDataSource       dataSource;
+        Dialog               dialog;
+        DialogField          reason;
+        List                 rows = new List(Types::Int64);
+        ListEnumerator       rowEnum;
+        int                  cancelled;
+        int                  skipped;
+
+        if (!_args || !(_args.record() is HSMobileOpsPostQueue))
+        {
+            throw error('Select a posting.');
+        }
+
+        postQueue  = _args.record();
+        dataSource = postQueue.dataSource();
+
+        if (dataSource)
+        {
+            selected = dataSource.getFirst(1);
+            while (selected.RecId)
+            {
+                rows.addEnd(selected.RecId);
+                selected = dataSource.getNext();
+            }
+        }
+        if (!rows.elements())
+        {
+            rows.addEnd(postQueue.RecId);
+        }
+
+        dialog = new Dialog(rows.elements() == 1
+            ? strFmt('Cancel posting - %1', postQueue.SourceId)
+            : strFmt('Cancel %1 postings', rows.elements()));
+        dialog.addText('Nothing will be posted. Handhelds clear their cards. Only failed postings are cancelled.');
+        reason = dialog.addField(extendedTypeStr(Description255), 'Reason');
+
+        if (!dialog.run())
+        {
+            return;
+        }
+
+        if (!strLTrim(strRTrim(reason.value())))
+        {
+            warning('Nothing was cancelled: enter a reason.');
+            return;
+        }
+
+        rowEnum = rows.getEnumerator();
+        while (rowEnum.moveNext())
+        {
+            if (HSMobileOpsPostingService::cancelPosting(rowEnum.current(), reason.value()))
+            {
+                skipped++;
+            }
+            else
+            {
+                cancelled++;
+            }
+        }
+
+        info(strFmt('%1 cancelled.', cancelled));
+        if (skipped)
+        {
+            warning(strFmt('%1 left as they were: only failed postings can be cancelled.', skipped));
+        }
+
+        if (dataSource)
+        {
+            dataSource.research(true);
+        }
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

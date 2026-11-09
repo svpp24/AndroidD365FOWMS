@@ -22,6 +22,10 @@ class HSMobileOpsCountRefresh
         {
             throw error('Select a stock count first.');
         }
+        if (HSMobileOpsCountControl::masterOf(master.RecId).Status == HSMobileOpsCountMasterStatus::Transferring)
+        {
+            throw error(strFmt('%1 is being transferred. Check it again once that is done.', master.MasterId));
+        }
         HSMobileOpsCountControl::refresh(master.RecId);
         if (_args && _args.caller() is FormRun)
         {

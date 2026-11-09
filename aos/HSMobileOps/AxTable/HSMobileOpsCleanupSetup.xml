@@ -1,0 +1,177 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxTable xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsCleanupSetup</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// How long Mobile ops records are kept (Mobile clean-up, Setup) - one row for the environment.
+/// The D365FO days are applied by the daily HSMobileOpsCleanupBatch; the handheld days go to every
+/// device with each HSMobileOpsDeviceWorkSvc answer. 0 days means never.
+/// </summary>
+public class HSMobileOpsCleanupSetup extends common
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>find</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The clean-up settings. With no row yet, the defaults are returned without being written.
+    /// </summary>
+    public static HSMobileOpsCleanupSetup find(boolean _forUpdate = false)
+    {
+        HSMobileOpsCleanupSetup setup;
+
+        setup.selectForUpdate(_forUpdate);
+        select firstOnly setup;
+        if (!setup.RecId)
+        {
+            setup.Enabled       = NoYes::Yes;
+            setup.DeviceCleanup = NoYes::Yes;
+            setup.PostQueueRegisteredDays = 90;
+            setup.PostQueueFailedDays = 180;
+            setup.SignInLogDays = 90;
+            setup.FeedbackClosedDays = 180;
+            setup.CountStageDays = 90;
+            setup.DeviceWorkStaleDays = 30;
+            setup.DeviceFinishedJournalDays = 7;
+            setup.DeviceOrderHistoryDays = 30;
+            setup.DeviceOldWorkDays = 30;
+        }
+        return setup;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>initValue</Name>
+				<Source><![CDATA[
+
+    public void initValue()
+    {
+        super();
+        this.Enabled       = NoYes::Yes;
+        this.DeviceCleanup = NoYes::Yes;
+        this.PostQueueRegisteredDays = 90;
+        this.PostQueueFailedDays = 180;
+        this.SignInLogDays = 90;
+        this.FeedbackClosedDays = 180;
+        this.CountStageDays = 90;
+        this.DeviceWorkStaleDays = 30;
+        this.DeviceFinishedJournalDays = 7;
+        this.DeviceOrderHistoryDays = 30;
+        this.DeviceOldWorkDays = 30;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>validateWrite</Name>
+				<Source><![CDATA[
+
+    public boolean validateWrite()
+    {
+        boolean ret = super();
+
+        if (this.PostQueueRegisteredDays < 0 || this.PostQueueFailedDays < 0 || this.SignInLogDays < 0 || this.FeedbackClosedDays < 0 || this.CountStageDays < 0 || this.DeviceWorkStaleDays < 0 || this.DeviceFinishedJournalDays < 0 || this.DeviceOrderHistoryDays < 0 || this.DeviceOldWorkDays < 0)
+        {
+            ret = checkFailed("Days can't be negative. 0 means never.");
+        }
+        return ret;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+	<Label>Mobile clean-up</Label>
+	<CacheLookup>Found</CacheLookup>
+	<SaveDataPerCompany>No</SaveDataPerCompany>
+	<Fields>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldEnum">
+			<Name>Enabled</Name>
+			<HelpText>The daily batch job removes the D365FO records below once they are older than their days.</HelpText>
+			<Label>Clean up D365FO</Label>
+			<EnumType>NoYes</EnumType>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldEnum">
+			<Name>DeviceCleanup</Name>
+			<HelpText>Each handheld removes its own old records below, once a day. It picks the change up within minutes.</HelpText>
+			<Label>Clean up handhelds</Label>
+			<EnumType>NoYes</EnumType>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldInt">
+			<Name>PostQueueRegisteredDays</Name>
+			<HelpText>Days a registered posting stays in the posting queue. Receiving reads the queue, so it slows as it grows. 0: never.</HelpText>
+			<Label>Registered postings</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldInt">
+			<Name>PostQueueFailedDays</Name>
+			<HelpText>Days a failed posting stays in the posting queue. 0: never.</HelpText>
+			<Label>Failed postings</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldInt">
+			<Name>SignInLogDays</Name>
+			<HelpText>Days a sign-in stays in the Mobile sign-in log. 0: never.</HelpText>
+			<Label>Sign-in log</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldInt">
+			<Name>FeedbackClosedDays</Name>
+			<HelpText>Days feedback marked Done or Won't do stays (from when it was sent). 0: never.</HelpText>
+			<Label>Closed feedback</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldInt">
+			<Name>CountStageDays</Name>
+			<HelpText>Days the counted lines of a transferred or cancelled stock count stay in the control center. The count itself stays. 0: never.</HelpText>
+			<Label>Transferred counts</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldInt">
+			<Name>DeviceWorkStaleDays</Name>
+			<HelpText>Days without a report before a handheld's unsent work is marked Device not seen on Mobile unsent work. Nothing is deleted. 0: never.</HelpText>
+			<Label>Unsent work - device not seen</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldInt">
+			<Name>DeviceFinishedJournalDays</Name>
+			<HelpText>Days a submitted or posted counting journal stays on the handheld. 0: never.</HelpText>
+			<Label>Finished counting journals</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldInt">
+			<Name>DeviceOrderHistoryDays</Name>
+			<HelpText>Days an order created or refused stays in the handheld's list. Orders still waiting stay. 0: never.</HelpText>
+			<Label>Created orders list</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldInt">
+			<Name>DeviceOldWorkDays</Name>
+			<HelpText>Days an untouched unfinished job, or a refused posting, stays on the handheld. It is kept in Mobile unsent work (Archived) before it is removed from the device. 0: never.</HelpText>
+			<Label>Old unfinished work</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldUtcDateTime">
+			<Name>LastRunUtc</Name>
+			<AllowEdit>No</AllowEdit>
+			<Label>Last run</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>LastRunResult</Name>
+			<AllowEdit>No</AllowEdit>
+			<Label>Result</Label>
+			<StringSize>250</StringSize>
+		</AxTableField>
+	</Fields>
+	<FullTextIndexes />
+	<Indexes />
+	<Mappings />
+	<Relations />
+	<StateMachines />
+</AxTable>

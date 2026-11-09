@@ -68,12 +68,10 @@ fun ConnectionDialog(status: SyncStatus, onDismiss: () -> Unit) {
     val savedAt by OfflineReadNotice.savedAt.collectAsState()
     val (title, message) = when {
         !status.online -> "You're offline" to
-            "This device has no internet connection. You can keep working: your work is saved on this " +
-            "device and sent to D365FO when the connection is back."
+            "Keep working - it sends when you're back."
         !status.d365Reachable -> "D365FO can't be reached" to
-            "The internet is working, but D365FO isn't answering. You can keep working: your work is saved " +
-            "on this device and sent when D365FO answers again."
-        else -> "You're online" to "D365FO is answering. Your work is sent as soon as you finish it."
+            "Keep working - it sends when D365FO answers."
+        else -> "You're online" to "Work is sent as you finish it."
     }
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -91,7 +89,7 @@ fun ConnectionDialog(status: SyncStatus, onDismiss: () -> Unit) {
                 val at = savedAt
                 if (!status.fullyOnline && at != null) {
                     Text(
-                        "Order details are from " + savedLabel(at) + ". D365FO checks them again when your work is sent.",
+                        "Order details from " + savedLabel(at) + ".",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )

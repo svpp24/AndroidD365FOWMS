@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxEnum xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsCountTaskStatus</Name>
+	<Label>Count task status</Label>
+	<HelpText>Where one location of a wall-to-wall count is.</HelpText>
+	<EnumValues>
+		<AxEnumValue>
+			<Name>Open</Name>
+			<Label>Open</Label>
+			<Value>0</Value>
+		</AxEnumValue>
+		<AxEnumValue>
+			<Name>InProgress</Name>
+			<Label>In progress</Label>
+			<Value>1</Value>
+		</AxEnumValue>
+		<AxEnumValue>
+			<Name>Completed</Name>
+			<Label>Completed</Label>
+			<Value>2</Value>
+		</AxEnumValue>
+	</EnumValues>
+</AxEnum>

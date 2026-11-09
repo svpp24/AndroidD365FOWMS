@@ -503,6 +503,16 @@ public class HSMobileOpsMenu extends FormRun
 										<DataField>SubMenuId</DataField>
 										<DataSource>HSMobileOpsMenuLine</DataSource>
 									</AxFormControl>
+									<AxFormControl xmlns=""
+										i:type="AxFormStringControl">
+										<Name>Line_CountLocationId</Name>
+										<HelpText>Counting lines: the location a store count starts in.</HelpText>
+										<Type>String</Type>
+										<FormControlExtension
+											i:nil="true" />
+										<DataField>CountLocationId</DataField>
+										<DataSource>HSMobileOpsMenuLine</DataSource>
+									</AxFormControl>
 								</Controls>
 								<Caption>Selected line</Caption>
 								<DataSource>HSMobileOpsMenuLine</DataSource>

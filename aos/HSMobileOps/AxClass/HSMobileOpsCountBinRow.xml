@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsCountBinRow</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// One virtual bin of a store.
+/// </summary>
+[DataContractAttribute]
+class HSMobileOpsCountBinRow
+{
+    str binId;
+    str description;
+    str locationId;
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmBinId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('BinId')]
+    public str parmBinId(str _value = binId)
+    {
+        binId = _value;
+        return binId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmDescription</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Description')]
+    public str parmDescription(str _value = description)
+    {
+        description = _value;
+        return description;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmLocationId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('LocationId')]
+    public str parmLocationId(str _value = locationId)
+    {
+        locationId = _value;
+        return locationId;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

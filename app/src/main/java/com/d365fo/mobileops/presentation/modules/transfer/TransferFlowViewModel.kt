@@ -73,9 +73,9 @@ class TransferFlowViewModel @Inject constructor(
     private val postingDispatcher: com.d365fo.mobileops.data.sync.PostingDispatcher,
     private val pendingFlowResume: PendingFlowResume,
     private val opportunityCounts: com.d365fo.mobileops.data.counting.OpportunityCounts,
-    private val networkPreferences: com.d365fo.mobileops.data.security.NetworkPreferences,
     private val picker: com.d365fo.mobileops.data.sync.TransferPicker,
     private val orderCreation: com.d365fo.mobileops.data.repository.OrderCreationRepository,
+    private val freezes: com.d365fo.mobileops.data.repository.WarehouseFreezeRepository,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(TransferFlowState())
@@ -280,7 +280,7 @@ class TransferFlowViewModel @Inject constructor(
                                 // and the second only learnt otherwise when confirming.
                                 lineNotice = com.d365fo.mobileops.presentation.common.components.QuickNoticeMessage(
                                     id = System.nanoTime(),
-                                    text = "Already picked in D365FO - another device may be shipping it",
+                                    text = "Already picked on another device",
                                     hint = true,
                                 ),
                             )
@@ -389,7 +389,7 @@ class TransferFlowViewModel @Inject constructor(
                 }
                 _state.update { it.copy(busy = false) }
                 if (failed != null) {
-                    _state.update { it.copy(error = "Could not undo the pick of ${failed.first.itemId} in D365FO: ${failed.second}") }
+                    _state.update { it.copy(error = "Undo failed for ${failed.first.itemId}: ${failed.second}") }
                 } else {
                     resetNow()
                 }
@@ -537,36 +537,27 @@ class TransferFlowViewModel @Inject constructor(
                 postNotice = when {
                     rejectedReason != null -> PostNotice(
                         PostNoticeKind.REFUSED,
-                        "D365FO refused $transferId: $rejectedReason. It is under Failed postings " +
-                            "on the Activity screen, to correct and resubmit.",
+                        "Refused: $rejectedReason. Fix it in Activity.",
                     )
                     held -> PostNotice(
                         PostNoticeKind.QUEUED,
-                        "$transferId · $lineWord saved on this device. Posting to D365FO is switched off in " +
-                            "Settings; they are sent once it is switched on (see Activity).",
+                        "$transferId · $lineWord held - posting is off",
                     )
-                    postedLive && networkPreferences.postImmediately.value -> PostNotice(
+                    postedLive && postingDispatcher.finishedInCall(idempotencyKey) -> PostNotice(
                         PostNoticeKind.SENT,
                         if (capture.mode == TransferMode.SHIP) {
-                            "$transferId · picking confirmed - $lineWord shipped in D365FO."
+                            "$transferId · $lineWord shipped"
                         } else {
-                            "$transferId · $lineWord posted in D365FO."
+                            "$transferId · $lineWord posted"
                         },
                     )
                     postedLive -> PostNotice(
                         PostNoticeKind.SENT,
-                        if (capture.mode == TransferMode.SHIP) {
-                            "$transferId · picking confirmed. The shipment of $lineWord posts in D365FO within a few minutes - " +
-                                "or at once with Process pending on the Activity screen."
-                        } else {
-                            "$transferId · $lineWord sent to D365FO. They post within a few minutes - " +
-                                "or at once with Process pending on the Activity screen."
-                        },
+                        "$transferId · $lineWord sent - posts in a few minutes",
                     )
                     else -> PostNotice(
                         PostNoticeKind.QUEUED,
-                        "$transferId · $lineWord saved on this device. D365FO can't be reached right now; " +
-                            "they are sent automatically when it can (see Activity).",
+                        "$transferId · $lineWord saved - sent when online",
                     )
                 },
             )
@@ -629,14 +620,18 @@ class TransferFlowViewModel @Inject constructor(
                             // "Received" when D365FO says so; otherwise not shipped yet. "Nothing in
                             // transit yet" read wrong for an order already received in full.
                             "NOT_RECEIVABLE" -> if (order.transferStatus.equals("Received", ignoreCase = true)) {
-                                "${order.transferId} is already received in full - nothing left to receive"
+                                "${order.transferId} is already received"
                             } else {
-                                "${order.transferId} has nothing in transit to receive - what is left on it has not been shipped yet"
+                                "${order.transferId} isn't shipped yet"
                             }
                             else -> "${order.transferId} cannot be worked right now"
                         },
                     )
                 }
+
+                // A wall-to-wall count freezes the warehouse this end moves stock in.
+                freezes.frozenMessage(if (mode == TransferMode.SHIP) order.fromWarehouseId else order.toWarehouseId)
+                    ?.let { return fail(it) }
 
                 if (order.outstandingLineCount == 0) {
                     return fail(
@@ -704,7 +699,7 @@ class TransferFlowViewModel @Inject constructor(
             (lookups.lookupBarcode(candidate) as? NetworkResult.Success)?.data != null
         } ?: run {
             gs1Answers.clear()
-            return fail("GTIN ${gs1.gtin} is not a barcode of any item in D365FO")
+            return fail("Unknown barcode ${gs1.gtin}")
         }
         onItemCode(code)
     }
@@ -719,7 +714,7 @@ class TransferFlowViewModel @Inject constructor(
         if (_state.value.order?.linesInline == true &&
             _state.value.openLines.any { it.itemId.equals(value, ignoreCase = true) }
         ) {
-            return fail("$value has already been fully captured on this order")
+            return fail("$value is already done")
         }
 
         when (val result = lookups.lookupBarcode(value)) {
@@ -727,7 +722,7 @@ class TransferFlowViewModel @Inject constructor(
             NetworkResult.Loading -> Unit
             is NetworkResult.Success -> {
                 val match = result.data
-                    ?: return fail("$value is not on this order, and not a known barcode")
+                    ?: return fail("$value is not on this order")
                 val matched = linesFor(match.itemNumber)
                     ?: return fail(
                         "${match.itemNumber} is not outstanding on " +
@@ -735,7 +730,7 @@ class TransferFlowViewModel @Inject constructor(
                     )
                 val ofVariant = matched.filter { it.variant.acceptsScanOf(match.variant) }
                 if (ofVariant.isEmpty()) {
-                    return fail("${match.itemNumber} ${match.variant.label} is not outstanding on ${_state.value.capture.transferId}")
+                    return fail("${match.itemNumber} ${match.variant.label} is not open on this order")
                 }
                 chooseAmong(ofVariant)
             }
@@ -848,7 +843,7 @@ class TransferFlowViewModel @Inject constructor(
         val prefix = current.substringBeforeLast('-', missingDelimiterValue = "").takeIf { it.isNotBlank() } ?: return false
         if (!value.startsWith("$prefix-", ignoreCase = true) || value.equals(current, ignoreCase = true)) return false
         if (_state.value.captured.isNotEmpty()) {
-            fail("${if (_state.value.capture.mode == TransferMode.SHIP) "Ship" else "Receive"} or remove the lines scanned on $current before opening ${value.uppercase()}")
+            fail("Finish or clear $current first")
             return true
         }
         _state.value = TransferFlowState(capture = TransferCapture(mode = _state.value.capture.mode))
@@ -868,7 +863,7 @@ class TransferFlowViewModel @Inject constructor(
             it.copy(
                 lineNotice = com.d365fo.mobileops.presentation.common.components.QuickNoticeMessage(
                     id = System.nanoTime(),
-                    text = "${value.uppercase()} is the batch - enter the quantity first, then scan it",
+                    text = "Enter the quantity first, then the batch",
                     hint = true,
                 ),
             )
@@ -887,7 +882,7 @@ class TransferFlowViewModel @Inject constructor(
                 it.copy(
                     lineNotice = com.d365fo.mobileops.presentation.common.components.QuickNoticeMessage(
                         id = System.nanoTime(),
-                        text = "${line.itemId} is already selected - enter the quantity",
+                        text = "Enter the quantity",
                         hint = true,
                     ),
                 )
@@ -921,7 +916,7 @@ class TransferFlowViewModel @Inject constructor(
         if (entered.signum() <= 0) return Result.failure(IllegalArgumentException("Quantity must be more than zero"))
 
         if (line.serialRequired && entered.stripTrailingZeros().scale() > 0) {
-            return Result.failure(IllegalArgumentException("${line.itemId} is serial tracked, so it moves in whole units"))
+            return Result.failure(IllegalArgumentException("Whole units only (serial item)"))
         }
 
         // The ceiling is what is outstanding in this direction, which the server decided - minus
@@ -933,9 +928,9 @@ class TransferFlowViewModel @Inject constructor(
             return Result.failure(
                 IllegalArgumentException(
                     if (mode == TransferMode.SHIP) {
-                        "Only ${plain(maximum)} left to ship on this line"
+                        "Only ${plain(maximum)} left to ship"
                     } else {
-                        "Only ${plain(maximum)} was shipped and is still to receive"
+                        "Only ${plain(maximum)} left to receive"
                     },
                 ),
             )
@@ -1011,12 +1006,11 @@ class TransferFlowViewModel @Inject constructor(
             when (val check = checkShippedBatch(line, value, quantity, scannedOfBatch(line, value))) {
                 ShippedBatchCheck.Ok -> Unit
                 is ShippedBatchCheck.NotShipped -> return fail(
-                    "Batch $value was not shipped on ${_state.value.capture.transferId} for ${line.itemId}. " +
-                        "Shipped: " + check.shipped.joinToString { "${it.batchId} (${plain(it.quantity)})" },
+                    "Batch $value wasn't shipped. Shipped: " + check.shipped.joinToString { "${it.batchId} (${plain(it.quantity)})" },
                 )
                 is ShippedBatchCheck.TooMany -> return fail(
-                    "Only ${plain(check.shipped)} of batch $value was shipped on this line" +
-                        (if (check.alreadyScanned.signum() > 0) ", and ${plain(check.alreadyScanned)} is already scanned" else ""),
+                    "Only ${plain(check.shipped)} of batch $value shipped" +
+                        (if (check.alreadyScanned.signum() > 0) ", ${plain(check.alreadyScanned)} scanned" else ""),
                 )
             }
             _state.update { it.copy(capture = it.capture.copy(batchId = value), error = null) }
@@ -1030,7 +1024,7 @@ class TransferFlowViewModel @Inject constructor(
         if (_state.value.capture.mode == TransferMode.SHIP && ordered != null && !ordered.equals(value, ignoreCase = true)) {
             if (!value.equals(otherBatchWarned, ignoreCase = true)) {
                 otherBatchWarned = value
-                return fail("This line is for batch $ordered. Scan $ordered - or scan $value again to pick it instead")
+                return fail("Line wants batch $ordered - scan $value again to use it")
             }
         }
         otherBatchWarned = null
@@ -1041,7 +1035,7 @@ class TransferFlowViewModel @Inject constructor(
             is NetworkResult.Error -> if (!result.failure.retryable) return fail(result.failure.message)
             NetworkResult.Loading -> return
             is NetworkResult.Success -> if (!result.data) {
-                return fail("Batch $value is not known for ${line.itemId} - check the batch label")
+                return fail("Unknown batch $value")
             }
         }
 

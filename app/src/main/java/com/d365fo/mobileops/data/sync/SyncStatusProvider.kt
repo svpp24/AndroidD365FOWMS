@@ -273,7 +273,9 @@ class SyncStatusProvider @Inject constructor(
         // in a separate observer means there is exactly one place that reacts to it. Gated on
         // d365Reachable too - retrying into a tenant that is still down is exactly the doomed
         // attempt the reachability signal exists to avoid, not just to report.
-        if (online && d365Reachable && queue.pending > 0) scheduler.requestImmediatePush()
+        // Not while posting is off: the worker only hands the row back, which changes the queue,
+        // which landed here again - a push loop for as long as anything was held (6 Nov).
+        if (online && d365Reachable && postingEnabled && queue.pending > 0) scheduler.requestImmediatePush()
         SyncStatus(online, d365Reachable, queue.pending, queue.failed, queue.lastSyncAt, queue.oldestQueuedAt, postingEnabled)
     }.stateIn(scope, SharingStarted.WhileSubscribed(5_000), SyncStatus.UNKNOWN)
 

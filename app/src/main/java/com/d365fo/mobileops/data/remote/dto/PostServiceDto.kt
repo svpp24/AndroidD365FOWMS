@@ -30,6 +30,8 @@ data class PostRequestBody(
     @SerialName("DeviceId") val deviceId: String,
     /** Settings > Post immediately: D365FO processes the posting in this call - see NetworkPreferences. */
     @SerialName("ProcessNow") val processNow: Boolean = false,
+    /** Asked for again by a person: D365FO reworks its Failed row - see SyncQueueRepository.isResubmit. */
+    @SerialName("Resubmit") val resubmit: Boolean = false,
     /**
      * The captured lines, pre-serialized to a JSON array string rather than sent as a nested
      * array.
@@ -100,6 +102,8 @@ data class PostQueueServiceRequest(
 @Serializable
 data class PostQueueRequestBody(
     @SerialName("DataAreaId") val dataAreaId: String,
+    /** getQueueStatus: comma separated - only these postings, not the most recent rows. */
+    @SerialName("IdempotencyKeys") val idempotencyKeys: String = "",
 )
 
 @Serializable
@@ -121,4 +125,8 @@ data class PostQueueEntryDto(
     @SerialName("UserName") val userName: String? = null,
     /** Same shape as [PostRequestBody.linesJson] - a JSON array of [PostLineDto]. */
     @SerialName("LinesJson") val linesJson: String? = null,
+    @SerialName("IdempotencyKey") val idempotencyKey: String = "",
+    /** Auto GRN: the product receipt posted with this registration. */
+    @SerialName("GrnId") val grnId: String? = null,
+    @SerialName("LineCount") val lineCount: Int = 0,
 )

@@ -95,7 +95,7 @@ fun FeedbackScreen(onBack: () -> Unit, viewModel: FeedbackViewModel = hiltViewMo
                             Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                 Text("Thank you", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
                                 Text(
-                                    "Your feedback is saved and sent to the team. Their status and reply show below, under My feedback.",
+                                    "Sent. Replies show under My feedback.",
                                     style = MaterialTheme.typography.bodyLarge,
                                 )
                             }
@@ -137,7 +137,7 @@ fun FeedbackScreen(onBack: () -> Unit, viewModel: FeedbackViewModel = hiltViewMo
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text("Include screenshot", style = MaterialTheme.typography.titleMedium)
                                     Text(
-                                        "Of ${state.screen}, taken when you tapped feedback",
+                                        "Of ${state.screen}",
                                         style = MaterialTheme.typography.bodySmall,
                                         color = WarehouseStatusColors.text3,
                                     )
@@ -165,7 +165,7 @@ fun FeedbackScreen(onBack: () -> Unit, viewModel: FeedbackViewModel = hiltViewMo
                     }
                     item {
                         Text(
-                            "Sent with the app version, your warehouse and the app's recent log, so the team can see what happened.",
+                            "Sent with the app version and log.",
                             style = MaterialTheme.typography.bodySmall,
                             color = WarehouseStatusColors.text3,
                         )
@@ -202,7 +202,7 @@ private fun EditFeedbackDialog(state: FeedbackState, viewModel: FeedbackViewMode
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(
-                    "About ${state.editing?.screen.orEmpty()}. You can change it until the team picks it up.",
+                    "About ${state.editing?.screen.orEmpty()}.",
                     style = MaterialTheme.typography.bodySmall,
                     color = WarehouseStatusColors.text3,
                 )

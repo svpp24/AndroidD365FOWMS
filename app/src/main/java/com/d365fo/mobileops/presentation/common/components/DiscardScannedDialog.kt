@@ -19,8 +19,7 @@ fun DiscardScannedDialog(lines: Int, orderId: String?, onKeep: () -> Unit, onDis
         title = { Text("Discard $what?") },
         text = {
             Text(
-                (orderId?.let { "$it: " } ?: "") + "these haven't been posted to D365FO. If you keep them, they stay " +
-                    "on this device and you can continue later from Home.",
+                (orderId?.let { "$it: " } ?: "") + "not posted. Keep them to continue later.",
             )
         },
         confirmButton = {

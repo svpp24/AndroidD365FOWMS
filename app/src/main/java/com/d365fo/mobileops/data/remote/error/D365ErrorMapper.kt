@@ -65,13 +65,12 @@ class D365ErrorMapper @Inject constructor(
     fun fromThrowable(e: Throwable): AppFailure = when (e) {
         // A lookup with no saved offline copy - see OfflineReadCacheInterceptor.
         is com.d365fo.mobileops.data.remote.interceptor.NotSavedOfflineException -> AppFailure.Offline(
-            "D365FO can't be reached, and this hasn't been looked up on this device while connected, " +
-                "so there is no saved copy. Try again when the cloud at the top turns green.",
+            "Offline, and not saved here. Try when online.",
         )
-        is UnknownHostException -> AppFailure.Offline("No connection - check Wi-Fi and try again.")
+        is UnknownHostException -> AppFailure.Offline("No connection - check Wi-Fi.")
         is com.d365fo.mobileops.data.remote.interceptor.AosUnreachableException ->
-            AppFailure.Offline("D365FO can't be reached right now. Try again when the cloud at the top turns green.")
-        is SocketTimeoutException -> AppFailure.Transient("D365FO took too long to answer. Try again in a moment.")
+            AppFailure.Offline("D365FO can't be reached - try again soon.")
+        is SocketTimeoutException -> AppFailure.Transient("D365FO is slow - try again.")
         // A pinning failure is never retried: it means the chain we got is not the one we
         // trust, and retrying only repeats the exposure.
         is SSLPeerUnverifiedException ->
@@ -81,7 +80,7 @@ class D365ErrorMapper @Inject constructor(
         // human signs in.
         is NotAuthenticatedException -> AppFailure.Authentication(e.message ?: "not signed in")
         is com.d365fo.mobileops.data.remote.interceptor.TokenUnreachableException ->
-            AppFailure.Offline("No connection to D365FO - check Wi-Fi and try again.")
+            AppFailure.Offline("No connection - check Wi-Fi.")
         is IOException -> AppFailure.Transient(e.message ?: "network error")
         else -> AppFailure.Fatal(e.message ?: "unexpected error", e)
     }
@@ -147,17 +146,17 @@ class D365ErrorMapper @Inject constructor(
      */
     private fun humanise(serverMessage: String): String = when {
         serverMessage.containsAny("period", "closed", "not open") ->
-            "The accounting period is closed in D365FO. Ask your supervisor to reopen it."
+            "Accounting period closed - ask a supervisor."
 
         serverMessage.containsAny("already been posted", "already received") ->
-            "This order was already received in D365FO. Refresh to see the current quantities."
+            "Already received - refresh."
 
         serverMessage.containsAny("on hold", "stopped", "blocked") ->
             "This item or vendor is blocked in D365FO."
 
         serverMessage.contains("serial", ignoreCase = true) &&
             serverMessage.containsAny("exists", "duplicate") ->
-            "That serial number is already registered in D365FO."
+            "Serial already registered."
 
         serverMessage.containsAny("batch", "shelf life") && serverMessage.contains("expired", true) ->
             "That batch is expired in D365FO."
@@ -166,7 +165,7 @@ class D365ErrorMapper @Inject constructor(
         // "Ledger dimension 4021 is invalid", rewriting a finance error into warehouse
         // advice that sent the worker looking at a location field for no reason.
         serverMessage.containsAny("InventDim", "inventory dimension") ->
-            "Inventory dimensions are incomplete for this line. Check site, warehouse and location."
+            "Missing site, warehouse or location."
 
         else -> serverMessage
     }

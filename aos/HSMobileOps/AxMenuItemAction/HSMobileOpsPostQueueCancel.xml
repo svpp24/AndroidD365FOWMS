@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxMenuItemAction xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsPostQueueCancel</Name>
+	<Label>Cancel posting</Label>
+	<HelpText>Close a failed posting, with a reason. Nothing is posted.</HelpText>
+	<Object>HSMobileOpsPostQueueCancel</Object>
+	<ObjectType>Class</ObjectType>
+</AxMenuItemAction>

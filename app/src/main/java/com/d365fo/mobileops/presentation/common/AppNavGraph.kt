@@ -126,6 +126,8 @@ object Routes {
 
     /** On-demand on-hand: scan an item, query it live. */
     const val ON_HAND = "inquiry/onhand"
+    /** Home's search: items, orders, journals (20 Oct). */
+    const val SEARCH = "search"
 
     /**
      * Transfer orders, one route per direction.
@@ -152,8 +154,13 @@ object Routes {
     /** Send feedback - from any screen's feedback button (with its screenshot) or Settings. */
     const val FEEDBACK = "feedback"
 
-    /** Open counting journals for the worker's assigned warehouse. See CountingJournalListScreen. */
-    const val COUNTING_JOURNALS = "counting/journals"
+    /** Inventory count: Store, Spot, Cycle and Wall-to-wall count as sub-menus. See CountingHubScreen. */
+    const val COUNTING_HUB = "counting"
+
+    /** Open counting journals for the worker's warehouse, of one kind or all. See CountingJournalListScreen. */
+    const val COUNTING_JOURNALS = "counting/journals?kind={kind}"
+    fun countingJournals(kind: com.d365fo.mobileops.domain.model.CountKind? = null) =
+        if (kind == null) "counting/journals" else "counting/journals?kind=${kind.route}"
 
     /** Start counting one imported journal - scan an item, enter its quantity. See CountingScanScreen. */
     const val COUNTING_CAPTURE = "counting/capture/{journalId}"
@@ -166,6 +173,10 @@ object Routes {
     /** Supervisor only: variance review, approve / reject / recount, post. */
     const val COUNTING_VARIANCE = "counting/supervisor/variance/{journalId}"
     fun countingVariance(journalId: String) = "counting/supervisor/variance/$journalId"
+
+    /** Supervisor only: a dual count journal's disagreements, every count side by side. */
+    const val COUNTING_DUAL_REVIEW = "counting/supervisor/dual/{journalId}"
+    fun countingDualReview(journalId: String) = "counting/supervisor/dual/$journalId"
 
     /** Create a spot count (server creates the journal). */
     const val COUNTING_SPOT = "counting/spot"
@@ -224,10 +235,16 @@ private data class BottomTab(
 private val BOTTOM_TABS = listOf(
     // Home / Services / Activity / More, and a round Scan button (opens On-hand) - 20 Oct restyle.
     BottomTab(Routes.HOME, "Home", LineIcons.Home),
-    BottomTab(Routes.SERVICES, "Services", LineIcons.Services),
+    // Enquiry (30 Oct, was Modules): the look-ups; the tasks are on Home.
+    BottomTab(Routes.SERVICES, "Enquiry", LineIcons.SearchThin),
     BottomTab(Routes.FAILED_SYNC, "Activity", LineIcons.ActivityThin),
-    BottomTab(Routes.SETTINGS, "More", LineIcons.More),
+    BottomTab(Routes.SETTINGS, "Settings", LineIcons.More),
 )
+
+/** Home, when a switched-off module was the only screen on the stack. */
+private fun navigateToTabSafely(navController: NavHostController, route: String) {
+    runCatching { navController.navigate(route) { launchSingleTop = true } }
+}
 
 @Composable
 fun AppNavGraph(
@@ -267,6 +284,30 @@ fun AppNavGraph(
     // Held back while the tour shows - it explains the same icon - and shown when it ends.
     if (showConnectionDialog && !tourOnScreen) {
         ConnectionDialog(status = syncStatus, onDismiss = { showConnectionDialog = false })
+    }
+
+    // A module switched off in D365FO (Mobile module switches) doesn't open from anywhere - a
+    // link from another screen included. The screen closes and the worker is told why.
+    val moduleSwitches: ModuleSwitchViewModel = hiltViewModel()
+    val switchedOff by moduleSwitches.disabled.collectAsStateWithLifecycle()
+    var switchedOffNotice by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(currentRoute?.route, switchedOff) {
+        val workflow = workflowForRoute(currentRoute?.route) ?: return@LaunchedEffect
+        val message = switchedOff[workflow] ?: return@LaunchedEffect
+        switchedOffNotice = "${workflow.label}: $message"
+        if (!navController.popBackStack()) navigateToTabSafely(navController, Routes.HOME)
+    }
+    switchedOffNotice?.let { notice ->
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { switchedOffNotice = null },
+            title = { androidx.compose.material3.Text("Switched off") },
+            text = { androidx.compose.material3.Text(notice) },
+            confirmButton = {
+                com.d365fo.mobileops.presentation.common.components.ConfirmButton(onClick = { switchedOffNotice = null }) {
+                    androidx.compose.material3.Text("OK")
+                }
+            },
+        )
     }
 
     // Saves today's orders for offline use while D365FO answers - see OfflinePrefetcher.
@@ -392,6 +433,17 @@ fun AppNavGraph(
                     )
                 }
 
+                composable(Routes.SEARCH) {
+                    com.d365fo.mobileops.presentation.common.search.SearchScreen(
+                        onBack = { navController.popBackStack() },
+                        onOpenReceiving = { navController.navigate(Routes.RECEIVE_FLOW) },
+                        onOpenShip = { navController.navigate(Routes.TRANSFER_SHIP) },
+                        onOpenTransferReceive = { navController.navigate(Routes.TRANSFER_RECEIVE) },
+                        onOpenJournals = { navController.navigate(Routes.countingJournals()) },
+                        onOpenJournalLines = { journalId -> navController.navigate(Routes.countingLines(journalId)) },
+                    )
+                }
+
                 composable(Routes.INQUIRY_TRANSFERS) {
                     com.d365fo.mobileops.presentation.modules.dataenquiry.TransferOrdersScreen(
                         byStore = false,
@@ -430,14 +482,30 @@ fun AppNavGraph(
                     )
                 }
 
-                composable(Routes.COUNTING_JOURNALS) {
+                composable(Routes.COUNTING_HUB) {
+                    com.d365fo.mobileops.presentation.modules.cyclecounting.CountingHubScreen(
+                        onBack = { navController.popBackStack() },
+                        onStoreCount = { navController.navigate(Routes.COUNTING_STORE) },
+                        onJournals = { kind -> navController.navigate(Routes.countingJournals(kind)) },
+                        onAccuracy = { navController.navigate(Routes.COUNTING_ACCURACY) },
+                    )
+                }
+
+                composable(
+                    Routes.COUNTING_JOURNALS,
+                    arguments = listOf(navArgument("kind") { type = NavType.StringType; nullable = true; defaultValue = null }),
+                ) { entry ->
                     CountingJournalListScreen(
+                        kind = com.d365fo.mobileops.domain.model.CountKind.fromRoute(entry.arguments?.getString("kind")),
                         onBack = { navController.popBackStack() },
                         onViewLines = { journalId ->
                             navController.navigate(Routes.countingLines(journalId))
                         },
                         onReviewVariance = { journalId ->
                             navController.navigate(Routes.countingVariance(journalId))
+                        },
+                        onReviewDualCount = { journalId ->
+                            navController.navigate(Routes.countingDualReview(journalId))
                         },
                         onNewSpotCount = { navController.navigate(Routes.COUNTING_SPOT) },
                         onStoreCount = { navController.navigate(Routes.COUNTING_STORE) },
@@ -467,6 +535,15 @@ fun AppNavGraph(
                     arguments = listOf(navArgument("journalId") { type = NavType.StringType }),
                 ) {
                     SupervisorVarianceScreen(onBack = { navController.popBackStack() })
+                }
+
+                composable(
+                    Routes.COUNTING_DUAL_REVIEW,
+                    arguments = listOf(navArgument("journalId") { type = NavType.StringType }),
+                ) {
+                    com.d365fo.mobileops.presentation.modules.cyclecounting.supervisor.DualCountReviewScreen(
+                        onBack = { navController.popBackStack() },
+                    )
                 }
 
                 composable(Routes.COUNTING_ACCURACY) {
@@ -697,8 +774,9 @@ private fun AppBottomBar(
     // right end, like the mock's floating button.
     androidx.compose.material3.FloatingActionButton(
         onClick = onScan,
-        shape = CircleShape,
-        containerColor = Color(0xFF1FA99B),
+        // The logo's red, in a rounded square (21 Oct) - a round teal button was the reference app's.
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(18.dp),
+        containerColor = Color(0xFFB5222D),
         contentColor = Color.White,
         modifier = Modifier
             .align(Alignment.TopEnd)

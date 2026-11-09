@@ -23,6 +23,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.math.BigDecimal
@@ -90,6 +91,8 @@ class CountingScanViewModel @Inject constructor(
     private val capture: CountCaptureActions,
     private val flags: FeatureFlags,
     private val itemUnits: com.d365fo.mobileops.data.repository.ItemUnitRepository,
+    private val binRepository: com.d365fo.mobileops.data.counting.CountBinRepository,
+    private val countSubmissions: com.d365fo.mobileops.data.counting.CountSubmissions,
 ) : ViewModel() {
 
     val journalId: String = checkNotNull(savedStateHandle["journalId"])
@@ -100,9 +103,25 @@ class CountingScanViewModel @Inject constructor(
     private val _message = MutableStateFlow<ScanMessage?>(null)
     private val _ui = MutableStateFlow(LocationUi())
 
+    /** The store's bins (none: the store counts by location alone), and the bin being counted. */
+    private val _bins = MutableStateFlow<List<String>>(emptyList())
+
+    /** The store's bins with the location each is in. */
+    private var binRows: Map<String, com.d365fo.mobileops.data.local.entity.CountBinEntity> = emptyMap()
+    private val _currentBin = MutableStateFlow<String?>(null)
+    private val _addBinPrompt = MutableStateFlow<String?>(null)
+
+    /** Where Change location / Change bin started, so Cancel can go back to it (user, 8 Nov). */
+    private data class Back(val location: String?, val bin: String?)
+    private val _back = MutableStateFlow<Back?>(null)
+
     /** Bumped whenever the scan box should take focus back (after the popup closes). */
     private val _refocus = MutableStateFlow(0)
     private var scanJob: Job? = null
+
+    /** The count is done here - back to the journal list (a focused check sent, a wall-to-wall location settled). */
+    private val _leave = kotlinx.coroutines.channels.Channel<Unit>(kotlinx.coroutines.channels.Channel.CONFLATED)
+    val leave: kotlinx.coroutines.flow.Flow<Unit> = _leave.receiveAsFlow()
 
     private data class PromptRequest(val lineId: String, val initial: String)
 
@@ -142,21 +161,34 @@ class CountingScanViewModel @Inject constructor(
         val message: ScanMessage?,
         val refocus: Int,
         val ui: LocationUi,
+        val bins: List<String>,
     )
 
-    private val overlay = combine(_prompt, _choiceIds, _message, _refocus, _ui) { prompt, choice, message, refocus, ui ->
-        Overlay(prompt, choice, message, refocus, ui)
+    private val overlay = combine(_prompt, _choiceIds, _message, _refocus, combine(_ui, _bins) { ui, bins -> ui to bins }) { prompt, choice, message, refocus, (ui, bins) ->
+        Overlay(prompt, choice, message, refocus, ui, bins)
     }
 
     val state: StateFlow<CountingScanState> = combine(base, overlay) { b, o ->
         val byId = b.lines.associateBy { it.journalLineId }
-        val locationAvailable = flags.countLocationFirst
-        val byLocation = locationAvailable && (o.ui.byLocation ?: (b.journal?.locationFirst == true))
-        val location = o.ui.selectedLocation.takeIf { byLocation }
+        // Wall-to-wall is counted location by location, with Location is empty: always.
+        val locationAvailable = flags.countLocationFirst ||
+            b.journal?.originType == com.d365fo.mobileops.domain.model.ORIGIN_WALL_TO_WALL
+        // Location, then bin, then item at a store with bins (user, 8 Nov: a location holds
+        // several bins), and wall-to-wall always: neither offers the By location switch.
+        val binsByLocation = o.bins.isNotEmpty() && b.lines.any { !it.locationId.isNullOrBlank() }
+        val byLocation = b.journal?.originType == com.d365fo.mobileops.domain.model.ORIGIN_WALL_TO_WALL || binsByLocation ||
+            (locationAvailable && (o.ui.byLocation ?: (b.journal?.locationFirst == true)))
+        // A journal of one location (a wall-to-wall task always) starts in it rather than asking
+        // for it: one step fewer (user, 8 Nov: too many steps).
+        val taskLocation = b.lines
+            .mapNotNull { it.locationId?.takeIf { l -> l.isNotBlank() } }
+            .distinctBy { it.uppercase() }.singleOrNull()
+        val location = (o.ui.selectedLocation ?: taskLocation).takeIf { byLocation }
         val atLocation = location?.let { loc -> b.lines.filter { it.locationId.equals(loc, ignoreCase = true) } }
         val scope = (atLocation ?: b.lines).filter { o.ui.typeFilter == null || it.locationType == o.ui.typeFilter }
         CountingScanState(
             journalDescription = b.journal?.description ?: journalId,
+            originType = b.journal?.originType ?: com.d365fo.mobileops.domain.model.ORIGIN_SCHEDULED,
             totalLines = b.lines.size,
             counted = b.lines.count { it.isCounted },
             locked = b.journal?.status in LOCKED_STATUSES,
@@ -191,10 +223,30 @@ class CountingScanViewModel @Inject constructor(
             typeFilter = o.ui.typeFilter,
             verifyLine = o.ui.verifyLineId?.let { byId[it] },
         )
+    }.combine(combine(_bins, _currentBin, _addBinPrompt, _back) { bins, bin, add, back -> listOf(bins, bin, add, back) }) { s, values ->
+        @Suppress("UNCHECKED_CAST") val bins = values[0] as List<String>
+        val back = values[3] as Back?
+        s.copy(
+            binsRequired = bins.isNotEmpty(),
+            currentBin = values[1] as String?,
+            addBinPrompt = values[2] as String?,
+            changingFrom = back?.let { listOfNotNull(it.location, it.bin).joinToString("  \u203A  ") }
+                ?.ifEmpty { null },
+            layout = com.d365fo.mobileops.domain.model.countingLayout(s.originType, s.totalLines, bins.isNotEmpty()),
+        )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), CountingScanState())
 
     init {
         viewModelScope.launch { scannerBridge.scans.collect { onScanned(it.value) } }
+        viewModelScope.launch {
+            val store = journalDao.getJournal(journalId)?.journal?.warehouseId?.takeIf { it.isNotBlank() }
+                ?: return@launch
+            launch { binRepository.refresh(store) }
+            binRepository.observe(store).collect { rows ->
+                binRows = rows.associateBy { it.binId }
+                _bins.value = rows.map { it.binId }
+            }
+        }
     }
 
     fun onCameraDecoded(value: String) = scannerBridge.submitCameraScan(value)
@@ -215,7 +267,7 @@ class CountingScanViewModel @Inject constructor(
         if (value.isEmpty()) return
         // A scan while a popup is open must not silently replace what is being entered.
         val ui = _ui.value
-        if (_prompt.value != null || _choiceIds.value != null || ui.emptyPrompt != null || ui.unexpected != null) {
+        if (_prompt.value != null || _choiceIds.value != null || ui.emptyPrompt != null || ui.unexpected != null || _addBinPrompt.value != null) {
             scanFeedback.warning()
             return
         }
@@ -229,7 +281,7 @@ class CountingScanViewModel @Inject constructor(
         soleLocation = lines.mapNotNull { it.locationId?.takeIf { l -> l.isNotBlank() } }.distinct().singleOrNull()
 
         // Location-first: a scan that is one of this journal's locations selects it - first thing
-        // in a location, or to move on to the next one.
+        // in a location, or to move on to the next one. Before the bin: a location holds bins.
         if (current.byLocation) {
             val location = lines.firstOrNull { it.locationId.equals(value, ignoreCase = true) }?.locationId
             if (location != null && lines.none { it.itemId.equals(value, ignoreCase = true) }) {
@@ -237,7 +289,41 @@ class CountingScanViewModel @Inject constructor(
                 return
             }
             if (current.selectedLocation == null) {
-                return miss("$value is not a location on this journal. Scan a location first.", typed, always = true)
+                return miss("$value is not a location here", typed, always = true)
+            }
+        }
+
+        // Bins: a scan of one of the store's bins moves to it. With none chosen yet, nothing else
+        // can be counted, and a code that is no item is taken for a bin that is not on the list.
+        if (_bins.value.isNotEmpty()) {
+            val bin = com.d365fo.mobileops.data.counting.normalizeBin(value)
+            if (bin in _bins.value && lines.none { it.itemId.equals(value, ignoreCase = true) }) {
+                // A bin of another location: Change location to count it (bins are per location).
+                val row = binRows[bin]
+                if (row != null && !row.isIn(current.selectedLocation)) {
+                    _query.value = ""
+                    _message.value = ScanMessage("$bin is in ${row.locationId}, not ${current.selectedLocation}. Change location to count it.", isError = true)
+                    scanFeedback.error()
+                    return
+                }
+                selectBin(bin)
+                return
+            }
+            if (_currentBin.value == null) {
+                val isItem = lines.any { it.itemId.equals(value, ignoreCase = true) } ||
+                    itemDao.resolveBarcode(value) != null || itemDao.getItem(value) != null
+                _query.value = ""
+                if (isItem) {
+                    _message.value = ScanMessage("Scan a bin first.", isError = true)
+                    scanFeedback.warning()
+                } else if (workerSession.session.value?.isCycleCountSupervisor == true) {
+                    _addBinPrompt.value = bin
+                    scanFeedback.warning()
+                } else {
+                    _message.value = ScanMessage("$bin is not a bin in this store. Ask a supervisor to add it.", isError = true)
+                    scanFeedback.error()
+                }
+                return
             }
         }
 
@@ -253,7 +339,7 @@ class CountingScanViewModel @Inject constructor(
         val bySerial = lines.filter { !it.serialId.isNullOrBlank() && it.serialId.equals(value, ignoreCase = true) }
         if (bySerial.isNotEmpty() && lines.none { it.itemId.equals(value, ignoreCase = true) }) {
             if (current.locked) {
-                _message.value = ScanMessage("Counts have been submitted, so ${bySerial.first().itemId} can't be changed.", isError = true)
+                _message.value = ScanMessage("Submitted - reopen to change", isError = true)
                 scanFeedback.warning()
                 return
             }
@@ -302,7 +388,7 @@ class CountingScanViewModel @Inject constructor(
         }
 
         if (current.locked) {
-            _message.value = ScanMessage("Counts have been submitted, so $itemId can't be changed.", isError = true)
+            _message.value = ScanMessage("Submitted - reopen to change", isError = true)
             scanFeedback.warning()
             return
         }
@@ -345,18 +431,89 @@ class CountingScanViewModel @Inject constructor(
         pickLine(matching, perScan, scanned)
     }
 
+    private fun selectBin(bin: String) {
+        _query.value = ""
+        _currentBin.value = bin
+        _back.value = null
+        _message.value = ScanMessage("Counting bin $bin", isError = false)
+        scanFeedback.success()
+        _refocus.update { it + 1 }
+    }
+
+    /** Back to scanning a bin, in the same location. */
+    fun changeBin() {
+        if (_back.value == null) _back.value = Back(state.value.selectedLocation, _currentBin.value)
+        _currentBin.value = null
+        _message.value = null
+        _refocus.update { it + 1 }
+    }
+
+    /** Cancel on Change location / Change bin: back to where counting was, nothing changed. */
+    fun cancelChange() {
+        val back = _back.value ?: return
+        _back.value = null
+        _ui.update { it.copy(selectedLocation = back.location) }
+        _currentBin.value = back.bin
+        _message.value = null
+        _refocus.update { it + 1 }
+    }
+
+    fun cancelAddBin() {
+        _addBinPrompt.value = null
+        _refocus.update { it + 1 }
+    }
+
+    /** A supervisor adds a bin that is not on the store's list. D365FO checks they are one. */
+    fun confirmAddBin() {
+        val bin = _addBinPrompt.value ?: return
+        _addBinPrompt.value = null
+        viewModelScope.launch {
+            val store = journalDao.getJournal(journalId)?.journal?.warehouseId.orEmpty()
+            when (val added = binRepository.add(store, bin, state.value.selectedLocation)) {
+                is com.d365fo.mobileops.util.NetworkResult.Success -> selectBin(added.data)
+                is com.d365fo.mobileops.util.NetworkResult.Error ->
+                    _message.value = ScanMessage(added.failure.message, isError = true)
+                com.d365fo.mobileops.util.NetworkResult.Loading -> Unit
+            }
+            _refocus.update { it + 1 }
+        }
+    }
+
+    /** Sets what is counted in the current bin, and the line's total from all its bins. */
+    private suspend fun recordInBin(line: CountLine, bin: String, quantity: String?, by: String?, at: Long): String? {
+        if (quantity == null) {
+            countingDao.deleteLineBin(line.journalLineId, bin)
+        } else {
+            countingDao.upsertLineBin(com.d365fo.mobileops.data.local.entity.CountLineBinEntity(line.journalLineId, bin, journalId, quantity))
+        }
+        val total = com.d365fo.mobileops.data.counting.lineTotalOfBins(countingDao.lineBinQuantities(line.journalLineId))
+        countingDao.recordCount(line.journalLineId, total, by, at)
+        return total
+    }
+
     private fun addScanned(line: CountLine, perScan: BigDecimal) {
         // ATOMIC + NonCancellable around the writes - see ReceivingFlowViewModel.persist.
         viewModelScope.launch(start = kotlinx.coroutines.CoroutineStart.ATOMIC) {
             val before = line.countedQuantity
-            val now = (before?.toBigDecimalOrNull() ?: BigDecimal.ZERO) + perScan
-            val text = now.stripTrailingZeros().toPlainString()
+            val bin = _currentBin.value
             val by = workerSession.session.value?.userName
-            kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) {
-                countingDao.markLineStarted(line.journalLineId, System.currentTimeMillis())
-                countingDao.recordCount(line.journalLineId, text, by, System.currentTimeMillis())
+            val binBefore = bin?.let { countingDao.lineBinQuantity(line.journalLineId, it) }
+            val text = if (bin != null) {
+                val now = (binBefore?.toBigDecimalOrNull() ?: BigDecimal.ZERO) + perScan
+                kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) {
+                    countingDao.markLineStarted(line.journalLineId, System.currentTimeMillis())
+                    recordInBin(line, bin, now.stripTrailingZeros().toPlainString(), by, System.currentTimeMillis()).orEmpty()
+                }
+            } else {
+                val now = (before?.toBigDecimalOrNull() ?: BigDecimal.ZERO) + perScan
+                val total = now.stripTrailingZeros().toPlainString()
+                kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) {
+                    countingDao.markLineStarted(line.journalLineId, System.currentTimeMillis())
+                    countingDao.recordCount(line.journalLineId, total, by, System.currentTimeMillis())
+                }
+                total
             }
-            lastScan = LastScan(line.journalLineId, before)
+            lastScan = LastScan(line.journalLineId, before, bin, binBefore)
             scanFeedback.success()
             val what = listOfNotNull(
                 line.itemId,
@@ -367,7 +524,7 @@ class CountingScanViewModel @Inject constructor(
                 line.serialId?.takeIf { it.isNotBlank() }?.let { "Serial $it" },
             )
                 .joinToString(" \u00B7 ")
-            _message.value = ScanMessage("$what: $text counted. Tap the line to type a number.", isError = false, undoable = true)
+            _message.value = ScanMessage("$what: $text", isError = false, undoable = true)
             _refocus.update { it + 1 }
         }
     }
@@ -379,9 +536,9 @@ class CountingScanViewModel @Inject constructor(
         typed: Boolean,
     ) {
         val resolved = gs1.gtinCandidates.firstNotNullOfOrNull { itemDao.resolveBarcode(it) }
-            ?: return miss("GTIN ${gs1.gtin} is not a barcode of any item", typed, unexpectedItemId = gs1.gtin)
+            ?: return miss("Unknown barcode ${gs1.gtin}", typed, unexpectedItemId = gs1.gtin)
         if (current.locked) {
-            _message.value = ScanMessage("Counts have been submitted, so ${resolved.itemId} can't be changed.", isError = true)
+            _message.value = ScanMessage("Submitted - reopen to change", isError = true)
             scanFeedback.warning()
             return
         }
@@ -427,6 +584,13 @@ class CountingScanViewModel @Inject constructor(
         val undo = lastScan ?: return
         lastScan = null
         viewModelScope.launch {
+            if (undo.bin != null) {
+                if (undo.binBefore == null) {
+                    countingDao.deleteLineBin(undo.journalLineId, undo.bin)
+                } else {
+                    countingDao.upsertLineBin(com.d365fo.mobileops.data.local.entity.CountLineBinEntity(undo.journalLineId, undo.bin, journalId, undo.binBefore))
+                }
+            }
             countingDao.recordCount(undo.journalLineId, undo.before, workerSession.session.value?.userName, System.currentTimeMillis())
             _message.value = ScanMessage("Last scan undone.", isError = false)
             _refocus.update { it + 1 }
@@ -434,7 +598,7 @@ class CountingScanViewModel @Inject constructor(
     }
 
     /** The count a line had before the last scan-to-count addition, for Undo. */
-    private data class LastScan(val journalLineId: String, val before: String?)
+    private data class LastScan(val journalLineId: String, val before: String?, val bin: String? = null, val binBefore: String? = null)
 
     private var lastScan: LastScan? = null
 
@@ -489,8 +653,12 @@ class CountingScanViewModel @Inject constructor(
 
     fun setByLocation(enabled: Boolean) = _ui.update { it.copy(byLocation = enabled, selectedLocation = null) }
 
+    /** Change location: back to scanning a location - and then a bin, which belongs to it. */
     fun clearLocation() {
+        if (_back.value == null) _back.value = Back(state.value.selectedLocation, _currentBin.value)
         _ui.update { it.copy(selectedLocation = null) }
+        _currentBin.value = null
+        _message.value = null
         _refocus.update { it + 1 }
     }
 
@@ -501,9 +669,13 @@ class CountingScanViewModel @Inject constructor(
 
     private fun selectLocation(location: String) {
         _query.value = ""
-        _message.value = ScanMessage("Counting location $location", isError = false)
+        // A bin is in a location: another location starts with its own bin.
+        if (!location.equals(_ui.value.selectedLocation, ignoreCase = true)) _currentBin.value = null
+        val askBin = _bins.value.isNotEmpty() && _currentBin.value == null
+        _message.value = ScanMessage("Counting location $location" + if (askBin) " - scan a bin" else "", isError = false)
         _ui.update { it.copy(selectedLocation = location) }
         scanFeedback.success()
+        _refocus.update { it + 1 }
     }
 
     /** "Location is empty": asks first - it counts every line at the location as zero. */
@@ -524,10 +696,23 @@ class CountingScanViewModel @Inject constructor(
         _ui.update { it.copy(emptyPrompt = null) }
         viewModelScope.launch {
             val changed = capture.markLocationEmpty(journalId, prompt.locationId, workerSession.session.value?.userName)
-            _message.value = ScanMessage(
-                "${prompt.locationId} confirmed empty - $changed line${if (changed == 1) "" else "s"} counted as 0.",
-                isError = false,
-            )
+            countingDao.deleteLineBinsAt(journalId, prompt.locationId)
+            val current = state.value
+            if (current.layout == com.d365fo.mobileops.domain.model.CountingLayout.WALL_TO_WALL) {
+                // On to the next location (user, 8 Nov): scan it here, or - a task of one
+                // location - back to the list, where End count completes it.
+                if (current.locations.size > 1) {
+                    _ui.update { it.copy(selectedLocation = null) }
+                    _message.value = ScanMessage("${prompt.locationId} empty - scan the next location", isError = false)
+                } else {
+                    _leave.trySend(Unit)
+                }
+            } else {
+                _message.value = ScanMessage(
+                    "${prompt.locationId} empty",
+                    isError = false,
+                )
+            }
             _refocus.update { it + 1 }
         }
     }
@@ -641,7 +826,7 @@ class CountingScanViewModel @Inject constructor(
         // A typed item number would stay in the box and filter the list down to nothing.
         _query.value = ""
         val what = listOfNotNull(itemId, variant.label.takeIf { it.isNotBlank() }).joinToString(" ")
-        _message.value = ScanMessage("$what · $total - not on this journal, added to the list.", isError = false)
+        _message.value = ScanMessage("$what · $total added (not on journal)", isError = false)
         _refocus.update { it + 1 }
     }
 
@@ -712,6 +897,11 @@ class CountingScanViewModel @Inject constructor(
     /** A tapped row: the same popup, to correct that line. */
     fun openLine(line: CountLine) {
         if (state.value.locked || _prompt.value != null) return
+        if (_bins.value.isNotEmpty() && _currentBin.value == null) {
+            _message.value = ScanMessage("Scan a bin first.", isError = true)
+            scanFeedback.warning()
+            return
+        }
         // A tapped line is also where the next scans of this item go (see routeToLine).
         chosenLineByItem[line.itemId.uppercase()] = line.journalLineId
         openPrompt(line, BigDecimal.ONE)
@@ -721,6 +911,18 @@ class CountingScanViewModel @Inject constructor(
         viewModelScope.launch { countingDao.markLineStarted(line.journalLineId, System.currentTimeMillis()) }
         if (line.verifyOnly) {
             _ui.update { it.copy(verifyLineId = line.journalLineId) }
+            return
+        }
+        val bin = _currentBin.value
+        if (bin != null) {
+            // In a bin the popup is about that bin. The line's total follows from its bins.
+            viewModelScope.launch {
+                val inBin = countingDao.lineBinQuantity(line.journalLineId, bin)
+                _prompt.value = PromptRequest(
+                    line.journalLineId,
+                    inBin ?: perScan.takeIf { it > BigDecimal.ONE }?.stripTrailingZeros()?.toPlainString() ?: "",
+                )
+            }
             return
         }
         val initial = line.countedQuantity
@@ -738,13 +940,42 @@ class CountingScanViewModel @Inject constructor(
                 val value = if (digits.isEmpty()) null else digits.trimStart('0').ifEmpty { "0" }
                 val by = workerSession.session.value?.userName
                 val at = System.currentTimeMillis()
+                val bin = _currentBin.value
+                val line = state.value.prompt?.line
                 kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) {
-                    countingDao.recordCount(journalLineId, value, by, at)
-                    if (value == null) countingDao.recordMarked(journalLineId, false, by, at)
+                    if (bin != null && line != null) {
+                        val total = recordInBin(line, bin, value, by, at)
+                        if (total == null) countingDao.recordMarked(journalLineId, false, by, at)
+                    } else {
+                        countingDao.recordCount(journalLineId, value, by, at)
+                        if (value == null) countingDao.recordMarked(journalLineId, false, by, at)
+                    }
                 }
             }
             _prompt.value = null
             _refocus.update { it + 1 }
+        }
+    }
+
+    /**
+     * The focused check's one line: saves the quantity and ends the count in one step, then back
+     * to the list. End count waits for a connection like any other; a refusal stays on screen.
+     */
+    fun confirmAndEnd(text: String) {
+        val line = state.value.focusLine ?: return
+        viewModelScope.launch(start = kotlinx.coroutines.CoroutineStart.ATOMIC) {
+            if (state.value.locked) return@launch
+            val digits = text.filter { it.isDigit() }.take(MAX_DIGITS)
+            if (digits.isEmpty()) return@launch
+            val value = digits.trimStart('0').ifEmpty { "0" }
+            kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) {
+                countingDao.recordCount(line.journalLineId, value, workerSession.session.value?.userName, System.currentTimeMillis())
+            }
+            when (val result = countSubmissions.endCount(journalId)) {
+                com.d365fo.mobileops.data.counting.EndCountResult.Queued -> _leave.trySend(Unit)
+                is com.d365fo.mobileops.data.counting.EndCountResult.Refused ->
+                    _message.value = ScanMessage(result.message, isError = true)
+            }
         }
     }
 
@@ -799,6 +1030,8 @@ class CountingScanViewModel @Inject constructor(
 
 data class CountingScanState(
     val journalDescription: String = "",
+    val originType: String = com.d365fo.mobileops.domain.model.ORIGIN_SCHEDULED,
+    val layout: com.d365fo.mobileops.domain.model.CountingLayout = com.d365fo.mobileops.domain.model.CountingLayout.STANDARD,
     val totalLines: Int = 0,
     val counted: Int = 0,
     val locked: Boolean = false,
@@ -832,6 +1065,20 @@ data class CountingScanState(
     val typeFilter: String? = null,
     /** Non-null while "Confirm present" is open for a verify-only line. */
     val verifyLine: CountLine? = null,
+    /** The store has bins: one must be chosen before anything can be counted. */
+    val binsRequired: Boolean = false,
+    val currentBin: String? = null,
+    /** A supervisor scanned a bin that is not on the list: add it? */
+    val addBinPrompt: String? = null,
+    /** "location A-01, bin BIN-A1" while Change location / Change bin is under way: Cancel goes back. */
+    val changingFrom: String? = null,
 ) {
     val percent: Int get() = if (totalLines == 0) 0 else (counted * 100) / totalLines
+
+    /** What the screen shows for [layout] - each section is its own card, so any can go. */
+    val showProgress: Boolean get() = layout != com.d365fo.mobileops.domain.model.CountingLayout.FOCUSED
+    val showList: Boolean get() = layout != com.d365fo.mobileops.domain.model.CountingLayout.FOCUSED
+    val showLocationSwitch: Boolean get() = layout == com.d365fo.mobileops.domain.model.CountingLayout.STANDARD && locationModeAvailable && !binsRequired
+    val isWallToWall: Boolean get() = layout == com.d365fo.mobileops.domain.model.CountingLayout.WALL_TO_WALL
+    val focusLine: CountLine? get() = lines.singleOrNull()?.takeIf { layout == com.d365fo.mobileops.domain.model.CountingLayout.FOCUSED }
 }

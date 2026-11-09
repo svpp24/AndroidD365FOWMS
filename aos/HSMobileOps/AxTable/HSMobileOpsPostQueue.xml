@@ -15,11 +15,11 @@
 /// that same request does one INSERT and returns; a row here means "received", not "done".
 ///
 /// **Processing runs on its own and on demand.** The recurring batch job
-/// HSMobileOpsProcessPendingBatch works every Pending row every few minutes, so work queued on
-/// a handheld - offline included - registers even if nobody opens the app again. "Process
-/// pending" on the Activity screen does the same at once. Both go through
-/// HSMobileOpsPostingService::processCompany, oldest request first, and both can run at the
-/// same time: a row is only ever worked by whoever wins [claim].
+/// HSMobileOpsProcessPendingBatch starts one task per warehouse every few minutes, so work queued
+/// on a handheld - offline included - registers even if nobody opens the app again, and one
+/// warehouse's big order holds up nobody else's. "Process pending" on the Activity screen works
+/// the small rows at once. Either way oldest first, and they can run at the same time: a row is
+/// only ever worked by whoever wins [claim].
 ///
 /// Status is one of four values: Pending (staged, not yet attempted), Processing (claimed by a
 /// run that is working it now), Registered (or Posted, for a transfer - the real work
@@ -95,6 +95,36 @@ public class HSMobileOpsPostQueue extends common
 ]]></Source>
 			</Method>
 			<Method>
+				<Name>shrinkLines</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// A finished posting no longer needs its lines, and a store's 1,000 line order is over 200 KB:
+    /// across 200 stores, gigabytes a day in this table. Small postings keep theirs for the status
+    /// list. Failed rows are never shrunk: Retry works from their lines.
+    /// </summary>
+    public void shrinkLines()
+    {
+        if (strLen(this.LinesJson) > 2000)
+        {
+            this.LinesJson         = '';
+            this.OriginalLinesJson = '';
+        }
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>statusCancelled</Name>
+				<Source><![CDATA[
+
+    /// <summary>A supervisor closed a failed posting: nothing was posted. See ChangeNote.</summary>
+    public static str statusCancelled()
+    {
+        return 'Cancelled';
+    }
+]]></Source>
+			</Method>
+			<Method>
 				<Name>statusProcessing</Name>
 				<Source><![CDATA[
 
@@ -142,25 +172,63 @@ public class HSMobileOpsPostQueue extends common
 ]]></Source>
 			</Method>
 			<Method>
+				<Name>reopen</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// A Failed row back to Pending, to be worked again from the lines staged on it - nothing is
+    /// rescanned. Any other status is left alone, so a repeat never works a posting twice.
+    /// </summary>
+    public static boolean reopen(RecId _recId)
+    {
+        HSMobileOpsPostQueue postQueue;
+        boolean              reopened;
+
+        ttsbegin;
+        select pessimisticLock firstOnly postQueue
+            where postQueue.RecId  == _recId
+               && postQueue.Status == HSMobileOpsPostQueue::statusFailed();
+        if (postQueue.RecId)
+        {
+            postQueue.Status       = HSMobileOpsPostQueue::statusPending();
+            postQueue.ErrorMessage = '';
+            postQueue.update();
+            reopened = true;
+        }
+        ttscommit;
+
+        return reopened;
+    }
+]]></Source>
+			</Method>
+			<Method>
 				<Name>failInterrupted</Name>
 				<Source><![CDATA[
 
     /// <summary>
-    /// Fails rows of the current company left in Processing for more than half an hour - a run
-    /// that died part way (AOS restart, an exception the posting code does not catch). They are
-    /// not retried: the posting may have committed before its status was written, and working
-    /// it again could book the same stock twice. A person checks the order instead.
+    /// Fails rows of the current company left in Processing too long - a run that died part way
+    /// (AOS restart, an exception the posting code does not catch). They are not retried: the
+    /// posting may have committed before its status was written, and working it again could book
+    /// the same stock twice. A person checks the order instead.
+    ///
+    /// Too long is half an hour plus 2 s a line. A whole order posts in one transaction, 1,500
+    /// lines took 10 minutes alone on the dev VM, and a posting still running must not be failed.
     /// </summary>
     public static void failInterrupted()
     {
         HSMobileOpsPostQueue postQueue;
-        utcdatetime          cutoff = DateTimeUtil::addMinutes(DateTimeUtil::utcNow(), -30);
+        utcdatetime          now    = DateTimeUtil::utcNow();
+        utcdatetime          cutoff = DateTimeUtil::addMinutes(now, -30);
 
         ttsbegin;
         while select forUpdate postQueue
             where postQueue.Status       == HSMobileOpsPostQueue::statusProcessing()
                && postQueue.ProcessedUtc <  cutoff
         {
+            if (DateTimeUtil::getDifference(now, postQueue.ProcessedUtc) < 1800 + postQueue.LineCount * 2)
+            {
+                continue;
+            }
             postQueue.Status       = HSMobileOpsPostQueue::statusFailed();
             postQueue.ErrorMessage = 'Processing was interrupted before it finished. Check the order in D365FO before sending it again.';
             postQueue.ProcessedUtc = DateTimeUtil::utcNow();
@@ -229,9 +297,9 @@ public class HSMobileOpsPostQueue extends common
 		<AxTableField xmlns=""
 			i:type="AxTableFieldString">
 			<Name>LinesJson</Name>
-			<HelpText>The captured lines exactly as the device sent them, parsed only when this row is processed. 2000 chars holds roughly ten lines; a bigger basket is posted in more than one go.</HelpText>
+			<ExtendedDataType>Notes</ExtendedDataType>
+			<HelpText>The captured lines exactly as the device sent them, parsed when this row is processed. A whole order can come as one posting, so no limit. Emptied once a big posting is done - see shrinkLines.</HelpText>
 			<Label>Lines (JSON)</Label>
-			<StringSize>2000</StringSize>
 		</AxTableField>
 		<AxTableField xmlns=""
 			i:type="AxTableFieldString">
@@ -259,6 +327,60 @@ public class HSMobileOpsPostQueue extends common
 			<Label>Error</Label>
 			<StringSize>250</StringSize>
 		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>GrnId</Name>
+			<AllowEdit>No</AllowEdit>
+			<ExtendedDataType>PackingSlipId</ExtendedDataType>
+			<HelpText>The product receipt (GRN) posted with this registration, when Auto GRN is on.</HelpText>
+			<Label>GRN</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>OriginalLinesJson</Name>
+			<AllowEdit>No</AllowEdit>
+			<ExtendedDataType>Notes</ExtendedDataType>
+			<HelpText>The lines as the device sent them, kept when a supervisor changes a quantity.</HelpText>
+			<Label>Original lines (JSON)</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>ChangedBy</Name>
+			<AllowEdit>No</AllowEdit>
+			<HelpText>Who changed the quantity on this posting, or cancelled it.</HelpText>
+			<Label>Changed by</Label>
+			<StringSize>20</StringSize>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldUtcDateTime">
+			<Name>ChangedUtc</Name>
+			<AllowEdit>No</AllowEdit>
+			<HelpText>When the quantity on this posting was changed, or it was cancelled.</HelpText>
+			<Label>Changed</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>ChangeNote</Name>
+			<AllowEdit>No</AllowEdit>
+			<HelpText>The reason given for changing the quantity, or for cancelling.</HelpText>
+			<Label>Change reason</Label>
+			<StringSize>250</StringSize>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldInt">
+			<Name>LineCount</Name>
+			<AllowEdit>No</AllowEdit>
+			<HelpText>How many lines this posting carries. Stays when a big posting's lines are emptied.</HelpText>
+			<Label>Lines</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>Warehouse</Name>
+			<AllowEdit>No</AllowEdit>
+			<ExtendedDataType>InventLocationId</ExtendedDataType>
+			<HelpText>The warehouse whose stock this posting moves. Postings of one warehouse are worked in order by one batch task.</HelpText>
+			<Label>Warehouse</Label>
+		</AxTableField>
 	</Fields>
 	<FullTextIndexes />
 	<Indexes>
@@ -278,6 +400,30 @@ public class HSMobileOpsPostQueue extends common
 				<AxTableIndexField>
 					<DataField>Status</DataField>
 				</AxTableIndexField>
+				<AxTableIndexField>
+					<DataField>ReceivedUtc</DataField>
+				</AxTableIndexField>
+			</Fields>
+		</AxTableIndex>
+		<AxTableIndex>
+			<Name>WarehouseIdx</Name>
+			<AllowDuplicates>Yes</AllowDuplicates>
+			<Fields>
+				<AxTableIndexField>
+					<DataField>Status</DataField>
+				</AxTableIndexField>
+				<AxTableIndexField>
+					<DataField>Warehouse</DataField>
+				</AxTableIndexField>
+				<AxTableIndexField>
+					<DataField>ReceivedUtc</DataField>
+				</AxTableIndexField>
+			</Fields>
+		</AxTableIndex>
+		<AxTableIndex>
+			<Name>ReceivedIdx</Name>
+			<AllowDuplicates>Yes</AllowDuplicates>
+			<Fields>
 				<AxTableIndexField>
 					<DataField>ReceivedUtc</DataField>
 				</AxTableIndexField>

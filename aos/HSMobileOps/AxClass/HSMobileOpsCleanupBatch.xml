@@ -1,0 +1,435 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsCleanupBatch</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Mobile clean-up: once a day, removes Mobile ops records older than their days on Mobile clean-up
+/// (HSMobileOpsCleanupSetup) - registered and failed postings in the posting queue of every
+/// company, the sign-in log, closed feedback, the counted lines of transferred or cancelled stock
+/// counts - and marks unsent work from handhelds that stopped reporting. 0 days skips a kind.
+///
+/// "Run clean-up now" on the form runs it at once and schedules the daily job if there is none.
+/// Withholding or changing the job under System administration > Batch jobs is respected.
+/// </summary>
+class HSMobileOpsCleanupBatch extends RunBaseBatch
+{
+    #define.CurrentVersion(1)
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>main</Name>
+				<Source><![CDATA[
+
+    public static void main(Args _args)
+    {
+        boolean scheduled = HSMobileOpsCleanupBatch::ensureScheduled();
+
+        info(HSMobileOpsCleanupBatch::cleanUp());
+        if (scheduled)
+        {
+            info(strFmt('Batch job "%1" scheduled: daily.', HSMobileOpsCleanupBatch::caption()));
+        }
+        // From the form: show the new Last run / Result.
+        if (_args && _args.record() && _args.record().isFormDataSource())
+        {
+            FormDataUtil::getFormDataSource(_args.record()).research(true);
+        }
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>cleanUp</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// One pass. Returns what it did, and stores it on the setup row (Last run / Result).
+    /// </summary>
+    public static str cleanUp()
+    {
+        HSMobileOpsCleanupSetup setup = HSMobileOpsCleanupSetup::find();
+        str                     result;
+
+        if (setup.Enabled == NoYes::No)
+        {
+            result = 'Clean up D365FO is off - nothing removed.';
+        }
+        else
+        {
+            result = strFmt('Removed: %1 registered and %2 failed postings, %3 sign-ins, %4 feedback, %5 counted lines. %6 unsent work marked device not seen.',
+                HSMobileOpsCleanupBatch::purgePostQueue(HSMobileOpsPostQueue::statusRegistered(), setup.PostQueueRegisteredDays),
+                HSMobileOpsCleanupBatch::purgePostQueue(HSMobileOpsPostQueue::statusFailed(), setup.PostQueueFailedDays),
+                HSMobileOpsCleanupBatch::purgeSignInLog(setup.SignInLogDays),
+                HSMobileOpsCleanupBatch::purgeFeedback(setup.FeedbackClosedDays),
+                HSMobileOpsCleanupBatch::purgeCountStage(setup.CountStageDays),
+                HSMobileOpsCleanupBatch::markStaleWork(setup.DeviceWorkStaleDays));
+        }
+        HSMobileOpsCleanupBatch::record(result);
+        return result;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>record</Name>
+				<Source><![CDATA[
+
+    private static void record(str _result)
+    {
+        HSMobileOpsCleanupSetup setup;
+
+        ttsbegin;
+        select forUpdate firstOnly setup;
+        if (!setup.RecId)
+        {
+            setup.initValue();
+        }
+        setup.LastRunUtc    = DateTimeUtil::utcNow();
+        setup.LastRunResult = subStr(_result, 1, 250);
+        if (setup.RecId)
+        {
+            setup.update();
+        }
+        else
+        {
+            setup.insert();
+        }
+        ttscommit;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>cutoff</Name>
+				<Source><![CDATA[
+
+    private static utcdatetime cutoff(int _days)
+    {
+        return DateTimeUtil::addDays(DateTimeUtil::utcNow(), -_days);
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>purgePostQueue</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Queue rows with status _status received more than _days ago, in every company.
+    /// </summary>
+    private static int purgePostQueue(str _status, int _days)
+    {
+        HSMobileOpsPostQueue postQueue;
+        DataArea             dataArea;
+        utcdatetime          before;
+        int                  removed;
+        // Cancelled postings go with the failed ones: the same days, no setting of their own.
+        boolean              withCancelled = _status == HSMobileOpsPostQueue::statusFailed();
+
+        if (_days <= 0)
+        {
+            return 0;
+        }
+        before = HSMobileOpsCleanupBatch::cutoff(_days);
+        while select Id from dataArea
+            where dataArea.isVirtual == NoYes::No
+        {
+            changecompany (dataArea.Id)
+            {
+                postQueue = null;
+                select count(RecId) from postQueue
+                    where (postQueue.Status     == _status || (withCancelled && postQueue.Status == HSMobileOpsPostQueue::statusCancelled()))
+                       && postQueue.ReceivedUtc <  before;
+                if (postQueue.RecId)
+                {
+                    removed += any2Int(postQueue.RecId);
+                    postQueue = null;
+                    ttsbegin;
+                    delete_from postQueue
+                        where (postQueue.Status     == _status || (withCancelled && postQueue.Status == HSMobileOpsPostQueue::statusCancelled()))
+                           && postQueue.ReceivedUtc <  before;
+                    ttscommit;
+                }
+            }
+        }
+        return removed;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>purgeSignInLog</Name>
+				<Source><![CDATA[
+
+    private static int purgeSignInLog(int _days)
+    {
+        HSMobileOpsSignInLog log;
+        utcdatetime          before;
+        int                  removed;
+
+        if (_days <= 0)
+        {
+            return 0;
+        }
+        before = HSMobileOpsCleanupBatch::cutoff(_days);
+        select count(RecId) from log where log.SignInUtc < before;
+        removed = any2Int(log.RecId);
+        if (removed)
+        {
+            log = null;
+            ttsbegin;
+            delete_from log where log.SignInUtc < before;
+            ttscommit;
+        }
+        return removed;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>purgeFeedback</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Feedback marked Done or Won't do, sent more than _days ago. Open feedback always stays.
+    /// </summary>
+    private static int purgeFeedback(int _days)
+    {
+        HSMobileOpsFeedback feedback;
+        utcdatetime         before;
+        int                 removed;
+
+        if (_days <= 0)
+        {
+            return 0;
+        }
+        before = HSMobileOpsCleanupBatch::cutoff(_days);
+        select count(RecId) from feedback
+            where (feedback.Status == HSMobileOpsFeedbackStatus::Done || feedback.Status == HSMobileOpsFeedbackStatus::WontDo)
+               && feedback.SubmittedUtc < before;
+        removed = any2Int(feedback.RecId);
+        if (removed)
+        {
+            feedback = null;
+            ttsbegin;
+            delete_from feedback
+                where (feedback.Status == HSMobileOpsFeedbackStatus::Done || feedback.Status == HSMobileOpsFeedbackStatus::WontDo)
+                   && feedback.SubmittedUtc < before;
+            ttscommit;
+        }
+        return removed;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>purgeCountStage</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The counters and counted lines of stock counts transferred (or cancelled) more than _days
+    /// ago, in every company. The count itself (HSMobileOpsCountMaster) stays as the record.
+    /// </summary>
+    private static int purgeCountStage(int _days)
+    {
+        HSMobileOpsCountMaster    master;
+        HSMobileOpsCountStage     stage;
+        HSMobileOpsCountStageLine line;
+        DataArea                  dataArea;
+        utcdatetime               before;
+        int                       removed;
+
+        if (_days <= 0)
+        {
+            return 0;
+        }
+        before = HSMobileOpsCleanupBatch::cutoff(_days);
+        while select Id from dataArea
+            where dataArea.isVirtual == NoYes::No
+        {
+            changecompany (dataArea.Id)
+            {
+                master = null;
+                line   = null;
+                stage  = null;
+                ttsbegin;
+                while select RecId from master
+                    where (master.Status == HSMobileOpsCountMasterStatus::Transferred && master.TransferredUtc < before)
+                       || (master.Status == HSMobileOpsCountMasterStatus::Cancelled   && master.StartedUtc     < before)
+                {
+                    select count(RecId) from line where line.MasterRecId == master.RecId;
+                    removed += any2Int(line.RecId);
+                    if (line.RecId)
+                    {
+                        delete_from line where line.MasterRecId == master.RecId;
+                    }
+                    delete_from stage where stage.MasterRecId == master.RecId;
+                }
+                ttscommit;
+            }
+        }
+        return removed;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>markStaleWork</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Unsent work from handhelds that have not reported for _days: marked Device not seen, not
+    /// deleted - a supervisor decides whether it is still wanted.
+    /// </summary>
+    private static int markStaleWork(int _days)
+    {
+        HSMobileOpsDeviceWork work;
+        utcdatetime           before;
+        int                   marked;
+
+        if (_days <= 0)
+        {
+            return 0;
+        }
+        before = HSMobileOpsCleanupBatch::cutoff(_days);
+        select count(RecId) from work
+            where work.Stale      == NoYes::No
+               && work.Archived   == NoYes::No
+               && work.UpdatedUtc <  before;
+        marked = any2Int(work.RecId);
+        if (marked)
+        {
+            work = null;
+            ttsbegin;
+            update_recordset work
+                setting Stale = NoYes::Yes
+                where work.Stale      == NoYes::No
+                   && work.Archived   == NoYes::No
+                   && work.UpdatedUtc <  before;
+            ttscommit;
+        }
+        return marked;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>caption</Name>
+				<Source><![CDATA[
+
+    public static str caption()
+    {
+        return 'Mobile ops: clean-up';
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>isScheduled</Name>
+				<Source><![CDATA[
+
+    public static boolean isScheduled()
+    {
+        Batch    batch;
+        BatchJob batchJob;
+
+        select firstOnly RecId from batch
+            where batch.ClassNumber == classNum(HSMobileOpsCleanupBatch)
+            exists join batchJob
+                where batchJob.RecId  == batch.BatchJobId
+                   && batchJob.Status != BatchStatus::Canceled
+                   && batchJob.Status != BatchStatus::Finished;
+
+        return batch.RecId != 0;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>ensureScheduled</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Creates the daily job - starting tomorrow at 02:00 UTC, no end - unless one exists. True
+    /// when this call created it.
+    /// </summary>
+    public static boolean ensureScheduled()
+    {
+        BatchHeader       batchHeader;
+        SysRecurrenceData recurrence;
+
+        if (HSMobileOpsCleanupBatch::isScheduled())
+        {
+            return false;
+        }
+
+        recurrence = SysRecurrence::defaultRecurrence();
+        recurrence = SysRecurrence::setRecurrenceStartDateTime(recurrence,
+            DateTimeUtil::newDateTime(DateTimeUtil::date(DateTimeUtil::utcNow()) + 1, 2 * 3600));
+        recurrence = SysRecurrence::setRecurrenceNoEnd(recurrence);
+        recurrence = SysRecurrence::setRecurrenceUnit(recurrence, SysRecurrenceUnit::Day, 1);
+
+        batchHeader = BatchHeader::construct();
+        batchHeader.parmCaption(HSMobileOpsCleanupBatch::caption());
+        batchHeader.parmRecurrenceData(recurrence);
+        batchHeader.addTask(new HSMobileOpsCleanupBatch());
+        batchHeader.save();
+
+        return true;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>run</Name>
+				<Source><![CDATA[
+
+    public void run()
+    {
+        HSMobileOpsCleanupBatch::cleanUp();
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>pack</Name>
+				<Source><![CDATA[
+
+    public container pack()
+    {
+        return [#CurrentVersion];
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>unpack</Name>
+				<Source><![CDATA[
+
+    public boolean unpack(container _packedClass)
+    {
+        return RunBase::getVersion(_packedClass) == #CurrentVersion;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>canGoBatch</Name>
+				<Source><![CDATA[
+
+    public boolean canGoBatch()
+    {
+        return true;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>runsImpersonated</Name>
+				<Source><![CDATA[
+
+    public boolean runsImpersonated()
+    {
+        return true;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>description</Name>
+				<Source><![CDATA[
+
+    public static ClassDescription description()
+    {
+        return HSMobileOpsCleanupBatch::caption();
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

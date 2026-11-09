@@ -137,6 +137,22 @@ public class HSMobileOpsCountMaster extends common
 			<Label>Transferred by</Label>
 		</AxTableField>
 		<AxTableField xmlns=""
+			i:type="AxTableFieldInt64">
+			<Name>TransferBatchJobId</Name>
+			<AllowEdit>No</AllowEdit>
+			<ExtendedDataType>RefRecId</ExtendedDataType>
+			<HelpText>The batch job moving these counts into the journal.</HelpText>
+			<Label>Transfer job</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>TransferMessage</Name>
+			<AllowEdit>No</AllowEdit>
+			<HelpText>How the transfer is going, and why it failed if it did.</HelpText>
+			<Label>Transfer message</Label>
+			<StringSize>250</StringSize>
+		</AxTableField>
+		<AxTableField xmlns=""
 			i:type="AxTableFieldUtcDateTime">
 			<Name>TransferredUtc</Name>
 			<AllowEdit>No</AllowEdit>

@@ -142,7 +142,7 @@ class ValidateReceiptQuantityUseCaseTest {
                 .outcome as ValidationOutcome.Invalid
 
             assertThat(outcome.severity).isEqualTo(ValidationSeverity.HARD)
-            assertThat(outcome.message).contains("does not allow over-receipt")
+            assertThat(outcome.message).contains("left")
         }
 
         @Test
@@ -212,7 +212,7 @@ class ValidateReceiptQuantityUseCaseTest {
             ).outcome as ValidationOutcome.Invalid
 
             assertThat(outcome.severity).isEqualTo(ValidationSeverity.HARD)
-            assertThat(outcome.message).contains("one unit at a time")
+            assertThat(outcome.message).contains("one at a time")
         }
 
         @Test

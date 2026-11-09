@@ -1,0 +1,189 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxTable xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsCountWarehouse</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Cycle counting, per warehouse: whether the nightly job (HSMobileOpsCountJournalCreateBatch) makes a
+/// counting journal for it, under which journal name, and what its last run did. Also where its
+/// wall-to-wall counts start (HSMobileOpsCountWallToWall), and under which journal name.
+/// </summary>
+public class HSMobileOpsCountWarehouse extends common
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>find</Name>
+				<Source><![CDATA[
+
+    public static HSMobileOpsCountWarehouse find(InventLocationId _warehouse, boolean _forUpdate = false)
+    {
+        HSMobileOpsCountWarehouse row;
+
+        row.selectForUpdate(_forUpdate);
+        select firstOnly row
+            where row.Warehouse == _warehouse;
+        return row;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>w2wStatus</Name>
+				<Source><![CDATA[
+
+    /// <summary>The warehouse's wall-to-wall count, while it is frozen.</summary>
+    [SysClientCacheDataMethodAttribute(false)]
+    public display str 30 w2wStatus()
+    {
+        HSMobileOpsWarehouseFreeze freeze = HSMobileOpsWarehouseFreeze::findActive(this.Warehouse);
+
+        return freeze.RecId ? enum2Str(freeze.Status) : '';
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>w2wJournal</Name>
+				<Source><![CDATA[
+
+    [SysClientCacheDataMethodAttribute(false)]
+    public display InventJournalId w2wJournal()
+    {
+        return HSMobileOpsWarehouseFreeze::findActive(this.Warehouse).JournalId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>w2wMessage</Name>
+				<Source><![CDATA[
+
+    /// <summary>What the current wall-to-wall count last did, else how the last one ended.</summary>
+    [SysClientCacheDataMethodAttribute(false)]
+    public display str 250 w2wMessage()
+    {
+        HSMobileOpsWarehouseFreeze freeze = HSMobileOpsWarehouseFreeze::findActive(this.Warehouse);
+
+        if (!freeze.RecId)
+        {
+            select firstOnly freeze
+                order by StartedUtc desc
+                where freeze.InventLocationId == this.Warehouse;
+        }
+        return freeze.Message;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>journalName</Name>
+				<Source><![CDATA[
+
+    /// <summary>This warehouse's journal name, else the company's counting journal name.</summary>
+    public InventJournalNameId journalName()
+    {
+        return this.JournalNameId ? this.JournalNameId : InventParameters::find().CountJournalNameId;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+	<Label>Cycle count warehouses</Label>
+	<TitleField1>Warehouse</TitleField1>
+	<TitleField2>JournalNameId</TitleField2>
+	<CacheLookup>NotInTTS</CacheLookup>
+	<ClusteredIndex>WarehouseIdx</ClusteredIndex>
+	<PrimaryIndex>WarehouseIdx</PrimaryIndex>
+	<ReplacementKey>WarehouseIdx</ReplacementKey>
+	<Fields>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>Warehouse</Name>
+			<ExtendedDataType>InventLocationId</ExtendedDataType>
+			<Mandatory>Yes</Mandatory>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>JournalNameId</Name>
+			<ExtendedDataType>InventJournalNameId</ExtendedDataType>
+			<HelpText>The counting journal name for its cycle counts. Blank uses the one in Inventory parameters.</HelpText>
+			<Label>Journal name</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldEnum">
+			<Name>CycleEnabled</Name>
+			<HelpText>The nightly job makes a counting journal for this warehouse.</HelpText>
+			<Label>Cycle count</Label>
+			<EnumType>NoYes</EnumType>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldEnum">
+			<Name>AssortmentBased</Name>
+			<HelpText>Count every item in the store's retail assortment, with or without stock. Off, the journal holds the items due by their counting group.</HelpText>
+			<Label>Count by assortment</Label>
+			<EnumType>NoYes</EnumType>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldEnum">
+			<Name>IncludeZeroOnHand</Name>
+			<HelpText>Also count items D365FO shows none of here, if they have had stock in this warehouse.</HelpText>
+			<Label>Include zero on hand</Label>
+			<EnumType>NoYes</EnumType>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>W2WJournalNameId</Name>
+			<ExtendedDataType>InventJournalNameId</ExtendedDataType>
+			<HelpText>The counting journal name for its wall-to-wall counts.</HelpText>
+			<Label>Wall-to-wall journal name</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldInt64">
+			<Name>RunningBatchJobId</Name>
+			<AllowEdit>No</AllowEdit>
+			<ExtendedDataType>RefRecId</ExtendedDataType>
+			<HelpText>The batch job making this warehouse's journal, while one is.</HelpText>
+			<Label>Running job</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldUtcDateTime">
+			<Name>LastRunUtc</Name>
+			<AllowEdit>No</AllowEdit>
+			<Label>Last run</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>LastJournalId</Name>
+			<AllowEdit>No</AllowEdit>
+			<ExtendedDataType>InventJournalId</ExtendedDataType>
+			<HelpText>The journal its last run made. No new one is made until this one is posted or deleted.</HelpText>
+			<Label>Last journal</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldInt">
+			<Name>LastLineCount</Name>
+			<AllowEdit>No</AllowEdit>
+			<Label>Lines</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>LastMessage</Name>
+			<AllowEdit>No</AllowEdit>
+			<Label>Last result</Label>
+			<StringSize>250</StringSize>
+		</AxTableField>
+	</Fields>
+	<FullTextIndexes />
+	<Indexes>
+		<AxTableIndex>
+			<Name>WarehouseIdx</Name>
+			<AlternateKey>Yes</AlternateKey>
+			<Fields>
+				<AxTableIndexField>
+					<DataField>Warehouse</DataField>
+				</AxTableIndexField>
+			</Fields>
+		</AxTableIndex>
+	</Indexes>
+	<Mappings />
+	<Relations />
+	<StateMachines />
+</AxTable>

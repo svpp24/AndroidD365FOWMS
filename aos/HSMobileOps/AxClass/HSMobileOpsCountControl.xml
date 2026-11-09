@@ -115,17 +115,33 @@ class HSMobileOpsCountControl
 ]]></Source>
 			</Method>
 			<Method>
-				<Name>duplicateKey</Name>
+				<Name>stockKey</Name>
 				<Source><![CDATA[
 
     /// <summary>
     /// What makes two counted lines "the same stock": item, product dimensions, batch, serial and
     /// location.
     /// </summary>
-    public static str duplicateKey(HSMobileOpsCountStageLine _line)
+    public static str stockKey(HSMobileOpsCountStageLine _line)
     {
         return strUpr(strFmt('%1|%2|%3|%4|%5|%6|%7|%8', _line.ItemId, _line.ConfigId, _line.InventSizeId,
             _line.InventColorId, _line.InventStyleId, _line.InventBatchId, _line.InventSerialId, _line.WMSLocationId));
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>duplicateKey</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// What makes two counted lines the same count, counted twice: the same stock in the same bin.
+    /// The same item in two bins of a location is not a duplicate - the bins add up (user, 8 Nov).
+    /// A line with no bin keeps the stock key alone, as before bins.
+    /// </summary>
+    public static str duplicateKey(HSMobileOpsCountStageLine _line)
+    {
+        str key = HSMobileOpsCountControl::stockKey(_line);
+        return _line.BinId ? key + '|BIN|' + strUpr(_line.BinId) : key;
     }
 ]]></Source>
 			</Method>
@@ -181,7 +197,8 @@ class HSMobileOpsCountControl
     /// </summary>
     private static str transferKey(HSMobileOpsCountStageLine _line, InventJournalId _sourceJournalId)
     {
-        return _sourceJournalId && _line.SourceLineNum ? strFmt('LINE|%1', _line.SourceLineNum) : _line.DuplicateKey;
+        // The stock, not the bin: a location's bins become one journal line (bins are for counting only).
+        return _sourceJournalId && _line.SourceLineNum ? strFmt('LINE|%1', _line.SourceLineNum) : HSMobileOpsCountControl::stockKey(_line);
     }
 ]]></Source>
 			</Method>
@@ -194,18 +211,25 @@ class HSMobileOpsCountControl
     /// duplicates. A line that joins an already-decided duplicate makes the whole group undecided
     /// again - a recount after a rejection is decided anew. Lines counted only once are always
     /// included.
+    ///
+    /// One grouped query finds the duplicates, not a count per line: a whole warehouse is 16,000
+    /// lines. _reapplySource re-reads every line from its journal, which only a supervisor's
+    /// action needs: lines arriving from the handheld were read from it as they were staged.
     /// </summary>
-    public static void refresh(RefRecId _masterRecId)
+    public static void refresh(RefRecId _masterRecId, boolean _reapplySource = true)
     {
         HSMobileOpsCountStageLine line;
         HSMobileOpsCountStageLine sameStock;
         HSMobileOpsCountStage     stage;
         HSMobileOpsCountMaster    master;
+        Set                       duplicates = new Set(Types::String);
+        SetEnumerator             duplicate;
+        str                       duplicateKey;
         int                       undecided;
 
         ttsbegin;
         master = HSMobileOpsCountControl::masterOf(_masterRecId);
-        if (master.SourceJournalId)
+        if (_reapplySource && master.SourceJournalId)
         {
             while select forUpdate line
                 where line.MasterRecId   == _masterRecId
@@ -218,29 +242,41 @@ class HSMobileOpsCountControl
             }
         }
         master.clear();
-        // Single counts: not duplicates, always transferred.
-        while select forUpdate line where line.MasterRecId == _masterRecId
+        while select count(RecId), DuplicateKey from line
+            group by DuplicateKey
+            where line.MasterRecId == _masterRecId
         {
-            select count(RecId) from sameStock
-                where sameStock.MasterRecId  == _masterRecId
-                   && sameStock.DuplicateKey == line.DuplicateKey;
-            if (sameStock.RecId <= 1)
+            if (line.RecId > 1)
             {
-                if (line.IsDuplicate || line.Decision != HSMobileOpsCountDuplicateDecision::None || !line.Included)
-                {
-                    line.IsDuplicate = NoYes::No;
-                    line.Decision    = HSMobileOpsCountDuplicateDecision::None;
-                    line.Included    = NoYes::Yes;
-                    line.update();
-                }
+                duplicates.add(line.DuplicateKey);
             }
-            else
+        }
+        // Single counts: not duplicates, always transferred.
+        while select forUpdate line
+            where line.MasterRecId == _masterRecId
+               && (line.IsDuplicate == NoYes::Yes
+                || line.Decision    != HSMobileOpsCountDuplicateDecision::None
+                || line.Included    == NoYes::No)
+        {
+            if (!duplicates.in(line.DuplicateKey))
             {
-                if (!line.IsDuplicate)
-                {
-                    line.IsDuplicate = NoYes::Yes;
-                    line.update();
-                }
+                line.IsDuplicate = NoYes::No;
+                line.Decision    = HSMobileOpsCountDuplicateDecision::None;
+                line.Included    = NoYes::Yes;
+                line.update();
+            }
+        }
+        duplicate = duplicates.getEnumerator();
+        while (duplicate.moveNext())
+        {
+            duplicateKey = duplicate.current();
+            while select forUpdate line
+                where line.MasterRecId  == _masterRecId
+                   && line.DuplicateKey == duplicateKey
+                   && line.IsDuplicate  == NoYes::No
+            {
+                line.IsDuplicate = NoYes::Yes;
+                line.update();
             }
         }
         // A group with any undecided line is undecided as a whole.
@@ -408,7 +444,8 @@ class HSMobileOpsCountControl
 
         HSMobileOpsCountControl::refresh(_masterRecId);
         master = HSMobileOpsCountControl::masterOf(_masterRecId);
-        if (master.Status != HSMobileOpsCountMasterStatus::Open)
+        if (master.Status != HSMobileOpsCountMasterStatus::Open
+         && master.Status != HSMobileOpsCountMasterStatus::Transferring)
         {
             throw error(strFmt('%1 is %2 - it can only be transferred once.', master.MasterId, master.Status));
         }
@@ -497,9 +534,11 @@ class HSMobileOpsCountControl
         master.TransferredJournalId = journalTable.JournalId;
         master.TransferredBy        = curUserId();
         master.TransferredUtc       = DateTimeUtil::utcNow();
+        master.TransferMessage      = '';
         master.update();
         ttscommit;
 
+        HSMobileOpsCountAssortment::flagUnexpected(journalTable.JournalId);
         info(strFmt('%1: %2 counted line(s) transferred to counting journal %3.', master.MasterId, written, journalTable.JournalId));
         return journalTable.JournalId;
     }
@@ -595,7 +634,7 @@ class HSMobileOpsCountControl
     /// <summary>
     /// The inventory status the item's stock carries - at <paramref name="_store"/>, or anywhere when blank.
     /// </summary>
-    private static WHSInventStatusId itemStatus(ItemId _itemId, InventLocationId _store)
+    public static WHSInventStatusId itemStatus(ItemId _itemId, InventLocationId _store)
     {
         InventSum inventSum;
         InventDim inventDim;

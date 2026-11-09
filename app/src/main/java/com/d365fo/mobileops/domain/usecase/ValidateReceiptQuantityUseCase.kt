@@ -84,7 +84,7 @@ class ValidateReceiptQuantityUseCase @Inject constructor() {
             return QuantityValidation(
                 invalid(
                     ValidationSeverity.HARD, ValidationLayer.CACHED_RULES, FIELD,
-                    "Serialised items must be received one unit at a time", rawInput,
+                    "Serial items: one at a time", rawInput,
                 ),
                 inventoryQuantity = inventoryQty,
                 resultingOverPercent = null,
@@ -108,8 +108,7 @@ class ValidateReceiptQuantityUseCase @Inject constructor() {
             allowed == null || allowed.signum() == 0 -> QuantityValidation(
                 invalid(
                     ValidationSeverity.HARD, ValidationLayer.CACHED_RULES, FIELD,
-                    "This order does not allow over-receipt. " +
-                        "${line.outstandingQuantity.toPlainString()} ${line.inventoryUnit} remaining.",
+                    "Only ${line.outstandingQuantity.toPlainString()} ${line.inventoryUnit} left",
                     rawInput,
                 ),
                 inventoryQty,
@@ -122,8 +121,7 @@ class ValidateReceiptQuantityUseCase @Inject constructor() {
                 // per line — but somebody has to own the decision.
                 invalid(
                     ValidationSeverity.SOFT, ValidationLayer.CACHED_RULES, FIELD,
-                    "Over-receipt of ${overPercent.toPlainString()}% exceeds the " +
-                        "${allowed.toPlainString()}% tolerance on this line",
+                    "${overPercent.toPlainString()}% over (max ${allowed.toPlainString()}%)",
                     rawInput,
                 ),
                 inventoryQty,
@@ -154,8 +152,7 @@ class ValidateReceiptQuantityUseCase @Inject constructor() {
 
             shortfallPercent > allowed -> invalid(
                 ValidationSeverity.SOFT, ValidationLayer.CACHED_RULES, FIELD,
-                "Under-delivery of ${shortfallPercent.toPlainString()}% exceeds the " +
-                    "${allowed.toPlainString()}% tolerance",
+                "${shortfallPercent.toPlainString()}% short (max ${allowed.toPlainString()}%)",
             )
 
             else -> ValidationOutcome.Valid

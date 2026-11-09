@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxMenuItemDisplay xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsDeviceWork</Name>
+	<Label>Mobile unsent work</Label>
+	<HelpText>Work on each handheld that D365FO has not posted yet - restored by the worker after a reinstall or on another device.</HelpText>
+	<Object>HSMobileOpsDeviceWork</Object>
+	<ObjectType>Form</ObjectType>
+</AxMenuItemDisplay>

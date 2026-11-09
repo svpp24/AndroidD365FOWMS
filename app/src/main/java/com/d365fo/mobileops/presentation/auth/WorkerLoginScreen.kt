@@ -251,9 +251,7 @@ private fun OfflineSignInNotice() {
             modifier = Modifier.size(24.dp),
         )
         Text(
-            text = "No connection to D365FO. If you signed in on this device in the last " +
-                "${OfflineSignIn.VALID_DAYS} days, you can still sign in and work. " +
-                "Your work is sent when the connection is back.",
+            text = "Offline. Signed in here in the last ${OfflineSignIn.VALID_DAYS} days? You can still sign in.",
             style = MaterialTheme.typography.bodyMedium,
         )
     }

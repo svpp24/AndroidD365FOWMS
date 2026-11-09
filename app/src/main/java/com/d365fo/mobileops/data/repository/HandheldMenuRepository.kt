@@ -79,7 +79,8 @@ class HandheldMenuRepository @Inject constructor(
                 name = row.name.ifBlank { row.menuId },
                 entries = row.lines.mapNotNull { line ->
                     when (line.lineType.uppercase()) {
-                        "MODULE" -> WarehouseWorkflow.entries.firstOrNull { it.name == line.module }?.let { MenuEntry.Module(it) }
+                        "MODULE" -> WarehouseWorkflow.entries.firstOrNull { it.name == line.module }
+                            ?.let { MenuEntry.Module(it, line.countLocationId.takeIf { l -> l.isNotBlank() }) }
                         "MENU" -> line.subMenuId.takeIf { it.isNotBlank() }?.let { MenuEntry.SubMenu(it) }
                         else -> null
                     }

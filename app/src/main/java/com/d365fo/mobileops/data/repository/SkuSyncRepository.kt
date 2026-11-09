@@ -89,20 +89,24 @@ class SkuSyncRepository @Inject constructor(
      * Pages through the feeds until done or [budgetMs] is spent. [SkuSyncStep.Pending] means
      * stopped part way - the position is kept and the worker comes back for the rest.
      */
-    suspend fun runStep(budgetMs: Long): SkuSyncStep = withContext(ioDispatcher) {
+    suspend fun runStep(budgetMs: Long, manual: ManualSync? = null): SkuSyncStep = withContext(ioDispatcher) {
         lock.withLock {
             val stepStarted = System.currentTimeMillis()
             val deadline = stepStarted + budgetMs
             fun addActive() = prefs.edit().putLong(KEY_ACTIVE_MS, prefs.getLong(KEY_ACTIVE_MS, 0L) + System.currentTimeMillis() - stepStarted).apply()
+            // Settings > Sync masters now (30 Oct): a full sync starts over even part way through
+            // another; changes only carry on with one already running.
+            if (manual == ManualSync.FULL) prefs.edit().putLong(KEY_CYCLE_STARTED, 0L).apply()
             if (prefs.getLong(KEY_CYCLE_STARTED, 0L) == 0L) {
                 // Not again within the day - unless a feed gained a column (SCHEMA), which needs a
                 // full sync now: the guard used to come first and kept the variant names away.
-                if (prefs.getInt(KEY_SCHEMA, 0) >= SCHEMA &&
+                // Asked for by the worker (manual), it runs whenever.
+                if (manual == null && prefs.getInt(KEY_SCHEMA, 0) >= SCHEMA &&
                     System.currentTimeMillis() - prefs.getLong(KEY_LAST_SUCCESS, 0L) < MIN_CYCLE_INTERVAL_MS
                 ) {
                     return@withLock SkuSyncStep.Done(null)
                 }
-                startCycle()
+                startCycle(forceFull = manual == ManualSync.FULL)
             }
             val full = prefs.getString(KEY_MODE, MODE_FULL) == MODE_FULL
 
@@ -178,11 +182,11 @@ class SkuSyncRepository @Inject constructor(
         prefs.getLong(KEY_LAST_SUCCESS, 0L) == 0L || prefs.getLong(KEY_CYCLE_STARTED, 0L) != 0L ||
             prefs.getInt(KEY_SCHEMA, 0) < SCHEMA
 
-    private fun startCycle() {
+    private fun startCycle(forceFull: Boolean = false) {
         val now = System.currentTimeMillis()
         val watermark = prefs.getString(KEY_WATERMARK, null)
         // A new column on a feed (variant names, SCHEMA 2) needs every row again, not a delta.
-        val full = watermark.isNullOrBlank() || now - prefs.getLong(KEY_LAST_FULL, 0L) >= FULL_REFRESH_INTERVAL_MS ||
+        val full = forceFull || watermark.isNullOrBlank() || now - prefs.getLong(KEY_LAST_FULL, 0L) >= FULL_REFRESH_INTERVAL_MS ||
             prefs.getInt(KEY_SCHEMA, 0) < SCHEMA
         prefs.edit()
             .putLong(KEY_CYCLE_STARTED, now)
@@ -325,3 +329,6 @@ sealed interface SkuSyncStep {
     data object Pending : SkuSyncStep
     data class Failed(val message: String) : SkuSyncStep
 }
+
+/** Settings > Sync masters now: only the changes since the last sync, or every row again. */
+enum class ManualSync { CHANGES, FULL }

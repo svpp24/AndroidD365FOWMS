@@ -18,6 +18,14 @@
 			<Method>postJournal</Method>
 		</AxServiceOperation>
 		<AxServiceOperation>
+			<Name>getVarianceSummary</Name>
+			<Method>getVarianceSummary</Method>
+		</AxServiceOperation>
+		<AxServiceOperation>
+			<Name>approveLine</Name>
+			<Method>approveLine</Method>
+		</AxServiceOperation>
+		<AxServiceOperation>
 			<Name>getAccuracyReport</Name>
 			<Method>getAccuracyReport</Method>
 		</AxServiceOperation>

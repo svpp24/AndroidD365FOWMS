@@ -15,8 +15,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import com.d365fo.mobileops.presentation.common.components.SquareTextButton as TextButton
 import androidx.compose.material.icons.Icons
+import com.d365fo.mobileops.domain.model.kind
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Insights
@@ -37,11 +39,12 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import com.d365fo.mobileops.presentation.common.components.AppTopBar as TopAppBar
-import com.d365fo.mobileops.presentation.common.components.CountProgressBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -71,17 +74,20 @@ import com.d365fo.mobileops.util.Formatters
  * and End count, with a live "counted X of Y" tally. End count asks for confirmation first,
  * spelling out how many lines are still uncounted.
  */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 fun CountingJournalListScreen(
     onBack: () -> Unit,
     onViewLines: (String) -> Unit,
     onStartCounting: (String) -> Unit,
     onReviewVariance: (String) -> Unit = {},
+    onReviewDualCount: (String) -> Unit = {},
     onNewSpotCount: () -> Unit = {},
     /** A free count of the whole store, reviewed by the supervisor (Stock count control center). */
     onStoreCount: () -> Unit = {},
     onAccuracy: () -> Unit = {},
+    /** The Inventory count sub-menu this list is for; null lists every kind (search). */
+    kind: com.d365fo.mobileops.domain.model.CountKind? = null,
     viewModel: CountingJournalListViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -120,8 +126,7 @@ fun CountingJournalListScreen(
             title = { Text("Reopen counting?") },
             text = {
                 Text(
-                    "The counts stay as they are. You can correct them or count more lines, then " +
-                        "press End count to send them again.",
+                    "Counts stay. Fix or add, then End count again.",
                 )
             },
             confirmButton = {
@@ -140,6 +145,7 @@ fun CountingJournalListScreen(
         state.journals.firstOrNull { it.journalId == journalId }?.let { journal ->
             RangePickerDialog(
                 journal = journal,
+                currentUser = viewModel.currentUserName,
                 onPick = { viewModel.pickRange(journalId, it) },
                 onDismiss = viewModel::cancelRangePicker,
             )
@@ -175,7 +181,16 @@ fun CountingJournalListScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Inventory count") },
+                title = {
+                    Text(
+                        when (kind) {
+                            com.d365fo.mobileops.domain.model.CountKind.CYCLE -> "Cycle count"
+                            com.d365fo.mobileops.domain.model.CountKind.SPOT -> "Spot count"
+                            com.d365fo.mobileops.domain.model.CountKind.WALL_TO_WALL -> "Wall-to-wall count"
+                            null -> "Inventory count"
+                        },
+                    )
+                },
                 expandedHeight = WarehouseDimens.TopBarHeight,
                 navigationIcon = {
                     IconButton(onClick = onBack) {
@@ -183,7 +198,7 @@ fun CountingJournalListScreen(
                     }
                 },
                 actions = {
-                    if (state.canCreateSpot) {
+                    if (state.canCreateSpot && (kind == null || kind == com.d365fo.mobileops.domain.model.CountKind.SPOT)) {
                         IconButton(onClick = onNewSpotCount) {
                             Icon(Icons.Default.Add, contentDescription = "New spot count")
                         }
@@ -193,6 +208,8 @@ fun CountingJournalListScreen(
                 // "Inventory count" mid-word (20 Oct restyle).
                 menuItems = { close ->
                     // Every counter may count the store; the supervisor reviews it in D365FO.
+                    // A sub-menu leaves both to the Inventory count page.
+                    if (kind == null) {
                     androidx.compose.material3.DropdownMenuItem(
                         text = { Text("Store count") },
                         leadingIcon = { Icon(Icons.Default.Inventory, contentDescription = null) },
@@ -205,11 +222,95 @@ fun CountingJournalListScreen(
                             onClick = { close(); onAccuracy() },
                         )
                     }
+                    }
                 },
             )
         },
     ) { padding ->
-        Box(modifier = Modifier.fillMaxSize().padding(padding)) {
+        // This device's journals draw first and D365FO's open ones arrive above them. A list keeps
+        // its place when rows land above it, which would leave the worker looking at closed
+        // journals with the ones to count out of sight.
+        val listState = rememberLazyListState()
+        val firstJournal = state.journals.firstOrNull()?.journalId
+        var shownFirst by rememberSaveable { mutableStateOf<String?>(null) }
+        LaunchedEffect(firstJournal) {
+            if (firstJournal != null && firstJournal != shownFirst) {
+                listState.scrollToItem(0)
+                shownFirst = firstJournal
+            }
+        }
+        val blindCountNotice by viewModel.blindCountNotice.collectAsStateWithLifecycle()
+        // 0 Cycle (or "To count" in a sub-menu), 1 Recount, 2 Wall-to-wall, 3 Done. A sub-menu
+        // lists its own kind only: cycle has To count / Recount / Done, spot and wall-to-wall
+        // To count / Done.
+        val tabs = when (kind) {
+            null -> listOf(0, 1, 2, 3)
+            com.d365fo.mobileops.domain.model.CountKind.CYCLE -> listOf(0, 1, 3)
+            else -> listOf(0, 3)
+        }
+        var tab by rememberSaveable { mutableStateOf(0) }
+        val ofKind = if (kind == null) state.journals else state.journals.filter { it.kind == kind }
+        val (doneAny, openJournals) = ofKind.partition { it.journalId in state.doneIds }
+        // Open work is oldest first; finished work reads newest first.
+        val doneJournals = doneAny.sortedByDescending { it.journalDate ?: Long.MIN_VALUE }
+        val tabJournals = if (tab == 3) doneJournals else openJournals.filter {
+            when (tab) {
+                1 -> it.onRecountTab
+                2 -> it.onWallToWallTab
+                else -> kind != null && kind != com.d365fo.mobileops.domain.model.CountKind.CYCLE || it.onCycleTab
+            }
+        }
+        val recountLineTotal = openJournals.filter { !it.isWallToWall }.sumOf { it.recountLines }
+        val wallToWallCount = openJournals.count { it.isWallToWall }
+        blindCountNotice?.let { notice ->
+            AlertDialog(
+                onDismissRequest = viewModel::dismissBlindCountNotice,
+                text = { Text(notice) },
+                confirmButton = {
+                    com.d365fo.mobileops.presentation.common.components.DialogButtonRow(
+                        dismiss = null,
+                        confirm = {
+                            com.d365fo.mobileops.presentation.common.components.ConfirmButton(
+                                onClick = viewModel::dismissBlindCountNotice,
+                                modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget),
+                            ) { Text("OK") }
+                        },
+                    )
+                },
+            )
+        }
+        Column(modifier = Modifier.fillMaxSize().padding(padding)) {
+            // Wraps to a second row on a narrow screen rather than clipping a chip.
+            androidx.compose.foundation.layout.FlowRow(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = WarehouseDimens.ScreenPadding),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                androidx.compose.material3.FilterChip(
+                    selected = tab == 0,
+                    onClick = { tab = 0 },
+                    label = { Text(if (kind == null) "Cycle" else "To count") },
+                    modifier = Modifier.heightIn(min = WarehouseDimens.MinTouchTarget),
+                )
+                if (1 in tabs) androidx.compose.material3.FilterChip(
+                    selected = tab == 1,
+                    onClick = { tab = 1 },
+                    label = { Text(if (recountLineTotal > 0) "Recount ($recountLineTotal)" else "Recount") },
+                    modifier = Modifier.heightIn(min = WarehouseDimens.MinTouchTarget),
+                )
+                if (2 in tabs) androidx.compose.material3.FilterChip(
+                    selected = tab == 2,
+                    onClick = { tab = 2 },
+                    label = { Text(if (wallToWallCount > 0) "Wall-to-wall ($wallToWallCount)" else "Wall-to-wall") },
+                    modifier = Modifier.heightIn(min = WarehouseDimens.MinTouchTarget),
+                )
+                androidx.compose.material3.FilterChip(
+                    selected = tab == 3,
+                    onClick = { tab = 3 },
+                    label = { Text(if (doneJournals.isNotEmpty()) "Done (${doneJournals.size})" else "Done") },
+                    modifier = Modifier.heightIn(min = WarehouseDimens.MinTouchTarget),
+                )
+            }
+        Box(modifier = Modifier.fillMaxSize()) {
             when {
                 state.busy && state.journals.isEmpty() -> {
                     CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
@@ -224,11 +325,16 @@ fun CountingJournalListScreen(
                     )
                 }
 
-                state.journals.isEmpty() -> {
+                tabJournals.isEmpty() -> {
                     Text(
-                        text = state.warehouseId
-                            ?.let { "No open counting journals in $it." }
-                            ?: "No open counting journals.",
+                        text = when {
+                            tab == 3 -> "No finished counts yet."
+                            tab == 1 -> "Nothing to recount."
+                            tab == 2 || kind == com.d365fo.mobileops.domain.model.CountKind.WALL_TO_WALL -> "No wall-to-wall count in progress."
+                            kind == com.d365fo.mobileops.domain.model.CountKind.SPOT ->
+                                if (state.canCreateSpot) "No open spot counts. Tap + to start one." else "No open spot counts."
+                            else -> state.warehouseId?.let { "No open counting journals in $it." } ?: "No open counting journals."
+                        },
                         style = MaterialTheme.typography.bodyLarge,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.align(Alignment.Center).padding(WarehouseDimens.ScreenPadding),
@@ -237,6 +343,7 @@ fun CountingJournalListScreen(
 
                 else -> {
                     LazyColumn(
+                        state = listState,
                         modifier = Modifier
                             .fillMaxSize()
                             .padding(horizontal = WarehouseDimens.ScreenPadding),
@@ -246,8 +353,7 @@ fun CountingJournalListScreen(
                         if (state.externalCounter) {
                             item(key = "external") {
                                 Text(
-                                    text = "External counter" + (state.counterTeam?.let { " · team $it" } ?: "") +
-                                        " - only journals assigned to your team are listed.",
+                                    text = "External counter" + (state.counterTeam?.let { " · team $it" } ?: ""),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = WarehouseStatusColors.text3,
                                 )
@@ -261,7 +367,7 @@ fun CountingJournalListScreen(
                                 )
                             }
                         }
-                        items(state.journals, key = { it.journalId }) { journal ->
+                        items(tabJournals, key = { it.journalId }) { journal ->
                             CountingJournalRow(
                                 journal = journal,
                                 exportStatus = state.exportStatuses[journal.journalId],
@@ -279,7 +385,9 @@ fun CountingJournalListScreen(
                                 },
                                 onEndCount = { confirmEndFor = journal.journalId },
                                 onResendExceptions = { viewModel.resendExceptions(journal.journalId) },
-                                onReviewVariance = { onReviewVariance(journal.journalId) }.takeIf { state.canReviewVariance },
+                                onReviewVariance = {
+                                    if (journal.doubleBlind) onReviewDualCount(journal.journalId) else onReviewVariance(journal.journalId)
+                                }.takeIf { state.canReviewVariance && journal.doneNote == null },
                                 onReopen = { confirmReopenFor = journal.journalId },
                                 onExportCsv = {
                                     exportFor = journal.journalId
@@ -290,6 +398,7 @@ fun CountingJournalListScreen(
                     }
                 }
             }
+        }
         }
     }
 }
@@ -330,31 +439,61 @@ private fun CountingJournalRow(
         modifier = Modifier.fillMaxWidth()
             .then(if (canContinue) Modifier.clickable(onClick = onStartCounting) else Modifier),
     ) {
+        // Compact (feedback, 21 Oct): the ring sits left of the journal number and Get data at
+        // its right, instead of each taking a full-width row.
         Column(
-            modifier = Modifier.padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.Top,
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
+                if (countState != null) {
+                    com.d365fo.mobileops.presentation.common.components.CountProgressRing(
+                        progress = countState.percent / 100f,
+                        percent = countState.percent,
+                        size = 44.dp,
+                    )
+                }
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = journal.journalId,
                         style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
+                        fontWeight = FontWeight.ExtraBold,
                     )
                     // Description, size and date on one quiet line rather than three.
                     Text(
+                        // Minimal (feedback, 21 Oct: "too much info on each card"): what it is
+                        // and how far along - no date, no claim timer, no class or tolerance.
                         text = listOfNotNull(
                             journal.description?.takeIf { it.isNotBlank() },
-                            "${journal.lineCount} lines",
-                            journal.journalDate?.let { Formatters.shortDate(it) },
+                            countState?.let { "${it.counted} of ${it.total} counted" }
+                                ?: if (journal.doneNote != null) null else when {
+                                    journal.lineCount == 0 && onReviewVariance != null -> "Nothing left to count"
+                                    journal.lineCount == 1 -> "1 line"
+                                    else -> "${journal.lineCount} lines"
+                                },
                         ).joinToString(" · "),
                         style = MaterialTheme.typography.bodySmall,
                         color = WarehouseStatusColors.text3,
-                        maxLines = 2,
                     )
+                }
+                // A supervisor sees a dual journal whose lines are all settled, to review it: there
+                // is nothing to fetch, and Review variance is in the menu.
+                if (countState == null && exportStatus == null && journal.doneNote == null &&
+                    !(journal.lineCount == 0 && onReviewVariance != null)
+                ) {
+                    androidx.compose.material3.FilledTonalButton(
+                        onClick = onGetData,
+                        shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
+                        colors = androidx.compose.material3.ButtonDefaults.filledTonalButtonColors(
+                            containerColor = WarehouseStatusColors.accentDim,
+                            contentColor = WarehouseStatusColors.accent,
+                        ),
+                        modifier = Modifier.heightIn(min = WarehouseDimens.MinTouchTarget),
+                    ) { Text("Get data", fontWeight = FontWeight.Bold) }
                 }
                 if (canRefresh || canReopen || onReviewVariance != null || onExportCsv != null) {
                     Box {
@@ -391,6 +530,9 @@ private fun CountingJournalRow(
                 }
             }
 
+            journal.doneNote?.let {
+                Text(text = it, style = MaterialTheme.typography.bodyMedium, color = WarehouseStatusColors.green)
+            }
             PassBadges(journal)
             freezeBanner(journal.freezeState, journal.snapshotAt) { Formatters.clockTime(it) }?.let {
                 Text(text = it, style = MaterialTheme.typography.bodySmall, color = WarehouseStatusColors.amber)
@@ -400,8 +542,9 @@ private fun CountingJournalRow(
             }
             if (myClaim?.lost == true) {
                 ErrorBanner(
-                    message = (myClaim.lostReason ?: "Your claim on this journal was lost.") +
-                        " Your counts are kept on this device. Claim the journal again to submit them.",
+                    // Nothing downloaded here yet means no counts to keep (30 Oct).
+                    message = (myClaim.lostReason ?: "Claim lost.") +
+                        if (countState != null) " Counts are kept - claim again to send." else " Claim again to count.",
                 )
                 Button(
                     onClick = onReclaim,
@@ -426,7 +569,7 @@ private fun CountingJournalRow(
                     onReopen = onReopen,
                     submitBlocked = myClaim?.lost == true,
                 )
-            } else {
+            } else if (exportStatus != null) {
                 DownloadSection(status = exportStatus, onGetData = onGetData)
             }
         }
@@ -456,72 +599,56 @@ private fun CountControls(
     val submitting = phase == CountPhase.SUBMITTING
 
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            Text(
-                text = "${countState.counted} of ${countState.total} counted",
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.SemiBold,
-            )
-            Text(
-                text = "${countState.percent}%",
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.SemiBold,
-            )
-        }
-        CountProgressBar(progress = countState.percent / 100f)
-
         // Status - only what needs saying.
         when {
             submitting && com.d365fo.mobileops.presentation.common.components.LocalSyncStatus.current?.postingEnabled == false ->
                 Text(
-                    text = "Counts are held on this device - posting to D365FO is switched off in Settings.",
-                    style = MaterialTheme.typography.bodyMedium,
+                    text = "Held here - posting is off",
+                    style = MaterialTheme.typography.bodySmall,
                     color = WarehouseStatusColors.text3,
                 )
             submitting && com.d365fo.mobileops.presentation.common.components.LocalSyncStatus.current?.fullyOnline == false ->
                 Text(
-                    text = "Counts are waiting for the connection - they are sent when D365FO answers.",
-                    style = MaterialTheme.typography.bodyMedium,
+                    text = "Waiting for connection",
+                    style = MaterialTheme.typography.bodySmall,
                     color = WarehouseStatusColors.text3,
                 )
-            submitting -> ProgressRow(countState.error ?: "Submitting counts… (see Activity)", null)
+            submitting -> ProgressRow(countState.error ?: "Sending…", null)
             phase == CountPhase.POSTED -> Text(
-                text = "Posted in D365FO. This journal is closed and can't be reopened.",
-                style = MaterialTheme.typography.bodyMedium,
+                text = "Posted - closed",
+                style = MaterialTheme.typography.bodySmall,
                 color = WarehouseStatusColors.text3,
             )
             finished -> {
                 // At a store that reviews journal counts, End count sends them to the supervisor,
                 // not into the journal - saying "submitted" there was wrong (13 Oct).
-                val sentForReview = countState.passNote?.startsWith(SENT_FOR_REVIEW_PREFIX) == true
+                val sentForReview = countState.passNote?.let { it.startsWith(SENT_FOR_REVIEW_PREFIX) || it.startsWith(OLD_SENT_FOR_REVIEW_PREFIX) } == true
                 Text(
-                    text = if (sentForReview) "Sent for review - the supervisor moves the counts into the journal." else "Counts submitted to D365FO.",
-                    style = MaterialTheme.typography.bodyMedium,
+                    text = if (sentForReview) "Sent for review" else "Submitted",
+                    style = MaterialTheme.typography.bodySmall,
                     color = WarehouseStatusColors.green,
                 )
                 countState.error?.let {
+                    val n = countState.failedExceptions
                     Text(
-                        text = if (countState.failedExceptions > 0) it else "Some lines were not accepted: $it",
+                        text = if (n > 0) "$n unexpected item${if (n == 1) "" else "s"} not sent" else "Some lines not accepted",
                         style = MaterialTheme.typography.bodySmall,
                         color = WarehouseStatusColors.amber,
                     )
                 }
-                // Journals submitted before the runner dropped it still hold a bare "ACCEPTED".
-                countState.passNote?.takeUnless { it.equals("ACCEPTED", ignoreCase = true) }?.let {
+                // Only a third count needs saying here; the rest of the pass note is supervisor detail.
+                if (countState.thirdCountNeeded) {
                     Text(
-                        text = it,
+                        text = "Third count needed",
                         style = MaterialTheme.typography.bodySmall,
-                        color = if (countState.thirdCountNeeded) WarehouseStatusColors.amber else WarehouseStatusColors.text3,
+                        color = WarehouseStatusColors.amber,
                     )
                 }
                 if (countState.failedExceptions > 0) {
                     OutlinedButton(
                         onClick = onResendExceptions,
                         modifier = Modifier.fillMaxWidth().heightIn(min = WarehouseDimens.MinTouchTarget),
-                    ) { Text("Send unexpected items again") }
+                    ) { Text("Send again") }
                 }
             }
             phase == CountPhase.FAILED -> countState.error?.let { ErrorBanner(message = it) }
@@ -557,7 +684,7 @@ private fun CountControls(
                 finished -> Button(
                     onClick = onReopen,
                     modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget),
-                ) { Text("Reopen counting") }
+                ) { Text("Reopen") }
                 else -> Button(
                     onClick = onStartCounting,
                     modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget),
@@ -587,37 +714,33 @@ private fun EndCountDialog(
         title = { Text("End count?") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("${countState.percent}% counted. ${countState.withQuantity} of ${countState.total} lines have a counted quantity.")
+                Text("${countState.withQuantity} of ${countState.total} lines counted.")
                 if (countState.markedOnly > 0) {
                     Text(
-                        "${countState.markedOnly} are marked counted without a quantity - their " +
-                            "on-hand quantity is sent as the count, so there is no adjustment.",
+                        "${countState.markedOnly} marked OK (on-hand kept).",
                     )
                 }
                 if (countState.notCounted > 0) {
                     Text(
-                        "${countState.notCounted} lines are not counted at all and will be left as " +
-                            "they are.",
+                        "${countState.notCounted} not counted - left as they are.",
                         color = WarehouseStatusColors.amber,
                     )
                 }
                 if (countState.emptyLocations > 0) {
                     Text(
-                        "${countState.emptyLocations} location${if (countState.emptyLocations == 1) "" else "s"} " +
-                            "confirmed empty.",
+                        "${countState.emptyLocations} empty location${if (countState.emptyLocations == 1) "" else "s"}.",
                     )
                 }
                 if (countState.exceptions > 0) {
                     Text(
-                        "${countState.exceptions} item${if (countState.exceptions == 1) "" else "s"} recorded as " +
-                            "not on this journal - sent with the counts and added to the journal as new lines.",
+                        "${countState.exceptions} not on the journal - added as new lines.",
                     )
                 }
                 Text(
                     when {
-                        countState.counted > 0 -> "Only the counted lines are sent. Submit now?"
-                        countState.exceptions > 0 -> "Only the items not on this journal are sent. Submit now?"
-                        else -> "Nothing has been counted yet - there is nothing to submit."
+                        countState.counted > 0 -> "Send the counts?"
+                        countState.exceptions > 0 -> "Send the extra items?"
+                        else -> "Nothing counted yet."
                     },
                 )
             }
@@ -644,10 +767,16 @@ private fun DownloadSection(
     onGetData: () -> Unit,
 ) {
     when (status) {
-        null -> Button(
+        // A tonal button like the dashboard's actions - a solid one on every card was heavy.
+        null -> androidx.compose.material3.FilledTonalButton(
             onClick = onGetData,
+            shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
+            colors = androidx.compose.material3.ButtonDefaults.filledTonalButtonColors(
+                containerColor = WarehouseStatusColors.accentDim,
+                contentColor = WarehouseStatusColors.accent,
+            ),
             modifier = Modifier.fillMaxWidth().heightIn(min = WarehouseDimens.MinTouchTarget),
-        ) { Text("Get data") }
+        ) { Text("Get data", fontWeight = FontWeight.Bold) }
 
         is ExportJobStatus.Enqueued -> ProgressRow(label = "Requesting export…", percent = null)
 
@@ -699,45 +828,54 @@ private fun ProgressRow(label: String, percent: Int?) {
 @Composable
 private fun ClaimLine(journal: CountingJournalSummary, myClaim: CountClaimEntity?) {
     val text = when {
-        myClaim != null && !myClaim.lost -> buildString {
-            append("Claimed by you")
-            myClaim.rangeId?.takeIf { it.isNotBlank() }?.let { append(" · range $it") }
-            myClaim.expiresAt?.let { append(" · until ${Formatters.clockTime(it)}") }
-        }
+        // This device's own claim needs no line - it's the normal case.
+        myClaim != null && !myClaim.lost -> return
         journal.claims.isNotEmpty() -> journal.claims.joinToString("\n") { claim ->
-            val range = listOfNotNull(claim.locationFrom, claim.locationTo).filter { it.isNotBlank() }.joinToString(" - ")
+            // One location (a wall-to-wall task) once, not "A - A".
+            val range = listOfNotNull(claim.locationFrom, claim.locationTo).filter { it.isNotBlank() }.distinct().joinToString(" - ")
             "Claimed by ${claim.claimedBy}" + if (range.isNotBlank()) " ($range)" else ""
-        }
-        journal.ranges.isNotEmpty() -> "${journal.ranges.size} ranges to claim"
+        } + if (journal.isWallToWall && journal.ranges.isNotEmpty()) "\n${locationsToCount(journal.ranges.size)}" else ""
+        journal.ranges.isNotEmpty() -> if (journal.isWallToWall) locationsToCount(journal.ranges.size) else "${journal.ranges.size} ranges to claim"
         else -> return
     }
     Text(text = text, style = MaterialTheme.typography.bodySmall, color = WarehouseStatusColors.text3)
 }
 
+private fun locationsToCount(n: Int) = if (n == 1) "1 location to count" else "$n locations to count"
+
 /** A wall-to-wall journal split by the planner: pick one range to claim and count. */
 @Composable
 private fun RangePickerDialog(
     journal: CountingJournalSummary,
+    currentUser: String?,
     onPick: (CountRange) -> Unit,
     onDismiss: () -> Unit,
 ) {
     val taken = journal.claims.mapNotNull { claim -> claim.rangeId?.let { it to claim.claimedBy } }.toMap()
+    // The server names a holder "Name (user id)": a range of the counter's own is theirs to go
+    // back to (seen 8 Nov: after a refused End count, their own location could not be picked).
+    fun isMine(holder: String) = currentUser != null &&
+        holder.trim().endsWith("($currentUser)", ignoreCase = true)
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Choose a range") },
+        title = { Text(if (journal.isWallToWall) "Choose a location" else "Choose a range") },
         text = {
             LazyColumn(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 items(journal.ranges, key = { it.rangeId }) { range ->
                     val holder = taken[range.rangeId]
                     TextButton(
                         onClick = { onPick(range) },
-                        enabled = holder == null,
+                        enabled = holder == null || isMine(holder),
                         modifier = Modifier.fillMaxWidth(),
                     ) {
                         Column(modifier = Modifier.fillMaxWidth()) {
                             Text(range.label, fontWeight = FontWeight.SemiBold)
                             Text(
-                                text = holder?.let { "Claimed by $it" } ?: "${range.lineCount} lines",
+                                text = when {
+                                    holder == null -> "${range.lineCount} lines"
+                                    isMine(holder) -> "Yours · ${range.lineCount} lines"
+                                    else -> "Claimed by $holder"
+                                },
                                 style = MaterialTheme.typography.bodySmall,
                                 color = WarehouseStatusColors.text3,
                             )
@@ -765,7 +903,8 @@ private fun PassBadges(journal: CountingJournalSummary) {
             ?.takeIf { label -> journal.description?.startsWith(label, ignoreCase = true) != true },
         journal.recountOf?.let { "Recount of $it" },
         "Pass ${journal.passNumber}".takeIf { journal.passNumber > 1 && journal.recountOf == null },
-        "Double-blind".takeIf { journal.doubleBlind },
+        // A wall-to-wall line needs a second count only by its counting group: not "double-blind" as such.
+        "Double-blind".takeIf { journal.doubleBlind && !journal.isWallToWall },
         // A control group repeats the same sample on a schedule; the analysis is server-side.
         (journal.repeatInfo ?: "Repeats").takeIf { journal.originType == "CONTROL_GROUP" },
     )
@@ -777,10 +916,11 @@ private fun PassBadges(journal: CountingJournalSummary) {
             color = if (journal.originType == "TRIGGERED") MaterialTheme.colorScheme.error else WarehouseStatusColors.amber,
         )
     }
-    listOfNotNull(journal.abcClass?.let { "Class $it" }, journal.toleranceInfo).takeIf { it.isNotEmpty() }?.let {
-        Text(text = it.joinToString(" · "), style = MaterialTheme.typography.bodySmall, color = WarehouseStatusColors.text3)
-    }
+    // Class and tolerance are supervisor detail - left off the counter's card (21 Oct).
 }
 
 /** How [com.d365fo.mobileops.data.counting.CountSubmitRunner] starts the note for counts sent for review. */
-internal const val SENT_FOR_REVIEW_PREFIX = "Sent to the supervisor for review"
+internal const val SENT_FOR_REVIEW_PREFIX = "Sent for review"
+
+/** The wording before 21 Oct, still on journals submitted then. */
+internal const val OLD_SENT_FOR_REVIEW_PREFIX = "Sent to the supervisor for review"

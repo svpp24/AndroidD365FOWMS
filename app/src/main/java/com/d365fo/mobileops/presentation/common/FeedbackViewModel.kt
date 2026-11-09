@@ -158,7 +158,7 @@ class FeedbackViewModel @Inject constructor(
                 is NetworkResult.Error -> _state.update {
                     it.copy(
                         loadingMine = false,
-                        mineError = if (result.failure.retryable) "Can't reach D365FO - your earlier feedback shows once it can be reached." else result.failure.message,
+                        mineError = if (result.failure.retryable) "Offline - earlier feedback shows when back." else result.failure.message,
                     )
                 }
                 NetworkResult.Loading -> Unit

@@ -108,7 +108,7 @@ fun PoConfirmScreen(onBack: () -> Unit, viewModel: PoConfirmViewModel = hiltView
                             style = MaterialTheme.typography.bodyLarge,
                         )
                         !summary.confirmable -> Text(
-                            "This order is ${summary.approvalLabel.lowercase()} - only an approved order can be confirmed.",
+                            "${summary.approvalLabel} - must be approved first.",
                             style = MaterialTheme.typography.bodyLarge,
                             color = WarehouseStatusColors.red,
                         )
@@ -164,7 +164,7 @@ fun PoConfirmScreen(onBack: () -> Unit, viewModel: PoConfirmViewModel = hiltView
                 Text(
                     "${s.vendorAccount} ${s.vendorName} · ${linesText(detail.lines.size)} · " +
                         "${amountText(detail.lines.sumOf { it.lineAmount })} ${s.currencyCode}.\n\n" +
-                        if (online) "D365FO confirms it now." else "Offline - D365FO confirms it as soon as it can be reached.",
+                        if (online) "Confirm now?" else "Offline - confirmed when back.",
                 )
             },
             confirmButton = {

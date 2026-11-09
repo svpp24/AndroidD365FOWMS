@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsCountWallToWallAction</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Cycle count warehouses: Start, Cancel and Post wall-to-wall, for the selected warehouse. The
+/// menu item's parameter says which (START, CANCEL, POST).
+/// </summary>
+class HSMobileOpsCountWallToWallAction
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>main</Name>
+				<Source><![CDATA[
+
+    public static void main(Args _args)
+    {
+        HSMobileOpsCountWarehouse row;
+        FormDataSource            dataSource;
+
+        if (!_args || !_args.record() || _args.record().TableId != tableNum(HSMobileOpsCountWarehouse))
+        {
+            throw error('Select a warehouse first.');
+        }
+        row = _args.record();
+
+        switch (_args.parm())
+        {
+            case 'START':
+                if (Box::yesNo(strFmt('Start a wall-to-wall count for %1? The warehouse is frozen at once: no stock moves there, on the handhelds or in D365FO, until the count is posted or cancelled.', row.Warehouse), DialogButton::No) == DialogButton::Yes)
+                {
+                    HSMobileOpsCountWallToWall::start(row.Warehouse);
+                }
+                break;
+            case 'CANCEL':
+                if (Box::yesNo(strFmt('Cancel the wall-to-wall count for %1? Its journal and every count in it are removed, and the warehouse is released.', row.Warehouse), DialogButton::No) == DialogButton::Yes)
+                {
+                    HSMobileOpsCountWallToWall::cancel(row.Warehouse);
+                }
+                break;
+            case 'POST':
+                HSMobileOpsCountWallToWall::requestPost(row.Warehouse);
+                break;
+            default:
+                throw error(strFmt('Unknown wall-to-wall action %1', _args.parm()));
+        }
+
+        dataSource = FormDataUtil::getFormDataSource(row);
+        if (dataSource)
+        {
+            dataSource.research(true);
+        }
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

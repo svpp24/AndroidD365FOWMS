@@ -53,6 +53,14 @@ private const val DUPLICATE_SCAN_WINDOW_MS = 1500L
 private const val LIVE_POST_TIMEOUT_MS = 10_000L
 
 /**
+ * The same wait with Post immediately on (6 Nov): D365FO does the work in this call, and with Auto
+ * GRN that includes the product receipt - about 4 s warm, 1 min 44 s first after an AOS restart.
+ * Cut off at 10 s, the worker saw "Saved on this device" and never the GRN number. Inside
+ * LongPostingTimeoutInterceptor's 3 minutes, so this limit is the one that applies.
+ */
+private const val LIVE_POST_NOW_TIMEOUT_MS = 120_000L
+
+/**
  * Drives the step flow: one prompt, one answer, one validation, advance or explain.
  *
  * Every answer is validated against D365FO *before* the flow advances. That is the whole point
@@ -78,6 +86,7 @@ class ReceivingFlowViewModel @Inject constructor(
     private val stagedLines: com.d365fo.mobileops.data.repository.StagedLineRepository,
     private val opportunityCounts: com.d365fo.mobileops.data.counting.OpportunityCounts,
     private val networkPreferences: com.d365fo.mobileops.data.security.NetworkPreferences,
+    private val freezes: com.d365fo.mobileops.data.repository.WarehouseFreezeRepository,
 ) : ViewModel() {
 
     init {
@@ -473,9 +482,9 @@ class ReceivingFlowViewModel @Inject constructor(
             // Written unconditionally, before the live-dispatch attempt below even starts -
             // these lines are spoken for the instant they are durably enqueued, regardless of
             // whether that attempt succeeds, fails, or loses the lease race to a background
-            // worker run. See StagedLineRepository's class doc and sessionRemaining. Cleared
-            // later by FailedSyncViewModel once D365FO's own queue confirms this order has
-            // nothing left Pending.
+            // worker run. See StagedLineRepository's class doc and sessionRemaining. Ignored,
+            // then removed, once the posting has left this device's queue - D365FO nets it from
+            // then on (StagedLineDao.forOrder).
             stagedLines.stage(
                 flowType = FlowType.RECEIVING,
                 orderId = purchId,
@@ -519,7 +528,9 @@ class ReceivingFlowViewModel @Inject constructor(
             val postedLive = if (held) false else syncQueue.leaseOne(entry.queueId)?.let { leased ->
                 when (
                     val result =
-                        withTimeoutOrNull(LIVE_POST_TIMEOUT_MS) { postingDispatcher.dispatch(leased) }
+                        withTimeoutOrNull(
+                            if (networkPreferences.postImmediately.value) LIVE_POST_NOW_TIMEOUT_MS else LIVE_POST_TIMEOUT_MS,
+                        ) { postingDispatcher.dispatch(leased) }
                 ) {
                     is NetworkResult.Success -> {
                         syncQueue.onSuccess(leased)
@@ -544,7 +555,7 @@ class ReceivingFlowViewModel @Inject constructor(
             // Registered there and then (Post immediately): D365FO's outstanding quantity already
             // shows it, so the staged figure must go now - kept, it was subtracted a second time
             // and the order came back as "already staged" with a Pack still open (PO 161706).
-            if (postedLive && networkPreferences.postImmediately.value) {
+            if (postedLive && postingDispatcher.finishedInCall(payload.idempotencyKey)) {
                 stagedLines.clearForQueue(entry.queueId)
             }
 
@@ -566,7 +577,8 @@ class ReceivingFlowViewModel @Inject constructor(
                         postedLive = postedLive,
                         rejectedReason = rejectedReason,
                         held = held,
-                        postedNow = postedLive && networkPreferences.postImmediately.value,
+                        postedNow = postedLive && postingDispatcher.finishedInCall(payload.idempotencyKey),
+                        grnId = if (postedLive) postingDispatcher.documentFor(payload.idempotencyKey) else null,
                     ),
                 )
             }
@@ -602,25 +614,39 @@ class ReceivingFlowViewModel @Inject constructor(
                 warehouseId = c.warehouseId,
                 requireLocationCaptureFallback = c.requireLocationCaptureFallback,
             ),
-            stagedElsewhere = s.stagedElsewhere,
+            // openLines (small order) is still the order as it was looked up, so what this screen
+            // has posted since is added here, not read back from the device's holds: those go as
+            // soon as D365FO has the posting (see StagedLineDao.forOrder), while openLines never
+            // learns it. A fresh look-up of the order starts from D365FO's own figures again.
+            stagedElsewhere = if (s.linesInline && s.postOutcome?.rejectedReason == null) {
+                s.stagedElsewhere.toMutableMap().apply {
+                    s.captured.forEach { line -> merge(line.lineNumber, line.quantity, BigDecimal::add) }
+                }
+            } else {
+                s.stagedElsewhere
+            },
         )
-        viewModelScope.launch {
-            val staged = stagedLines.stagedFor(FlowType.RECEIVING, purchId)
-            _state.update {
-                if (it.capture.purchId != purchId) return@update it
-                it.copy(
-                    stagedElsewhere = staged,
-                    // Lines just registered are not outstanding any more for this device - the
-                    // server count lags until D365FO has processed them.
-                    outstandingLineCount = if (it.linesInline) {
-                        it.openLines.count { line ->
-                            (line.outstandingQuantity - (staged[line.lineNumber] ?: BigDecimal.ZERO)).signum() > 0
-                        }
-                    } else {
-                        it.outstandingLineCount
-                    },
-                )
+        // Large order: each item's lines are fetched fresh from D365FO, so only the holds still
+        // waiting on this device apply.
+        if (!s.linesInline) {
+            viewModelScope.launch {
+                val staged = stagedLines.stagedFor(FlowType.RECEIVING, purchId)
+                _state.update { if (it.capture.purchId != purchId) it else it.copy(stagedElsewhere = staged) }
             }
+        }
+        _state.update {
+            val staged = it.stagedElsewhere
+            it.copy(
+                // Lines just registered are not outstanding any more for this device - the
+                // server count lags until D365FO has processed them.
+                outstandingLineCount = if (it.linesInline) {
+                    it.openLines.count { line ->
+                        (line.outstandingQuantity - (staged[line.lineNumber] ?: BigDecimal.ZERO)).signum() > 0
+                    }
+                } else {
+                    it.outstandingLineCount
+                },
+            )
         }
     }
 
@@ -681,8 +707,7 @@ class ReceivingFlowViewModel @Inject constructor(
                     return fail(
                         when (lookup.blockReason) {
                             "NOT_CONFIRMED" ->
-                                "${order.purchId} is approved but not confirmed — purchasing has " +
-                                    "not sent it to the vendor yet"
+                                "${order.purchId} is not confirmed yet"
                             "NOT_OPEN" -> "${order.purchId} is not open for receiving"
                             else -> "${order.purchId} has not been approved yet"
                         },
@@ -700,11 +725,15 @@ class ReceivingFlowViewModel @Inject constructor(
                     val elsewhere = order.warehouseId?.takeIf { it.isNotBlank() }
                         ?: order.lines.firstNotNullOfOrNull { it.warehouseId?.takeIf { w -> w.isNotBlank() } }
                     if (!forHere && elsewhere != null) {
-                        return fail("${order.purchId} is for warehouse $elsewhere - you are working in $here")
+                        return fail("${order.purchId} is for $elsewhere, not $here")
                     }
                 }
+                // A wall-to-wall count freezes the warehouse: said now, not after the scanning.
+                freezes.frozenMessage(here ?: order.warehouseId)?.let { return fail(it) }
 
                 val open = order.lines.filter { it.hasOutstanding }
+                itemsOnOrder.clear()
+                open.mapTo(itemsOnOrder) { it.itemId.lowercase() }
 
                 val capture = ReceivingCapture(
                     purchId = order.purchId,
@@ -730,7 +759,7 @@ class ReceivingFlowViewModel @Inject constructor(
                 if (lookup.linesInline && open.isNotEmpty() &&
                     open.all { (it.outstandingQuantity - (staged[it.lineNumber] ?: BigDecimal.ZERO)).signum() <= 0 }
                 ) {
-                    return fail("${order.purchId} has already been staged for registration")
+                    return fail("${order.purchId} is already received")
                 }
 
                 _state.update {
@@ -785,6 +814,13 @@ class ReceivingFlowViewModel @Inject constructor(
      */
     private val gs1Answers = HashMap<ReceivingStep, String>()
 
+    /**
+     * Items seen open on this order since it was scanned, lower case. openLines cannot answer
+     * this: a refresh ([freshLinesFor]) drops a line with nothing left, and its next scan then
+     * read "not on this order" - even after the line had been unregistered (6 Nov).
+     */
+    private val itemsOnOrder = HashSet<String>()
+
     /** The item step: a GS1 element string first (GTIN + data), otherwise item number or barcode. */
     private suspend fun onItem(raw: String) {
         val gs1 = com.d365fo.mobileops.domain.model.Gs1Parser.parse(raw) ?: return onItemCode(raw)
@@ -798,7 +834,7 @@ class ReceivingFlowViewModel @Inject constructor(
             (lookups.lookupBarcode(candidate) as? NetworkResult.Success)?.data != null
         } ?: run {
             gs1Answers.clear()
-            return fail("GTIN ${gs1.gtin} is not a barcode of any item in D365FO")
+            return fail("Unknown barcode ${gs1.gtin}")
         }
         onItemCode(code)
     }
@@ -817,10 +853,9 @@ class ReceivingFlowViewModel @Inject constructor(
         // timeout on a slow tenant) to learn what was already known for free from openLines,
         // already in hand. Scoped to the small-order case (linesInline) - the large-order path
         // would need its own network call just to tell the two apart, which defeats the point.
-        if (_state.value.linesInline &&
-            _state.value.openLines.any { it.itemId.equals(value, ignoreCase = true) }
-        ) {
-            return fail("$value has already been fully received on this order")
+        if (_state.value.linesInline && value.lowercase() in itemsOnOrder) {
+            freshLinesFor(value)?.let { return chooseAmong(it, quantityPerScan = BigDecimal.ONE) }
+            return fail("$value is already received")
         }
 
         when (val result = lookups.lookupBarcode(value)) {
@@ -828,14 +863,15 @@ class ReceivingFlowViewModel @Inject constructor(
             NetworkResult.Loading -> Unit
             is NetworkResult.Success -> {
                 val match = result.data
-                    ?: return fail("$value is not an item on this order, and not a known barcode")
+                    ?: return fail("$value is not on this order")
                 val matched = linesFor(match.itemNumber)
+                    ?: freshLinesFor(match.itemNumber)
                     ?: return fail(
-                        "${match.itemNumber} is not outstanding on ${_state.value.capture.purchId}",
+                        "${match.itemNumber} is not open on this PO",
                     )
                 val ofVariant = matched.filter { it.variant.acceptsScanOf(match.variant) }
                 if (ofVariant.isEmpty()) {
-                    return fail("${match.itemNumber} ${match.variant.label} is not outstanding on ${_state.value.capture.purchId}")
+                    return fail("${match.itemNumber} ${match.variant.label} is not open on this PO")
                 }
                 chooseAmong(ofVariant, quantityPerScan = match.quantityPerScan, scanUnit = match.unitSymbol)
             }
@@ -872,6 +908,33 @@ class ReceivingFlowViewModel @Inject constructor(
                 result.data.filter { it.hasOutstanding && sessionRemaining(it).signum() > 0 }
                     .takeIf { it.isNotEmpty() }
         }
+    }
+
+    /**
+     * Asks D365FO again before saying a line of this order is done. openLines is the order as it
+     * was looked up, so a registration undone in D365FO since then (6 Nov: registered here,
+     * unregistered there, back to this same screen) still read "already received". Only on that
+     * refusal, so a normal scan costs no extra call; no answer leaves the screen as it was.
+     * What is banked in this flow stays banked, and [sessionRemaining] still nets it.
+     */
+    private suspend fun freshLinesFor(itemNumber: String): List<PurchaseOrderLine>? {
+        val state = _state.value
+        val purchId = state.capture.purchId ?: return null
+        if (!state.linesInline || itemNumber.lowercase() !in itemsOnOrder) return null
+        val lookup = (lookups.lookupOrder(purchId) as? NetworkResult.Success)?.data ?: return null
+        val staged = stagedLines.stagedFor(FlowType.RECEIVING, purchId)
+        lookup.order.lines.filter { it.hasOutstanding }.mapTo(itemsOnOrder) { it.itemId.lowercase() }
+        _state.update {
+            if (it.capture.purchId != purchId) return@update it
+            it.copy(
+                order = lookup.order,
+                openLines = lookup.order.lines.filter { line -> line.hasOutstanding },
+                outstandingLineCount = lookup.outstandingLineCount,
+                linesInline = lookup.linesInline,
+                stagedElsewhere = staged,
+            )
+        }
+        return linesFor(itemNumber)
     }
 
     /**
@@ -971,7 +1034,7 @@ class ReceivingFlowViewModel @Inject constructor(
             is NetworkResult.Error -> return fail(result.failure.message)
             NetworkResult.Loading -> return
             is NetworkResult.Success -> result.data
-                ?: return fail("${line.itemId} is not a released product in this company")
+                ?: return fail("${line.itemId} is not released here")
         }
 
         _state.update {
@@ -1021,7 +1084,7 @@ class ReceivingFlowViewModel @Inject constructor(
         val prefix = current.substringBeforeLast('-', missingDelimiterValue = "").takeIf { it.isNotBlank() } ?: return false
         if (!value.startsWith("$prefix-", ignoreCase = true)) return false
         if (_state.value.captured.isNotEmpty()) {
-            fail("Register or remove the lines scanned on $current before opening ${value.uppercase()}")
+            fail("Finish or clear $current first")
             return true
         }
         val todays = _state.value.todaysOrders
@@ -1047,7 +1110,7 @@ class ReceivingFlowViewModel @Inject constructor(
                 it.copy(
                     lineNotice = com.d365fo.mobileops.presentation.common.components.QuickNoticeMessage(
                         id = System.nanoTime(),
-                        text = "${line.itemId} is already selected - enter the quantity",
+                        text = "Enter the quantity",
                         hint = true,
                     ),
                 )
@@ -1088,24 +1151,20 @@ class ReceivingFlowViewModel @Inject constructor(
 
         val item = _state.value.capture.item
         if (item?.serialRequired == true && entered.stripTrailingZeros().scale() > 0) {
-            return "${item.itemNumber} is serial tracked, so it is received in whole units"
+            return "Whole units only (serial item)"
         }
 
-        // Nets out everything already spoken for against this line's tolerance ceiling: posted
-        // (receivedQuantity), staged under an earlier "Register" but not yet actually
-        // registered (stagedElsewhereFor - uncommittedQuantity itself is always zero, AOS never
-        // computes it, see sessionRemaining), and banked into this same in-progress flow a
-        // moment ago but not even staged yet (capturedThisSessionFor).
-        val ceiling = effectiveMaximum(line)
-        val maximum = ceiling - line.receivedQuantity - line.uncommittedQuantity -
+        // Stops at what is left on the order (6 Nov). D365FO registers only what is still Ordered, so
+        // anything above it, whatever the line's over-delivery % or the worker's own allowance, is
+        // refused there: taking it here only meant a failed posting later. If more really arrived,
+        // a supervisor raises the order line's quantity first. Nets out everything spoken for:
+        // posted (receivedQuantity), staged under an earlier "Register" and not yet registered
+        // (stagedElsewhereFor - uncommittedQuantity itself is always zero, AOS never computes it,
+        // see sessionRemaining), and banked into this flow a moment ago (capturedThisSessionFor).
+        val maximum = line.orderedQuantity - line.receivedQuantity - line.uncommittedQuantity -
             capturedThisSessionFor(line) - stagedElsewhereFor(line)
         if (entered > maximum) {
-            val over = entered - maximum
-            return if (ceiling <= line.orderedQuantity) {
-                "Only ${plain(maximum)} outstanding, and this line allows no over-delivery"
-            } else {
-                "${plain(over)} over the over-delivery allowance (${plain(maximum)} max)"
-            }
+            return "Only ${plain(maximum)} open"
         }
         return null
     }
@@ -1116,39 +1175,13 @@ class ReceivingFlowViewModel @Inject constructor(
         s.copy(entryUnit = unitId.takeUnless { lineUnit != null && it.equals(lineUnit, ignoreCase = true) })
     }
 
-    /**
-     * The real ceiling for [line]: the purchase order line's own D365FO-configured
-     * over-delivery tolerance, or this worker's personal override
-     * (HSMobileOpsUser.MaxOverPercent / MaxOverQty) - whichever allows more.
-     *
-     * A worker's personal number only ever *widens* what a line already permits, never
-     * narrows it below the line's own D365FO-configured tolerance. The honest use case for a
-     * per-worker override is a trusted lead receiving a known-good overage beyond a line's
-     * normal allowance, not a value set on a login screen silently overriding what the
-     * purchase order itself says is fine - so the two are combined by taking whichever is
-     * larger, never by letting the worker's number replace the line's. Confirm that reading
-     * is the intended one before ever changing this to also restrict below what the line
-     * alone would allow.
-     */
-    private fun effectiveMaximum(line: PurchaseOrderLine): BigDecimal {
-        val lineMax = line.tolerance.maxAcceptable(line.orderedQuantity)
-        val worker = workerSession.session.value ?: return lineMax
-
-        val byPercent = worker.maxOverPercent?.toBigDecimalOrNull()?.let { pct ->
-            line.orderedQuantity + line.orderedQuantity.multiply(pct).movePointLeft(2)
-        }
-        val byQuantity = worker.maxOverQty?.toBigDecimalOrNull()?.let { line.orderedQuantity + it }
-
-        return listOfNotNull(lineMax, byPercent, byQuantity).max()
-    }
-
     private suspend fun onLocation(value: String) {
         // The signed-in worker's own backoffice-assigned warehouse - never a device-level
         // setting, and never something the operator picks. See WorkerSessionRepository.
         val warehouse = _state.value.capture.warehouseId
             ?: workerSession.session.value?.selected?.warehouseId
         if (warehouse.isNullOrBlank()) {
-            return fail("No warehouse is assigned to you. Ask a supervisor.")
+            return fail("No warehouse assigned - ask a supervisor")
         }
 
         when (val result = lookups.lookupLocation(warehouse, value)) {
@@ -1215,7 +1248,7 @@ class ReceivingFlowViewModel @Inject constructor(
         // A new batch that has already expired is a typing slip far more often than real stock -
         // received as it is, it is unusable stock the moment it lands.
         if (parsed < java.time.LocalDate.now().toString()) {
-            return fail("$value is in the past - this batch would be received already expired. Check the date on the pack")
+            return fail("$value is in the past - check the pack")
         }
         _state.update {
             it.copy(capture = it.capture.copy(batchExpiryDate = parsed), error = null)
@@ -1391,6 +1424,8 @@ data class PostOutcome(
      * post by itself.
      */
     val rejectedReason: String? = null,
+    /** Auto GRN (Mobile process setup): the product receipt D365FO posted with the registration. */
+    val grnId: String? = null,
 )
 
 /**

@@ -1,0 +1,189 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsCountTransferBatch</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Stock count control center: Transfer to counting journal, in batch. A whole warehouse takes
+/// about nine minutes, which is too long to hold the supervisor's screen. The stock count stays
+/// Transferring until it ends, then Transferred, or Open again with the reason if it failed. One
+/// transaction, so a server restart undoes it all and the framework can safely run it again.
+/// </summary>
+class HSMobileOpsCountTransferBatch extends RunBaseBatch implements BatchRetryable
+{
+    RefRecId masterRecId;
+
+    #define.CurrentVersion(1)
+    #localmacro.CurrentList
+        masterRecId
+    #endmacro
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>isRetryable</Name>
+				<Source><![CDATA[
+
+    [Hookable(false)]
+    public final boolean isRetryable()
+    {
+        return true;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmMasterRecId</Name>
+				<Source><![CDATA[
+
+    public RefRecId parmMasterRecId(RefRecId _value = masterRecId)
+    {
+        masterRecId = _value;
+        return masterRecId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>schedule</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Refuses at once what the batch could only refuse later. A stock count left Transferring by
+    /// a job that is over (cancelled, or lost when the server restarted) can be sent again.
+    /// </summary>
+    public static void schedule(RefRecId _masterRecId)
+    {
+        HSMobileOpsCountMaster        master = HSMobileOpsCountControl::masterOf(_masterRecId);
+        HSMobileOpsCountTransferBatch task;
+        BatchHeader                   batchHeader;
+
+        if (master.Status == HSMobileOpsCountMasterStatus::Transferring
+         && HSMobileOpsCountTransferBatch::jobRunning(master.TransferBatchJobId))
+        {
+            throw error(strFmt('%1 is already being transferred.', master.MasterId));
+        }
+        if (master.Status != HSMobileOpsCountMasterStatus::Open
+         && master.Status != HSMobileOpsCountMasterStatus::Transferring)
+        {
+            throw error(strFmt('%1 is %2 - it can only be transferred once.', master.MasterId, master.Status));
+        }
+        HSMobileOpsCountControl::refresh(_masterRecId, false);
+        master = HSMobileOpsCountControl::masterOf(_masterRecId);
+        if (master.DuplicateCount)
+        {
+            throw error(strFmt('%1 item(s) in %2 were counted more than once and are not decided yet. Keep one count, add them together or reject them first.',
+                master.DuplicateCount, master.MasterId));
+        }
+
+        ttsbegin;
+        task = new HSMobileOpsCountTransferBatch();
+        task.parmMasterRecId(_masterRecId);
+        batchHeader = BatchHeader::construct();
+        batchHeader.parmCaption(strFmt('Mobile ops: transfer stock count %1', master.MasterId));
+        batchHeader.addTask(task);
+        batchHeader.save();
+
+        master = HSMobileOpsCountControl::masterOf(_masterRecId, true);
+        master.Status             = HSMobileOpsCountMasterStatus::Transferring;
+        master.TransferBatchJobId = batchHeader.parmBatchHeaderId();
+        master.TransferMessage    = 'Waiting for the batch job';
+        master.update();
+        ttscommit;
+
+        info(strFmt('%1 is being transferred in batch. Its status changes to Transferred when it is done.', master.MasterId));
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>jobRunning</Name>
+				<Source><![CDATA[
+
+    private static boolean jobRunning(RefRecId _jobId)
+    {
+        BatchJob batchJob;
+
+        select firstOnly RecId, Status from batchJob
+            where batchJob.RecId == _jobId;
+        return batchJob.RecId
+            && batchJob.Status != BatchStatus::Finished
+            && batchJob.Status != BatchStatus::Error
+            && batchJob.Status != BatchStatus::Canceled;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>run</Name>
+				<Source><![CDATA[
+
+    public void run()
+    {
+        HSMobileOpsCountMaster master;
+        int                    infologFrom = infologLine();
+        str                    reason;
+
+        try
+        {
+            HSMobileOpsCountControl::transfer(masterRecId);
+        }
+        catch
+        {
+            reason = infologLine() > infologFrom ? infolog.text(infologLine()) : 'D365FO gave no reason';
+            ttsbegin;
+            master = HSMobileOpsCountControl::masterOf(masterRecId, true);
+            master.Status          = HSMobileOpsCountMasterStatus::Open;
+            master.TransferMessage = subStr(strFmt('Transfer failed: %1', reason), 1, 250);
+            master.update();
+            ttscommit;
+        }
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>description</Name>
+				<Source><![CDATA[
+
+    public static ClassDescription description()
+    {
+        return 'Mobile ops: transfer stock count';
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>canGoBatch</Name>
+				<Source><![CDATA[
+
+    public boolean canGoBatch()
+    {
+        return true;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>pack</Name>
+				<Source><![CDATA[
+
+    public container pack()
+    {
+        return [#CurrentVersion, #CurrentList];
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>unpack</Name>
+				<Source><![CDATA[
+
+    public boolean unpack(container _packedClass)
+    {
+        int version = RunBase::getVersion(_packedClass);
+
+        if (version == #CurrentVersion)
+        {
+            [version, #CurrentList] = _packedClass;
+            return true;
+        }
+        return false;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

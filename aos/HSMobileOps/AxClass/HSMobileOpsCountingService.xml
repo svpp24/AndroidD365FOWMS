@@ -89,6 +89,10 @@ class HSMobileOpsCountingService
         InventLocationId               warehouseId;
         int                            rowCount;
         int                            lineCount;
+        int                            recountLines;
+        boolean                        supervisor;
+        boolean                        includeDone;
+        str                            doneNote;
 
         response.parmSuccess(false);
         response.parmRows(rows);
@@ -97,6 +101,7 @@ class HSMobileOpsCountingService
         {
             company     = _request.parmDataAreaId();
             warehouseId = _request.parmWarehouseId();
+            includeDone = _request.parmIncludeDone();
         }
 
         if (!company || !warehouseId || !CompanyInfo::findDataArea(company).RecId)
@@ -111,8 +116,9 @@ class HSMobileOpsCountingService
             inventJournalName  = null;
             inventJournalTrans = null;
             inventDim          = null;
+            supervisor         = HSMobileOpsCountDualEngine::isSupervisor(HSMobileOpsUser::find(_request.parmUserId()));
 
-            while select RecId, JournalId, JournalNameId, CreatedDateTime, Description
+            while select RecId, JournalId, JournalNameId, CreatedDateTime, Description, HSMobileOpsDualCount, HSMobileOpsWallToWall
                 from inventJournalTable
                 where inventJournalTable.JournalType == InventJournalType::Count
                    && inventJournalTable.Posted      == NoYes::No
@@ -131,7 +137,14 @@ class HSMobileOpsCountingService
                     where countMaster.TransferredJournalId == inventJournalTable.JournalId
                        && countMaster.SourceJournalId      == ''
             {
+                // A wall-to-wall journal only while it is being counted: not while its lines are
+                // still being built, nor once it is posting.
+                if (inventJournalTable.HSMobileOpsWallToWall && !HSMobileOpsCountWallToWall::isCountable(inventJournalTable.JournalId))
+                {
+                    continue;
+                }
                 lineCount = 0;
+                doneNote  = '';
                 inventJournalTrans = null;
                 inventDim          = null;
 
@@ -144,6 +157,28 @@ class HSMobileOpsCountingService
                     lineCount = inventJournalTrans.RecId;
                 }
 
+                // Dual count: what is left for this person, so a line they have counted is not
+                // offered again and a journal with nothing left for them is not listed, except
+                // to a supervisor, who still has to be able to review it.
+                recountLines = 0;
+                if (inventJournalTable.HSMobileOpsDualCount)
+                {
+                    lineCount = HSMobileOpsCountDualEngine::pendingLines(inventJournalTable.JournalId, _request.parmUserId(), supervisor);
+                    if (!lineCount && !supervisor)
+                    {
+                        // Their part is done. Listed under Done when asked for, and only if they
+                        // counted here: a journal they never touched is someone else's.
+                        if (!includeDone || !HSMobileOpsCountingService::hasCounted(inventJournalTable.JournalId, _request.parmUserId()))
+                        {
+                            continue;
+                        }
+                        doneNote = inventJournalTable.HSMobileOpsWallToWall
+                            ? 'Your counts are in. Waiting for the rest of the warehouse and the supervisor.'
+                            : 'Your counts are in. Waiting for other counters or the supervisor.';
+                    }
+                    recountLines = HSMobileOpsCountDualEngine::pendingLines(inventJournalTable.JournalId, _request.parmUserId(), supervisor, true);
+                }
+
                 row = new HSMobileOpsJournalSummaryRow();
                 row.parmJournalId(inventJournalTable.JournalId);
                 row.parmJournalNameId(inventJournalTable.JournalNameId);
@@ -154,7 +189,7 @@ class HSMobileOpsCountingService
                 row.parmLineCount(lineCount);
                 // TODO (X++ owner): choose DIRECT for small journals (spot, opportunity,
                 // recount, triggered) and fill Ranges once location ranges exist.
-                row.parmTransferMode('DMF');
+                row.parmTransferMode(inventJournalTable.HSMobileOpsDualCount ? 'DIRECT' : 'DMF');
                 row.parmClaims(HSMobileOpsCountingService::journalClaims(company, inventJournalTable.JournalId, _request.parmUserId()));
                 row.parmRanges(new List(Types::Class));
                 // TODO (X++ owner): per-journal counting mode and zero-stock verification flag.
@@ -162,8 +197,10 @@ class HSMobileOpsCountingService
                 row.parmZeroStockCheck(false);
                 // TODO (X++ owner): DOUBLE_BLIND journals, recount passes and the journal a
                 // RECOUNT journal recounts.
-                row.parmCountMode('SINGLE');
-                row.parmPassNumber(1);
+                row.parmCountMode(inventJournalTable.HSMobileOpsDualCount ? 'DOUBLE_BLIND' : 'SINGLE');
+                row.parmPassNumber(inventJournalTable.HSMobileOpsDualCount
+                    ? HSMobileOpsCountDualEngine::passNumberFor(inventJournalTable.JournalId, lineCount, recountLines) : 1);
+                row.parmRecountLines(recountLines);
                 row.parmRecountOf('');
                 // TODO (X++ owner): origin from the count plan / trigger that created the journal,
                 // priority by your rules, tolerance text and ABC class for display.
@@ -191,9 +228,28 @@ class HSMobileOpsCountingService
                 // display-only repeat description.
                 row.parmControlGroupId('');
                 row.parmRepeatInfo('');
+                if (inventJournalTable.HSMobileOpsWallToWall)
+                {
+                    // Counted location by location: each open location a range to claim, the
+                    // warehouse frozen since the journal was taken from on-hand.
+                    row.parmOriginType('WALL_TO_WALL');
+                    row.parmLocationFirst(true);
+                    row.parmRanges(HSMobileOpsCountWallToWall::taskRanges(inventJournalTable.JournalId));
+                    row.parmClaims(HSMobileOpsCountWallToWall::taskClaims(inventJournalTable.JournalId));
+                    row.parmFreezeState('LOCATION_FROZEN');
+                    row.parmSnapshotAtUtc(HSMobileOpsWarehouseFreeze::findByJournal(inventJournalTable.JournalId).StartedUtc);
+                }
                 // TODO (X++ owner): when _request.parmUserId() is an external counter
                 // (HSMobileOpsUser.IsExternalCounter), skip journals not assigned to their
                 // CounterTeam.
+
+                if (doneNote)
+                {
+                    row.parmDoneNote(doneNote);
+                    row.parmPassNumber(1);
+                    rows.addEnd(row);
+                    continue;
+                }
 
                 rows.addEnd(row);
 
@@ -203,6 +259,11 @@ class HSMobileOpsCountingService
                     response.parmErrorCode('TRUNCATED');
                     break;
                 }
+            }
+
+            if (includeDone)
+            {
+                HSMobileOpsCountingService::addPostedJournals(rows, warehouseId);
             }
 
             response.parmSuccess(true);
@@ -423,6 +484,16 @@ class HSMobileOpsCountingService
             return response;
         }
 
+        // The export carries on-hand and earlier counts, which a dual count must not show.
+        changecompany (company)
+        {
+            if (HSMobileOpsCountDualEngine::isDual(journalId))
+            {
+                response.parmErrorCode('BLIND_JOURNAL');
+                return response;
+            }
+        }
+
         // Not inside `changecompany (company)`: DMF's definition group tables are set up in the
         // caller's default company here (every row dumped live carried the same dataAreaId
         // regardless), so there is nothing per-legal-entity to switch into. The journal's own
@@ -536,6 +607,16 @@ class HSMobileOpsCountingService
             return response;
         }
 
+        // An import would write Counted straight past the dual count rules.
+        changecompany (company)
+        {
+            if (HSMobileOpsCountDualEngine::isDual(journalId))
+            {
+                response.parmErrorCode('BLIND_JOURNAL');
+                return response;
+            }
+        }
+
         // TODO (X++ owner): dedupe on _request.parmSubmissionId(), and store the audit fields
         // (UserId, DeviceId, StartedAtUtc, SubmittedAtUtc, PassNumber, OriginType).
 
@@ -582,6 +663,87 @@ class HSMobileOpsCountingService
     private static int maxJournals()
     {
         return 100;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>hasCounted</Name>
+				<Source><![CDATA[
+
+    /// <summary>Whether this person has counted any line of a dual count journal.</summary>
+    private static boolean hasCounted(InventJournalId _journalId, str _userId)
+    {
+        HSMobileOpsCountAttempt attempt;
+
+        if (!_userId)
+        {
+            return false;
+        }
+        select firstOnly RecId from attempt
+            where attempt.JournalId == _journalId
+               && attempt.UserId    == _userId;
+        return attempt.RecId != 0;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>addPostedJournals</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The last 20 counting journals posted with lines in this warehouse, newest first, for the
+    /// handheld's Done tab. Each says when it was posted, in the company's time zone.
+    /// </summary>
+    private static void addPostedJournals(List _rows, InventLocationId _warehouseId)
+    {
+        InventJournalTable           journalTable;
+        InventJournalName            journalName;
+        InventJournalTrans           journalTrans;
+        InventDim                    inventDim;
+        HSMobileOpsJournalSummaryRow row;
+        utcdatetime                  local;
+        int                          added;
+
+        while select JournalId, JournalNameId, CreatedDateTime, PostedDateTime, Description, NumOfLines, HSMobileOpsWallToWall, HSMobileOpsDualCount
+            from journalTable
+            order by PostedDateTime desc
+            where journalTable.JournalType    == InventJournalType::Count
+               && journalTable.Posted         == NoYes::Yes
+            outer join Description from journalName
+                where journalName.JournalNameId == journalTable.JournalNameId
+            exists join journalTrans
+                where journalTrans.JournalId == journalTable.JournalId
+            exists join inventDim
+                where inventDim.InventDimId      == journalTrans.InventDimId
+                   && inventDim.InventLocationId == _warehouseId
+        {
+            local = DateTimeUtil::applyTimeZoneOffset(journalTable.PostedDateTime, DateTimeUtil::getCompanyTimeZone());
+
+            row = new HSMobileOpsJournalSummaryRow();
+            row.parmJournalId(journalTable.JournalId);
+            row.parmJournalNameId(journalTable.JournalNameId);
+            row.parmDescription(journalTable.Description ? journalTable.Description : journalName.Description);
+            row.parmJournalDate(DateTimeUtil::date(journalTable.CreatedDateTime));
+            row.parmLineCount(journalTable.NumOfLines);
+            row.parmTransferMode(journalTable.HSMobileOpsDualCount ? 'DIRECT' : 'DMF');
+            row.parmClaims(new List(Types::Class));
+            row.parmRanges(new List(Types::Class));
+            row.parmCountMode(journalTable.HSMobileOpsDualCount ? 'DOUBLE_BLIND' : 'SINGLE');
+            row.parmPassNumber(1);
+            row.parmRecountOf('');
+            row.parmOriginType(journalTable.HSMobileOpsWallToWall ? 'WALL_TO_WALL' : 'SCHEDULED');
+            row.parmFreezeState('NONE');
+            row.parmDoneNote(journalTable.PostedDateTime == DateTimeUtil::minValue() ? 'Posted' : strFmt('Posted %1 %2',
+                date2Str(DateTimeUtil::date(local), 123, DateDay::Digits1or2, DateSeparator::Space, DateMonth::Short, DateSeparator::Space, DateYear::Digits4),
+                strLTrim(time2StrHM(DateTimeUtil::time(local)))));
+            _rows.addEnd(row);
+
+            added++;
+            if (added >= 20)
+            {
+                break;
+            }
+        }
     }
 ]]></Source>
 			</Method>

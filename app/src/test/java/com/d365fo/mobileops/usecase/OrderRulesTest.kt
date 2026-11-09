@@ -17,8 +17,8 @@ class OrderRulesTest {
     @Test
     fun `purchase order settings - min, max and multiple`() {
         val rules = QuantityRules(min = 10.0, max = 100.0, multiple = 5.0)
-        assertThat(checkQuantity(5.0, rules)).contains("minimum")
-        assertThat(checkQuantity(105.0, rules)).contains("maximum")
+        assertThat(checkQuantity(5.0, rules)).contains("Minimum")
+        assertThat(checkQuantity(105.0, rules)).contains("Maximum")
         assertThat(checkQuantity(12.0, rules)).contains("multiples of 5")
         assertThat(checkQuantity(15.0, rules)).isNull()
     }

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxMenuItemAction xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsCountW2WStart</Name>
+	<Label>Start wall-to-wall</Label>
+	<HelpText>Freeze the warehouse and build a counting journal of everything it holds, one count task per location.</HelpText>
+	<Object>HSMobileOpsCountWallToWallAction</Object>
+	<ObjectType>Class</ObjectType>
+	<Parameters>START</Parameters>
+</AxMenuItemAction>

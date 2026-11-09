@@ -66,27 +66,22 @@ fun OnboardingScreen(
             OnboardingPage(
                 icon = Icons.AutoMirrored.Filled.Login,
                 title = "Sign in with your worker account",
-                body = "Use the user name and PIN set up for you in D365FO. Everything you scan and " +
-                    "post is recorded under your name.",
+                body = "Use your user name and PIN.",
             ),
             OnboardingPage(
                 icon = Icons.Default.QrCodeScanner,
                 title = "Scan to work",
-                body = "Each task goes step by step: scan the order, the item, then enter the quantity - " +
-                    "the number pad opens by itself. Lines are checked against D365FO as you go.",
+                body = "Scan the order, the item, then the quantity.",
             ),
             OnboardingPage(
                 icon = Icons.Default.CloudOff,
                 title = "Keeps working offline",
-                body = "No connection? Carry on. Your work is saved on this device and sent to D365FO by " +
-                    "itself when the connection is back. You can even sign in offline if you signed in " +
-                    "here in the last 7 days.",
+                body = "No signal? Carry on - it sends when you're back.",
             ),
             OnboardingPage(
                 icon = Icons.Default.TaskAlt,
                 title = "Nothing gets lost",
-                body = "Every scan is saved straight away. Unfinished jobs wait on Home, and Activity " +
-                    "shows anything still to be sent or that D365FO refused.",
+                body = "Every scan is saved. Unfinished jobs wait on Home.",
             ),
         )
     }

@@ -272,7 +272,7 @@ class WorkerSessionRepository @Inject constructor(
                                 "LOCKED_OUT" -> body.message
                                     ?: "Too many failed attempts. Try again shortly."
                                 "NO_WAREHOUSE" ->
-                                    "No warehouse is assigned to you. Ask a supervisor."
+                                    "No warehouse - ask a supervisor"
                                 // Licensing problems, checked server-side before credentials are
                                 // even looked at - see HSMobileOpsLicense and the signIn hook in
                                 // HSMobileOpsUserService. The server's own message already names
@@ -280,7 +280,7 @@ class WorkerSessionRepository @Inject constructor(
                                 // it's shown as-is rather than replaced with a generic string.
                                 "NO_LICENSE", "LICENSE_INVALID", "LICENSE_EXPIRED",
                                 "DEVICE_LIMIT_REACHED" ->
-                                    body.message ?: "This app is not licensed. Contact your administrator."
+                                    body.message ?: "Not licensed - contact your administrator."
                                 else -> body.message ?: "Could not sign in"
                             },
                         ),
@@ -453,27 +453,25 @@ class WorkerSessionRepository @Inject constructor(
             }
             OfflineSignInResult.NotAvailable -> NetworkResult.Error(
                 AppFailure.Offline(
-                    "$noConnection. Offline sign-in works only after you have signed in on this device while connected.",
+                    "$noConnection. Sign in once while online first.",
                 ),
             )
             is OfflineSignInResult.Expired -> NetworkResult.Error(
                 AppFailure.Offline(
-                    "$noConnection. Your last online sign-in here was more than ${offline.days} days ago. " +
-                        "Sign in once while connected.",
+                    "$noConnection. Sign in online again (over ${offline.days} days).",
                 ),
             )
             is OfflineSignInResult.WrongPassword -> NetworkResult.Error(
                 AppFailure.Validation(
-                    "That user name and PIN do not match. ${offline.attemptsRemaining} " +
-                        (if (offline.attemptsRemaining == 1) "try" else "tries") +
-                        " left before offline sign-in is turned off for you.",
+                    "Wrong user name or PIN. ${offline.attemptsRemaining} " +
+                        (if (offline.attemptsRemaining == 1) "try" else "tries") + " left.",
                 ),
             )
             OfflineSignInResult.Cleared -> NetworkResult.Error(
-                AppFailure.Offline("Too many wrong PINs. Sign in while connected to D365FO."),
+                AppFailure.Offline("Too many wrong PINs - sign in online."),
             )
             OfflineSignInResult.ClockBehind -> NetworkResult.Error(
-                AppFailure.Offline("$noConnection, and this device's clock is behind. Check the date and time."),
+                AppFailure.Offline("$noConnection - check the device clock."),
             )
         }
     }

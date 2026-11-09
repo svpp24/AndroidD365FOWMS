@@ -5,15 +5,15 @@ package com.d365fo.mobileops.util
  * generic sentence and the code at the end, so support can still look it up.
  */
 fun plainError(code: String?, whatFailed: String): String = when (code?.uppercase()) {
-    null, "" -> "$whatFailed. Try again."
-    "INVALID_REQUEST" -> "$whatFailed - the request was incomplete. Sign out and in, then try again."
-    "INVALID_DATE" -> "$whatFailed - the device date looks wrong. Check the date and time settings."
-    "USER_NOT_FOUND" -> "$whatFailed - your user isn't set up in this company. Ask a supervisor."
+    null, "" -> "$whatFailed - try again."
+    "INVALID_REQUEST" -> "$whatFailed - sign out and in, then retry."
+    "INVALID_DATE" -> "$whatFailed - check the device date."
+    "USER_NOT_FOUND" -> "$whatFailed - user not set up. Ask a supervisor."
     "NOT_SUPERVISOR" -> "Only a cycle-count supervisor can do this."
-    "JOURNAL_NOT_FOUND", "NOT_FOUND" -> "$whatFailed - it's closed or no longer exists in D365FO."
-    "JOURNAL_POSTED" -> "This journal has already been posted."
-    "LINE_NOT_FOUND" -> "$whatFailed - a line is no longer on this journal. Get data again."
-    "NOT_AVAILABLE", "NOT_IMPLEMENTED" -> "This isn't available on this D365FO server yet."
-    "POST_FAILED" -> "D365FO couldn't post it. A supervisor can see why in D365FO."
+    "JOURNAL_NOT_FOUND", "NOT_FOUND" -> "$whatFailed - it no longer exists."
+    "JOURNAL_POSTED" -> "Already posted."
+    "LINE_NOT_FOUND" -> "$whatFailed - get data again."
+    "NOT_AVAILABLE", "NOT_IMPLEMENTED" -> "Not available yet."
+    "POST_FAILED" -> "Couldn't post - ask a supervisor."
     else -> "$whatFailed (D365FO code $code)."
 }

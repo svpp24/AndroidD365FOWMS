@@ -143,7 +143,7 @@ class SupervisorVarianceViewModelTest {
         viewModel.toggle(1.0)
         viewModel.requestRecount("counter1", "")
 
-        assertThat(viewModel.state.value.message).contains("person who counted the line")
+        assertThat(viewModel.state.value.message).contains("Assign the recount to someone else")
     }
 
     @Test

@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxEnum xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsFreezeStatus</Name>
+	<Label>Wall-to-wall status</Label>
+	<HelpText>Where a wall-to-wall count is. The warehouse is frozen while it is Building, Counting or Posting.</HelpText>
+	<EnumValues>
+		<AxEnumValue>
+			<Name>Building</Name>
+			<Label>Building journal</Label>
+			<Value>0</Value>
+		</AxEnumValue>
+		<AxEnumValue>
+			<Name>Counting</Name>
+			<Label>Counting</Label>
+			<Value>1</Value>
+		</AxEnumValue>
+		<AxEnumValue>
+			<Name>Posting</Name>
+			<Label>Posting</Label>
+			<Value>2</Value>
+		</AxEnumValue>
+		<AxEnumValue>
+			<Name>Posted</Name>
+			<Label>Posted</Label>
+			<Value>3</Value>
+		</AxEnumValue>
+		<AxEnumValue>
+			<Name>Cancelled</Name>
+			<Label>Cancelled</Label>
+			<Value>4</Value>
+		</AxEnumValue>
+	</EnumValues>
+</AxEnum>

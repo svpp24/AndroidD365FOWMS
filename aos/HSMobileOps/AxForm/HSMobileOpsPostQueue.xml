@@ -1,0 +1,272 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxForm xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns="Microsoft.Dynamics.AX.Metadata.V6">
+	<Name>HSMobileOpsPostQueue</Name>
+	<SourceCode>
+		<Methods xmlns="">
+			<Method>
+				<Name>classDeclaration</Name>
+				<Source><![CDATA[
+/// <summary>
+/// Mobile posting queue (Inquiries): every posting handed over by a handheld in this company,
+/// newest first - what it became, the reason if it failed, and the GRN if Auto GRN posted one.
+/// Read only, apart from its actions on a failed posting, all from the lines staged on its row:
+/// Retry (also on the handheld), and for supervisors Change quantity and Cancel posting.
+/// </summary>
+[Form]
+public class HSMobileOpsPostQueue extends FormRun
+{
+}
+]]></Source>
+			</Method>
+			<Method>
+				<Name>init</Name>
+				<Source><![CDATA[
+    public void init()
+    {
+        super();
+        HSMobileOpsPostQueue_ds.query().dataSourceTable(tableNum(HSMobileOpsPostQueue)).addSortField(fieldNum(HSMobileOpsPostQueue, ReceivedUtc), SortOrder::Descending);
+    }
+]]></Source>
+			</Method>
+		</Methods>
+		<DataSources xmlns="" />
+		<DataControls xmlns="" />
+		<Members xmlns="" />
+	</SourceCode>
+	<DataSources>
+		<AxFormDataSource xmlns="">
+			<Name>HSMobileOpsPostQueue</Name>
+			<Table>HSMobileOpsPostQueue</Table>
+			<Fields />
+			<ReferencedDataSources />
+			<AllowCreate>No</AllowCreate>
+			<AllowDelete>No</AllowDelete>
+			<AllowEdit>No</AllowEdit>
+			<InsertIfEmpty>No</InsertIfEmpty>
+			<DataSourceLinks />
+			<DerivedDataSources />
+		</AxFormDataSource>
+	</DataSources>
+	<Design>
+		<Caption xmlns="">Mobile posting queue</Caption>
+		<DataSource xmlns="">HSMobileOpsPostQueue</DataSource>
+		<ShowNewButton xmlns="">No</ShowNewButton>
+		<ShowDeleteButton xmlns="">No</ShowDeleteButton>
+		<Controls xmlns="">
+			<AxFormControl xmlns=""
+				i:type="AxFormActionPaneControl">
+				<Name>ActionPane</Name>
+				<Type>ActionPane</Type>
+				<FormControlExtension
+					i:nil="true" />
+				<Controls>
+					<AxFormControl xmlns=""
+						i:type="AxFormButtonGroupControl">
+						<Name>RetryGroup</Name>
+						<Type>ButtonGroup</Type>
+						<FormControlExtension
+							i:nil="true" />
+						<Controls>
+							<AxFormControl xmlns=""
+								i:type="AxFormMenuFunctionButtonControl">
+								<Name>RetryButton</Name>
+								<HelpText>Works the selected failed posting again from the lines staged in D365FO. Nothing is rescanned.</HelpText>
+								<Type>MenuFunctionButton</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<ButtonDisplay>TextOnly</ButtonDisplay>
+								<DataSource>HSMobileOpsPostQueue</DataSource>
+								<MenuItemName>HSMobileOpsPostQueueRetry</MenuItemName>
+								<MenuItemType>Action</MenuItemType>
+								<NeedsRecord>Yes</NeedsRecord>
+								<Text>Retry</Text>
+							</AxFormControl>
+							<AxFormControl xmlns=""
+								i:type="AxFormMenuFunctionButtonControl">
+								<Name>ChangeQtyButton</Name>
+								<HelpText>Correct the quantity on a failed posting, with a reason, and post it. Nothing is rescanned.</HelpText>
+								<Type>MenuFunctionButton</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<ButtonDisplay>TextOnly</ButtonDisplay>
+								<DataSource>HSMobileOpsPostQueue</DataSource>
+								<MenuItemName>HSMobileOpsPostQueueChangeQty</MenuItemName>
+								<MenuItemType>Action</MenuItemType>
+								<NeedsRecord>Yes</NeedsRecord>
+								<Text>Change quantity</Text>
+							</AxFormControl>
+							<AxFormControl xmlns=""
+								i:type="AxFormMenuFunctionButtonControl">
+								<Name>CancelButton</Name>
+								<HelpText>Close a failed posting, with a reason. Nothing is posted.</HelpText>
+								<Type>MenuFunctionButton</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<ButtonDisplay>TextOnly</ButtonDisplay>
+								<DataSource>HSMobileOpsPostQueue</DataSource>
+								<MenuItemName>HSMobileOpsPostQueueCancel</MenuItemName>
+								<MenuItemType>Action</MenuItemType>
+								<MultiSelect>Yes</MultiSelect>
+								<NeedsRecord>Yes</NeedsRecord>
+								<Text>Cancel posting</Text>
+							</AxFormControl>
+						</Controls>
+						<ArrangeMethod>Vertical</ArrangeMethod>
+						<Caption>Posting</Caption>
+						<DataSource>HSMobileOpsPostQueue</DataSource>
+					</AxFormControl>
+				</Controls>
+				<AlignChild>No</AlignChild>
+				<AlignChildren>No</AlignChildren>
+				<ArrangeMethod>Vertical</ArrangeMethod>
+			</AxFormControl>
+			<AxFormControl xmlns=""
+				i:type="AxFormGridControl">
+				<Name>Grid</Name>
+				<Type>Grid</Type>
+				<FormControlExtension
+					i:nil="true" />
+				<Controls>
+					<AxFormControl xmlns=""
+						i:type="AxFormDateTimeControl">
+						<Name>HSMobileOpsPostQueue_ReceivedUtc</Name>
+						<Type>DateTime</Type>
+						<FormControlExtension
+							i:nil="true" />
+						<DataField>ReceivedUtc</DataField>
+						<DataSource>HSMobileOpsPostQueue</DataSource>
+					</AxFormControl>
+					<AxFormControl xmlns=""
+						i:type="AxFormStringControl">
+						<Name>HSMobileOpsPostQueue_DocumentType</Name>
+						<Type>String</Type>
+						<FormControlExtension
+							i:nil="true" />
+						<DataField>DocumentType</DataField>
+						<DataSource>HSMobileOpsPostQueue</DataSource>
+					</AxFormControl>
+					<AxFormControl xmlns=""
+						i:type="AxFormStringControl">
+						<Name>HSMobileOpsPostQueue_SourceId</Name>
+						<Type>String</Type>
+						<FormControlExtension
+							i:nil="true" />
+						<DataField>SourceId</DataField>
+						<DataSource>HSMobileOpsPostQueue</DataSource>
+					</AxFormControl>
+					<AxFormControl xmlns=""
+						i:type="AxFormStringControl">
+						<Name>HSMobileOpsPostQueue_Status</Name>
+						<Type>String</Type>
+						<FormControlExtension
+							i:nil="true" />
+						<DataField>Status</DataField>
+						<DataSource>HSMobileOpsPostQueue</DataSource>
+					</AxFormControl>
+					<AxFormControl xmlns=""
+						i:type="AxFormStringControl">
+						<Name>HSMobileOpsPostQueue_Warehouse</Name>
+						<Type>String</Type>
+						<FormControlExtension
+							i:nil="true" />
+						<DataField>Warehouse</DataField>
+						<DataSource>HSMobileOpsPostQueue</DataSource>
+					</AxFormControl>
+					<AxFormControl xmlns=""
+						i:type="AxFormStringControl">
+						<Name>HSMobileOpsPostQueue_GrnId</Name>
+						<Type>String</Type>
+						<FormControlExtension
+							i:nil="true" />
+						<DataField>GrnId</DataField>
+						<DataSource>HSMobileOpsPostQueue</DataSource>
+					</AxFormControl>
+					<AxFormControl xmlns=""
+						i:type="AxFormStringControl">
+						<Name>HSMobileOpsPostQueue_ErrorMessage</Name>
+						<Type>String</Type>
+						<FormControlExtension
+							i:nil="true" />
+						<DataField>ErrorMessage</DataField>
+						<DataSource>HSMobileOpsPostQueue</DataSource>
+					</AxFormControl>
+					<AxFormControl xmlns=""
+						i:type="AxFormStringControl">
+						<Name>HSMobileOpsPostQueue_UserName</Name>
+						<Type>String</Type>
+						<FormControlExtension
+							i:nil="true" />
+						<DataField>UserName</DataField>
+						<DataSource>HSMobileOpsPostQueue</DataSource>
+					</AxFormControl>
+					<AxFormControl xmlns=""
+						i:type="AxFormStringControl">
+						<Name>HSMobileOpsPostQueue_DeviceId</Name>
+						<Type>String</Type>
+						<FormControlExtension
+							i:nil="true" />
+						<DataField>DeviceId</DataField>
+						<DataSource>HSMobileOpsPostQueue</DataSource>
+					</AxFormControl>
+					<AxFormControl xmlns=""
+						i:type="AxFormDateTimeControl">
+						<Name>HSMobileOpsPostQueue_ProcessedUtc</Name>
+						<Type>DateTime</Type>
+						<FormControlExtension
+							i:nil="true" />
+						<DataField>ProcessedUtc</DataField>
+						<DataSource>HSMobileOpsPostQueue</DataSource>
+					</AxFormControl>
+					<AxFormControl xmlns=""
+						i:type="AxFormStringControl">
+						<Name>HSMobileOpsPostQueue_LinesJson</Name>
+						<Type>String</Type>
+						<FormControlExtension
+							i:nil="true" />
+						<DataField>LinesJson</DataField>
+						<DataSource>HSMobileOpsPostQueue</DataSource>
+					</AxFormControl>
+					<AxFormControl xmlns=""
+						i:type="AxFormStringControl">
+						<Name>HSMobileOpsPostQueue_ChangedBy</Name>
+						<Type>String</Type>
+						<FormControlExtension
+							i:nil="true" />
+						<DataField>ChangedBy</DataField>
+						<DataSource>HSMobileOpsPostQueue</DataSource>
+					</AxFormControl>
+					<AxFormControl xmlns=""
+						i:type="AxFormDateTimeControl">
+						<Name>HSMobileOpsPostQueue_ChangedUtc</Name>
+						<Type>DateTime</Type>
+						<FormControlExtension
+							i:nil="true" />
+						<DataField>ChangedUtc</DataField>
+						<DataSource>HSMobileOpsPostQueue</DataSource>
+					</AxFormControl>
+					<AxFormControl xmlns=""
+						i:type="AxFormStringControl">
+						<Name>HSMobileOpsPostQueue_ChangeNote</Name>
+						<Type>String</Type>
+						<FormControlExtension
+							i:nil="true" />
+						<DataField>ChangeNote</DataField>
+						<DataSource>HSMobileOpsPostQueue</DataSource>
+					</AxFormControl>
+					<AxFormControl xmlns=""
+						i:type="AxFormStringControl">
+						<Name>HSMobileOpsPostQueue_OriginalLinesJson</Name>
+						<Type>String</Type>
+						<FormControlExtension
+							i:nil="true" />
+						<DataField>OriginalLinesJson</DataField>
+						<DataSource>HSMobileOpsPostQueue</DataSource>
+					</AxFormControl>
+				</Controls>
+				<DataSource>HSMobileOpsPostQueue</DataSource>
+				<Style>Tabular</Style>
+			</AxFormControl>
+		</Controls>
+	</Design>
+	<Parts />
+</AxForm>

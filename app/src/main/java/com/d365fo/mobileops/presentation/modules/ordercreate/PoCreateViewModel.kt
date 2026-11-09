@@ -313,5 +313,5 @@ class PoCreateViewModel @Inject constructor(
     }
 
     private fun itemError(code: String, message: String): String =
-        if (!online.value) "$code isn't saved on this device. Look it up once while connected." else message
+        if (!online.value) "$code not saved - look it up online once." else message
 }

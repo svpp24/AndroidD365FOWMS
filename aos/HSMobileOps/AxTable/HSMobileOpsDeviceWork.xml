@@ -1,0 +1,174 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxTable xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsDeviceWork</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Unsent work saved from a handheld (HSMobileOpsDeviceWorkSvc): one row per posting waiting or
+/// refused, unfinished job, order draft or count not yet accepted, per device. Removed as the
+/// device reports it done. What a worker restores after a reinstall or on a new device, and what
+/// a supervisor can see on Mobile unsent work. One list for the environment, like the device fleet.
+/// </summary>
+public class HSMobileOpsDeviceWork extends common
+{
+}
+]]></Declaration>
+		<Methods>
+		</Methods>
+	</SourceCode>
+	<Label>Mobile unsent work</Label>
+	<TitleField1>Reference</TitleField1>
+	<TitleField2>UserName</TitleField2>
+	<CacheLookup>NotInTTS</CacheLookup>
+	<ReplacementKey>DeviceWorkIdx</ReplacementKey>
+	<SaveDataPerCompany>No</SaveDataPerCompany>
+	<Fields>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>DeviceId</Name>
+			<AllowEdit>No</AllowEdit>
+			<Label>Device ID</Label>
+			<Mandatory>Yes</Mandatory>
+			<StringSize>64</StringSize>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>WorkKey</Name>
+			<AllowEdit>No</AllowEdit>
+			<HelpText>The device's own key for this work - unique per device.</HelpText>
+			<Label>Work key</Label>
+			<Mandatory>Yes</Mandatory>
+			<StringSize>120</StringSize>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>CompanyId</Name>
+			<AllowEdit>No</AllowEdit>
+			<Label>Company</Label>
+			<StringSize>10</StringSize>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>UserName</Name>
+			<AllowEdit>No</AllowEdit>
+			<ExtendedDataType>HSMobileOpsUserName</ExtendedDataType>
+			<Label>Worker</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>WarehouseId</Name>
+			<AllowEdit>No</AllowEdit>
+			<ExtendedDataType>InventLocationId</ExtendedDataType>
+			<Label>Warehouse</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>Kind</Name>
+			<AllowEdit>No</AllowEdit>
+			<HelpText>POSTING (waiting to send), REFUSED (refused by D365FO), JOB (unfinished receive or ship), ORDER_DRAFT, COUNT.</HelpText>
+			<Label>Kind</Label>
+			<StringSize>30</StringSize>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>Reference</Name>
+			<AllowEdit>No</AllowEdit>
+			<HelpText>The order or journal the work is for.</HelpText>
+			<Label>Reference</Label>
+			<StringSize>60</StringSize>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>Summary</Name>
+			<AllowEdit>No</AllowEdit>
+			<Label>Summary</Label>
+			<StringSize>250</StringSize>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldInt">
+			<Name>LineCount</Name>
+			<AllowEdit>No</AllowEdit>
+			<Label>Lines</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldUtcDateTime">
+			<Name>CapturedUtc</Name>
+			<AllowEdit>No</AllowEdit>
+			<Label>Captured</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldUtcDateTime">
+			<Name>UpdatedUtc</Name>
+			<AllowEdit>No</AllowEdit>
+			<Label>Last sent from device</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>AppVersion</Name>
+			<AllowEdit>No</AllowEdit>
+			<Label>App version</Label>
+			<StringSize>32</StringSize>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>DeviceModel</Name>
+			<AllowEdit>No</AllowEdit>
+			<Label>Device</Label>
+			<StringSize>121</StringSize>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>PayloadJson</Name>
+			<AllowEdit>No</AllowEdit>
+			<ExtendedDataType>Notes</ExtendedDataType>
+			<HelpText>The work itself, as the app stores it (JSON).</HelpText>
+			<Label>Content</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldEnum">
+			<Name>Archived</Name>
+			<AllowEdit>No</AllowEdit>
+			<HelpText>Old work the handheld removed in its clean-up. Kept here only; not offered for restore.</HelpText>
+			<Label>Archived</Label>
+			<EnumType>NoYes</EnumType>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldEnum">
+			<Name>Stale</Name>
+			<AllowEdit>No</AllowEdit>
+			<HelpText>The handheld hasn't reported for longer than Mobile clean-up allows - check whether this work is still wanted.</HelpText>
+			<Label>Device not seen</Label>
+			<EnumType>NoYes</EnumType>
+		</AxTableField>
+	</Fields>
+	<FullTextIndexes />
+	<Indexes>
+		<AxTableIndex>
+			<Name>DeviceWorkIdx</Name>
+			<AllowDuplicates>No</AllowDuplicates>
+			<Fields>
+				<AxTableIndexField>
+					<DataField>DeviceId</DataField>
+				</AxTableIndexField>
+				<AxTableIndexField>
+					<DataField>WorkKey</DataField>
+				</AxTableIndexField>
+			</Fields>
+		</AxTableIndex>
+		<AxTableIndex>
+			<Name>UserIdx</Name>
+			<AllowDuplicates>Yes</AllowDuplicates>
+			<Fields>
+				<AxTableIndexField>
+					<DataField>UserName</DataField>
+				</AxTableIndexField>
+				<AxTableIndexField>
+					<DataField>UpdatedUtc</DataField>
+				</AxTableIndexField>
+			</Fields>
+		</AxTableIndex>
+	</Indexes>
+	<Mappings />
+	<Relations />
+	<StateMachines />
+</AxTable>

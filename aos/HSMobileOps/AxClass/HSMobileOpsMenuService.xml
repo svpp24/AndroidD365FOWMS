@@ -109,6 +109,7 @@ class HSMobileOpsMenuService
             {
                 lineRow.parmLineType('MODULE');
                 lineRow.parmModule(enum2Symbol(enumNum(HSMobileOpsModule), line.Module));
+                lineRow.parmCountLocationId(line.CountLocationId);
             }
             row.parmLines().addEnd(lineRow);
         }

@@ -1,0 +1,135 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxForm xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns="Microsoft.Dynamics.AX.Metadata.V6">
+	<Name>HSMobileOpsProcessSetup</Name>
+	<SourceCode>
+		<Methods xmlns="">
+			<Method>
+				<Name>classDeclaration</Name>
+				<Source><![CDATA[
+/// <summary>
+/// Mobile process setup (Setup): one row per handheld process - Receiving, TransferShip,
+/// TransferReceive - with its concurrency mode, location capture and, for Receiving, Auto GRN.
+/// The rows are created on open; see HSMobileOpsProcessSetup.
+/// </summary>
+[Form]
+public class HSMobileOpsProcessSetup extends FormRun
+{
+}
+]]></Source>
+			</Method>
+			<Method>
+				<Name>init</Name>
+				<Source><![CDATA[
+    public void init()
+    {
+        HSMobileOpsProcessSetup::ensureSeeded();
+        super();
+    }
+]]></Source>
+			</Method>
+		</Methods>
+		<DataSources xmlns="" />
+		<DataControls xmlns="" />
+		<Members xmlns="" />
+	</SourceCode>
+	<DataSources>
+		<AxFormDataSource xmlns="">
+			<Name>HSMobileOpsProcessSetup</Name>
+			<Table>HSMobileOpsProcessSetup</Table>
+			<Fields />
+			<ReferencedDataSources />
+			<AllowCreate>No</AllowCreate>
+			<AllowDelete>No</AllowDelete>
+			<InsertIfEmpty>No</InsertIfEmpty>
+			<DataSourceLinks />
+			<DerivedDataSources />
+		</AxFormDataSource>
+	</DataSources>
+	<Design>
+		<Caption xmlns="">Mobile process setup</Caption>
+		<DataSource xmlns="">HSMobileOpsProcessSetup</DataSource>
+		<ShowNewButton xmlns="">No</ShowNewButton>
+		<ShowDeleteButton xmlns="">No</ShowDeleteButton>
+		<ViewEditMode xmlns="">Edit</ViewEditMode>
+		<Controls xmlns="">
+			<AxFormControl xmlns=""
+				i:type="AxFormActionPaneControl">
+				<Name>ActionPane</Name>
+				<Type>ActionPane</Type>
+				<FormControlExtension
+					i:nil="true" />
+				<Controls />
+				<AlignChild>No</AlignChild>
+				<AlignChildren>No</AlignChildren>
+				<ArrangeMethod>Vertical</ArrangeMethod>
+			</AxFormControl>
+			<AxFormControl xmlns=""
+				i:type="AxFormGridControl">
+				<Name>Grid</Name>
+				<Type>Grid</Type>
+				<FormControlExtension
+					i:nil="true" />
+				<Controls>
+					<AxFormControl xmlns=""
+						i:type="AxFormStringControl">
+						<Name>HSMobileOpsProcessSetup_ProcessType</Name>
+						<Type>String</Type>
+						<FormControlExtension
+							i:nil="true" />
+						<AllowEdit>No</AllowEdit>
+						<DataField>ProcessType</DataField>
+						<DataSource>HSMobileOpsProcessSetup</DataSource>
+					</AxFormControl>
+					<AxFormControl xmlns=""
+						i:type="AxFormStringControl">
+						<Name>HSMobileOpsProcessSetup_ConcurrencyMode</Name>
+						<Type>String</Type>
+						<FormControlExtension
+							i:nil="true" />
+						<DataField>ConcurrencyMode</DataField>
+						<DataSource>HSMobileOpsProcessSetup</DataSource>
+					</AxFormControl>
+					<AxFormControl xmlns=""
+						i:type="AxFormIntegerControl">
+						<Name>HSMobileOpsProcessSetup_ClaimTimeoutMinutes</Name>
+						<Type>Integer</Type>
+						<FormControlExtension
+							i:nil="true" />
+						<DataField>ClaimTimeoutMinutes</DataField>
+						<DataSource>HSMobileOpsProcessSetup</DataSource>
+					</AxFormControl>
+					<AxFormControl xmlns=""
+						i:type="AxFormCheckBoxControl">
+						<Name>HSMobileOpsProcessSetup_RequireLocationCapture</Name>
+						<Type>CheckBox</Type>
+						<FormControlExtension
+							i:nil="true" />
+						<DataField>RequireLocationCapture</DataField>
+						<DataSource>HSMobileOpsProcessSetup</DataSource>
+					</AxFormControl>
+					<AxFormControl xmlns=""
+						i:type="AxFormCheckBoxControl">
+						<Name>HSMobileOpsProcessSetup_AutoGrn</Name>
+						<Type>CheckBox</Type>
+						<FormControlExtension
+							i:nil="true" />
+						<DataField>AutoGrn</DataField>
+						<DataSource>HSMobileOpsProcessSetup</DataSource>
+					</AxFormControl>
+					<AxFormControl xmlns=""
+						i:type="AxFormStringControl">
+						<Name>HSMobileOpsProcessSetup_GrnNumberSequence</Name>
+						<Type>String</Type>
+						<FormControlExtension
+							i:nil="true" />
+						<DataField>GrnNumberSequence</DataField>
+						<DataSource>HSMobileOpsProcessSetup</DataSource>
+					</AxFormControl>
+				</Controls>
+				<DataSource>HSMobileOpsProcessSetup</DataSource>
+				<Style>Tabular</Style>
+			</AxFormControl>
+		</Controls>
+	</Design>
+	<Parts />
+</AxForm>

@@ -1,6 +1,7 @@
 package com.d365fo.mobileops.presentation.common.components
 
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.CircularProgressIndicator
@@ -29,13 +30,24 @@ fun CountProgressRing(progress: Float, percent: Int, modifier: Modifier = Modifi
             modifier = Modifier.size(size),
             color = if (percent >= 100) WarehouseStatusColors.green else WarehouseStatusColors.accent,
             trackColor = WarehouseStatusColors.border.copy(alpha = 0.5f),
-            strokeWidth = 6.dp,
+            strokeWidth = if (size < 56.dp) 4.dp else 6.dp,
             strokeCap = StrokeCap.Round,
         )
-        Text(
-            text = "$percent%",
-            style = MaterialTheme.typography.titleSmall,
-            fontWeight = FontWeight.Bold,
-        )
+        // Sized to the ring, and a tick when done: "100%" ran over the ring at 44dp (feedback, 21 Oct).
+        if (percent >= 100) {
+            androidx.compose.material3.Icon(
+                androidx.compose.material.icons.Icons.Default.Check,
+                contentDescription = "All counted",
+                tint = WarehouseStatusColors.green,
+                modifier = Modifier.size(size * 0.5f),
+            )
+        } else {
+            Text(
+                text = "$percent%",
+                fontSize = androidx.compose.ui.unit.TextUnit(size.value * 0.26f, androidx.compose.ui.unit.TextUnitType.Sp),
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+            )
+        }
     }
 }

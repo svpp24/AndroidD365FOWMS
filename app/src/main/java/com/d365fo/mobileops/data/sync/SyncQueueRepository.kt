@@ -2,6 +2,7 @@ package com.d365fo.mobileops.data.sync
 
 import com.d365fo.mobileops.data.local.dao.SyncQueueDao
 import com.d365fo.mobileops.data.local.entity.FailedSyncEntity
+import com.d365fo.mobileops.data.local.entity.SentPostingEntity
 import com.d365fo.mobileops.data.local.entity.SyncOperation
 import com.d365fo.mobileops.data.local.entity.SyncQueueEntity
 import com.d365fo.mobileops.data.sync.payload.SyncPayload
@@ -84,7 +85,73 @@ class SyncQueueRepository @Inject constructor(
     fun decodePayload(entry: SyncQueueEntity): SyncPayload =
         json.decodeFromString(SyncPayload.serializer(), entry.payloadJson)
 
-    suspend fun onSuccess(entry: SyncQueueEntity) = dao.remove(entry.queueId)
+    suspend fun onSuccess(entry: SyncQueueEntity) {
+        // A posting D365FO has only staged, or is still working on, can yet be refused: it is kept
+        // until PostingFollowUp has the final answer. noteRegistered means it already has.
+        val payload = entry.takeIf { it.operation in FOLLOWED }
+            ?.let { runCatching { decodePayload(it) }.getOrNull() }
+        if (payload == null || registered.remove(payload.idempotencyKey)) {
+            dao.remove(entry.queueId)
+            return
+        }
+        dao.markSent(
+            entry.queueId,
+            SentPostingEntity(
+                idempotencyKey = payload.idempotencyKey,
+                dataAreaId = payload.dataAreaId,
+                operation = entry.operation,
+                aggregateId = entry.aggregateId,
+                payloadJson = entry.payloadJson,
+                workerId = entry.workerId,
+                deviceId = entry.deviceId,
+                originallyQueuedAt = entry.createdAt,
+                sentAt = System.currentTimeMillis(),
+                attempts = entry.retryCount + 1,
+            ),
+        )
+    }
+
+    /** D365FO answered Registered in the call itself: nothing to follow up. */
+    fun noteRegistered(idempotencyKey: String) {
+        registered.add(idempotencyKey)
+    }
+
+    suspend fun sentPostings(): List<SentPostingEntity> = dao.sentPostings()
+
+    suspend fun removeSent(idempotencyKey: String) = dao.removeSent(idempotencyKey)
+
+    /**
+     * The newest failed postings of the kind D365FO keeps a row for, with what is needed to ask
+     * about each. Not all of them: an old card is rarely retried, and asking about hundreds on
+     * every run is its own load on D365FO.
+     */
+    suspend fun followedFailures(limit: Int): List<Pair<FailedSyncEntity, SyncPayload>> =
+        dao.recentFailures(limit).filter { it.operation in FOLLOWED }.mapNotNull { failure ->
+            runCatching { failure to json.decodeFromString(SyncPayload.serializer(), failure.payloadJson) }.getOrNull()
+        }
+
+    /** D365FO posted it after all: the card has nothing left to ask of anyone. */
+    suspend fun removeFailure(failureId: String) = dao.removeFailure(failureId)
+
+    /** D365FO refused a posting it had taken: to Failed postings, where Resubmit sends it again. */
+    suspend fun sentFailed(sent: SentPostingEntity, reason: String, now: Long = System.currentTimeMillis()) =
+        dao.sentFailed(
+            sent.idempotencyKey,
+            FailedSyncEntity(
+                failureId = UUID.randomUUID().toString(),
+                operation = sent.operation,
+                aggregateId = sent.aggregateId,
+                payloadJson = sent.payloadJson,
+                workerId = sent.workerId,
+                deviceId = sent.deviceId,
+                originallyQueuedAt = sent.originallyQueuedAt,
+                failedAt = now,
+                attempts = sent.attempts,
+                errorCode = "POSTING_FAILED",
+                errorMessage = reason,
+                serverDetail = null,
+            ),
+        )
 
     /**
      * Applies the retry policy after a failed attempt.
@@ -174,13 +241,30 @@ class SyncQueueRepository @Inject constructor(
             deviceId = failure.deviceId,
             createdAt = now,
             nextAttemptAt = now,
-            dedupeKey = "${failure.aggregateId}:resubmit:$now",
+            dedupeKey = "${failure.aggregateId}$RESUBMIT_MARK$now",
         )
         dao.resubmit(failureId, entry)
         return true
     }
 
+    /**
+     * Sent with Resubmit, so D365FO reopens its Failed row and works it again from the staged lines.
+     * Same key on purpose: one row, so Resubmit here and Retry on the D365FO form cannot post twice.
+     * Without it the key is a replay, and only ever gets the old answer back.
+     */
+    fun isResubmit(entry: SyncQueueEntity): Boolean = entry.dedupeKey.contains(RESUBMIT_MARK)
+
+    private val registered = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+
     private companion object {
         const val LEASE_BATCH_SIZE = 10
+        const val RESUBMIT_MARK = ":resubmit:"
+
+        /** The operations that land on D365FO's post queue, and so can fail after being taken. */
+        val FOLLOWED = setOf(
+            SyncOperation.POST_PRODUCT_RECEIPT,
+            SyncOperation.TRANSFER_ORDER_SHIP,
+            SyncOperation.TRANSFER_ORDER_RECEIVE,
+        )
     }
 }

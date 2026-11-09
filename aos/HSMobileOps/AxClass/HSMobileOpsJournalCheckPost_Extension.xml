@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsJournalCheckPost_Extension</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Dual count journals cannot post, or pass Validate, until every line is resolved. Here rather
+/// than only in the app's postJournal, so posting from the D365FO form is held to it too.
+/// </summary>
+[ExtensionOf(classStr(JournalCheckPost))]
+final class HSMobileOpsJournalCheckPost_Extension
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>checkJournal</Name>
+				<Source><![CDATA[
+
+    protected boolean checkJournal(JournalTransList _journalTransList)
+    {
+        boolean ok = true;
+
+        // By the journal's table, not by class: InventJournalCheckPost is only the factory, and what
+        // it builds for a counting journal is a sibling class that does not extend it.
+
+        if (this.parmJournalTableId() == tableNum(InventJournalTable))
+        {
+            ok = HSMobileOpsCountDualEngine::checkCanPost(this.parmJournalId());
+            // Wall-to-wall: every location complete; and no journal moves stock in a frozen warehouse.
+            ok = HSMobileOpsCountWallToWall::checkJournalCanPost(this.parmJournalId(),
+                this.parmJournalCheckPostType() == JournalCheckPostType::Post) && ok;
+        }
+        return next checkJournal(_journalTransList) && ok;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

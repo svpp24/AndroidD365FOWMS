@@ -85,7 +85,7 @@ fun OpportunityCountPrompt(viewModel: OpportunityPromptViewModel = hiltViewModel
     // The shared quantity picker, like every quantity in the app; the question is its subtitle.
     androidx.compose.runtime.key(current.journalId) {
         com.d365fo.mobileops.presentation.common.components.QuantityPicker(
-            subtitle = "Quick count: how many ${current.itemName} are at ${current.locationId ?: "this location"}?",
+            subtitle = "How many ${current.itemName}?",
             hint = listOfNotNull(
                 current.itemId.takeIf { it != current.itemName },
                 current.batchId?.let { "Batch $it" },
@@ -165,7 +165,7 @@ class DiscrepancyViewModel @Inject constructor(
             val item = itemId?.let { code -> runCatching { itemDao.resolveBarcode(code.uppercase()) }.getOrNull()?.itemId ?: code }
             val result = remote.reportDiscrepancy(warehouse, locationId, item, reason, note)
             val message = when (result) {
-                is TaskResult.Ok -> result.value?.let { "Reported. D365FO created a count ($it) for this location." }
+                is TaskResult.Ok -> result.value?.let { "Reported - count $it created." }
                     ?: "Reported. Thank you."
                 is TaskResult.Refused -> result.message
                 is TaskResult.Unreachable -> "Couldn't reach D365FO: ${result.message}"

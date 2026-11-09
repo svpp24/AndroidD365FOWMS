@@ -89,6 +89,8 @@ data class StoreCountLine(
     val unitId: String,
     val countedAt: Long,
     val sent: Boolean = false,
+    /** The bin it was counted in - for counting only (user, 8 Nov). */
+    val binId: String = "",
 )
 
 /** The store count on this device: the stock count and staging journal, and the lines counted. */
@@ -98,7 +100,15 @@ data class StoreCountDraft(
     val masterId: String = "",
     val stageId: String = "",
     val lines: List<StoreCountLine> = emptyList(),
-)
+    /**
+     * Counting has started on the device. Offline the stock count is not opened yet ([stageId]
+     * blank): it is opened in D365FO with the first Send that gets through (user, 8 Nov: counting
+     * should work offline).
+     */
+    val started: Boolean = false,
+) {
+    val counting: Boolean get() = started || stageId.isNotBlank()
+}
 
 /** An item scanned and waiting for its variant, batch or serial, or its quantity. */
 data class PendingCount(
@@ -112,10 +122,21 @@ data class PendingCount(
     val needsSerial: Boolean get() = item.serialActive && serialId.isBlank()
 }
 
+/** Where Change location / Change bin started, so Cancel goes back to it. */
+data class StoreCountPlace(val locationId: String, val binId: String)
+
 data class StoreCountState(
     val warehouseId: String? = null,
     val draft: StoreCountDraft? = null,
     val locationId: String = "",
+    /** The bin being counted; blank while one is asked for. */
+    val binId: String = "",
+    /** The store has bins: location, then bin, then items. None: location, then items. */
+    val binsRequired: Boolean = false,
+    /** Set while changing location or bin: Cancel goes back here. */
+    val back: StoreCountPlace? = null,
+    /** The counting menu's location, where a count starts. */
+    val startLocation: String? = null,
     val pending: PendingCount? = null,
     val busy: Boolean = false,
     val message: String? = null,
@@ -125,6 +146,11 @@ data class StoreCountState(
     val countClosed: Boolean = false,
 ) {
     val unsent: Int get() = draft?.lines?.count { !it.sent } ?: 0
+    val needsLocation: Boolean get() = locationId.isBlank()
+    val needsBin: Boolean get() = !needsLocation && binsRequired && binId.isBlank()
+    /** Lines counted in this location, and in this bin. */
+    val atLocation: Int get() = draft?.lines?.count { it.locationId.equals(locationId, ignoreCase = true) } ?: 0
+    val inBin: Int get() = draft?.lines?.count { it.locationId.equals(locationId, ignoreCase = true) && it.binId.equals(binId, ignoreCase = true) } ?: 0
 }
 
 /**
@@ -143,6 +169,9 @@ class StoreCountViewModel @Inject constructor(
     private val workerSession: WorkerSessionRepository,
     private val scannerBridge: HidScannerBridge,
     private val syncStatus: SyncStatusProvider,
+    private val locationDao: com.d365fo.mobileops.data.local.dao.LocationDao,
+    private val binRepository: com.d365fo.mobileops.data.counting.CountBinRepository,
+    private val menuRepository: com.d365fo.mobileops.data.repository.HandheldMenuRepository,
 ) : ViewModel() {
 
     private val json = Json { ignoreUnknownKeys = true }
@@ -150,20 +179,52 @@ class StoreCountViewModel @Inject constructor(
     private val warehouse = workerSession.session.value?.selected?.warehouseId
     private val draftKey = "store_count_draft::${warehouse.orEmpty().uppercase()}::${user.uppercase()}"
 
-    private val _state = MutableStateFlow(StoreCountState(warehouseId = warehouse, draft = loadDraft()))
+    /** Where a count starts: the counting menu's location (user, 8 Nov). */
+    private val startLocation = menuRepository.menu.value?.countStartLocation
+
+    private val _state = MutableStateFlow(
+        loadDraft().let { draft ->
+            StoreCountState(
+                warehouseId = warehouse,
+                draft = draft,
+                startLocation = startLocation,
+                // Back into a count already started: in the start location again.
+                locationId = if (draft?.counting == true) startLocation.orEmpty() else "",
+            )
+        },
+    )
     val state = _state.asStateFlow()
+
+    /** The store's bins, with the location each is in. Kept on the device: works offline. */
+    private var bins: Map<String, com.d365fo.mobileops.data.local.entity.CountBinEntity> = emptyMap()
 
     /** The last Send could not reach D365FO; it is retried when the connection is back. */
     private var waitingForConnection = false
 
+    /** End count was pressed offline: the retry ends the count too. */
+    private var endWhenOnline = false
+
+    /** D365FO answers: checked before every call, so offline never waits for a timeout. */
+    private var online = true
+
     init {
         viewModelScope.launch { scannerBridge.scans.collect { onScan(it.value) } }
+        warehouse?.let { wh ->
+            viewModelScope.launch { binRepository.refresh(wh) }
+            viewModelScope.launch {
+                binRepository.observe(wh).collect { rows ->
+                    bins = rows.associateBy { it.binId }
+                    _state.update { it.copy(binsRequired = rows.isNotEmpty()) }
+                }
+            }
+        }
         // A Send that failed for want of a connection goes again by itself once D365FO answers -
         // the offline notice promises it (test, 13 Oct: the counter had to tap Send again).
         viewModelScope.launch {
-            syncStatus.status.map { it.fullyOnline }.distinctUntilChanged().collect { online ->
+            syncStatus.status.map { it.fullyOnline }.distinctUntilChanged().collect { up ->
+                online = up
                 val s = _state.value
-                if (online && waitingForConnection && !s.busy && s.unsent > 0) send(end = false)
+                if (up && waitingForConnection && !s.busy && (s.unsent > 0 || endWhenOnline)) send(end = endWhenOnline)
             }
         }
     }
@@ -184,51 +245,139 @@ class StoreCountViewModel @Inject constructor(
     /** Opens (or rejoins) this counter's journal in the store's stock count. */
     fun start() {
         val wh = warehouse ?: return _state.update { it.copy(error = "No warehouse is assigned to you.") }
+        // Offline: count on the device now; the stock count is opened with the first Send.
+        if (!online) return startOffline(wh)
         _state.update { it.copy(busy = true, error = null) }
         viewModelScope.launch {
             when (val opened = staging.open(wh)) {
                 is NetworkResult.Success -> {
                     val current = _state.value.draft ?: StoreCountDraft(warehouseId = wh)
-                    saveDraft(current.copy(masterId = opened.data.masterId, stageId = opened.data.stageId))
+                    saveDraft(current.copy(masterId = opened.data.masterId, stageId = opened.data.stageId, started = true))
                     _state.update {
+                        val location = it.locationId.ifBlank { startLocation.orEmpty() }
                         it.copy(
                             busy = false,
-                            message = "Counting for ${opened.data.masterId}." + if (it.locationId.isBlank()) " Scan a location to start." else "",
+                            locationId = location,
+                            message = "Counting for ${opened.data.masterId}." + nextStep(location, it.binsRequired),
                         )
                     }
                 }
-                is NetworkResult.Error -> _state.update { it.copy(busy = false, error = opened.failure.message) }
+                is NetworkResult.Error ->
+                    if (opened.failure.retryable) startOffline(wh)
+                    else _state.update { it.copy(busy = false, error = opened.failure.message) }
                 NetworkResult.Loading -> _state.update { it.copy(busy = false) }
             }
         }
     }
 
+    private fun startOffline(wh: String) {
+        val current = _state.value.draft ?: StoreCountDraft(warehouseId = wh)
+        saveDraft(current.copy(started = true))
+        waitingForConnection = true
+        _state.update {
+            val location = it.locationId.ifBlank { startLocation.orEmpty() }
+            it.copy(
+                busy = false,
+                error = null,
+                locationId = location,
+                message = "Offline - counting on this device. Counts go to D365FO when it answers." + nextStep(location, it.binsRequired),
+            )
+        }
+    }
+
+    private fun nextStep(location: String, binsRequired: Boolean): String = when {
+        location.isBlank() -> " Scan a location to start."
+        binsRequired -> " Counting $location - scan a bin."
+        else -> " Counting $location."
+    }
+
     /** A scan: a location first (and whenever none is set), then items at it. */
     fun onScan(raw: String) {
         val value = raw.trim()
-        if (value.isBlank() || _state.value.draft?.stageId.isNullOrBlank()) return
-        val pending = _state.value.pending
+        if (value.isBlank() || _state.value.draft?.counting != true) return
+        val s = _state.value
+        val pending = s.pending
+        val bin = bins[com.d365fo.mobileops.data.counting.normalizeBin(value)]
         when {
             pending != null && pending.needsSerial && !pending.needsVariant && !pending.needsBatch -> setSerial(value)
             pending != null && pending.needsBatch && !pending.needsVariant -> setBatch(value)
-            _state.value.locationId.isBlank() -> setLocation(value)
+            s.needsLocation -> setLocation(value)
+            bin != null -> setBin(bin)
+            s.needsBin -> _state.update {
+                it.copy(message = null, error = "$value is not a bin in ${s.locationId}. Scan one of its bins, or ask a supervisor to add it in Count bins.")
+            }
             else -> scanItem(value)
         }
     }
 
-    fun changeLocation() = _state.update { it.copy(locationId = "", pending = null) }
+    private fun setBin(bin: com.d365fo.mobileops.data.local.entity.CountBinEntity) {
+        val s = _state.value
+        if (!bin.isIn(s.locationId)) {
+            return _state.update {
+                it.copy(message = null, error = "${bin.binId} is in ${bin.locationId}, not ${s.locationId}. Change location to count it.")
+            }
+        }
+        _state.update { it.copy(binId = bin.binId, back = null, pending = null, error = null, message = "Counting ${s.locationId} \u203A ${bin.binId}.") }
+    }
+
+    /** Change location: scan another location (Damaged, Claim, Return...), then its bins. */
+    fun changeLocation() {
+        _state.update {
+            it.copy(back = it.back ?: StoreCountPlace(it.locationId, it.binId), locationId = "", binId = "", pending = null, error = null, message = null)
+        }
+        sendInBackground()
+    }
+
+    /** Change bin: the next bin in the same location. */
+    fun changeBin() {
+        _state.update {
+            it.copy(back = it.back ?: StoreCountPlace(it.locationId, it.binId), binId = "", pending = null, error = null, message = null)
+        }
+        sendInBackground()
+    }
+
+    /**
+     * There is no Send button (user, 8 Nov): what was counted goes to the supervisor by itself
+     * each time the counter moves on to another bin or location, and with End count. Offline it
+     * stays on the device and goes when D365FO answers.
+     */
+    private fun sendInBackground() {
+        val s = _state.value
+        if (s.unsent == 0 || s.draft?.counting != true) return
+        // Offline: they go when D365FO answers again (the connection watcher sends them).
+        if (!online) {
+            waitingForConnection = true
+            return
+        }
+        if (!s.busy) send(end = false)
+    }
+
+    /** Cancel on Change location / Change bin: back where counting was, nothing changed. */
+    fun cancelChange() = _state.update {
+        val back = it.back ?: return@update it
+        it.copy(locationId = back.locationId, binId = back.binId, back = null, error = null, message = null)
+    }
 
     private fun setLocation(value: String) {
         val wh = warehouse ?: return
         _state.update { it.copy(busy = true, error = null) }
         viewModelScope.launch {
+            // Offline: the device's copy of the store's locations; one not in it is taken as typed.
+            if (!online) {
+                val known = runCatching { locationDao.find(wh, value) ?: locationDao.find(wh, value.uppercase()) }.getOrNull()
+                val id = known?.locationId ?: value.uppercase()
+                _state.update { it.copy(busy = false, locationId = id, binId = "", back = null, message = nextStep(id, it.binsRequired).trim()) }
+                return@launch
+            }
             val checked = lookup.lookupLocation(wh, value)
             val known = (checked as? NetworkResult.Success)?.data
             _state.update {
                 when {
                     checked is NetworkResult.Success && known == null ->
                         it.copy(busy = false, error = "No location $value in $wh.")
-                    else -> it.copy(busy = false, locationId = known?.locationId ?: value.uppercase(), message = "Counting at ${known?.locationId ?: value.uppercase()}.")
+                    else -> (known?.locationId ?: value.uppercase()).let { id ->
+                        it.copy(busy = false, locationId = id, binId = "", back = null, message = nextStep(id, it.binsRequired).trim())
+                    }
                 }
             }
         }
@@ -237,7 +386,7 @@ class StoreCountViewModel @Inject constructor(
     private fun scanItem(value: String) {
         _state.update { it.copy(busy = true, error = null) }
         viewModelScope.launch {
-            when (val found = items.findItem(value, warehouse.orEmpty())) {
+            when (val found = items.findItem(value, warehouse.orEmpty(), offline = !online)) {
                 is NetworkResult.Success -> {
                     val item = found.data
                     val variant = item.scannedVariant ?: if (!item.hasProductDimensions) OrderVariant() else item.variants.singleOrNull()
@@ -275,9 +424,10 @@ class StoreCountViewModel @Inject constructor(
             quantity = qty,
             unitId = pending.item.inventUnit,
             countedAt = System.currentTimeMillis(),
+            binId = s.binId,
         )
         saveDraft(draft.copy(lines = listOf(line) + draft.lines))
-        _state.update { it.copy(pending = null, message = "${line.itemId} · ${qtyText(qty)} at ${line.locationId}") }
+        _state.update { it.copy(pending = null, message = "${line.itemId} · ${qtyText(qty)} at ${line.place}") }
     }
 
     /** Removes a line that has not been sent yet. */
@@ -289,10 +439,44 @@ class StoreCountViewModel @Inject constructor(
 
     /** Sends the unsent lines; [end] also ends this counter's count. */
     fun send(end: Boolean) {
-        val draft = _state.value.draft ?: return
-        if (draft.stageId.isBlank()) return
+        val started = _state.value.draft ?: return
+        if (!started.counting) return
+        // Offline: kept on the device, and sent - ended too, if End count was pressed - by itself
+        // when D365FO answers.
+        if (!online) {
+            waitingForConnection = true
+            if (end) endWhenOnline = true
+            _state.update {
+                it.copy(
+                    message = null,
+                    error = "Offline - your counts are kept on this device and " +
+                        (if (endWhenOnline) "the count is ended" else "sent") + " when D365FO answers.",
+                )
+            }
+            return
+        }
         _state.update { it.copy(busy = true, error = null) }
         viewModelScope.launch {
+            // Started offline: the stock count is opened now, with this first Send.
+            val draft = if (started.stageId.isNotBlank()) started else {
+                when (val opened = staging.open(started.warehouseId)) {
+                    is NetworkResult.Success -> started.copy(masterId = opened.data.masterId, stageId = opened.data.stageId)
+                        .also { saveDraft(it) }
+                    is NetworkResult.Error -> {
+                        waitingForConnection = opened.failure.retryable
+                        if (end && waitingForConnection) endWhenOnline = true
+                        _state.update {
+                            it.copy(
+                                busy = false,
+                                error = opened.failure.message + " Your counts are kept on this device" +
+                                    if (waitingForConnection) " and sent when the connection is back." else ".",
+                            )
+                        }
+                        return@launch
+                    }
+                    NetworkResult.Loading -> return@launch _state.update { it.copy(busy = false) }
+                }
+            }
             val unsent = draft.lines.filterNot { it.sent }
             val result = staging.submit(
                 stageId = draft.stageId,
@@ -303,19 +487,22 @@ class StoreCountViewModel @Inject constructor(
             when (result) {
                 is NetworkResult.Success -> {
                     waitingForConnection = false
+                    endWhenOnline = false
                     val sentIds = unsent.map { it.clientLineId }.toSet()
                     val updated = draft.copy(lines = draft.lines.map { if (it.clientLineId in sentIds) it.copy(sent = true) else it })
-                    val dupNote = if (result.data.duplicates > 0) " ${result.data.duplicates} item(s) in this stock count are counted more than once - the supervisor decides." else ""
+                    // The whole stock count's figure, every counter's lines - not just these (test, 8 Nov).
+                    val dupNote = if (result.data.duplicates > 0) " ${result.data.duplicates} item(s) in ${draft.masterId} were counted more than once - your supervisor decides." else ""
                     if (end) {
                         saveDraft(null)
-                        _state.update { it.copy(busy = false, ended = true, message = "Count ended - ${draft.lines.size} line(s) are with the supervisor in ${result.data.masterId}.$dupNote") }
+                        _state.update { it.copy(busy = false, ended = true, message = "Ended - ${draft.lines.size} line(s) sent.$dupNote") }
                     } else {
                         saveDraft(updated)
-                        _state.update { it.copy(busy = false, message = "${result.data.accepted} line(s) sent to ${result.data.masterId}.$dupNote") }
+                        _state.update { it.copy(busy = false, message = "${result.data.accepted} line(s) sent.$dupNote") }
                     }
                 }
                 is NetworkResult.Error -> {
                     waitingForConnection = result.failure is AppFailure.Offline || result.failure is AppFailure.Transient
+                    if (end && waitingForConnection) endWhenOnline = true
                     val code = (result.failure as? AppFailure.BusinessRule)?.d365ErrorCode
                     val closed = code == "COUNT_TRANSFERRED" || code == "COUNT_CANCELLED"
                     if (closed && unsent.isEmpty()) {
@@ -362,11 +549,15 @@ class StoreCountViewModel @Inject constructor(
         batchId = batchId.ifBlank { null },
         serialId = serialId.ifBlank { null },
         locationId = locationId.ifBlank { null },
+        binId = binId.ifBlank { null },
         quantity = quantity,
         unitId = unitId,
         countedAtUtc = Formatters.isoUtc(countedAt),
     )
 }
+
+/** "AAC > BIN-A1", or the location alone. */
+private val StoreCountLine.place: String get() = if (binId.isBlank()) locationId else "$locationId \u203A $binId"
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -375,10 +566,30 @@ fun StoreCountScreen(onBack: () -> Unit, viewModel: StoreCountViewModel = hiltVi
     var showCamera by remember { mutableStateOf(false) }
     var typing by remember { mutableStateOf(false) }
     var confirmEnd by remember { mutableStateOf(false) }
+    var changePlace by remember { mutableStateOf(false) }
+    if (changePlace) {
+        com.d365fo.mobileops.presentation.modules.cyclecounting.ChangePlaceDialog(
+            location = state.locationId,
+            bin = state.binId,
+            binsUsed = state.binsRequired,
+            canChangeLocation = true,
+            onChangeLocation = { changePlace = false; viewModel.changeLocation() },
+            onChangeBin = { changePlace = false; viewModel.changeBin() },
+            onDismiss = { changePlace = false },
+        )
+    }
     if (typing) {
         com.d365fo.mobileops.presentation.modules.ordercreate.CodeEntryDialog(
-            title = if (state.locationId.isBlank()) "Location" else "Item",
-            label = if (state.locationId.isBlank()) "Location" else "Item number or barcode",
+            title = when {
+                state.needsLocation -> "Location"
+                state.needsBin -> "Bin"
+                else -> "Item"
+            },
+            label = when {
+                state.needsLocation -> "Location"
+                state.needsBin -> "Bin"
+                else -> "Item number or barcode"
+            },
             onSubmit = { typing = false; viewModel.onScan(it) },
             onDismiss = { typing = false },
         )
@@ -403,7 +614,7 @@ fun StoreCountScreen(onBack: () -> Unit, viewModel: StoreCountViewModel = hiltVi
                     pending.serialId.takeIf { it.isNotBlank() }?.let { "Serial $it" },
                     pending.item.inventUnit,
                 ).joinToString(" · "),
-                hint = "At ${state.locationId}",
+                hint = "At " + if (state.binId.isBlank()) state.locationId else "${state.locationId} \u203A ${state.binId}",
                 confirmLabel = "Add count",
                 initial = if (pending.item.serialActive) "1" else "",
                 onConfirm = viewModel::confirmQuantity,
@@ -417,8 +628,7 @@ fun StoreCountScreen(onBack: () -> Unit, viewModel: StoreCountViewModel = hiltVi
             title = { Text("End count?") },
             text = {
                 Text(
-                    "${state.draft?.lines?.size ?: 0} line(s) counted. They go to the supervisor, who checks them and " +
-                        "moves them into a counting journal. You can't add to this count afterwards unless you start it again.",
+                    "${state.draft?.lines?.size ?: 0} line(s) go to the supervisor. You can't add after this.",
                 )
             },
             confirmButton = {
@@ -462,12 +672,12 @@ fun StoreCountScreen(onBack: () -> Unit, viewModel: StoreCountViewModel = hiltVi
                 Button(onClick = onBack, modifier = Modifier.fillMaxWidth().heightIn(min = WarehouseDimens.MinTouchTarget)) { Text("Done") }
                 return@Column
             }
-            if (draft == null || draft.stageId.isBlank()) {
+            if (draft == null || !draft.counting) {
                 Text(
-                    "Count everything in ${state.warehouseId ?: "your store"}, location by location. Your counts go to your " +
-                        "supervisor, who checks them - items counted twice included - before they reach a counting journal.",
+                    "Count ${state.warehouseId ?: "the store"}, location by location.",
                     style = MaterialTheme.typography.bodyLarge,
                 )
+                com.d365fo.mobileops.presentation.modules.cyclecounting.ItemMasterOnDevice()
                 state.error?.let { ErrorBanner(message = it) }
                 Button(
                     onClick = viewModel::start,
@@ -477,9 +687,34 @@ fun StoreCountScreen(onBack: () -> Unit, viewModel: StoreCountViewModel = hiltVi
                 return@Column
             }
 
+            // Location > bin > items, the same trail as PO receiving (user, 8 Nov).
+            com.d365fo.mobileops.presentation.common.components.StepTrail(
+                names = listOfNotNull("Location", "Bin".takeIf { state.binsRequired }, "Items"),
+                current = when {
+                    state.needsLocation -> 0
+                    state.needsBin -> 1
+                    else -> if (state.binsRequired) 2 else 1
+                },
+                modifier = Modifier.fillMaxWidth(),
+            )
+            StorePlaceCard(
+                state = state,
+                masterId = draft.masterId,
+                onBackToLocation = viewModel::changeLocation,
+                onBackToBin = viewModel::changeBin,
+                onCancel = viewModel::cancelChange,
+            )
             com.d365fo.mobileops.presentation.common.components.PromptHeroCard(
-                prompt = if (state.locationId.isBlank()) "Scan location" else "Scan item",
-                hint = if (state.locationId.isBlank()) "Where you are counting now" else "At ${state.locationId} · ${draft.masterId}",
+                prompt = when {
+                    state.needsLocation -> "Scan a location"
+                    state.needsBin -> "Scan a bin"
+                    else -> "Scan item"
+                },
+                hint = when {
+                    state.needsLocation -> "Stock, damaged, claim, return... - where you count now"
+                    state.needsBin -> "A bin in ${state.locationId}"
+                    else -> null
+                },
             ) {
                 // The same scan field as every other scan screen (feedback, 13 Oct: "where is the
                 // barcode scanning field?"): a scan never lands in it, a tap opens typing.
@@ -488,11 +723,6 @@ fun StoreCountScreen(onBack: () -> Unit, viewModel: StoreCountViewModel = hiltVi
                     onCamera = { showCamera = true },
                     enabled = !state.busy,
                 )
-            }
-            if (state.locationId.isNotBlank()) {
-                OutlinedButton(onClick = viewModel::changeLocation, modifier = Modifier.fillMaxWidth().heightIn(min = WarehouseDimens.MinTouchTarget)) {
-                    Text("Change location")
-                }
             }
             state.error?.let { ErrorBanner(message = it) }
             if (state.countClosed) {
@@ -527,7 +757,7 @@ fun StoreCountScreen(onBack: () -> Unit, viewModel: StoreCountViewModel = hiltVi
                                     OrderVariant(line.configId, line.sizeId, line.colorId, line.styleId).takeIf { v -> v != OrderVariant() }?.label,
                                     line.batchId.takeIf { it.isNotBlank() }?.let { "Batch $it" },
                                     line.serialId.takeIf { it.isNotBlank() }?.let { "Serial $it" },
-                                    "At ${line.locationId}",
+                                    "At ${line.place}",
                                     if (line.sent) "With the supervisor" else "On this device",
                                 ).joinToString(" · "),
                                 style = MaterialTheme.typography.bodySmall,
@@ -540,12 +770,15 @@ fun StoreCountScreen(onBack: () -> Unit, viewModel: StoreCountViewModel = hiltVi
                     }
                 }
             }
+            // Change location / bin where Send was (user, 8 Nov): lines go by themselves.
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                OutlinedButton(
-                    onClick = { viewModel.send(end = false) },
-                    enabled = !state.busy && state.unsent > 0,
+                if (!state.needsLocation) OutlinedButton(
+                    onClick = { changePlace = true },
+                    enabled = !state.busy,
                     modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget),
-                ) { Text(if (state.unsent > 0) "Send ${state.unsent}" else "All sent") }
+                ) {
+                    Text(com.d365fo.mobileops.presentation.modules.cyclecounting.changePlaceLabel(state.binsRequired, canChangeLocation = true))
+                }
                 Button(
                     onClick = { confirmEnd = true },
                     enabled = !state.busy && draft.lines.isNotEmpty(),
@@ -583,3 +816,72 @@ private fun TextEntryDialog(title: String, hint: String, onConfirm: (String) -> 
 }
 
 private fun qtyText(qty: Double): String = java.math.BigDecimal.valueOf(qty).stripTrailingZeros().toPlainString()
+
+/**
+ * Where the counter is: "STOCK > BIN-A1" and how many lines are counted there. On the bin step a
+ * Back button to the location, on the item step one to the bin (user, 8 Nov). While changing:
+ * what is being left, and Cancel back to it.
+ */
+@Composable
+private fun StorePlaceCard(
+    state: StoreCountState,
+    masterId: String,
+    onBackToLocation: () -> Unit,
+    onBackToBin: () -> Unit,
+    onCancel: () -> Unit,
+) {
+    val place = listOfNotNull(
+        state.locationId.ifBlank { "Choose a location" },
+        when {
+            !state.binsRequired || state.needsLocation -> null
+            else -> state.binId.ifBlank { "Scan a bin" }
+        },
+    ).joinToString("  \u203A  ")
+    val counted = when {
+        state.needsLocation -> null
+        state.binsRequired && state.binId.isNotBlank() -> "${state.inBin} in this bin · ${state.atLocation} in ${state.locationId}"
+        else -> "${state.atLocation} counted here"
+    }
+    androidx.compose.material3.Card(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(
+                text = place,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = WarehouseStatusColors.accent,
+            )
+            Text(
+                text = listOfNotNull(counted, masterId.ifBlank { "not sent yet" }).joinToString(" · "),
+                style = MaterialTheme.typography.bodySmall,
+                color = WarehouseStatusColors.text3,
+            )
+            state.back?.let { back ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = "Changing from " + listOf(back.locationId, back.binId).filter { it.isNotBlank() }.joinToString(" \u203A "),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = WarehouseStatusColors.text3,
+                        modifier = Modifier.weight(1f),
+                    )
+                    CancelOutlinedButton(onClick = onCancel, modifier = Modifier.heightIn(min = WarehouseDimens.MinTouchTarget)) { Text("Cancel") }
+                }
+            }
+            when {
+                state.needsLocation -> Unit
+                state.needsBin -> com.d365fo.mobileops.presentation.modules.cyclecounting.StepBackButton(
+                    "Back to location", onBackToLocation, enabled = !state.busy,
+                )
+                state.binsRequired -> com.d365fo.mobileops.presentation.modules.cyclecounting.StepBackButton(
+                    "Back to bin", onBackToBin, enabled = !state.busy,
+                )
+                else -> com.d365fo.mobileops.presentation.modules.cyclecounting.StepBackButton(
+                    "Back to location", onBackToLocation, enabled = !state.busy,
+                )
+            }
+        }
+    }
+}

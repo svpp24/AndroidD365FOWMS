@@ -94,8 +94,12 @@ fun ReturnCreateScreen(onBack: () -> Unit, viewModel: ReturnCreateViewModel = hi
             if (draft.vendorAccount.isBlank()) {
                 // -- Step 1: vendor - picked, or taken from the original PO ---------------------
                 // Keyed so the field keeps focus when the cards above go away as typing starts.
-                item(key = "vendor-title") { Text("Vendor", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 8.dp)) }
-                item(key = "vendor-search") { TapToTypeField(state.vendorQuery, viewModel::onVendorQuery, "Search by name or account") }
+                // The white prompt card the other start screens use (20 Oct restyle).
+                item(key = "vendor-search") {
+                    com.d365fo.mobileops.presentation.common.components.PromptHeroCard(prompt = "Choose vendor") {
+                        TapToTypeField(state.vendorQuery, viewModel::onVendorQuery, "Search by name or account")
+                    }
+                }
                 // After the search field, which comes first as the thing to act on (the cards
                 // still hide while searching).
                 if (orders.isNotEmpty() && state.submittedId == null && state.vendorQuery.isBlank()) {
@@ -105,7 +109,7 @@ fun ReturnCreateScreen(onBack: () -> Unit, viewModel: ReturnCreateViewModel = hi
                 if (state.vendorCount == 0) {
                     item {
                         Text(
-                            if (online) "Getting the vendor list from D365FO..." else "No vendors saved on this device yet - connect once to get the list.",
+                            if (online) "Getting vendors..." else "No vendors yet - connect once.",
                             style = MaterialTheme.typography.bodySmall,
                             color = WarehouseStatusColors.text3,
                         )
@@ -175,7 +179,7 @@ fun ReturnCreateScreen(onBack: () -> Unit, viewModel: ReturnCreateViewModel = hi
                 if (state.reasons.isEmpty() && !online) {
                     item {
                         Text(
-                            "Return reasons and actions show once D365FO has been reached.",
+                            "Reasons load when online.",
                             style = MaterialTheme.typography.bodySmall,
                             color = WarehouseStatusColors.text3,
                         )
@@ -231,13 +235,13 @@ fun ReturnCreateScreen(onBack: () -> Unit, viewModel: ReturnCreateViewModel = hi
     state.editing?.let { line ->
         NumberDialog(
             title = "Quantity",
-            subtitle = listOf(line.itemId, line.variant.label, line.locationId.takeIf { it.isNotBlank() }?.let { "Bin $it" }.orEmpty())
+            subtitle = listOf(line.itemId, line.variant.label, line.locationId.takeIf { it.isNotBlank() }?.let { "Location $it" }.orEmpty())
                 .filter { it.isNotBlank() }.joinToString(" · "),
             initial = line.qty,
             rules = line.available?.let {
                 com.d365fo.mobileops.domain.order.QuantityRules(
                     available = it,
-                    availableWhere = line.locationId.takeIf { b -> b.isNotBlank() }?.let { b -> "in bin $b" } ?: "to return",
+                    availableWhere = line.locationId.takeIf { b -> b.isNotBlank() }?.let { b -> "at location $b" } ?: "to return",
                 )
             },
             confirmLabel = "Save",
@@ -253,7 +257,7 @@ fun ReturnCreateScreen(onBack: () -> Unit, viewModel: ReturnCreateViewModel = hi
             title = { Text("Vendor's RMA number") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("The number the vendor gave for this return. Leave it empty and the return order's own number is used.", style = MaterialTheme.typography.bodyMedium)
+                    Text("Vendor's return number (optional).", style = MaterialTheme.typography.bodyMedium)
                     OutlinedTextField(value = value, onValueChange = { value = it.take(10) }, singleLine = true, label = { Text("RMA number (up to 10)") })
                 }
             },
@@ -279,9 +283,8 @@ fun ReturnCreateScreen(onBack: () -> Unit, viewModel: ReturnCreateViewModel = hi
             title = { Text("Return and post?") },
             text = {
                 Text(
-                    "${linesText(draft.lines.size)} ${if (draft.lines.size == 1) "goes" else "go"} back to ${draft.vendorName.ifBlank { draft.vendorAccount }}. D365FO creates the return order " +
-                        "and posts its packing slip - the stock leaves ${draft.warehouseId}." +
-                        if (online) "" else " You are offline: it is posted as soon as D365FO can be reached.",
+                    "${linesText(draft.lines.size)} back to ${draft.vendorName.ifBlank { draft.vendorAccount }}. Stock leaves ${draft.warehouseId}." +
+                        if (online) "" else " Offline - posted when back.",
                 )
             },
             confirmButton = {
@@ -296,7 +299,7 @@ fun ReturnCreateScreen(onBack: () -> Unit, viewModel: ReturnCreateViewModel = hi
         AlertDialog(
             onDismissRequest = { confirmDiscard = false },
             title = { Text("Discard this return?") },
-            text = { Text("${linesText(draft.lines.size)} will be removed from this device. Nothing was sent to D365FO.") },
+            text = { Text("${linesText(draft.lines.size)} removed. Nothing was sent.") },
             confirmButton = {
                 com.d365fo.mobileops.presentation.common.components.DialogButtonRow(
                     dismiss = { com.d365fo.mobileops.presentation.common.components.CancelOutlinedButton(onClick = { confirmDiscard = false }, modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget)) { Text("Keep") } },

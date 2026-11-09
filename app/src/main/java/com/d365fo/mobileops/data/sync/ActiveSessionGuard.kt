@@ -175,16 +175,15 @@ class ActiveSessionGuard @Inject constructor(
         const val CHECK_MS = 120_000L
         const val FIRST_CHECK_MS = 5_000L
         const val ELSEWHERE_MESSAGE =
-            "%s signed in on another device, so this device was signed out. Sign in again to use it here."
+            "%s signed in on another device."
 
         /** The notice on the device that was signed out, naming what it still holds. */
         fun elsewhereMessage(user: String, here: PendingWork): String =
             ELSEWHERE_MESSAGE.format(user) + if (here.isEmpty) "" else
-                " This device still holds ${here.describe()} for $user - they stay here until $user signs in here to finish them."
+                " ${here.describe()} stays here."
 
         /** The question asked before a takeover. */
         fun promptMessage(prompt: TakeoverPrompt): String =
-            "You have ${prompt.work.describe()} on another device. They stay on that device - " +
-                "finish them there, or continue here and come back to them later."
+            "${prompt.work.describe()} stays on your other device."
     }
 }

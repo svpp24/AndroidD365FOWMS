@@ -67,6 +67,7 @@ class ReturnCreateViewModel @Inject constructor(
     private val sessions: WorkerSessionRepository,
     private val scannerBridge: HidScannerBridge,
     syncStatusProvider: SyncStatusProvider,
+    private val freezes: com.d365fo.mobileops.data.repository.WarehouseFreezeRepository,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(ReturnCreateState())
@@ -152,7 +153,7 @@ class ReturnCreateViewModel @Inject constructor(
                 updateDraft { it.copy(vendorAccount = po.vendorAccount, vendorName = po.vendorName) }
             }
             is NetworkResult.Error -> _state.update {
-                it.copy(busy = false, error = if (!online.value) "$code can't be looked up offline - pick the vendor from the list." else "$code: ${result.failure.message}")
+                it.copy(busy = false, error = if (!online.value) "Offline - pick from the list." else "$code: ${result.failure.message}")
             }
             NetworkResult.Loading -> Unit
         }
@@ -182,7 +183,7 @@ class ReturnCreateViewModel @Inject constructor(
                     }
                 }
                 is NetworkResult.Error -> _state.update {
-                    it.copy(busy = false, error = if (!online.value) "$code isn't saved on this device. Look it up once while connected." else result.failure.message)
+                    it.copy(busy = false, error = if (!online.value) "$code not saved - look it up online once." else result.failure.message)
                 }
                 NetworkResult.Loading -> Unit
             }
@@ -204,7 +205,7 @@ class ReturnCreateViewModel @Inject constructor(
             null
         }
         if (stock != null && stock.isEmpty()) {
-            _state.update { it.copy(busy = false, error = "No stock of ${item.itemId} ${variant.label} at $warehouse to return".trim()) }
+            _state.update { it.copy(busy = false, error = "No stock of ${item.itemId} ${variant.label}".trim()) }
             return
         }
         val pending = PendingTransferLine(item, variant, stock)
@@ -236,7 +237,7 @@ class ReturnCreateViewModel @Inject constructor(
             .sumOf { it.qty }
         return QuantityRules(
             available = available?.let { (it - already).coerceAtLeast(0.0) },
-            availableWhere = pick?.locationId?.takeIf { it.isNotBlank() }?.let { "in bin $it" } ?: "to return",
+            availableWhere = pick?.locationId?.takeIf { it.isNotBlank() }?.let { "at location $it" } ?: "to return",
         )
     }
 
@@ -285,6 +286,11 @@ class ReturnCreateViewModel @Inject constructor(
         if (_state.value.missing != null || _state.value.busy) return
         viewModelScope.launch {
             _state.update { it.copy(busy = true, error = null) }
+            // A return ships stock out at once: not while a wall-to-wall count freezes the warehouse.
+            freezes.frozenMessage(draft.warehouseId)?.let { reason ->
+                _state.update { it.copy(busy = false, error = reason) }
+                return@launch
+            }
             val id = repository.submitReturn(userName, draft)
             _state.update {
                 ReturnCreateState(

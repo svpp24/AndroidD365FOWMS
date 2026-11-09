@@ -28,6 +28,8 @@ data class CountingJournalSummary(
     val countMode: String = COUNT_MODE_SINGLE,
     /** 1 for a first count, 2+ for a recount or second pass. */
     val passNumber: Int = 1,
+    /** Dual count: how many of this person's lines are recounts, shown under Recount. */
+    val recountLines: Int = 0,
     /** For a RECOUNT journal: the journal it recounts. */
     val recountOf: String? = null,
     /** SCHEDULED, PERIODIC, SPOT, TRIGGERED, OPPORTUNITY, CONTROL_GROUP or RECOUNT. */
@@ -43,12 +45,66 @@ data class CountingJournalSummary(
     /** CONTROL_GROUP: the fixed sample this journal repeats, and a display-only repeat note. */
     val controlGroupId: String? = null,
     val repeatInfo: String? = null,
+    /** From D365FO: finished for this user - posted, or counted and waiting on others. Listed under Done. */
+    val doneNote: String? = null,
 ) {
     val doubleBlind: Boolean get() = countMode == COUNT_MODE_DOUBLE_BLIND
+
+    /** A wall-to-wall count: counted location by location, its warehouse frozen meanwhile. */
+    val isWallToWall: Boolean get() = originType == ORIGIN_WALL_TO_WALL
+
+    /** Under the Recount tab: it has recounts for this person. */
+    val onRecountTab: Boolean get() = !isWallToWall && recountLines > 0
+
+    /** Under the Cycle tab: anything else it has to count. A supervisor's journal with nothing left to count stays here too. */
+    val onCycleTab: Boolean get() = !isWallToWall && (recountLines == 0 || lineCount > recountLines)
+
+    /** Under the Wall-to-wall tab: first counts, second counts and recounts alike. */
+    val onWallToWallTab: Boolean get() = isWallToWall
 }
+
+const val ORIGIN_WALL_TO_WALL = "WALL_TO_WALL"
 
 const val ORIGIN_SCHEDULED = "SCHEDULED"
 const val FREEZE_NONE = "NONE"
+
+/**
+ * The Inventory count sub-menus a journal is listed under (user, 8 Nov). Store count is the fourth
+ * and has no journal on the device: it becomes one only in the Stock count control center.
+ * Triggered, opportunity, control group and recount journals are cycle counting.
+ */
+enum class CountKind(val route: String) {
+    CYCLE("cycle"),
+    SPOT("spot"),
+    WALL_TO_WALL("w2w");
+
+    companion object {
+        fun fromRoute(value: String?): CountKind? = entries.firstOrNull { it.route == value }
+    }
+}
+
+val CountingJournalSummary.kind: CountKind
+    get() = when {
+        isWallToWall -> CountKind.WALL_TO_WALL
+        originType == "SPOT" -> CountKind.SPOT
+        else -> CountKind.CYCLE
+    }
+
+/**
+ * The shape the Counting screen takes (user, 8 Nov): the list and progress for an ordinary count,
+ * location-first with a prominent Location is empty for wall-to-wall, and one card with a large
+ * quantity box for an urgent check of a single line. Decided from what D365FO says the journal is.
+ */
+enum class CountingLayout { STANDARD, WALL_TO_WALL, FOCUSED }
+
+/** Triggered and opportunity checks of one line, at a store without bins (a bin needs the list). */
+fun countingLayout(originType: String?, lineCount: Int, binsRequired: Boolean): CountingLayout = when {
+    originType == ORIGIN_WALL_TO_WALL -> CountingLayout.WALL_TO_WALL
+    originType in FOCUSED_ORIGINS && lineCount == 1 && !binsRequired -> CountingLayout.FOCUSED
+    else -> CountingLayout.STANDARD
+}
+
+private val FOCUSED_ORIGINS = setOf("TRIGGERED", "OPPORTUNITY")
 
 /**
  * The banner for a journal's stock-freeze state, or null when there is none. [clock] formats the
@@ -56,7 +112,7 @@ const val FREEZE_NONE = "NONE"
  * business - the app only sends timestamps.
  */
 fun freezeBanner(freezeState: String, snapshotAt: Long?, clock: (Long) -> String): String? = when (freezeState) {
-    "LOCATION_FROZEN" -> "Stock movements are blocked here while this count is open."
+    "LOCATION_FROZEN" -> "Stock is frozen while counting."
     "SNAPSHOT_ONLY" -> snapshotAt?.let { "Count is measured against stock at ${clock(it)}." }
         ?: "Count is measured against a stock snapshot."
     else -> null
@@ -79,6 +135,7 @@ fun originLabel(originType: String): String? = when (originType) {
     "OPPORTUNITY" -> "Opportunity"
     "CONTROL_GROUP" -> "Control group"
     "RECOUNT" -> "Recount"
+    ORIGIN_WALL_TO_WALL -> "Wall-to-wall"
     else -> null
 }
 

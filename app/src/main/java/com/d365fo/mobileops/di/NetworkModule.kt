@@ -139,6 +139,7 @@ object NetworkModule {
         // Debug builds only, innermost so every interceptor above sees the failure as it would
         // see a real outage: lets offline behaviour be tested over adb - see SimulatedOutage.
         .apply { if (BuildConfig.DEBUG) addInterceptor(com.d365fo.mobileops.data.remote.interceptor.SimulatedOutage) }
+        .apply { if (BuildConfig.DEBUG) addInterceptor(com.d365fo.mobileops.data.remote.interceptor.SimulatedThrottle) }
         .apply {
             // HEADERS, not BODY.
             //

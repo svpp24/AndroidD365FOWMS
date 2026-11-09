@@ -1,0 +1,229 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsCountLoadSetup</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Test setup, dev environments only: makes every item D365FO has a stock record for in AAC (BSP)
+/// due for cycle counting. A counting group CYCALL (Period, 1 day), journal names CYC and W2W (wall-to-wall)
+/// copied from the company's counting journal name, AAC enabled on Cycle count warehouses, and CYCALL on each
+/// item's AAC warehouse record. Not on any menu or role: run from
+/// ?mi=SysClassRunner&amp;cls=HSMobileOpsCountLoadSetup, which schedules one batch run. Safe to run again.
+/// </summary>
+class HSMobileOpsCountLoadSetup extends RunBaseBatch
+{
+    #define.CurrentVersion(1)
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>main</Name>
+				<Source><![CDATA[
+
+    public static void main(Args _args)
+    {
+        BatchHeader batchHeader = BatchHeader::construct();
+
+        batchHeader.parmCaption('Mobile ops: load test count setup');
+        batchHeader.addTask(new HSMobileOpsCountLoadSetup());
+        batchHeader.save();
+        info('Mobile ops: load test count setup scheduled, once.');
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>run</Name>
+				<Source><![CDATA[
+
+    public void run()
+    {
+        InventCountGroup   countGroup;
+        InventJournalName  source;
+        InventJournalName  journalName;
+        HSMobileOpsCountWarehouse   row;
+        InventSum          inventSum;
+        InventDim          inventDim;
+        InventDim          warehouseDim;
+        InventItemLocation itemLocation;
+        InventJournalTable journalTable;
+        BatchJob           batchJob;
+        Batch              batchTask;
+
+        // The nightly job from before its class was renamed. Scheduling makes it again.
+        ttsbegin;
+        while select forUpdate batchJob
+            where batchJob.Caption == 'Mobile ops: create cycle counting journals'
+               && batchJob.Status  != BatchStatus::Executing
+        {
+            delete_from batchTask
+                where batchTask.BatchJobId == batchJob.RecId;
+            batchJob.delete();
+        }
+        ttscommit;
+
+        changecompany ('bsp')
+        {
+            // Earlier test runs' cycle journals, so the next run starts clean. Never a posted one.
+            ttsbegin;
+            while select forUpdate journalTable
+                where journalTable.JournalNameId == 'CYC'
+                   && journalTable.Posted        == NoYes::No
+            {
+                journalTable.delete();
+            }
+            ttscommit;
+
+            ttsbegin;
+            if (!InventCountGroup::find('CYCALL').RecId)
+            {
+                countGroup.clear();
+                countGroup.CountGroupId = 'CYCALL';
+                countGroup.Name         = 'All items, test';
+                countGroup.CountCode    = InventCountCode::Period;
+                countGroup.CountPeriod  = 1;
+                countGroup.insert();
+            }
+            select forUpdate countGroup
+                where countGroup.CountGroupId == 'CYCALL';
+            countGroup.HSMobileOpsDualCount = NoYes::Yes;
+            countGroup.update();
+
+            HSMobileOpsCountDualTolerance tolerance;
+            select forUpdate firstOnly tolerance
+                where tolerance.CountGroupId == 'CYCALL'
+                   && tolerance.ItemGroupId  == '';
+            tolerance.CountGroupId = 'CYCALL';
+            tolerance.ToleranceQty = 1;
+            tolerance.TolerancePct = 0;
+            tolerance.write();
+
+            HSMobileOpsCountBin bin;
+            container           binIds = ['BIN-A1', 'BIN-A2', 'BIN-B1'];
+            int                 binIndex;
+            for (binIndex = 1; binIndex <= conLen(binIds); binIndex++)
+            {
+                bin = HSMobileOpsCountBin::find('AAC', conPeek(binIds, binIndex));
+                if (!bin.RecId)
+                {
+                    bin.initValue();
+                    bin.InventLocationId = 'AAC';
+                    bin.BinId            = conPeek(binIds, binIndex);
+                    bin.Description      = 'Test bin';
+                    bin.insert();
+                }
+            }
+
+            if (!InventJournalName::find('CYC').RecId)
+            {
+                source = InventJournalName::find(InventParameters::find().CountJournalNameId);
+                journalName.data(source);
+                journalName.JournalNameId = 'CYC';
+                journalName.Description   = 'Cycle counting';
+                journalName.insert();
+            }
+            if (!InventJournalName::find('W2W').RecId)
+            {
+                source = InventJournalName::find(InventParameters::find().CountJournalNameId);
+                journalName.clear();
+                journalName.data(source);
+                journalName.JournalNameId = 'W2W';
+                journalName.Description   = 'Wall-to-wall counting';
+                journalName.insert();
+            }
+
+            row = HSMobileOpsCountWarehouse::find('AAC', true);
+            row.Warehouse         = 'AAC';
+            row.JournalNameId     = 'CYC';
+            row.W2WJournalNameId  = 'W2W';
+            row.CycleEnabled      = NoYes::Yes;
+            row.IncludeZeroOnHand = NoYes::Yes;
+            row.LastJournalId     = '';
+            row.LastLineCount     = 0;
+            row.LastMessage       = '';
+            if (row.RecId)
+            {
+                row.update();
+            }
+            else
+            {
+                row.insert();
+            }
+            ttscommit;
+
+            warehouseDim.InventLocationId = 'AAC';
+            warehouseDim = InventDim::findOrCreate(warehouseDim);
+
+            while select ItemId from inventSum
+                group by ItemId
+                exists join inventDim
+                    where inventDim.inventDimId      == inventSum.InventDimId
+                       && inventDim.InventLocationId == 'AAC'
+            {
+                ttsbegin;
+                itemLocation = null;
+                select firstOnly forUpdate itemLocation
+                    where itemLocation.ItemId      == inventSum.ItemId
+                       && itemLocation.InventDimId == warehouseDim.inventDimId;
+                if (itemLocation.RecId)
+                {
+                    itemLocation.CountGroupId = 'CYCALL';
+                    itemLocation.update();
+                }
+                else
+                {
+                    itemLocation.clear();
+                    itemLocation.ItemId       = inventSum.ItemId;
+                    itemLocation.initValue();
+                    itemLocation.InventDimId  = warehouseDim.inventDimId;
+                    itemLocation.CountGroupId = 'CYCALL';
+                    itemLocation.insert();
+                }
+                ttscommit;
+            }
+        }
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>description</Name>
+				<Source><![CDATA[
+
+    public static ClassDescription description()
+    {
+        return 'Mobile ops: load test count setup';
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>canGoBatch</Name>
+				<Source><![CDATA[
+
+    public boolean canGoBatch()
+    {
+        return true;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>pack</Name>
+				<Source><![CDATA[
+
+    public container pack()
+    {
+        return [#CurrentVersion];
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>unpack</Name>
+				<Source><![CDATA[
+
+    public boolean unpack(container _packedClass)
+    {
+        return RunBase::getVersion(_packedClass) == #CurrentVersion;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

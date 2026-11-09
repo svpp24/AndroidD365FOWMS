@@ -164,13 +164,13 @@ fun AssignedWarehouseText(fallbackId: String, viewModel: WarehouseSwitcherViewMo
     val selected = session?.selected
     Column {
         Text(
-            text = selected?.chipLabel() ?: fallbackId.ifBlank { "No warehouse is assigned to you. Ask a supervisor." },
+            text = selected?.chipLabel() ?: fallbackId.ifBlank { "No warehouse - ask a supervisor" },
             style = MaterialTheme.typography.headlineSmall,
         )
         val others = session?.warehouses.orEmpty().filter { it.warehouseId != selected?.warehouseId }
         if (others.isNotEmpty()) {
             Text(
-                text = "Also assigned: " + others.joinToString { it.chipLabel() } + ". Switch with Change warehouse below, or by tapping the warehouse card on Home.",
+                text = "Also: " + others.joinToString { it.chipLabel() },
                 style = MaterialTheme.typography.bodySmall,
                 color = WarehouseStatusColors.text3,
             )
@@ -267,8 +267,7 @@ fun ChangeWarehouseScreen(
             title = { Text("Switch to ${target.warehouseId}?") },
             text = {
                 Text(
-                    "${here.size} unfinished job${if (here.size == 1) "" else "s"} at ${selected?.warehouseId} " +
-                        "will be put on hold. They stay on this device and continue when you switch back.",
+                    "${here.size} unfinished job${if (here.size == 1) "" else "s"} wait${if (here.size == 1) "s" else ""} here for you.",
                 )
             },
             confirmButton = {
@@ -307,7 +306,7 @@ fun ChangeWarehouseScreen(
         ) {
             val warehouses = session?.warehouses.orEmpty()
             if (warehouses.isEmpty()) {
-                item { Text("No warehouse is assigned to you. Ask a supervisor.") }
+                item { Text("No warehouse - ask a supervisor") }
             }
             items(warehouses.size) { index ->
                 val warehouse = warehouses[index]

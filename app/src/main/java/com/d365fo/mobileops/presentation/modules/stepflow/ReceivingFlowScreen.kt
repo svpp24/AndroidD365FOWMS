@@ -692,6 +692,22 @@ private fun PostStatus(
                 style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier.padding(top = 16.dp),
             )
+            // Post immediately can take a minute or two after an AOS restart - see
+            // LIVE_POST_NOW_TIMEOUT_MS. Said only once it is slow, so a normal post stays quiet.
+            var slow by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+            androidx.compose.runtime.LaunchedEffect(Unit) {
+                kotlinx.coroutines.delay(10_000L)
+                slow = true
+            }
+            if (slow) {
+                Text(
+                    text = "D365FO is still working on it. This can take up to 2 minutes - please wait.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                    modifier = Modifier.padding(top = 8.dp, start = 24.dp, end = 24.dp),
+                )
+            }
         } else {
             val rejected = outcome.rejectedReason
             Icon(
@@ -712,6 +728,7 @@ private fun PostStatus(
                 text = when {
                     rejected != null -> "Not registered"
                     // Sent, not posted: D365FO stages it, and its batch job (or Process pending) registers it.
+                    outcome.grnId != null -> "Received - GRN ${outcome.grnId}"
                     outcome.postedNow -> "Registered in D365FO"
                     outcome.postedLive -> "Sent to D365FO"
                     else -> "Saved on this device"
@@ -729,8 +746,7 @@ private fun PostStatus(
             )
             if (rejected != null) {
                 Text(
-                    text = "D365FO refused this receipt: $rejected. It is under Failed postings " +
-                        "on the Activity screen, to correct and resubmit.",
+                    text = "Refused: $rejected. Fix it in Activity.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 8.dp, start = 24.dp, end = 24.dp),
@@ -740,7 +756,7 @@ private fun PostStatus(
                 // D365FO "did not answer in time", which the branch below used to show here.
             } else if (outcome.postedLive) {
                 Text(
-                    text = "It registers in D365FO within a few minutes - or at once with Process pending on the Activity screen.",
+                    text = "Posts in a few minutes.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 8.dp, start = 24.dp, end = 24.dp),
@@ -749,17 +765,14 @@ private fun PostStatus(
                 val online = com.d365fo.mobileops.presentation.common.components.LocalSyncStatus.current?.fullyOnline != false
                 Text(
                     text = if (outcome.held) {
-                        "Posting to D365FO is switched off in Settings. This is saved on this device and is " +
-                            "sent once posting is switched on. You can see it under Activity."
+                        "Posting is off - held here."
                     } else if (online) {
                         // Not "did not answer in time": this branch is also what a receipt saved
                         // offline shows once the connection is back - by then it may already be in
                         // D365FO (seen 11 Oct, PO 161714). Activity has its real status.
-                        "This is queued for D365FO and posts automatically - see Activity for its " +
-                            "status, or try again now."
+                        "Queued - see Activity."
                     } else {
-                        "D365FO can't be reached right now. This is saved on this device and is sent " +
-                            "automatically when the connection is back. You can see it under Activity."
+                        "Offline - sent when back."
                     },
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -841,8 +854,7 @@ private fun CapturedLines(
             fontWeight = FontWeight.SemiBold,
         )
         Text(
-            text = "Held on this device until you post it. Check every line before you do — " +
-                "posting cannot be undone from here.",
+            text = "Check the lines - posting can't be undone.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -988,7 +1000,7 @@ private fun CaptureSummary(state: ReceivingFlowState) {
                 "Quantity",
                 capture.quantity?.let { com.d365fo.mobileops.util.Formatters.qtyUnit(it, capture.unitSymbol) },
             )
-            Field("Bin location", capture.locationId)
+            Field("Location", capture.locationId)
             Field("Batch", capture.batchId)
             if (capture.batchIsNew == true) {
                 Field("Expiry date", displayDate(capture.batchExpiryDate))
@@ -1030,7 +1042,7 @@ private fun titleFor(step: ReceivingStep): String = when (step) {
     ReceivingStep.PACKING_SLIP -> "Delivery note"
     ReceivingStep.ITEM -> "Item"
     ReceivingStep.QUANTITY -> "Quantity"
-    ReceivingStep.LOCATION -> "Bin location"
+    ReceivingStep.LOCATION -> "Location"
     ReceivingStep.BATCH -> "Batch"
     ReceivingStep.BATCH_EXPIRY_DATE -> "New batch"
     ReceivingStep.SERIAL -> "Serial"
@@ -1042,7 +1054,7 @@ private fun promptFor(state: ReceivingFlowState): String = when (state.step) {
     ReceivingStep.PACKING_SLIP -> "Scan delivery note"
     ReceivingStep.ITEM -> "Scan item"
     ReceivingStep.QUANTITY -> "Enter quantity"
-    ReceivingStep.LOCATION -> "Scan bin location"
+    ReceivingStep.LOCATION -> "Scan location"
     ReceivingStep.BATCH -> "Scan batch"
     ReceivingStep.BATCH_EXPIRY_DATE -> "Expiry date"
     ReceivingStep.SERIAL -> {
@@ -1067,8 +1079,8 @@ private fun hintFor(state: ReceivingFlowState): String? = when (state.step) {
         val left = state.suggestedQuantity
         val spoken = left?.let { line.outstandingQuantity - it }?.takeIf { it.signum() > 0 }
         "${com.d365fo.mobileops.util.Formatters.qtyUnit(left ?: line.outstandingQuantity, line.purchaseUnit)} " +
-            "left of ${plain(line.orderedQuantity)} ordered" +
-            (spoken?.let { " · ${plain(it)} already scanned or sent" } ?: "") +
+            "left of ${plain(line.orderedQuantity)}" +
+            (spoken?.let { " · ${plain(it)} scanned" } ?: "") +
             (state.entryUnit?.let { unit -> " · entering in $unit" } ?: "")
     }
 
@@ -1085,7 +1097,7 @@ private fun hintFor(state: ReceivingFlowState): String? = when (state.step) {
     }
 
     ReceivingStep.BATCH_EXPIRY_DATE ->
-        "Batch ${state.capture.batchId.orEmpty()} is new — type the date as DD-MM-YYYY"
+        "New batch - expiry DD-MM-YYYY"
 
     else -> null
 }
@@ -1131,7 +1143,7 @@ fun ReceivingEntryScreen(
         // Typing here, so "Enter", not "Scan".
         title = promptFor(state).replaceFirst("Scan ", "Enter "),
         hint = hintFor(state) ?: if (state.step == ReceivingStep.PURCHASE_ORDER) {
-            "Type the PO number - for today's orders the last digits are enough"
+            "Last digits are enough for today's POs"
         } else {
             null
         },
@@ -1167,7 +1179,7 @@ private fun ReceivingStep.shortName(): String = when (this) {
     ReceivingStep.PACKING_SLIP -> "Slip"
     ReceivingStep.ITEM -> "Item"
     ReceivingStep.QUANTITY -> "Qty"
-    ReceivingStep.LOCATION -> "Bin"
+    ReceivingStep.LOCATION -> "Location"
     ReceivingStep.BATCH -> "Batch"
     ReceivingStep.BATCH_EXPIRY_DATE -> "Expiry"
     ReceivingStep.SERIAL -> "Serial"
@@ -1209,7 +1221,7 @@ private fun TodaysOrders(
         }
         if (orders.size > MAX_TODAYS_ORDERS) {
             Text(
-                "+${orders.size - MAX_TODAYS_ORDERS} more - see PO's of today, or scan",
+                "+${orders.size - MAX_TODAYS_ORDERS} more",
                 style = MaterialTheme.typography.bodySmall,
                 color = WarehouseStatusColors.text3,
             )

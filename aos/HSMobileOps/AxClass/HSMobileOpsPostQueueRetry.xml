@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsPostQueueRetry</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Retry on the Mobile posting queue form: works the selected Failed posting again from the lines
+/// staged in D365FO. Nothing is rescanned and the handheld is not needed. The same row as
+/// Resubmit on the handheld, so doing both cannot post it twice.
+/// </summary>
+class HSMobileOpsPostQueueRetry
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>main</Name>
+				<Source><![CDATA[
+
+    public static void main(Args _args)
+    {
+        HSMobileOpsPostQueue postQueue;
+        HSMobileOpsPostQueue result;
+        FormDataSource       dataSource;
+        str                  problem;
+
+        if (!_args || !(_args.record() is HSMobileOpsPostQueue))
+        {
+            throw error('Select a posting to retry.');
+        }
+
+        postQueue  = _args.record();
+        dataSource = postQueue.dataSource();
+
+        problem = HSMobileOpsPostingService::retryRow(postQueue.RecId);
+        if (!problem)
+        {
+            select firstOnly Status, ErrorMessage, GrnId from result
+                where result.RecId == postQueue.RecId;
+            if (result.Status == HSMobileOpsPostQueue::statusFailed())
+            {
+                warning(strFmt('%1 failed again: %2', postQueue.SourceId, result.ErrorMessage));
+            }
+            else
+            {
+                info(strFmt('%1: %2 %3', postQueue.SourceId, result.Status, result.GrnId));
+            }
+        }
+        else
+        {
+            warning(strFmt('%1 was not retried: %2', postQueue.SourceId, problem));
+        }
+
+        if (dataSource)
+        {
+            dataSource.research(true);
+        }
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

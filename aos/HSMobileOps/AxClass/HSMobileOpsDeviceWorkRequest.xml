@@ -1,0 +1,121 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsDeviceWorkRequest</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// HSMobileOpsDeviceWorkSvc request. ItemsJson is a JSON array of the device's unsent work (Key, UserName, WarehouseId, Kind, Reference, Summary, LineCount, CapturedMs, Payload); with Complete it is the device's whole set and rows not in it are removed. ClearDeviceId removes UserName's rows of another device - work restored from it.
+/// </summary>
+[DataContractAttribute]
+class HSMobileOpsDeviceWorkRequest
+{
+    DataAreaId dataAreaId;
+    str        deviceId;
+    str        userName;
+    str        appVersion;
+    str        deviceModel;
+    str        itemsJson;
+    boolean    complete;
+    str        clearDeviceId;
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmDataAreaId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('DataAreaId')]
+    public DataAreaId parmDataAreaId(DataAreaId _value = dataAreaId)
+    {
+        dataAreaId = _value;
+        return dataAreaId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmDeviceId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('DeviceId')]
+    public str parmDeviceId(str _value = deviceId)
+    {
+        deviceId = _value;
+        return deviceId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmUserName</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('UserName')]
+    public str parmUserName(str _value = userName)
+    {
+        userName = _value;
+        return userName;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmAppVersion</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('AppVersion')]
+    public str parmAppVersion(str _value = appVersion)
+    {
+        appVersion = _value;
+        return appVersion;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmDeviceModel</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('DeviceModel')]
+    public str parmDeviceModel(str _value = deviceModel)
+    {
+        deviceModel = _value;
+        return deviceModel;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmItemsJson</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ItemsJson')]
+    public str parmItemsJson(str _value = itemsJson)
+    {
+        itemsJson = _value;
+        return itemsJson;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmComplete</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Complete')]
+    public boolean parmComplete(boolean _value = complete)
+    {
+        complete = _value;
+        return complete;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmClearDeviceId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ClearDeviceId')]
+    public str parmClearDeviceId(str _value = clearDeviceId)
+    {
+        clearDeviceId = _value;
+        return clearDeviceId;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

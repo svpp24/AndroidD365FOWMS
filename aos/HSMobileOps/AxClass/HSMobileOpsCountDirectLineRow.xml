@@ -19,6 +19,11 @@ class HSMobileOpsCountDirectLineRow
     str  batchId;
     str  serialId;
     int  passNumber;
+    str  unitId;
+    str  configId;
+    str  sizeId;
+    str  colorId;
+    str  styleId;
 
     boolean recount;
     str locationType;
@@ -27,6 +32,66 @@ class HSMobileOpsCountDirectLineRow
 }
 ]]></Declaration>
 		<Methods>
+			<Method>
+				<Name>parmStyleId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('StyleId')]
+    public str parmStyleId(str _value = styleId)
+    {
+        styleId = _value;
+        return styleId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmColorId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ColorId')]
+    public str parmColorId(str _value = colorId)
+    {
+        colorId = _value;
+        return colorId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmSizeId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('SizeId')]
+    public str parmSizeId(str _value = sizeId)
+    {
+        sizeId = _value;
+        return sizeId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmConfigId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ConfigId')]
+    public str parmConfigId(str _value = configId)
+    {
+        configId = _value;
+        return configId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmUnitId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('UnitId')]
+    public str parmUnitId(str _value = unitId)
+    {
+        unitId = _value;
+        return unitId;
+    }
+]]></Source>
+			</Method>
 			<Method>
 				<Name>parmLineNumber</Name>
 				<Source><![CDATA[

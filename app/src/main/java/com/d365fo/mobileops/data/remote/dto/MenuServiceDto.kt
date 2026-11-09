@@ -35,4 +35,6 @@ data class MenuLineRowDto(
     @SerialName("LineType") val lineType: String = "",
     @SerialName("Module") val module: String = "",
     @SerialName("SubMenuId") val subMenuId: String = "",
+    /** Counting lines: the location a store count starts in. */
+    @SerialName("CountLocationId") val countLocationId: String = "",
 )

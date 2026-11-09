@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxMenuItemDisplay xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsCleanupSetup</Name>
+	<Label>Mobile clean-up</Label>
+	<HelpText>How long Mobile ops records are kept - in D365FO, and on the handhelds.</HelpText>
+	<Object>HSMobileOpsCleanupSetup</Object>
+	<ObjectType>Form</ObjectType>
+</AxMenuItemDisplay>

@@ -19,6 +19,7 @@ class HSMobileOpsJournalSummaryRow
 
     str countMode;
     int passNumber;
+    int recountLines;
     str recountOf;
     str originType;
     int priority;
@@ -28,9 +29,22 @@ class HSMobileOpsJournalSummaryRow
     utcdatetime snapshotAtUtc;
     str controlGroupId;
     str repeatInfo;
+    str doneNote;
 }
 ]]></Declaration>
 		<Methods>
+			<Method>
+				<Name>parmRecountLines</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('RecountLines')]
+    public int parmRecountLines(int _value = recountLines)
+    {
+        recountLines = _value;
+        return recountLines;
+    }
+]]></Source>
+			</Method>
 			<Method>
 				<Name>parmJournalId</Name>
 				<Source><![CDATA[
@@ -333,6 +347,22 @@ class HSMobileOpsJournalSummaryRow
     {
         repeatInfo = _value;
         return repeatInfo;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmDoneNote</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Set only on a journal finished for this user, listed when the request asks for them:
+    /// when it was posted, or what it is waiting for. Blank on every open journal.
+    /// </summary>
+    [DataMemberAttribute('DoneNote')]
+    public str parmDoneNote(str _value = doneNote)
+    {
+        doneNote = _value;
+        return doneNote;
     }
 ]]></Source>
 			</Method>

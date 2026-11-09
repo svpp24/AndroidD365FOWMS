@@ -138,7 +138,7 @@ class CountSubmitRunnerTest {
         assertThat(store.rows["CNT-1"]!!.message).contains("being counted by Asha (001) on another device")
         val claim = claimStore.get("CNT-1")!!
         assertThat(claim.lost).isTrue()
-        assertThat(claim.lostReason).isEqualTo("CNT-1 is being counted by Asha (001) on another device.")
+        assertThat(claim.lostReason).isEqualTo("CNT-1 is being counted by Asha (001) on another device. Counts are kept.")
     }
 
     @Test
@@ -151,8 +151,8 @@ class CountSubmitRunnerTest {
         assertThat(transport.startCalls).isEqualTo(0)
         val row = store.rows["CNT-1"]!!
         assertThat(row.state).isEqualTo(CountSubmissionState.SUCCEEDED)
-        assertThat(row.resultNote).contains("Sent to the supervisor for review in AAC-20261012-1")
-        assertThat(row.resultNote).contains("1 item(s)")
+        assertThat(row.resultNote).contains("Sent for review")
+        assertThat(row.resultNote).contains("1 counted twice")
     }
 
     @Test
@@ -246,7 +246,7 @@ class CountSubmitRunnerTest {
         val row = store.rows["CNT-1"]!!
         assertThat(row.state).isEqualTo(CountSubmissionState.PARTIAL)
         assertThat(row.error).isEqualTo(CountSubmissionError.EXCEPTIONS_FAILED)
-        assertThat(row.message).contains("1 unexpected item could not be sent")
+        assertThat(row.message).contains("1 unexpected item not sent")
         assertThat(store.journalStatus["CNT-1"]).isEqualTo("SUBMITTED")
         assertThat(store.exceptions.single().sendError).isNotNull()
         assertThat(store.exceptions.single().sentAt).isNull()
@@ -325,7 +325,7 @@ class CountSubmitRunnerTest {
 
         val row = store.rows["CNT-1"]!!
         assertThat(row.error).isEqualTo(CountSubmissionError.SAME_COUNTER)
-        assertThat(row.message).contains("someone other than the previous counter")
+        assertThat(row.message).contains("Someone else must do this recount")
     }
 
     @Test

@@ -1,0 +1,334 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsCountAssortment</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Assortment based counting, for a warehouse with it switched on (HSMobileOpsCountWarehouse): the
+/// journal holds every item in the store's retail assortment, with or without stock, at the store's
+/// default location. Stock of an item outside the assortment is still counted, and flagged.
+///
+/// Items in several variants are left out when they have no stock: which variant to count cannot
+/// be known here. With stock they are on the journal already, from their stock records.
+///
+/// An item on hold for inventory transactions is left out when it has no stock: D365FO would refuse
+/// to post the whole journal for that one line. With stock it stays, for someone to look at. An
+/// item D365FO refuses a line for is skipped and counted in the result, with the first reason. It does not cost the store its count. Running this
+/// again on the same journal adds only what is missing.
+/// </summary>
+class HSMobileOpsCountAssortment
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>assortedItems</Name>
+				<Source><![CDATA[
+
+    /// <summary>The items in this store's assortment today. Empty if the store has none.</summary>
+    public static Set assortedItems(InventLocationId _warehouse)
+    {
+        Set                  items = new Set(Types::String);
+        RefRecId             operatingUnit = HSMobileOpsCountAssortment::channelOperatingUnit(_warehouse);
+        Query                query = new Query();
+        QueryBuildDataSource itemSource;
+        QueryBuildDataSource lookupSource;
+        QueryBuildDataSource groupSource;
+        QueryRun             queryRun;
+        InventTable          inventTable;
+        TransDate            today = DateTimeUtil::getSystemDate(DateTimeUtil::getUserPreferredTimeZone());
+
+        if (!operatingUnit)
+        {
+            return items;
+        }
+
+        // A query, not a select: the line type's enum is in the Retail package, which this model
+        // does not reference. Its value is what D365FO defines: Include is 1.
+        itemSource = query.addDataSource(tableNum(InventTable));
+        itemSource.addGroupByField(fieldNum(InventTable, ItemId));
+
+        lookupSource = itemSource.addDataSource(tableNum(RetailAssortmentLookup));
+        lookupSource.joinMode(JoinMode::ExistsJoin);
+        lookupSource.addLink(fieldNum(InventTable, Product), fieldNum(RetailAssortmentLookup, ProductId));
+        lookupSource.addRange(fieldNum(RetailAssortmentLookup, LineType)).value(queryValue(1));
+        lookupSource.addRange(fieldNum(RetailAssortmentLookup, ValidFrom)).value(strFmt('..%1', date2StrXpp(today)));
+        lookupSource.addRange(fieldNum(RetailAssortmentLookup, ValidTo)).value(strFmt('%1..', date2StrXpp(today)));
+
+        groupSource = lookupSource.addDataSource(tableNum(RetailAssortmentLookupChannelGroup));
+        groupSource.joinMode(JoinMode::ExistsJoin);
+        groupSource.addLink(fieldNum(RetailAssortmentLookup, AssortmentId), fieldNum(RetailAssortmentLookupChannelGroup, AssortmentId));
+        groupSource.addRange(fieldNum(RetailAssortmentLookupChannelGroup, OMOperatingUnitId)).value(queryValue(operatingUnit));
+
+        queryRun = new QueryRun(query);
+        while (queryRun.next())
+        {
+            inventTable = queryRun.get(tableNum(InventTable));
+            items.add(inventTable.ItemId);
+        }
+        return items;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>channelOperatingUnit</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The store's retail channel. By name at runtime: naming the table in code would make this
+    /// model depend on the Retail package, for this one lookup.
+    /// </summary>
+    private static RefRecId channelOperatingUnit(InventLocationId _warehouse)
+    {
+        TableId              channelTable = tableName2Id('RetailChannelTable');
+        Query                query = new Query();
+        QueryBuildDataSource source = query.addDataSource(channelTable);
+        QueryRun             queryRun;
+        Common               channel;
+
+        source.addRange(fieldName2Id(channelTable, 'inventLocation')).value(queryValue(_warehouse));
+        source.addRange(fieldName2Id(channelTable, 'inventLocationDataAreaId')).value(queryValue(curExt()));
+        queryRun = new QueryRun(query);
+        if (queryRun.next())
+        {
+            channel = queryRun.get(channelTable);
+            return channel.(fieldName2Id(channelTable, 'OMOperatingUnitID'));
+        }
+        return 0;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>applyToJournal</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Adds the assorted items the journal does not hold, and flags what it holds from outside the
+    /// assortment. Answers what it did, for the warehouse's last result.
+    /// </summary>
+    public static str applyToJournal(InventJournalId _journalId, InventLocationId _warehouse)
+    {
+        InventJournalTable journalTable = InventJournalTable::find(_journalId);
+        InventJournalTrans journalTrans;
+        Set                assorted = HSMobileOpsCountAssortment::assortedItems(_warehouse);
+        Set                onJournal = new Set(Types::String);
+        SetEnumerator      item;
+        InventLocation     store = InventLocation::find(_warehouse);
+        WMSLocationId      location = store.WMSLocationIdDefaultReceipt ? store.WMSLocationIdDefaultReceipt : store.WMSLocationIdDefaultIssue;
+        InventDimGroupSetup dimSetup;
+        InventTable        inventTable;
+        LineNum            lineNum;
+        int                added;
+        int                variantsLeftOut;
+        int                outside;
+        int                couldNotAdd;
+        int                notStocked;
+        int                onHold;
+        InventDim          siteDim;
+        InventDimId        siteDimId;
+        int                infologFrom;
+        str                firstRefusal;
+        str                result;
+
+        if (!assorted.elements())
+        {
+            throw error(strFmt('Store %1 has no retail assortment today, so it cannot count by assortment.', _warehouse));
+        }
+
+        while select ItemId from journalTrans
+            group by ItemId
+            where journalTrans.JournalId == _journalId
+        {
+            onJournal.add(journalTrans.ItemId);
+        }
+        select maxOf(LineNum) from journalTrans
+            where journalTrans.JournalId == _journalId;
+        lineNum = journalTrans.LineNum;
+
+        siteDim.InventSiteId = store.InventSiteId;
+        siteDimId = InventDim::findDim(siteDim).inventDimId;
+
+        // A transaction per line, not for the whole set: a refused line can then be skipped, which
+        // X++ cannot do inside a transaction.
+        item = assorted.getEnumerator();
+        while (item.moveNext())
+        {
+            if (onJournal.in(item.current()))
+            {
+                continue;
+            }
+            inventTable = InventTable::find(item.current());
+            // A service or other non-stock item is sold, not held: nothing to count.
+            if (!inventTable.inventItemType().mustInventBeControlled())
+            {
+                notStocked++;
+                continue;
+            }
+            if (HSMobileOpsCountAssortment::isOnHold(inventTable.ItemId, siteDimId))
+            {
+                onHold++;
+                continue;
+            }
+            infologFrom = infologLine();
+            try
+            {
+                // In here too: D365FO refuses this for an item with no dimension groups set up.
+                dimSetup = InventDimGroupSetup::newItemId(inventTable.ItemId);
+                if (dimSetup.isDimensionActive(fieldNum(InventDim, configId))
+                 || dimSetup.isDimensionActive(fieldNum(InventDim, InventSizeId))
+                 || dimSetup.isDimensionActive(fieldNum(InventDim, InventColorId))
+                 || dimSetup.isDimensionActive(fieldNum(InventDim, InventStyleId)))
+                {
+                    variantsLeftOut++;
+                    continue;
+                }
+                lineNum++;
+                ttsbegin;
+                HSMobileOpsCountAssortment::addLine(journalTable, lineNum, inventTable, store, location);
+                ttscommit;
+                added++;
+            }
+            catch (Exception::Error)
+            {
+                couldNotAdd++;
+                if (!firstRefusal)
+                {
+                    firstRefusal = strFmt('%1: %2', inventTable.ItemId, HSMobileOpsCountJournalCreateBatch::errorsSince(infologFrom));
+                }
+                infolog.clear(infologFrom);
+            }
+        }
+
+        outside = HSMobileOpsCountAssortment::flagOutside(_journalId, assorted);
+
+        ttsbegin;
+        journalTrans.clear();
+        select count(RecId) from journalTrans
+            where journalTrans.JournalId == _journalId;
+        journalTable = InventJournalTable::find(_journalId, true);
+        journalTable.NumOfLines = int642int(journalTrans.RecId);
+        journalTable.update();
+        ttscommit;
+
+        result = strFmt('%1 assorted items with no stock added, %2 line(s) outside the assortment, %3 items in variants left out, %4 non-stock items left out, %5 on hold left out', added, outside, variantsLeftOut, notStocked, onHold);
+        if (couldNotAdd)
+        {
+            result += strFmt(', %1 refused by D365FO, first %2', couldNotAdd, firstRefusal);
+        }
+        return result;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>isOnHold</Name>
+				<Source><![CDATA[
+
+    /// <summary>On hold for inventory transactions, for the company or at this site.</summary>
+    private static boolean isOnHold(ItemId _itemId, InventDimId _siteDimId)
+    {
+        InventItemInventSetup setup;
+        InventDimId           blankDimId = InventDim::inventDimIdBlank();
+
+        select firstOnly RecId from setup
+            where setup.ItemId  == _itemId
+               && setup.Stopped == NoYes::Yes
+               && (setup.InventDimId == blankDimId || setup.InventDimId == _siteDimId);
+        return setup.RecId != 0;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>addLine</Name>
+				<Source><![CDATA[
+
+    private static void addLine(InventJournalTable _journalTable, LineNum _lineNum, InventTable _inventTable, InventLocation _store, WMSLocationId _location)
+    {
+        InventJournalTrans journalTrans;
+        InventDim          lineDim;
+
+        lineDim.InventSiteId     = _store.InventSiteId;
+        lineDim.InventLocationId = _store.InventLocationId;
+        lineDim.wMSLocationId    = _location;
+        if (InventDimGroupSetup::newItemId(_inventTable.ItemId).isDimensionActive(fieldNum(InventDim, InventStatusId)))
+        {
+            lineDim.InventStatusId = HSMobileOpsCountControl::itemStatus(_inventTable.ItemId, _store.InventLocationId);
+            if (!lineDim.InventStatusId)
+            {
+                lineDim.InventStatusId = HSMobileOpsCountControl::itemStatus(_inventTable.ItemId, '');
+            }
+        }
+        lineDim = InventDim::findOrCreate(lineDim);
+
+        journalTrans.initValue();
+        journalTrans.initFromInventJournalTable(_journalTable);
+        journalTrans.LineNum      = _lineNum;
+        journalTrans.TransDate    = DateTimeUtil::getSystemDate(DateTimeUtil::getUserPreferredTimeZone());
+        journalTrans.ItemId       = _inventTable.ItemId;
+        journalTrans.initFromInventTable(_inventTable);
+        journalTrans.InventDimId  = lineDim.inventDimId;
+        journalTrans.InventOnHand = 0;
+        journalTrans.Counted      = 0;
+        journalTrans.Qty          = 0;
+        journalTrans.insert();
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>flagOutside</Name>
+				<Source><![CDATA[
+
+    /// <summary>Marks the journal's lines of items outside the assortment. Answers how many it holds.</summary>
+    public static int flagOutside(InventJournalId _journalId, Set _assorted)
+    {
+        InventJournalTrans journalTrans;
+        InventJournalTrans flagged;
+
+        ttsbegin;
+        flagged.skipDataMethods(true);
+        flagged.skipDatabaseLog(true);
+        flagged.skipEvents(true);
+        while select ItemId from journalTrans
+            group by ItemId
+            where journalTrans.JournalId                    == _journalId
+               && journalTrans.HSMobileOpsOutsideAssortment == NoYes::No
+        {
+            if (!_assorted.in(journalTrans.ItemId))
+            {
+                update_recordset flagged
+                    setting HSMobileOpsOutsideAssortment = NoYes::Yes
+                    where flagged.JournalId == _journalId
+                       && flagged.ItemId    == journalTrans.ItemId;
+            }
+        }
+        ttscommit;
+
+        journalTrans.clear();
+        select count(RecId) from journalTrans
+            where journalTrans.JournalId                    == _journalId
+               && journalTrans.HSMobileOpsOutsideAssortment == NoYes::Yes;
+        return int642int(journalTrans.RecId);
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>flagUnexpected</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// After items found on the floor joined a journal: an item outside the assortment is accepted,
+    /// and flagged for the supervisor. Nothing happens at a warehouse not counting by assortment.
+    /// </summary>
+    public static void flagUnexpected(InventJournalId _journalId)
+    {
+        InventLocationId warehouse = InventJournalTable::find(_journalId).InventLocationId;
+
+        if (warehouse && HSMobileOpsCountWarehouse::find(warehouse).AssortmentBased)
+        {
+            HSMobileOpsCountAssortment::flagOutside(_journalId, HSMobileOpsCountAssortment::assortedItems(warehouse));
+        }
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

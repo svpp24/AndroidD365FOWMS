@@ -111,6 +111,66 @@ class LiveSupervisorCountRepository @Inject constructor(
         )
     }.toResult()
 
+    override suspend fun dualCountReview(journalId: String): NetworkResult<com.d365fo.mobileops.domain.counting.supervisor.DualCountReview> {
+        val result = errorMapper.safeCall {
+            api.getVarianceSummary(VarianceServiceRequest(VarianceRequestBody(company(), journalId, userId())))
+        }
+        return when (result) {
+            is NetworkResult.Error -> result
+            NetworkResult.Loading -> NetworkResult.Error(AppFailure.Fatal("unexpected Loading"))
+            is NetworkResult.Success -> {
+                val body = result.data
+                if (!body.success) {
+                    NetworkResult.Error(AppFailure.BusinessRule(messageFor(refusalFor(body.errorCode), null), body.errorCode))
+                } else {
+                    NetworkResult.Success(
+                        com.d365fo.mobileops.domain.counting.supervisor.DualCountReview(
+                            total = body.totalLines,
+                            notCounted = body.openLines,
+                            firstCounted = body.firstCounted,
+                            matched = body.matched,
+                            mismatch = body.mismatch,
+                            recount = body.recount,
+                            approved = body.approved,
+                            emptyConfirmed = body.emptyConfirmed,
+                            truncated = body.truncated,
+                            lines = body.lines.map { line ->
+                                com.d365fo.mobileops.domain.counting.supervisor.DualCountLine(
+                                    lineNumber = line.lineNumber,
+                                    itemNumber = line.itemNumber,
+                                    itemName = line.itemName?.takeIf { it.isNotBlank() } ?: line.itemNumber,
+                                    where = listOf(line.locationId, line.batchId, line.serialId, line.configId, line.sizeId, line.colorId, line.styleId)
+                                        .filterNot { it.isNullOrBlank() }.joinToString(" · "),
+                                    status = line.status.orEmpty(),
+                                    systemQty = line.systemQty,
+                                    needsApproval = line.needsApproval,
+                                    attempts = line.attempts.map {
+                                        com.d365fo.mobileops.domain.counting.supervisor.CountAttempt(it.attemptNo, it.countedQty, it.userId.orEmpty())
+                                    },
+                                )
+                            },
+                        ),
+                    )
+                }
+            }
+        }
+    }
+
+    override suspend fun settleDualLine(journalId: String, lineNumber: Double, finalQty: Double?): SupervisorResult = errorMapper.safeCall {
+        api.approveLine(
+            com.d365fo.mobileops.data.remote.dto.ApproveLineServiceRequest(
+                com.d365fo.mobileops.data.remote.dto.ApproveLineRequestBody(
+                    dataAreaId = company(),
+                    journalId = journalId,
+                    userId = userId(),
+                    lineNumber = lineNumber,
+                    action = if (finalQty == null) "RECOUNT" else "APPROVE",
+                    finalQty = finalQty ?: 0.0,
+                ),
+            ),
+        )
+    }.toResult()
+
     override suspend fun post(journalId: String): SupervisorResult = errorMapper.safeCall {
         api.postJournal(PostJournalServiceRequest(PostJournalRequestBody(company(), journalId, userId())))
     }.toResult()
@@ -181,7 +241,7 @@ class LiveSupervisorCountRepository @Inject constructor(
             else -> SupervisorResult.Refused(SupervisorRefusal.OTHER, f.message)
         }
         is NetworkResult.Success -> if (data.success) {
-            SupervisorResult.Done(data.affected)
+            SupervisorResult.Done(data.affected, data.message?.takeIf { it.isNotBlank() })
         } else {
             SupervisorResult.Refused(refusalFor(data.errorCode), data.message?.takeIf { it.isNotBlank() })
         }
@@ -204,11 +264,11 @@ class LiveSupervisorCountRepository @Inject constructor(
         fun messageFor(reason: SupervisorRefusal, serverMessage: String?): String = when (reason) {
             SupervisorRefusal.NOT_SUPERVISOR -> "Only a cycle-count supervisor can do this."
             SupervisorRefusal.ALREADY_POSTED -> "This journal has already been posted."
-            SupervisorRefusal.JOURNAL_NOT_FOUND -> "This journal is closed or no longer exists in D365FO."
+            SupervisorRefusal.JOURNAL_NOT_FOUND -> "Journal closed."
             SupervisorRefusal.LINES_NEED_APPROVAL ->
-                serverMessage ?: "Some lines still need a decision before the journal can be posted."
+                serverMessage ?: "Some lines still need a decision."
             SupervisorRefusal.INVALID_REASON_CODE -> "That reason code isn't set up in D365FO."
-            SupervisorRefusal.RECOUNT_SAME_USER -> "A recount can't be assigned to the person who counted the line."
+            SupervisorRefusal.RECOUNT_SAME_USER -> "Assign the recount to someone else."
             SupervisorRefusal.POST_FAILED -> serverMessage ?: "D365FO could not post the journal."
             SupervisorRefusal.NOT_AVAILABLE -> "This server does not support this action yet."
             SupervisorRefusal.OTHER -> serverMessage ?: "D365FO refused the request."

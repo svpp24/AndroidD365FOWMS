@@ -1,0 +1,313 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsDeviceWorkService</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// HSMobileOpsDeviceWorkSvc. A copy of each device's unsent work (postings waiting or refused,
+/// unfinished jobs, order drafts, counts not yet accepted) in HSMobileOpsDeviceWork, so a broken,
+/// lost or reinstalled handheld loses nothing: the worker restores it on the next device they sign
+/// in on. The device sends its whole set whenever it changes and it has a connection; the device's
+/// own copy stays the one that counts until D365FO has the posting.
+///
+/// Every answer also carries the modules switched off on Mobile module switches, for the app
+/// version asking - a broken module can be stopped from here without touching a handheld.
+///
+/// Registered in HSMobileOpsServiceGroup - needs a full service group build, not a class-only build.
+/// </summary>
+class HSMobileOpsDeviceWorkService
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>syncWork</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Saves the device's unsent work. With Complete, rows of this device not in ItemsJson are
+    /// removed - the work was posted, discarded or finished. Resending the same set changes nothing.
+    /// </summary>
+    [Wrappable(false), Hookable(false)]
+    public HSMobileOpsDeviceWorkResponse syncWork(HSMobileOpsDeviceWorkRequest _request)
+    {
+        HSMobileOpsDeviceWorkResponse response = HSMobileOpsDeviceWorkService::validate(_request);
+        HSMobileOpsDeviceWork         work;
+        System.Object                 parsedObj;
+        Newtonsoft.Json.Linq.JArray   jArray;
+        Newtonsoft.Json.Linq.JObject  jItem;
+        Set                           keys = new Set(Types::String);
+        int                           i;
+        int                           stored;
+        str                           key;
+        str                           deviceId;
+        utcdatetime                   now = DateTimeUtil::utcNow();
+
+        if (response.parmErrorCode())
+        {
+            return response;
+        }
+        deviceId = _request.parmDeviceId();
+
+        if (_request.parmItemsJson())
+        {
+            try
+            {
+                parsedObj = Newtonsoft.Json.Linq.JArray::Parse(_request.parmItemsJson());
+            }
+            catch (Exception::CLRError)
+            {
+                response.parmErrorCode('INVALID_REQUEST');
+                response.parmMessage('The work list could not be read.');
+                return response;
+            }
+            jArray = parsedObj;
+        }
+
+        try
+        {
+            ttsbegin;
+            for (i = 0; jArray != null && i < jArray.get_Count(); i++)
+            {
+                jItem = jArray.get_Item(i);
+                key   = HSMobileOpsDeviceWorkService::jsonStr(jItem, 'Key');
+                if (!key)
+                {
+                    continue;
+                }
+                keys.add(key);
+                select forUpdate firstonly work
+                    where work.DeviceId == deviceId
+                       && work.WorkKey  == key;
+                if (!work.RecId)
+                {
+                    work.clear();
+                    work.DeviceId = deviceId;
+                    work.WorkKey  = key;
+                }
+                work.CompanyId    = _request.parmDataAreaId();
+                work.UserName    = HSMobileOpsDeviceWorkService::jsonStr(jItem, 'UserName');
+                work.WarehouseId = HSMobileOpsDeviceWorkService::jsonStr(jItem, 'WarehouseId');
+                work.Kind        = HSMobileOpsDeviceWorkService::jsonStr(jItem, 'Kind');
+                work.Reference   = HSMobileOpsDeviceWorkService::jsonStr(jItem, 'Reference');
+                work.Summary     = HSMobileOpsDeviceWorkService::jsonStr(jItem, 'Summary');
+                work.LineCount   = str2Int(HSMobileOpsDeviceWorkService::jsonStr(jItem, 'LineCount'));
+                work.CapturedUtc = HSMobileOpsDeviceWorkService::fromEpochMs(str2Int64(HSMobileOpsDeviceWorkService::jsonStr(jItem, 'CapturedMs')));
+                work.PayloadJson = HSMobileOpsDeviceWorkService::jsonStr(jItem, 'Payload');
+                work.AppVersion  = _request.parmAppVersion();
+                work.DeviceModel = _request.parmDeviceModel();
+                work.UpdatedUtc  = now;
+                // Archived: old work the device tidied away (Mobile clean-up) - kept here only.
+                work.Archived    = strUpr(HSMobileOpsDeviceWorkService::jsonStr(jItem, 'Archived')) == 'TRUE' ? NoYes::Yes : NoYes::No;
+                work.Stale       = NoYes::No;
+                if (work.RecId)
+                {
+                    work.update();
+                }
+                else
+                {
+                    work.insert();
+                }
+                stored++;
+            }
+
+            if (_request.parmComplete())
+            {
+                while select forUpdate work
+                    where work.DeviceId == deviceId
+                       && work.Archived == NoYes::No
+                {
+                    if (!keys.in(work.WorkKey))
+                    {
+                        work.delete();
+                    }
+                }
+            }
+
+            // Work restored on this device from another one: the other device's copy is done with.
+            if (_request.parmClearDeviceId() && _request.parmClearDeviceId() != deviceId)
+            {
+                delete_from work
+                    where work.DeviceId == _request.parmClearDeviceId()
+                       && work.UserName == _request.parmUserName();
+            }
+            ttscommit;
+        }
+        catch (Exception::DuplicateKeyException)
+        {
+            // Two uploads from the device at once - the next one settles it.
+            response.parmErrorCode('RETRY');
+            return response;
+        }
+        catch (Exception::UpdateConflict)
+        {
+            response.parmErrorCode('RETRY');
+            return response;
+        }
+
+        response.parmStored(stored);
+        response.parmSuccess(true);
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>listWork</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The worker's unsent work saved from their other devices (or an earlier install of this
+    /// one), newest first - what the app offers to restore after sign-in. Changes nothing.
+    /// </summary>
+    [Wrappable(false), Hookable(false)]
+    public HSMobileOpsDeviceWorkResponse listWork(HSMobileOpsDeviceWorkRequest _request)
+    {
+        HSMobileOpsDeviceWorkResponse response = HSMobileOpsDeviceWorkService::validate(_request);
+        HSMobileOpsDeviceWork         work;
+        HSMobileOpsDeviceWorkRow      row;
+        List                          items = new List(Types::Class);
+
+        if (response.parmErrorCode())
+        {
+            return response;
+        }
+        while select work
+            order by UpdatedUtc desc
+            where work.UserName == _request.parmUserName()
+               && work.CompanyId == _request.parmDataAreaId()
+               && work.DeviceId != _request.parmDeviceId()
+               && work.Archived == NoYes::No
+        {
+            row = new HSMobileOpsDeviceWorkRow();
+            row.parmKey(work.WorkKey);
+            row.parmDeviceId(work.DeviceId);
+            row.parmUserName(work.UserName);
+            row.parmWarehouseId(work.WarehouseId);
+            row.parmKind(work.Kind);
+            row.parmReference(work.Reference);
+            row.parmSummary(work.Summary);
+            row.parmLineCount(work.LineCount);
+            row.parmCapturedMs(HSMobileOpsDeviceWorkService::toEpochMs(work.CapturedUtc));
+            row.parmUpdatedUtc(DateTimeUtil::toStr(work.UpdatedUtc));
+            row.parmAppVersion(work.AppVersion);
+            row.parmPayload(work.PayloadJson);
+            items.addEnd(row);
+            if (items.elements() >= 200)
+            {
+                break;
+            }
+        }
+        response.parmItems(items);
+        response.parmSuccess(true);
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>getAppControl</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Only the modules switched off for this app version (DisabledModules) - asked before
+    /// sign-in too, so no user is needed.
+    /// </summary>
+    [Wrappable(false), Hookable(false)]
+    public HSMobileOpsDeviceWorkResponse getAppControl(HSMobileOpsDeviceWorkRequest _request)
+    {
+        HSMobileOpsDeviceWorkResponse response = HSMobileOpsDeviceWorkService::newResponse(_request);
+
+        response.parmSuccess(true);
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>newResponse</Name>
+				<Source><![CDATA[
+
+    private static HSMobileOpsDeviceWorkResponse newResponse(HSMobileOpsDeviceWorkRequest _request)
+    {
+        HSMobileOpsDeviceWorkResponse response = new HSMobileOpsDeviceWorkResponse();
+        HSMobileOpsCleanupSetup       cleanup = HSMobileOpsCleanupSetup::find();
+
+        response.parmSuccess(false);
+        response.parmStored(0);
+        // The handhelds' own clean-up (Mobile clean-up, Handhelds) - on every answer.
+        response.parmDeviceCleanup(cleanup.DeviceCleanup == NoYes::Yes);
+        response.parmFinishedJournalDays(cleanup.DeviceFinishedJournalDays);
+        response.parmOrderHistoryDays(cleanup.DeviceOrderHistoryDays);
+        response.parmOldWorkDays(cleanup.DeviceOldWorkDays);
+        response.parmItems(new List(Types::Class));
+        response.parmDisabledModules(HSMobileOpsModuleSwitch::disabledFor(_request ? _request.parmAppVersion() : ''));
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>validate</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// A response with INVALID_REQUEST set when the request is incomplete, else a blank one.
+    /// </summary>
+    private static HSMobileOpsDeviceWorkResponse validate(HSMobileOpsDeviceWorkRequest _request)
+    {
+        HSMobileOpsDeviceWorkResponse response = HSMobileOpsDeviceWorkService::newResponse(_request);
+
+        if (!_request || !_request.parmDataAreaId() || !_request.parmDeviceId() || !_request.parmUserName()
+            || !CompanyInfo::findDataArea(_request.parmDataAreaId()).RecId)
+        {
+            response.parmErrorCode('INVALID_REQUEST');
+        }
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>fromEpochMs</Name>
+				<Source><![CDATA[
+
+    private static utcdatetime fromEpochMs(int64 _ms)
+    {
+        if (_ms <= 0)
+        {
+            return DateTimeUtil::utcNow();
+        }
+        return DateTimeUtil::addSeconds(DateTimeUtil::newDateTime(1\1\1970, 0), _ms div 1000);
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>toEpochMs</Name>
+				<Source><![CDATA[
+
+    private static int64 toEpochMs(utcdatetime _value)
+    {
+        return DateTimeUtil::getDifference(_value, DateTimeUtil::newDateTime(1\1\1970, 0)) * 1000;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>jsonStr</Name>
+				<Source><![CDATA[
+
+    private static str jsonStr(Newtonsoft.Json.Linq.JObject _obj, str _property)
+    {
+        Newtonsoft.Json.Linq.JToken token;
+
+        if (_obj == null)
+        {
+            return '';
+        }
+        token = _obj.get_Item(_property);
+        if (token == null)
+        {
+            return '';
+        }
+        return token.ToString();
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

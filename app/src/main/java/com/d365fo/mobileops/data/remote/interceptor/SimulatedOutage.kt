@@ -19,3 +19,32 @@ object SimulatedOutage : Interceptor {
         return chain.proceed(chain.request())
     }
 }
+
+/**
+ * DEBUG BUILDS ONLY: answers every Nth D365FO call with 429 and Retry-After, as D365FO's service
+ * protection does, so what the app does under throttling can be measured. Innermost, like
+ * [SimulatedOutage]: the real call is not made. Switched by debugtools/SimulateThrottleReceiver.
+ */
+object SimulatedThrottle : Interceptor {
+    @Volatile var everyNth = 0
+    @Volatile var retryAfterSeconds = 30
+    private val calls = java.util.concurrent.atomic.AtomicInteger()
+    val throttled = java.util.concurrent.atomic.AtomicInteger()
+
+    override fun intercept(chain: Interceptor.Chain): Response {
+        val nth = everyNth
+        if (BuildConfig.DEBUG && nth > 0 && calls.incrementAndGet() % nth == 0) {
+            throttled.incrementAndGet()
+            android.util.Log.i("THROTTLE", "429 for ${chain.request().url.encodedPath}")
+            return Response.Builder()
+                .request(chain.request())
+                .protocol(okhttp3.Protocol.HTTP_1_1)
+                .code(429)
+                .message("Too Many Requests")
+                .header("Retry-After", retryAfterSeconds.toString())
+                .body(okhttp3.ResponseBody.create(null, ""))
+                .build()
+        }
+        return chain.proceed(chain.request())
+    }
+}

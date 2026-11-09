@@ -69,40 +69,37 @@ val NavigationTour = listOf(
     TourStep(
         target = null,
         title = "A quick look around",
-        text = "Six stops, about a minute. Tap Next to go on, or Skip - it is under Settings if you want it again.",
+        text = "Six stops. Next, or Skip.",
     ),
     TourStep(
         target = "warehouse",
         title = "Your warehouse",
-        text = "Everything you scan is booked here. If you work in more than one warehouse, tap the code to change it.",
+        text = "Your scans book here. Tap to change.",
     ),
     TourStep(
         target = "tiles",
-        title = "My Dashboard",
-        text = "Counting, receiving, transfers and Activity at a glance - tap one to go straight there. Services, at the " +
-            "bottom, has every task you may open; unfinished jobs appear on Home under Continue where you left off."
+        title = "Today",
+        text = "Your work at a glance - tap one to open it."
     ),
     TourStep(
         target = "connection",
         title = "Online or offline",
-        text = "Green: connected to D365FO. Amber with a line through it: offline - keep working, everything is saved on " +
-            "this device and sent when the connection is back. Tap it for details.",
+        text = "Green: online. Amber: offline - keep working.",
     ),
     TourStep(
         target = "tab_activity",
         title = "Activity",
-        text = "What is waiting to be sent, anything D365FO refused, and counting jobs. Check here if something did not " +
-            "post.",
+        text = "What's waiting or refused.",
     ),
     TourStep(
         target = "tab_onhand",
         title = "Scan",
-        text = "Scan any item to see how much is in stock, here or in other warehouses.",
+        text = "Scan an item to see its stock.",
     ),
     TourStep(
         target = "signout",
         title = "End of shift",
-        text = "Sign out from this menu - Send feedback is here too. Anything you posted is still sent after you sign out; scans you have not posted yet wait on this device for you.",
+        text = "Sign out and Send feedback are here.",
     ),
 )
 

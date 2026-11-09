@@ -96,6 +96,7 @@ data class JournalCountState(
  */
 @HiltViewModel
 class CountingJournalListViewModel @Inject constructor(
+    private val blindCountNotices: com.d365fo.mobileops.data.counting.BlindCountNotices,
     private val journals: CountingJournalRepository,
     private val workerSession: WorkerSessionRepository,
     private val downloads: CountingDownloadTracker,
@@ -108,6 +109,9 @@ class CountingJournalListViewModel @Inject constructor(
     private val triggeredAlerts: com.d365fo.mobileops.data.counting.TriggeredCountAlerts,
     private val counterProfiles: com.d365fo.mobileops.data.counting.CounterProfiles,
 ) : ViewModel() {
+
+    /** The signed-in user, to tell a claim of theirs from someone else's. */
+    val currentUserName: String? get() = workerSession.session.value?.userName
 
     private val _loaded = MutableStateFlow(
         CountingJournalListState(
@@ -153,6 +157,11 @@ class CountingJournalListViewModel @Inject constructor(
         countingDao.observeCaptureExtras(),
     ) { journals, progress, claimRows, submissions, extras -> RoomSide(journals, progress, claimRows, submissions, extras) }
 
+    /** What the last dual count came to: the journal itself has left the device. */
+    val blindCountNotice: StateFlow<String?> get() = blindCountNotices.notice
+
+    fun dismissBlindCountNotice() = blindCountNotices.dismiss()
+
     val state: StateFlow<CountingJournalListState> = combine(
         _loaded,
         downloads.downloads,
@@ -169,6 +178,7 @@ class CountingJournalListViewModel @Inject constructor(
         // (on hold) and is listed again when the worker switches back there.
         val here = loaded.warehouseId
         val localOnly = room.journals
+            .filter { (progressById[it.journalId]?.total ?: 0) > 0 }
             .filter { it.journalId !in serverIds }
             .filter { here.isNullOrBlank() || it.warehouseId.isNullOrBlank() || it.warehouseId.equals(here, ignoreCase = true) }
             .map { journal ->
@@ -192,22 +202,31 @@ class CountingJournalListViewModel @Inject constructor(
                     snapshotAt = journal.snapshotAt,
                 )
             }
+        val countStates = room.journals.filter { (progressById[it.journalId]?.total ?: 0) > 0 }.associate { journal ->
+            journal.journalId to journal.toCountState(
+                progressById[journal.journalId],
+                submissionById[journal.journalId],
+                extrasById[journal.journalId],
+            )
+        }
+        val localOnlyIds = localOnly.mapTo(HashSet()) { it.journalId }
+        val all = loaded.journals.byPriority() + localOnly.byPriority()
         loaded.copy(
-            journals = (loaded.journals + localOnly).byPriority(),
-            localOnlyIds = localOnly.mapTo(HashSet()) { it.journalId },
+            // What can still be counted first. Mixed in by date, a device with a history buried
+            // today's journal under hundreds of closed ones.
+            journals = all,
+            localOnlyIds = localOnlyIds,
+            doneIds = all.filter { isDone(it, countStates[it.journalId], it.journalId in localOnlyIds) }
+                .mapTo(HashSet()) { it.journalId },
             exportStatuses = tracked
                 .filterValues { !it.imported }
                 .mapValues { (_, download) -> download.status },
             refreshNotes = tracked.values
                 .filter { it.imported && it.note != null }
                 .associate { it.journalId to it.note.orEmpty() },
-            countStates = room.journals.associate { journal ->
-                journal.journalId to journal.toCountState(
-                    progressById[journal.journalId],
-                    submissionById[journal.journalId],
-                    extrasById[journal.journalId],
-                )
-            },
+            // A journal whose lines never landed (the app died during a download) is not on the
+            // device yet: no counting controls, so the row offers Get data again.
+            countStates = countStates,
             myClaims = room.claims.associateBy { it.journalId },
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), CountingJournalListState())
@@ -221,6 +240,16 @@ class CountingJournalListViewModel @Inject constructor(
             val warehouseId = workerSession.session.value?.selected?.warehouseId
             _loaded.update { it.copy(warehouseId = warehouseId) }
             load(warehouseId)
+        }
+        // A claim given back (End count, or by hand): the list still holds D365FO's row from before,
+        // which names the claim - and with this device's own gone, reads as "on another device".
+        viewModelScope.launch {
+            var held: Set<String>? = null
+            claims.observe().collect { rows ->
+                val now = rows.mapTo(HashSet()) { it.journalId }
+                if (held?.any { it !in now } == true) load(_loaded.value.warehouseId)
+                held = now
+            }
         }
     }
 
@@ -242,12 +271,18 @@ class CountingJournalListViewModel @Inject constructor(
         val journal = state.value.journals.firstOrNull { it.journalId == journalId } ?: return
         val warehouseId = _loaded.value.warehouseId
         if (warehouseId.isNullOrBlank()) return
-
-        if (journal.transferMode == TransferMode.DIRECT && !flags.countDirect) {
-            showMessage("This journal uses direct transfer, which is not enabled in this app build.")
+        if (journal.doubleBlind && journal.lineCount == 0) {
+            showMessage("You have counted your lines on this journal. Use Review to see how it stands.")
             return
         }
-        if (!flags.countClaims) {
+
+        // A wall-to-wall count only works by location claims and direct transfer, whatever the
+        // flags say for other journals: a location is a task, claimed by one counter.
+        if (journal.transferMode == TransferMode.DIRECT && !flags.countDirect && !journal.isWallToWall) {
+            showMessage("Direct transfer isn't enabled in this app.")
+            return
+        }
+        if (!flags.countClaims && !journal.isWallToWall) {
             downloads.start(journal, warehouseId)
             return
         }
@@ -258,7 +293,7 @@ class CountingJournalListViewModel @Inject constructor(
                 existing != null && !existing.lost -> downloads.start(
                     journal, warehouseId, existing.toRange(), existing.claimToken,
                 )
-                existing != null -> showMessage(existing.lostReason ?: "Your claim was lost. Claim the journal again first.")
+                existing != null -> showMessage(existing.lostReason ?: "Claim lost - claim again.")
                 journal.ranges.isNotEmpty() -> _loaded.update { it.copy(rangePickerFor = journalId) }
                 else -> claimAndDownload(journal, warehouseId, range = null)
             }
@@ -307,14 +342,13 @@ class CountingJournalListViewModel @Inject constructor(
                     JournalRemoteState.OPEN -> journals.reopenCounting(journalId)
                     JournalRemoteState.POSTED -> {
                         journals.markPostedInD365(journalId)
-                        showMessage("$journalId has been posted in D365FO, so it can't be reopened.")
+                        showMessage("$journalId is posted - can't reopen.")
                     }
                     JournalRemoteState.NOT_FOUND ->
-                        showMessage("$journalId no longer exists in D365FO, so it can't be reopened.")
+                        showMessage("$journalId no longer exists.")
                 }
                 is NetworkResult.Error -> showMessage(
-                    "Couldn't check whether $journalId has been posted (${result.failure.message}). " +
-                        "Reopening needs a connection to D365FO.",
+                    "Reopening needs a connection.",
                 )
                 NetworkResult.Loading -> Unit
             }
@@ -359,7 +393,7 @@ class CountingJournalListViewModel @Inject constructor(
                 // Said once per app session - repeating it on every "Get data" only interrupts.
                 if (!claimNoticeShown) {
                     claimNoticeShown = true
-                    showMessage("This server doesn't support claiming journals yet - counting without a claim.")
+                    showMessage("Counting without a claim.")
                 }
             }
             else -> showMessage(outcome.describe())
@@ -368,15 +402,15 @@ class CountingJournalListViewModel @Inject constructor(
 
     private fun ClaimOutcome.describe(): String = when (this) {
         is ClaimOutcome.Granted -> "Claimed."
-        is ClaimOutcome.Unreachable -> "Couldn't reach D365FO to claim this journal: $message"
+        is ClaimOutcome.Unreachable -> "Can't claim - offline."
         is ClaimOutcome.Refused -> when (reason) {
             ClaimRefusal.CLAIMED_BY_OTHER ->
                 claimedBy?.let { "Already claimed by $it." } ?: "Someone else has already claimed this."
-            ClaimRefusal.EXPIRED, ClaimRefusal.LOST -> "That claim is no longer valid. Try again."
-            ClaimRefusal.JOURNAL_POSTED -> "This journal has already been posted in D365FO."
-            ClaimRefusal.JOURNAL_NOT_FOUND -> "This journal is closed or no longer exists in D365FO."
-            ClaimRefusal.SAME_COUNTER -> "This recount must be done by someone other than the previous counter."
-            ClaimRefusal.NOT_AVAILABLE -> "This server does not support claiming journals yet."
+            ClaimRefusal.EXPIRED, ClaimRefusal.LOST -> "Claim expired - try again."
+            ClaimRefusal.JOURNAL_POSTED -> "Already posted."
+            ClaimRefusal.JOURNAL_NOT_FOUND -> "Journal closed."
+            ClaimRefusal.SAME_COUNTER -> "Someone else must do this recount."
+            ClaimRefusal.NOT_AVAILABLE -> "Claiming isn't available."
             ClaimRefusal.OTHER -> message ?: "The claim was refused."
         }
     }
@@ -407,7 +441,7 @@ class CountingJournalListViewModel @Inject constructor(
         }
         val error = when {
             phase == CountPhase.FAILED && status == JournalStatus.PENDING_POST ->
-                "The submission was interrupted. Tap End count to send it again."
+                "Interrupted - tap End count again."
             phase == CountPhase.FAILED -> sync.lastError ?: submission?.message ?: "The submission failed."
             phase == CountPhase.SUBMITTED -> sync.lastError
             phase == CountPhase.SUBMITTING -> submission?.message
@@ -431,14 +465,14 @@ class CountingJournalListViewModel @Inject constructor(
     private suspend fun load(warehouseId: String?) {
         if (warehouseId.isNullOrBlank()) {
             _loaded.update {
-                it.copy(busy = false, error = "No warehouse is assigned to you. Ask a supervisor.")
+                it.copy(busy = false, error = "No warehouse assigned - ask a supervisor")
             }
             return
         }
 
         _loaded.update { it.copy(busy = true, error = null) }
         triggeredAlerts.rememberWarehouse(warehouseId)
-        when (val result = journals.listAssignedJournals(warehouseId, workerSession.session.value?.userName)) {
+        when (val result = journals.listAssignedJournals(warehouseId, workerSession.session.value?.userName, includeDone = true)) {
             is NetworkResult.Error -> _loaded.update {
                 it.copy(busy = false, error = result.failure.message)
             }
@@ -451,6 +485,19 @@ class CountingJournalListViewModel @Inject constructor(
         }
     }
 }
+
+/**
+ * Finished for this worker: posted, or its counts accepted with nothing left to do here - no
+ * recount lines for them, no refused items to send again, no third count. A wall-to-wall journal
+ * stays on its tab while D365FO still lists it, since other locations and passes may follow.
+ */
+internal fun isDone(journal: CountingJournalSummary, count: JournalCountState?, localOnly: Boolean): Boolean =
+    journal.doneNote != null || when (count?.phase) {
+        CountPhase.POSTED -> true
+        CountPhase.SUBMITTED -> count.failedExceptions == 0 && !count.thirdCountNeeded &&
+            journal.recountLines == 0 && (!journal.isWallToWall || localOnly)
+        else -> false
+    }
 
 data class CountingJournalListState(
     val warehouseId: String? = null,
@@ -472,6 +519,8 @@ data class CountingJournalListState(
     /** A third-party counter - sees only their team's journals (server-side). */
     val externalCounter: Boolean = false,
     val counterTeam: String? = null,
+    /** Journals this worker has finished, listed under Done instead of their usual tab. */
+    val doneIds: Set<String> = emptySet(),
     /** This device's own claims, keyed by journal id. */
     val myClaims: Map<String, CountClaimEntity> = emptyMap(),
     /** Non-null while the worker is choosing which range of this journal to claim. */

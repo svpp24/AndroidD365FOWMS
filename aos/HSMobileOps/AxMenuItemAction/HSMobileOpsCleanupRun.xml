@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxMenuItemAction xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsCleanupRun</Name>
+	<Label>Run clean-up now</Label>
+	<HelpText>Removes Mobile ops records older than their days on Mobile clean-up, and schedules the daily job if there is none.</HelpText>
+	<Object>HSMobileOpsCleanupBatch</Object>
+	<ObjectType>Class</ObjectType>
+</AxMenuItemAction>

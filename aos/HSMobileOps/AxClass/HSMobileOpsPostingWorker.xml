@@ -1,0 +1,131 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsPostingWorker</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// One warehouse's turn at the posting queue: a task HSMobileOpsProcessPendingBatch adds to itself
+/// for each warehouse with Pending rows, so warehouses post side by side. The work is
+/// HSMobileOpsPostingService::processWarehouse.
+/// </summary>
+class HSMobileOpsPostingWorker extends RunBaseBatch
+{
+    DataAreaId       company;
+    InventLocationId warehouse;
+
+    #define.CurrentVersion(1)
+    #localmacro.CurrentList
+        company,
+        warehouse
+    #endmacro
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>newTask</Name>
+				<Source><![CDATA[
+
+    public static HSMobileOpsPostingWorker newTask(DataAreaId _company, InventLocationId _warehouse)
+    {
+        HSMobileOpsPostingWorker worker = new HSMobileOpsPostingWorker();
+
+        worker.parmCompany(_company);
+        worker.parmWarehouse(_warehouse);
+        worker.batchInfo().parmCaption(strFmt('Mobile ops: post %1 %2', _company, _warehouse));
+        return worker;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmCompany</Name>
+				<Source><![CDATA[
+
+    public DataAreaId parmCompany(DataAreaId _company = company)
+    {
+        company = _company;
+        return company;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmWarehouse</Name>
+				<Source><![CDATA[
+
+    public InventLocationId parmWarehouse(InventLocationId _warehouse = warehouse)
+    {
+        warehouse = _warehouse;
+        return warehouse;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>run</Name>
+				<Source><![CDATA[
+
+    public void run()
+    {
+        HSMobileOpsPostingService::processWarehouse(company, warehouse);
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>pack</Name>
+				<Source><![CDATA[
+
+    public container pack()
+    {
+        return [#CurrentVersion, #CurrentList];
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>unpack</Name>
+				<Source><![CDATA[
+
+    public boolean unpack(container _packedClass)
+    {
+        Version version = RunBase::getVersion(_packedClass);
+
+        switch (version)
+        {
+            case #CurrentVersion:
+                [version, #CurrentList] = _packedClass;
+                return true;
+        }
+        return false;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>canGoBatch</Name>
+				<Source><![CDATA[
+
+    public boolean canGoBatch()
+    {
+        return true;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>runsImpersonated</Name>
+				<Source><![CDATA[
+
+    public boolean runsImpersonated()
+    {
+        return true;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>description</Name>
+				<Source><![CDATA[
+
+    public static ClassDescription description()
+    {
+        return 'Mobile ops: post one warehouse';
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

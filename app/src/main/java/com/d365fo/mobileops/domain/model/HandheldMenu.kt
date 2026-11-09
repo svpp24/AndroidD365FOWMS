@@ -9,6 +9,13 @@ data class HandheldMenu(val rootId: String, val menus: Map<String, MenuDefinitio
 
     fun menu(menuId: String): MenuDefinition? = menus[menuId.uppercase()]
 
+    /** Where a store count starts: the counting line's location, set on the handheld menu in D365FO. */
+    val countStartLocation: String?
+        get() = menus.values.asSequence().flatMap { it.entries.asSequence() }
+            .filterIsInstance<MenuEntry.Module>()
+            .firstOrNull { it.workflow == WarehouseWorkflow.INVENTORY_COUNT && !it.countLocationId.isNullOrBlank() }
+            ?.countLocationId?.trim()?.uppercase()
+
     /**
      * What [menuId] shows: the modules [isShown] lets through, and the sub-menus with at least
      * one of those somewhere below them. A sub-menu that leads back to one already open is
@@ -39,6 +46,7 @@ data class HandheldMenu(val rootId: String, val menus: Map<String, MenuDefinitio
 data class MenuDefinition(val id: String, val name: String, val entries: List<MenuEntry>)
 
 sealed interface MenuEntry {
-    data class Module(val workflow: WarehouseWorkflow) : MenuEntry
+    /** [countLocationId]: on a counting line, the location a store count starts in (user, 8 Nov). */
+    data class Module(val workflow: WarehouseWorkflow, val countLocationId: String? = null) : MenuEntry
     data class SubMenu(val menuId: String) : MenuEntry
 }

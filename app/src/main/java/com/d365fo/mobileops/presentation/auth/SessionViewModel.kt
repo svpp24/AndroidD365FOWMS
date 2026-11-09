@@ -14,6 +14,7 @@ import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
 import timber.log.Timber
 import javax.inject.Inject
@@ -64,6 +65,14 @@ class SessionViewModel @Inject constructor(
 
     init {
         refresh()
+        // A connection saved on an unconfigured device moves it on at once, as reopening the
+        // app did (30 Oct: first install sat on "Setting up…" with the connection already in
+        // use). Only from NotConfigured - there is no live data or signed-in worker to disturb.
+        viewModelScope.launch {
+            connectionSettings.tenant.drop(1).collect {
+                if (_state.value is SessionState.NotConfigured) refresh()
+            }
+        }
     }
 
     /**

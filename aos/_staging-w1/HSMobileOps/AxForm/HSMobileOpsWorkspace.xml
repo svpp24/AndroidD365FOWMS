@@ -1,0 +1,504 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxForm xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns="Microsoft.Dynamics.AX.Metadata.V6">
+	<Name>HSMobileOpsWorkspace</Name>
+	<SourceCode>
+		<Methods xmlns="">
+			<Method>
+				<Name>classDeclaration</Name>
+				<Source><![CDATA[
+/// <summary>
+/// Mobile operations workspace: one landing page for what needs attention in the handheld app.
+/// Each tile counts the query of its menu item; the same query opens the list, so the number
+/// equals the rows. The queries are scoped to the user's stores by HSMobileOpsWorkspaceScope.
+/// </summary>
+[Form]
+public class HSMobileOpsWorkspace extends FormRun implements SysIFilterProvider
+{
+    SysFilterChangeEvent changeEvent;
+}
+]]></Source>
+			</Method>
+			<Method>
+				<Name>init</Name>
+				<Source><![CDATA[
+    public void init()
+    {
+        super();
+
+        FilterStringControl.text(HSMobileOpsWorkspaceFilter::current());
+        changeEvent = SysFilterChangeEvent::newFromFormControl(FilterStringControl);
+        WorkspaceWarehouseFilter.visible(HSMobileOpsWorkspaceScope::isAllStores() || HSMobileOpsWorkspaceScope::warehouses().elements() > 1);
+
+        if (!HSMobileOpsWorkspaceScope::hasAnyStore())
+        {
+            warning("No store is assigned to you, so nothing is shown. Ask an administrator to link your worker to a handheld user with a warehouse.");
+        }
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmFilter</Name>
+				<Source><![CDATA[
+    public SysIFilter parmFilter()
+    {
+        // The warehouse is applied by HSMobileOpsWorkspaceScope inside the tile queries, so the
+        // filter handed to the tiles carries no items. It only makes the tiles refresh.
+        return SysFilterFactory::createEmptyFilter();
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmChangeEvent</Name>
+				<Source><![CDATA[
+    public SysFilterChangeEvent parmChangeEvent()
+    {
+        return changeEvent;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+		<DataSources xmlns="" />
+		<DataControls xmlns="">
+			<Control>
+				<Name>FilterStringControl</Name>
+				<Type>String</Type>
+				<Methods>
+					<Method>
+						<Name>modified</Name>
+						<Source><![CDATA[
+        public boolean modified()
+        {
+            boolean ret;
+
+            HSMobileOpsWorkspaceFilter::set(this.valueStr());
+            ret = super();
+
+            return ret;
+        }
+]]></Source>
+					</Method>
+				</Methods>
+			</Control>
+		</DataControls>
+		<Members xmlns="" />
+	</SourceCode>
+	<DataSources />
+	<Design>
+		<Caption xmlns="">Mobile operations</Caption>
+		<Pattern xmlns="">TabbedWorkspace</Pattern>
+		<PatternVersion xmlns="">1.0</PatternVersion>
+		<ShowDeleteButton xmlns="">No</ShowDeleteButton>
+		<ShowNewButton xmlns="">No</ShowNewButton>
+		<Style xmlns="">Workspace</Style>
+		<ViewEditMode xmlns="">View</ViewEditMode>
+		<Controls xmlns="">
+			<AxFormControl xmlns=""
+				i:type="AxFormTabControl">
+				<Name>PanoramaBody</Name>
+				<Type>Tab</Type>
+				<FormControlExtension
+					i:nil="true" />
+				<Controls>
+					<AxFormControl xmlns=""
+						i:type="AxFormTabPageControl">
+						<Name>Overview</Name>
+						<Type>TabPage</Type>
+						<FormControlExtension
+							i:nil="true" />
+						<Controls>
+							<AxFormControl xmlns=""
+								i:type="AxFormGroupControl">
+								<Name>WorkspaceWarehouseFilter</Name>
+								<AutoDeclaration>Yes</AutoDeclaration>
+								<Pattern>WorkspacePageFilterGroup</Pattern>
+								<PatternVersion>1.0</PatternVersion>
+								<Type>Group</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<Controls>
+									<AxFormControl xmlns=""
+										i:type="AxFormStringControl">
+										<Name>FilterStringControl</Name>
+										<AutoDeclaration>Yes</AutoDeclaration>
+										<Type>String</Type>
+										<FormControlExtension
+											i:nil="true" />
+										<ExtendedDataType>InventLocationId</ExtendedDataType>
+										<HelpText>Show one warehouse. Leave empty to show every store you can see.</HelpText>
+										<LookupButton>Always</LookupButton>
+										<ShowLabel>No</ShowLabel>
+									</AxFormControl>
+								</Controls>
+								<FrameType>None</FrameType>
+								<Style>CustomFilter</Style>
+								<ViewEditMode>Edit</ViewEditMode>
+							</AxFormControl>
+							<AxFormControl xmlns=""
+								i:type="AxFormTabControl">
+								<Name>OverviewBody</Name>
+								<ExtendedStyle>tab_simpleFastTab</ExtendedStyle>
+								<Type>Tab</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<Controls>
+									<AxFormControl xmlns=""
+										i:type="AxFormTabPageControl">
+										<Name>TilesReceiving</Name>
+										<ExtendedStyle>workspace_tileLayout</ExtendedStyle>
+										<Pattern>SectionTiles</Pattern>
+										<PatternVersion>1.1</PatternVersion>
+										<Type>TabPage</Type>
+										<FormControlExtension
+											i:nil="true" />
+										<Controls>
+											<AxFormControl xmlns=""
+												i:type="AxFormMenuFunctionButtonControl">
+												<Name>TilePostFailed</Name>
+												<Type>MenuFunctionButton</Type>
+												<FormControlExtension>
+													<Name>TileButtonControl</Name>
+													<ExtensionComponents />
+													<ExtensionProperties>
+														<AxFormControlExtensionProperty>
+															<Name>tile</Name>
+															<Type>String</Type>
+															<Value>HSMobileOpsWorkspacePostFailedTile</Value>
+														</AxFormControlExtensionProperty>
+														<AxFormControlExtensionProperty>
+															<Name>tileDisplay</Name>
+															<Type>Enum</Type>
+															<TypeName>TileDisplay</TypeName>
+														</AxFormControlExtensionProperty>
+													</ExtensionProperties>
+												</FormControlExtension>
+											</AxFormControl>
+											<AxFormControl xmlns=""
+												i:type="AxFormMenuFunctionButtonControl">
+												<Name>TilePostStuck</Name>
+												<Type>MenuFunctionButton</Type>
+												<FormControlExtension>
+													<Name>TileButtonControl</Name>
+													<ExtensionComponents />
+													<ExtensionProperties>
+														<AxFormControlExtensionProperty>
+															<Name>tile</Name>
+															<Type>String</Type>
+															<Value>HSMobileOpsWorkspacePostStuckTile</Value>
+														</AxFormControlExtensionProperty>
+														<AxFormControlExtensionProperty>
+															<Name>tileDisplay</Name>
+															<Type>Enum</Type>
+															<TypeName>TileDisplay</TypeName>
+														</AxFormControlExtensionProperty>
+													</ExtensionProperties>
+												</FormControlExtension>
+											</AxFormControl>
+											<AxFormControl xmlns=""
+												i:type="AxFormMenuFunctionButtonControl">
+												<Name>TilePostCorrected</Name>
+												<Type>MenuFunctionButton</Type>
+												<FormControlExtension>
+													<Name>TileButtonControl</Name>
+													<ExtensionComponents />
+													<ExtensionProperties>
+														<AxFormControlExtensionProperty>
+															<Name>tile</Name>
+															<Type>String</Type>
+															<Value>HSMobileOpsWorkspacePostCorrectedTile</Value>
+														</AxFormControlExtensionProperty>
+														<AxFormControlExtensionProperty>
+															<Name>tileDisplay</Name>
+															<Type>Enum</Type>
+															<TypeName>TileDisplay</TypeName>
+														</AxFormControlExtensionProperty>
+													</ExtensionProperties>
+												</FormControlExtension>
+											</AxFormControl>
+											<AxFormControl xmlns=""
+												i:type="AxFormMenuFunctionButtonControl">
+												<Name>TileDeviceWorkUnsent</Name>
+												<Type>MenuFunctionButton</Type>
+												<FormControlExtension>
+													<Name>TileButtonControl</Name>
+													<ExtensionComponents />
+													<ExtensionProperties>
+														<AxFormControlExtensionProperty>
+															<Name>tile</Name>
+															<Type>String</Type>
+															<Value>HSMobileOpsWorkspaceDeviceWorkUnsentTile</Value>
+														</AxFormControlExtensionProperty>
+														<AxFormControlExtensionProperty>
+															<Name>tileDisplay</Name>
+															<Type>Enum</Type>
+															<TypeName>TileDisplay</TypeName>
+														</AxFormControlExtensionProperty>
+													</ExtensionProperties>
+												</FormControlExtension>
+											</AxFormControl>
+										</Controls>
+										<ArrangeMethod>HorizontalLeft</ArrangeMethod>
+										<Caption>Receiving and posting</Caption>
+									</AxFormControl>
+									<AxFormControl xmlns=""
+										i:type="AxFormTabPageControl">
+										<Name>TilesCounting</Name>
+										<ExtendedStyle>workspace_tileLayout</ExtendedStyle>
+										<Pattern>SectionTiles</Pattern>
+										<PatternVersion>1.1</PatternVersion>
+										<Type>TabPage</Type>
+										<FormControlExtension
+											i:nil="true" />
+										<Controls>
+											<AxFormControl xmlns=""
+												i:type="AxFormMenuFunctionButtonControl">
+												<Name>TileCountOpen</Name>
+												<Type>MenuFunctionButton</Type>
+												<FormControlExtension>
+													<Name>TileButtonControl</Name>
+													<ExtensionComponents />
+													<ExtensionProperties>
+														<AxFormControlExtensionProperty>
+															<Name>tile</Name>
+															<Type>String</Type>
+															<Value>HSMobileOpsWorkspaceCountOpenTile</Value>
+														</AxFormControlExtensionProperty>
+														<AxFormControlExtensionProperty>
+															<Name>tileDisplay</Name>
+															<Type>Enum</Type>
+															<TypeName>TileDisplay</TypeName>
+														</AxFormControlExtensionProperty>
+													</ExtensionProperties>
+												</FormControlExtension>
+											</AxFormControl>
+											<AxFormControl xmlns=""
+												i:type="AxFormMenuFunctionButtonControl">
+												<Name>TileCountTransferring</Name>
+												<Type>MenuFunctionButton</Type>
+												<FormControlExtension>
+													<Name>TileButtonControl</Name>
+													<ExtensionComponents />
+													<ExtensionProperties>
+														<AxFormControlExtensionProperty>
+															<Name>tile</Name>
+															<Type>String</Type>
+															<Value>HSMobileOpsWorkspaceCountTransferringTile</Value>
+														</AxFormControlExtensionProperty>
+														<AxFormControlExtensionProperty>
+															<Name>tileDisplay</Name>
+															<Type>Enum</Type>
+															<TypeName>TileDisplay</TypeName>
+														</AxFormControlExtensionProperty>
+													</ExtensionProperties>
+												</FormControlExtension>
+											</AxFormControl>
+											<AxFormControl xmlns=""
+												i:type="AxFormMenuFunctionButtonControl">
+												<Name>TileCountDuplicates</Name>
+												<Type>MenuFunctionButton</Type>
+												<FormControlExtension>
+													<Name>TileButtonControl</Name>
+													<ExtensionComponents />
+													<ExtensionProperties>
+														<AxFormControlExtensionProperty>
+															<Name>tile</Name>
+															<Type>String</Type>
+															<Value>HSMobileOpsWorkspaceCountDuplicatesTile</Value>
+														</AxFormControlExtensionProperty>
+														<AxFormControlExtensionProperty>
+															<Name>tileDisplay</Name>
+															<Type>Enum</Type>
+															<TypeName>TileDisplay</TypeName>
+														</AxFormControlExtensionProperty>
+													</ExtensionProperties>
+												</FormControlExtension>
+											</AxFormControl>
+											<AxFormControl xmlns=""
+												i:type="AxFormMenuFunctionButtonControl">
+												<Name>TileCycleStopped</Name>
+												<Type>MenuFunctionButton</Type>
+												<FormControlExtension>
+													<Name>TileButtonControl</Name>
+													<ExtensionComponents />
+													<ExtensionProperties>
+														<AxFormControlExtensionProperty>
+															<Name>tile</Name>
+															<Type>String</Type>
+															<Value>HSMobileOpsWorkspaceCycleStoppedTile</Value>
+														</AxFormControlExtensionProperty>
+														<AxFormControlExtensionProperty>
+															<Name>tileDisplay</Name>
+															<Type>Enum</Type>
+															<TypeName>TileDisplay</TypeName>
+														</AxFormControlExtensionProperty>
+													</ExtensionProperties>
+												</FormControlExtension>
+											</AxFormControl>
+										</Controls>
+										<ArrangeMethod>HorizontalLeft</ArrangeMethod>
+										<Caption>Counting</Caption>
+									</AxFormControl>
+									<AxFormControl xmlns=""
+										i:type="AxFormTabPageControl">
+										<Name>TilesDevices</Name>
+										<ExtendedStyle>workspace_tileLayout</ExtendedStyle>
+										<Pattern>SectionTiles</Pattern>
+										<PatternVersion>1.1</PatternVersion>
+										<Type>TabPage</Type>
+										<FormControlExtension
+											i:nil="true" />
+										<Controls>
+											<AxFormControl xmlns=""
+												i:type="AxFormMenuFunctionButtonControl">
+												<Name>TileUserLocked</Name>
+												<Type>MenuFunctionButton</Type>
+												<FormControlExtension>
+													<Name>TileButtonControl</Name>
+													<ExtensionComponents />
+													<ExtensionProperties>
+														<AxFormControlExtensionProperty>
+															<Name>tile</Name>
+															<Type>String</Type>
+															<Value>HSMobileOpsWorkspaceUserLockedTile</Value>
+														</AxFormControlExtensionProperty>
+														<AxFormControlExtensionProperty>
+															<Name>tileDisplay</Name>
+															<Type>Enum</Type>
+															<TypeName>TileDisplay</TypeName>
+														</AxFormControlExtensionProperty>
+													</ExtensionProperties>
+												</FormControlExtension>
+											</AxFormControl>
+											<AxFormControl xmlns=""
+												i:type="AxFormMenuFunctionButtonControl">
+												<Name>TileUserActive</Name>
+												<Type>MenuFunctionButton</Type>
+												<FormControlExtension>
+													<Name>TileButtonControl</Name>
+													<ExtensionComponents />
+													<ExtensionProperties>
+														<AxFormControlExtensionProperty>
+															<Name>tile</Name>
+															<Type>String</Type>
+															<Value>HSMobileOpsWorkspaceUserActiveTile</Value>
+														</AxFormControlExtensionProperty>
+														<AxFormControlExtensionProperty>
+															<Name>tileDisplay</Name>
+															<Type>Enum</Type>
+															<TypeName>TileDisplay</TypeName>
+														</AxFormControlExtensionProperty>
+													</ExtensionProperties>
+												</FormControlExtension>
+											</AxFormControl>
+											<AxFormControl xmlns=""
+												i:type="AxFormMenuFunctionButtonControl">
+												<Name>TileDeviceNotSeen</Name>
+												<Type>MenuFunctionButton</Type>
+												<FormControlExtension>
+													<Name>TileButtonControl</Name>
+													<ExtensionComponents />
+													<ExtensionProperties>
+														<AxFormControlExtensionProperty>
+															<Name>tile</Name>
+															<Type>String</Type>
+															<Value>HSMobileOpsWorkspaceDeviceNotSeenTile</Value>
+														</AxFormControlExtensionProperty>
+														<AxFormControlExtensionProperty>
+															<Name>tileDisplay</Name>
+															<Type>Enum</Type>
+															<TypeName>TileDisplay</TypeName>
+														</AxFormControlExtensionProperty>
+													</ExtensionProperties>
+												</FormControlExtension>
+											</AxFormControl>
+											<AxFormControl xmlns=""
+												i:type="AxFormMenuFunctionButtonControl">
+												<Name>TileDeviceActive</Name>
+												<Type>MenuFunctionButton</Type>
+												<FormControlExtension>
+													<Name>TileButtonControl</Name>
+													<ExtensionComponents />
+													<ExtensionProperties>
+														<AxFormControlExtensionProperty>
+															<Name>tile</Name>
+															<Type>String</Type>
+															<Value>HSMobileOpsWorkspaceDeviceActiveTile</Value>
+														</AxFormControlExtensionProperty>
+														<AxFormControlExtensionProperty>
+															<Name>tileDisplay</Name>
+															<Type>Enum</Type>
+															<TypeName>TileDisplay</TypeName>
+														</AxFormControlExtensionProperty>
+													</ExtensionProperties>
+												</FormControlExtension>
+											</AxFormControl>
+											<AxFormControl xmlns=""
+												i:type="AxFormMenuFunctionButtonControl">
+												<Name>TileLicence</Name>
+												<Type>MenuFunctionButton</Type>
+												<FormControlExtension>
+													<Name>TileButtonControl</Name>
+													<ExtensionComponents />
+													<ExtensionProperties>
+														<AxFormControlExtensionProperty>
+															<Name>tile</Name>
+															<Type>String</Type>
+															<Value>HSMobileOpsWorkspaceLicenceTile</Value>
+														</AxFormControlExtensionProperty>
+														<AxFormControlExtensionProperty>
+															<Name>tileDisplay</Name>
+															<Type>Enum</Type>
+															<TypeName>TileDisplay</TypeName>
+														</AxFormControlExtensionProperty>
+													</ExtensionProperties>
+												</FormControlExtension>
+											</AxFormControl>
+										</Controls>
+										<ArrangeMethod>HorizontalLeft</ArrangeMethod>
+										<Caption>Devices and users</Caption>
+									</AxFormControl>
+									<AxFormControl xmlns=""
+										i:type="AxFormTabPageControl">
+										<Name>TilesFeedback</Name>
+										<ExtendedStyle>workspace_tileLayout</ExtendedStyle>
+										<Pattern>SectionTiles</Pattern>
+										<PatternVersion>1.1</PatternVersion>
+										<Type>TabPage</Type>
+										<FormControlExtension
+											i:nil="true" />
+										<Controls>
+											<AxFormControl xmlns=""
+												i:type="AxFormMenuFunctionButtonControl">
+												<Name>TileFeedbackNew</Name>
+												<Type>MenuFunctionButton</Type>
+												<FormControlExtension>
+													<Name>TileButtonControl</Name>
+													<ExtensionComponents />
+													<ExtensionProperties>
+														<AxFormControlExtensionProperty>
+															<Name>tile</Name>
+															<Type>String</Type>
+															<Value>HSMobileOpsWorkspaceFeedbackNewTile</Value>
+														</AxFormControlExtensionProperty>
+														<AxFormControlExtensionProperty>
+															<Name>tileDisplay</Name>
+															<Type>Enum</Type>
+															<TypeName>TileDisplay</TypeName>
+														</AxFormControlExtensionProperty>
+													</ExtensionProperties>
+												</FormControlExtension>
+											</AxFormControl>
+										</Controls>
+										<ArrangeMethod>HorizontalLeft</ArrangeMethod>
+										<Caption>Feedback</Caption>
+									</AxFormControl>
+								</Controls>
+							</AxFormControl>
+						</Controls>
+						<Caption>Overview</Caption>
+					</AxFormControl>
+				</Controls>
+			</AxFormControl>
+		</Controls>
+	</Design>
+	<Parts />
+</AxForm>

@@ -73,17 +73,17 @@ fun OrderLineCard(line: DraftLine, showPrice: Boolean, currency: String, onClick
                     fontWeight = FontWeight.SemiBold,
                 )
             }
-            val dims = listOf(line.variant.label, line.locationId.takeIf { it.isNotBlank() }?.let { "Bin $it" }, line.batchId.takeIf { it.isNotBlank() }?.let { "Batch $it" },
+            val dims = listOf(line.variant.label, line.locationId.takeIf { it.isNotBlank() }?.let { "Location $it" }, line.batchId.takeIf { it.isNotBlank() }?.let { "Batch $it" },
                 line.serialId.takeIf { it.isNotBlank() }?.let { "Serial $it" })
                 .filter { !it.isNullOrBlank() }.joinToString(" · ")
             if (dims.isNotBlank()) Text(dims, style = MaterialTheme.typography.bodySmall, color = WarehouseStatusColors.text3)
             line.available?.let {
-                Text("${qtyText(it)} available " + if (line.locationId.isNotBlank()) "in the bin" else "at From", style = MaterialTheme.typography.bodySmall, color = WarehouseStatusColors.text3)
+                Text("${qtyText(it)} available " + if (line.locationId.isNotBlank()) "at the location" else "at From", style = MaterialTheme.typography.bodySmall, color = WarehouseStatusColors.text3)
                 // Allowed for an item that may go negative - but said, not left for the reader to
                 // compare two numbers (50 ordered with 3 there showed only "3 available at From").
                 if (line.qty > it) {
                     Text(
-                        "More than is on hand - stock at From goes below zero when this ships",
+                        "More than on hand",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.error,
                     )
@@ -181,9 +181,9 @@ fun CreatedOrderCard(
                     }
                     Text(
                         if (online) {
-                            "Sent to D365FO - it $what now; this can take a minute or two."
+                            "Sent - takes a minute or two."
                         } else {
-                            "Saved on this device - D365FO $what as soon as it can be reached."
+                            "Saved - sent when online."
                         },
                         style = MaterialTheme.typography.bodySmall,
                     )
@@ -419,7 +419,15 @@ fun TapToTypeField(value: String, onValueChange: (String) -> Unit, placeholder: 
         readOnly = !typing,
         interactionSource = interaction,
         placeholder = { Text(placeholder) },
-        leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+        leadingIcon = {
+            Icon(
+                com.d365fo.mobileops.presentation.common.components.LineIcons.SearchThin,
+                contentDescription = null,
+                tint = com.d365fo.mobileops.presentation.common.theme.WarehouseStatusColors.text3,
+            )
+        },
+        shape = com.d365fo.mobileops.presentation.common.components.HeroFieldShape,
+        colors = com.d365fo.mobileops.presentation.common.components.heroFieldColors(),
         modifier = modifier.fillMaxWidth(),
     )
 }

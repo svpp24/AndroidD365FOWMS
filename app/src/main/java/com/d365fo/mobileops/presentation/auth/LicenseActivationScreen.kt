@@ -92,8 +92,7 @@ fun LicenseActivationScreen(viewModel: LicenseViewModel = hiltViewModel()) {
                     style = MaterialTheme.typography.titleMedium,
                 )
                 Text(
-                    text = "Scan the activation QR code your administrator provided. This is a " +
-                        "one-time step per device.",
+                    text = "Scan the activation QR code (once per device).",
                     style = MaterialTheme.typography.bodyMedium,
                     modifier = Modifier.padding(top = 12.dp),
                 )

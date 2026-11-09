@@ -122,7 +122,7 @@ class CountSubmissions @Inject constructor(
         val journal = journalDao.getJournal(journalId)?.journal
             ?: return EndCountResult.Refused("This journal's lines are not on this device.")
         if (journal.status == JournalStatus.POSTED) {
-            return EndCountResult.Refused("This journal has been posted in D365FO and can't be changed.")
+            return EndCountResult.Refused("Posted - can't change.")
         }
         claims.localClaim(journalId)?.takeIf { it.lost }?.let { lost ->
             return EndCountResult.Refused(

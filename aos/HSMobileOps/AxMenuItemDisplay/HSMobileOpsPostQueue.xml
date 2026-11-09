@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxMenuItemDisplay xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsPostQueue</Name>
+	<Label>Mobile posting queue</Label>
+	<HelpText>Every posting from the handhelds - its status, the reason if it failed, and its GRN.</HelpText>
+	<Object>HSMobileOpsPostQueue</Object>
+	<ObjectType>Form</ObjectType>
+</AxMenuItemDisplay>

@@ -851,3 +851,55 @@ Decision (user): the second sign-in takes over; the first device is signed out a
 - Home Discrepancy card opens the Report discrepancy dialog (not submitted). Pass.
 - Greeting "Warehouse AAC · Change" opens Change warehouse (AAC current, AAS). Pass.
 - 1.1.20: removed the More button from the My Dashboard band (user request; Services is a tab already). Installed on both devices; Home verified on the handheld.
+- 1.1.21–1.1.23: dashboard band background redrawn edge to edge (rack plus forklift, not a box grid); icons switched to the mock's own line icons (components/LineIcons.kt: badges, bottom bar, More rows, search field).
+- 1.1.23: the dashboard search bar opens a new Search screen (items, orders, journals), no longer On-hand. Item suggestions come from the device; scan/Enter calls the new AOS HSMobileOpsSearchSvc.search, which returns a PO/TO/journal by number, or the item plus its open PO lines, transfer lines and counting journal lines at the warehouse. Tapping an order opens it in Receive/Ship/Receive transfer. AOS objects prepared (deploy ps_bak122), NOT yet deployed: the VM RDP session wasn't connected.
+- HSMobileOpsSearchSvc deployed (ps_bak122 copied the files but failed to compile on a generated attribute; ps_bak123 fixed it: Errors 0, iisreset). Tested on the handheld (1.1.23):
+  - BSR-10113-0: item card (AAC available -2 / on hand -2 Pack), BSP-TO-000000004 To WMS, to ship 1 Pack, BSP-JN-000552022 counted 2 Pack. Pass.
+  - Tapping the TO opens Transfer — Ship on BSP-TO-000000004 (Start over, not posted). Pass.
+  - BSP-TO-000000002 (from WMS, to receive), BSP-JN-000552032 (spot count, 4 lines, open), BSP-PO-000161711 (BinSina, open). Pass.
+  - Partial "BSR-10113" found nothing → 1.1.24 lists matching items ("Did you mean") instead; also "Vendor 19721" and "2 Pack counted" labels. 1.1.24 installed, not yet re-tested (devices signed out).
+- Search scroll crash on BSR-47274-0 (duplicate LazyColumn key: one journal holding the item twice at one location) fixed in 1.1.25: rows keyed by position, same journal/location merged with counted summed. Verified on the emulator (11 journals, scrolls).
+- PO lines in search used RemainPurchPhysical, which never drops because the app registers without a packing slip, so search showed lines Receiving refused ("nothing left to receive"). Fixed on the AOS (ps_bak124, Errors 0): search uses HSMobileOpsReceivingService.orderedQtyByLine / stagedQtyByLine (made internal), and a PO searched by number reads "Received" when nothing is left. Verified: BSR-47274-0 no longer lists the registered POs; BSP-PO-000161707/10/11 read Received.
+- 1.1.26: tapping a result that can't be opened says why ("... is received in full - nothing to do on it here"). Verified on the emulator.
+- 1.1.27: search respects Menu access (a result for a module the worker can't use says so instead of opening it). 1.1.28: a journal on the device opens at its lines instead of the journal list. Both installed on the emulator; not yet verified (signed out). Handheld disconnected from USB at 1.1.26.
+- Found: release builds keep the session in memory only, so every install signs the device out (by design).
+- 21 Oct, emulator (002, 1.1.28): journal result BSP-JN-000552020 opens straight at its lines (1 of 3 counted). Pass. BSP-TO-000000002 (to receive) as 002, who lacks Transfer — Receive: "Transfer — Receive isn't on your menu". Pass. More, Services and Activity tabs checked with the line icons. Pass.
+- 1.1.29 built (Inventory folder badge green like the mock, it was brown), not installed yet: an install signs out. Handheld not visible to adb on 21 Oct.
+- 21 Oct, handheld (001, 1.1.26): scanning BSR-47274-0 into Search shows 17 Pack and 11 journals, no stale PO lines (AOS fix confirmed). The keyboard stayed open over the results after a hardware scan; fixed in 1.1.30 (a finished search closes it). BSP-PO-000161712/13 read Received; no open test PO left to try Receiving from search. Receive and PO creation screens checked: PO creation's vendor search was still the old grey field; 1.1.30 puts it (and Purchase return's) in the white "Choose vendor" card.
+- 1.1.29 emulator: Inventory management badge green. Pass.
+- 1.1.30 installed on both devices (signs them out).
+- 21 Oct, Pixel 8 Pro (3B111FDJG003YY, new device, 001, 1.1.30, 1344x2992): Home scales well (forklift band, line icons, widgets). Search BSR-10113-0: keyboard closed after the search (mInputShown=false), results fully visible. Pass. PO creation: vendor search in the white "Choose vendor" card. Pass. The grey ring on Search's Back arrow after the search is key-navigation focus from the adb Enter key event; not expected from a touch user.
+- Pixel 8 Pro, continued: counting journal list and the counting screen (BSP-JN-000552005, 2040 lines, claimed by 001 on this device; nothing counted) lay out well; variant rows wrap. Ship quantity dialog fits without scrolling on this screen. Opened from search on BSP-TO-000000004; Cancel and Start over, not posted. Pass.
+- 21 Oct, 1.1.31: own visual identity, so the app isn't a copy of the reference app: petrol palette (#0B5563) instead of navy/lavender; solid petrol dashboard band with the rack/forklift in faint white and a "Today" heading; red (logo) rounded-square Scan button instead of a round teal one; "Good morning, <name>" with a rounded-square avatar; dashboard widgets with the figure left-aligned and a filled action; sections renamed Quick access / Tips / Tell us; tabs Home / Modules / Activity / Settings; "All modules". Installed on the handheld and emulator; not yet seen (sign-in needed).
+- Feedback de97da6a (handheld, 1.1.31, Inventory count: "use the same styling for this screen as well"): 1.1.32 gives the journal cards the counting screen's progress ring beside "X of Y counted", bold journal numbers, and a tonal "Get data" button instead of a solid one on every card. Installed on the handheld and emulator; not yet seen (sign-in needed). Feedback status still New until verified.
+- 1.1.33: journal list made compact on request: 44dp ring left of the journal number, Get data as a small tonal button at the card's right for journals not yet on the device, tighter padding, smaller status text, "1 line" singular, "Reopen" instead of "Reopen counting".
+- Feedback 01a61693 (handheld, 1.1.32, Home: "make tiles vertical"; confirmed with the user it means the dashboard widgets): 1.1.33 stacks them one per row - badge, title and label left, figure and a small tonal action right. Installed; not yet seen.
+- 21 Oct feedback round (1.1.33, handheld) fixed in 1.1.34:
+  - 4fd56ed0 Home "give the count and open marker together": widget right side is one tonal marker "4 journals ›" (action word kept as the click label).
+  - 55cbfd35 "100 is over layered with green ring": ring text sized to the ring, thinner stroke under 56dp, a green tick at 100%.
+  - dccf2a1e "too much info on each card": journal card meta is description · "X of Y counted" (or lines); no date, own-claim timer, class/tolerance; statuses shortened (Submitted, Sent for review, Posted - closed, "1 unexpected item not sent", Send again).
+  - User request: six short tips in a swipe row (title + one line) instead of one long card; Tell us texts shortened.
+  Installed on the handheld and emulator; not yet seen.
+- 1.1.35: minimal text everywhere (user, 21 Oct: "everywhere make the text minimal"). About 230 messages, prompts and descriptions shortened across Home (module summaries and long-press descriptions; D365FO table names removed from that dialog), Settings, Receive, Ship/Receive transfer, counting (journal list, counting screen, store and spot count, dialogs), order creation, Activity, Feedback, Search, sign-in, connection status, tour, onboarding, and the data-layer error messages workers see. Behaviour unchanged; tests updated to the new wording (all pass). Installed; not yet seen.
+
+## 8 Nov 2026 - Counting screen layouts by count type (1.4.13, emulator, user 002, AAC)
+
+| Case | Result |
+|---|---|
+| Triggered count with several lines (BSP-JN-000552045, 8 lines, from Report discrepancy) | Standard layout: progress ring, scan card, list. Pass |
+| Triggered count with one line (552045 cut to 1 line on the device only, at a store without bins) | Focused card: TRIGGERED, Location AAC, item, name and batch, large focused Quantity found box, Confirm and end count. No list, ring or + button. Confirm saved the count, started End count and returned to the list. Pass. The DMF import then failed because the device held 1 of the journal's 8 lines, an artefact of the test setup |
+| Wall-to-wall (552011 marked wall-to-wall on the device only) | No By location switch; Location AAC with a full-width amber "Location is empty" above the scan card (it was cut off below it at first, fixed); Yes, it's empty on a one-location task returned to the list with End count. Pass |
+| Store with bins (AAC) | A one-line triggered count keeps the list, which asks for a bin first (by design) |
+
+The device database was restored afterwards. No wall-to-wall count was started in D365FO, which would have frozen AAC.
+
+## 8 Nov 2026 - Inventory count sub-menus and scan message (1.4.14 release, emulator, user 002, AAC)
+
+| Case | Result |
+|---|---|
+| Home > Inventory count | Opens the Inventory count page: Store count (no journal needed, becomes a journal in the Stock count control center), Spot count (12 open), Cycle count (7 open), Wall-to-wall count. 12 + 7 matches Home's 19 open. Pass |
+| Spot count | Spot journals only; tabs To count / Done; + New spot count in the top bar. Pass |
+| Cycle count | Planned and triggered journals, no spot or wall-to-wall; tabs To count / Recount / Done (4); no +. Pass |
+| Wall-to-wall count | Tabs To count / Done; "No wall-to-wall count in progress." Pass |
+| Store count | Opens Store count ("Count AAC, location by location", Start store count). Pass |
+| Scan in a bin on a 360x640dp screen (552008, BIN-A1, HSN001) | The header scrolls to "HSN001 · AAC: 1" and Undo after the scan - they were below the fold before. Undo restored 5. Pass |

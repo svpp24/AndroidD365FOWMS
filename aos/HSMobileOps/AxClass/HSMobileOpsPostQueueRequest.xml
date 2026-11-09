@@ -6,11 +6,15 @@
 /// <summary>
 /// Scopes processPending and getQueueStatus to one company - everything else about which rows
 /// to work is decided server-side (Pending for processing, everything for status).
+///
+/// IdempotencyKeys (comma separated) narrows getQueueStatus to those postings: how a handheld
+/// follows a posting it has handed over until D365FO has a final answer for it.
 /// </summary>
 [DataContractAttribute]
 class HSMobileOpsPostQueueRequest
 {
     DataAreaId dataAreaId;
+    str        idempotencyKeys;
 
 }
 ]]></Declaration>
@@ -24,6 +28,18 @@ class HSMobileOpsPostQueueRequest
     {
         dataAreaId = _value;
         return dataAreaId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmIdempotencyKeys</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('IdempotencyKeys')]
+    public str parmIdempotencyKeys(str _value = idempotencyKeys)
+    {
+        idempotencyKeys = _value;
+        return idempotencyKeys;
     }
 ]]></Source>
 			</Method>

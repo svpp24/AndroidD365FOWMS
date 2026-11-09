@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxSecurityPrivilege xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsDeviceWorkView</Name>
+	<Description>See the work each handheld holds that D365FO has not posted yet, and remove rows no longer wanted.</Description>
+	<Label>View mobile unsent work</Label>
+	<DirectAccessPermissions>
+		<AxSecurityDataEntityReference>
+			<Grant>
+				<Read>Allow</Read>
+				<Delete>Allow</Delete>
+			</Grant>
+			<Name>HSMobileOpsDeviceWork</Name>
+			<Fields />
+		</AxSecurityDataEntityReference>
+	</DirectAccessPermissions>
+	<EntryPoints>
+		<AxSecurityEntryPointReference>
+			<Name>HSMobileOpsDeviceWork</Name>
+			<Grant>
+				<Read>Allow</Read>
+				<Delete>Allow</Delete>
+			</Grant>
+			<ObjectName>HSMobileOpsDeviceWork</ObjectName>
+			<ObjectType>MenuItemDisplay</ObjectType>
+			<Forms />
+		</AxSecurityEntryPointReference>
+	</EntryPoints>
+	<FormControlOverrides />
+</AxSecurityPrivilege>

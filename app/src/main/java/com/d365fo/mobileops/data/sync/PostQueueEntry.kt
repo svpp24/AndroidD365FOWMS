@@ -23,4 +23,8 @@ data class PostQueueEntry(
     val userName: String?,
     /** Same shape this device sends when posting - a JSON array of [com.d365fo.mobileops.data.remote.dto.PostLineDto]. */
     val linesJson: String?,
+    val idempotencyKey: String = "",
+    /** Auto GRN: the product receipt posted with this registration. */
+    val grnId: String? = null,
+    val lineCount: Int = 0,
 )

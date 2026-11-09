@@ -245,6 +245,14 @@ class FakeCountTransport : CountTransport {
         return direct
     }
 
+    /** Wall-to-wall: what completing a location answers, and which were asked for. */
+    var complete: TransportResult<String> = TransportResult.Ok("A-01 is complete. 2 location(s) left.")
+    val completedLocations = mutableListOf<String>()
+    override suspend fun completeLocation(journalId: String, audit: SubmissionAudit, locationId: String): TransportResult<String> {
+        completedLocations += locationId
+        return complete
+    }
+
     override suspend fun submitExceptions(
         journalId: String,
         audit: SubmissionAudit,

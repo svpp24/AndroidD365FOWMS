@@ -158,7 +158,7 @@ class ToCreateViewModel @Inject constructor(
                     }
                 }
                 is NetworkResult.Error -> _state.update {
-                    it.copy(busy = false, error = if (!online.value) "$code isn't saved on this device. Look it up once while connected." else result.failure.message)
+                    it.copy(busy = false, error = if (!online.value) "$code not saved - look it up online once." else result.failure.message)
                 }
                 NetworkResult.Loading -> Unit
             }

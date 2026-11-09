@@ -141,7 +141,7 @@ class SyncNotifier @Inject constructor(
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle("Could not post $aggregateId")
-            .setContentText("${operation.label} failed and needs attention. Tap to review.")
+            .setContentText("${operation.label} failed - tap to review.")
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setAutoCancel(true)
             .setContentIntent(openApp)
@@ -204,9 +204,9 @@ class SyncNotifier @Inject constructor(
             .setContentTitle(if (postedLive) "$aggregateId received" else "$aggregateId captured")
             .setContentText(
                 if (postedLive) {
-                    "Received by D365FO. Registration is pending - process it from the Activity tab."
+                    "Received - posting shortly."
                 } else {
-                    "D365FO did not respond. Captured safely - will retry automatically."
+                    "Saved - retrying automatically."
                 },
             )
             .setPriority(NotificationCompat.PRIORITY_LOW)

@@ -1,0 +1,149 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsDeviceWorkResponse</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// HSMobileOpsDeviceWorkSvc response. Items: the worker's work saved from other devices (listWork). DisabledModules: modules switched off for this app version - on every answer, so the app keeps its copy current.
+/// </summary>
+[DataContractAttribute]
+class HSMobileOpsDeviceWorkResponse
+{
+    boolean    success;
+    str        errorCode;
+    str        message;
+    int        stored;
+    boolean    deviceCleanup;
+    int        finishedJournalDays;
+    int        orderHistoryDays;
+    int        oldWorkDays;
+    List       items;
+    List       disabledModules;
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmSuccess</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Success')]
+    public boolean parmSuccess(boolean _value = success)
+    {
+        success = _value;
+        return success;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmErrorCode</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ErrorCode')]
+    public str parmErrorCode(str _value = errorCode)
+    {
+        errorCode = _value;
+        return errorCode;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmMessage</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Message')]
+    public str parmMessage(str _value = message)
+    {
+        message = _value;
+        return message;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmStored</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Stored')]
+    public int parmStored(int _value = stored)
+    {
+        stored = _value;
+        return stored;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmDeviceCleanup</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('DeviceCleanup')]
+    public boolean parmDeviceCleanup(boolean _value = deviceCleanup)
+    {
+        deviceCleanup = _value;
+        return deviceCleanup;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmFinishedJournalDays</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('FinishedJournalDays')]
+    public int parmFinishedJournalDays(int _value = finishedJournalDays)
+    {
+        finishedJournalDays = _value;
+        return finishedJournalDays;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmOrderHistoryDays</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('OrderHistoryDays')]
+    public int parmOrderHistoryDays(int _value = orderHistoryDays)
+    {
+        orderHistoryDays = _value;
+        return orderHistoryDays;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmOldWorkDays</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('OldWorkDays')]
+    public int parmOldWorkDays(int _value = oldWorkDays)
+    {
+        oldWorkDays = _value;
+        return oldWorkDays;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmItems</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Items'),
+     DataCollectionAttribute(Types::Class, classStr(HSMobileOpsDeviceWorkRow))]
+    public List parmItems(List _value = items)
+    {
+        items = _value;
+        return items;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmDisabledModules</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('DisabledModules'),
+     DataCollectionAttribute(Types::Class, classStr(HSMobileOpsModuleSwitchRow))]
+    public List parmDisabledModules(List _value = disabledModules)
+    {
+        disabledModules = _value;
+        return disabledModules;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

@@ -1,0 +1,1072 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsCountWallToWall</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Wall-to-wall counting. A supervisor starts it for a warehouse on Cycle count warehouses: the
+/// warehouse is frozen at once (HSMobileOpsWarehouseFreeze) and a batch job builds the counting
+/// journal from what D365FO holds there, every item at location, batch and serial level, under
+/// the warehouse's wall-to-wall journal name. The store's assortment is added when the warehouse
+/// counts by assortment. Each location becomes a count task (HSMobileOpsCountTask), which the
+/// handheld claims as a range, counts per bin, and completes, or confirms empty.
+///
+/// Lines are settled by the dual count rules (HSMobileOpsCountDualEngine): a line whose counting
+/// group has dual counting on needs two counts, any other settles at its first. The journal posts
+/// only when every line is settled and every location complete, in batch, and the freeze is
+/// released once it has posted. Cancelling releases it too, and removes the journal.
+///
+/// Every step is safe after a crash: the build resumes the journal it was making, the post checks
+/// whether the journal posted before trying again.
+/// </summary>
+class HSMobileOpsCountWallToWall
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>start</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Freezes the warehouse and schedules the journal's build. A count whose build stopped (a
+    /// failed or lost job) is resumed by starting it again.
+    /// </summary>
+    public static void start(InventLocationId _warehouse)
+    {
+        HSMobileOpsCountWarehouse  row = HSMobileOpsCountWarehouse::find(_warehouse);
+        HSMobileOpsWarehouseFreeze freeze = HSMobileOpsWarehouseFreeze::findActive(_warehouse);
+        InventJournalName          journalName = InventJournalName::find(row.W2WJournalNameId);
+
+        if (!row.RecId)
+        {
+            throw error(strFmt('%1 is not on Cycle count warehouses.', _warehouse));
+        }
+        if (freeze.RecId && freeze.Status != HSMobileOpsFreezeStatus::Building)
+        {
+            throw error(strFmt('%1 already has a wall-to-wall count: %2, %3.', _warehouse, freeze.JournalId, freeze.Status));
+        }
+        if (freeze.RecId && HSMobileOpsCountWallToWall::jobAlive(freeze.BatchJobId))
+        {
+            throw error(strFmt('The journal for %1 is being built. Its status changes to Counting when it is ready.', _warehouse));
+        }
+        if (!journalName.RecId || journalName.JournalType != InventJournalType::Count)
+        {
+            throw error(strFmt('Set a counting journal name in Wall-to-wall journal name for %1 first.', _warehouse));
+        }
+
+        ttsbegin;
+        if (!freeze.RecId)
+        {
+            freeze.clear();
+            freeze.InventLocationId = _warehouse;
+            freeze.Status           = HSMobileOpsFreezeStatus::Building;
+            freeze.StartedUtc       = DateTimeUtil::utcNow();
+            freeze.StartedBy        = curUserId();
+            freeze.insert();
+        }
+        freeze = HSMobileOpsCountWallToWall::freezeOf(freeze.RecId, true);
+        freeze.BatchJobId = HSMobileOpsCountWallToWallBatch::schedule(freeze.RecId, HSMobileOpsCountWallToWallBatch::opBuild(),
+            strFmt('Mobile ops: build wall-to-wall count %1', _warehouse));
+        freeze.Message    = 'Building the journal in batch';
+        freeze.update();
+        ttscommit;
+
+        info(strFmt('%1 is frozen. Its wall-to-wall journal is being built in batch: the status changes to Counting when it is ready.', _warehouse));
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>cancel</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Ends a wall-to-wall count without posting, in batch: removing a whole warehouse's journal
+    /// takes minutes, too long for the supervisor's screen. The warehouse stays frozen until it
+    /// is gone. Not while a job is building, posting or already cancelling it.
+    /// </summary>
+    public static void cancel(InventLocationId _warehouse)
+    {
+        HSMobileOpsWarehouseFreeze freeze = HSMobileOpsWarehouseFreeze::findActive(_warehouse);
+
+        if (!freeze.RecId)
+        {
+            throw error(strFmt('%1 has no wall-to-wall count to cancel.', _warehouse));
+        }
+        if (HSMobileOpsCountWallToWall::jobAlive(freeze.BatchJobId))
+        {
+            throw error(strFmt('A batch job is working on the wall-to-wall count for %1 (%2). Cancel it when the job ends.',
+                _warehouse, freeze.Message));
+        }
+        if (freeze.Status == HSMobileOpsFreezeStatus::Posting)
+        {
+            throw error(strFmt('%1 is posting. Wait for it to end.', freeze.JournalId));
+        }
+
+        ttsbegin;
+        freeze = HSMobileOpsCountWallToWall::freezeOf(freeze.RecId, true);
+        freeze.BatchJobId = HSMobileOpsCountWallToWallBatch::schedule(freeze.RecId, HSMobileOpsCountWallToWallBatch::opCancel(),
+            strFmt('Mobile ops: cancel wall-to-wall count %1', _warehouse));
+        freeze.Message    = 'Cancelling in batch: the journal is being removed';
+        freeze.update();
+        ttscommit;
+
+        info(strFmt('The wall-to-wall count for %1 is being cancelled in batch. The warehouse is released when its journal is removed.', _warehouse));
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>runCancel</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The batch side of cancel: removes the journal, its counts, bins and tasks, then releases
+    /// the warehouse. Run again after a crash it removes what is left.
+    /// </summary>
+    public static void runCancel(RefRecId _freezeRecId)
+    {
+        HSMobileOpsWarehouseFreeze freeze = HSMobileOpsCountWallToWall::freezeOf(_freezeRecId);
+        InventJournalTable         journalTable;
+        InventJournalTrans         journalTrans;
+        HSMobileOpsCountAttempt    attempt;
+        HSMobileOpsCountBinLine    binLine;
+        HSMobileOpsCountTask       task;
+        int                        infologFrom = infologLine();
+
+        if (!freeze.isActive() || freeze.Status == HSMobileOpsFreezeStatus::Posting)
+        {
+            return;
+        }
+        try
+        {
+        ttsbegin;
+        if (freeze.JournalId)
+        {
+            journalTable = InventJournalTable::find(freeze.JournalId, true);
+            if (journalTable.Posted)
+            {
+                throw error(strFmt('%1 has posted: there is nothing to cancel.', freeze.JournalId));
+            }
+            delete_from attempt
+                exists join journalTrans
+                    where journalTrans.RecId     == attempt.InventJournalTransRecId
+                       && journalTrans.JournalId == freeze.JournalId;
+            delete_from binLine
+                where binLine.JournalId == freeze.JournalId;
+            delete_from task
+                where task.JournalId == freeze.JournalId;
+            if (journalTable.RecId)
+            {
+                journalTable.delete();
+            }
+        }
+        freeze = HSMobileOpsCountWallToWall::freezeOf(freeze.RecId, true);
+        freeze.Status      = HSMobileOpsFreezeStatus::Cancelled;
+        freeze.ReleasedUtc = DateTimeUtil::utcNow();
+        freeze.ReleasedBy  = curUserId();
+        freeze.BatchJobId  = 0;
+        freeze.Message     = subStr(strFmt('Cancelled; journal %1 removed', freeze.JournalId), 1, 250);
+        freeze.update();
+        ttscommit;
+        }
+        catch (Exception::Error)
+        {
+            HSMobileOpsCountWallToWall::noteFailure(_freezeRecId,
+                strFmt('Cancel failed: %1. Cancel again to retry.', HSMobileOpsCountJournalCreateBatch::errorsSince(infologFrom)));
+        }
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>requestPost</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Schedules the posting. Refused at once while lines are unsettled or locations incomplete:
+    /// the same rules posting checks, said before a job is spent on them.
+    /// </summary>
+    public static void requestPost(InventLocationId _warehouse)
+    {
+        HSMobileOpsWarehouseFreeze freeze = HSMobileOpsWarehouseFreeze::findActive(_warehouse);
+        int                        unresolved;
+        int                        openTasks;
+
+        if (!freeze.RecId || freeze.Status != HSMobileOpsFreezeStatus::Counting)
+        {
+            throw error(strFmt('%1 has no wall-to-wall count ready to post%2.', _warehouse,
+                freeze.RecId ? strFmt(' (it is %1)', freeze.Status) : ''));
+        }
+        unresolved = HSMobileOpsCountDualEngine::unresolvedLines(freeze.JournalId);
+        openTasks  = HSMobileOpsCountTask::openTasks(freeze.JournalId);
+        if (unresolved || openTasks)
+        {
+            throw error(strFmt('%1 cannot post yet: %2 line(s) not settled and %3 location(s) not complete.',
+                freeze.JournalId, unresolved, openTasks));
+        }
+
+        ttsbegin;
+        freeze = HSMobileOpsCountWallToWall::freezeOf(freeze.RecId, true);
+        freeze.Status     = HSMobileOpsFreezeStatus::Posting;
+        freeze.BatchJobId = HSMobileOpsCountWallToWallBatch::schedule(freeze.RecId, HSMobileOpsCountWallToWallBatch::opPost(),
+            strFmt('Mobile ops: post wall-to-wall count %1', freeze.JournalId));
+        freeze.Message    = 'Posting in batch';
+        freeze.update();
+        ttscommit;
+
+        info(strFmt('%1 is posting in batch. %2 is released when it has posted.', freeze.JournalId, _warehouse));
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>runBuild</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The batch side of start. Resumes the journal a crashed run was making: its lines are
+    /// written in one transaction, and every later step adds only what is missing.
+    /// </summary>
+    public static void runBuild(RefRecId _freezeRecId)
+    {
+        HSMobileOpsWarehouseFreeze freeze = HSMobileOpsCountWallToWall::freezeOf(_freezeRecId);
+        HSMobileOpsCountWarehouse  row;
+        InventJournalTable         journalTable;
+        InventJournalId            journalId;
+        str                        assortmentResult;
+        int                        infologFrom = infologLine();
+        int                        assortmentInfolog;
+        int                        lines;
+        int                        tasks;
+        TransDate                  today = DateTimeUtil::getSystemDate(DateTimeUtil::getUserPreferredTimeZone());
+
+        if (freeze.Status != HSMobileOpsFreezeStatus::Building)
+        {
+            return;
+        }
+        row = HSMobileOpsCountWarehouse::find(freeze.InventLocationId);
+
+        try
+        {
+            journalId = freeze.JournalId;
+            journalTable = journalId ? InventJournalTable::find(journalId) : null;
+            if (journalTable.RecId && !HSMobileOpsCountWallToWall::lineCount(journalId))
+            {
+                // A header whose lines went back with a crashed transaction.
+                ttsbegin;
+                journalTable = InventJournalTable::find(journalId, true);
+                journalTable.delete();
+                ttscommit;
+                journalTable = null;
+            }
+            if (!journalTable.RecId)
+            {
+                journalId = HSMobileOpsCountWallToWall::createHeader(freeze.InventLocationId, row.W2WJournalNameId,
+                    strFmt('Wall-to-wall - %1 - %2', freeze.InventLocationId, date2StrUsr(today, DateFlags::None)));
+                HSMobileOpsCountWallToWall::noteJournal(_freezeRecId, journalId);
+            }
+            // Every stock record of the warehouse, whatever its counting group. A resumed build
+            // adds only what is missing.
+            HSMobileOpsCountWallToWall::addOnHandLines(journalId, freeze.InventLocationId);
+
+            if (row.AssortmentBased)
+            {
+                assortmentInfolog = infologLine();
+                try
+                {
+                    assortmentResult = HSMobileOpsCountAssortment::applyToJournal(journalId, freeze.InventLocationId);
+                }
+                catch (Exception::Error)
+                {
+                    assortmentResult = strFmt('Assortment not applied: %1', HSMobileOpsCountJournalCreateBatch::errorsSince(assortmentInfolog));
+                }
+            }
+
+            HSMobileOpsCountDualEngine::markDualLines(journalId, freeze.InventLocationId);
+            ttsbegin;
+            journalTable = InventJournalTable::find(journalId, true);
+            // Settled by the dual count rules whatever its lines need: a line needing one count
+            // settles at its first, and nothing posts unsettled.
+            journalTable.HSMobileOpsDualCount  = NoYes::Yes;
+            journalTable.HSMobileOpsWallToWall = NoYes::Yes;
+            journalTable.update();
+            ttscommit;
+
+            tasks = HSMobileOpsCountWallToWall::makeTasks(journalId, freeze.InventLocationId);
+            lines = HSMobileOpsCountWallToWall::lineCount(journalId);
+
+            ttsbegin;
+            freeze = HSMobileOpsCountWallToWall::freezeOf(_freezeRecId, true);
+            freeze.Status     = HSMobileOpsFreezeStatus::Counting;
+            freeze.BatchJobId = 0;
+            freeze.Message    = subStr(strFmt('%1 lines in %2 locations to count%3', lines, tasks,
+                assortmentResult ? '. ' + assortmentResult : ''), 1, 250);
+            freeze.update();
+            ttscommit;
+        }
+        catch (Exception::Error)
+        {
+            HSMobileOpsCountWallToWall::noteFailure(_freezeRecId,
+                strFmt('Build failed: %1. Start wall-to-wall again to resume it, or cancel it.', HSMobileOpsCountJournalCreateBatch::errorsSince(infologFrom)));
+        }
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>createHeader</Name>
+				<Source><![CDATA[
+
+    /// <summary>The journal header, from the warehouse's wall-to-wall journal name.</summary>
+    private static InventJournalId createHeader(InventLocationId _warehouse, InventJournalNameId _journalNameId, str _description)
+    {
+        InventLocation     inventLocation = InventLocation::find(_warehouse);
+        InventJournalName  journalName = InventJournalName::find(_journalNameId);
+        InventJournalTable journalTable;
+        JournalTableData   journalTableData;
+
+        if (!inventLocation.RecId)
+        {
+            throw error(strFmt('No warehouse %1', _warehouse));
+        }
+        if (journalName.JournalType != InventJournalType::Count)
+        {
+            throw error(strFmt('%1 is not a counting journal name', _journalNameId));
+        }
+        ttsbegin;
+        journalTable.clear();
+        journalTable.initValue();
+        journalTableData = JournalTableData::newTable(journalTable);
+        journalTable.JournalId = journalTableData.nextJournalId();
+        journalTableData.initFromJournalName(journalName);
+        journalTable.InventSiteId          = inventLocation.InventSiteId;
+        journalTable.InventLocationId      = _warehouse;
+        journalTable.Description           = subStr(_description, 1, 60);
+        journalTable.HSMobileOpsWallToWall = NoYes::Yes;
+        journalTable.insert();
+        ttscommit;
+        return journalTable.JournalId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>addOnHandLines</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// One line per stock record D365FO holds in the warehouse: item and every dimension it
+    /// tracks there (location, batch, serial, variant, status), with its physical on-hand. Not
+    /// D365FO's "Create by counting group": with groups off it lets nothing through. In
+    /// transactions of 500, skipping what the journal holds already, so a crashed build resumes.
+    /// </summary>
+    private static int addOnHandLines(InventJournalId _journalId, InventLocationId _warehouse)
+    {
+        InventJournalTable journalTable = InventJournalTable::find(_journalId);
+        InventJournalTrans journalTrans;
+        InventJournalTrans existing;
+        InventSum          inventSum;
+        InventDim          inventDim;
+        InventTable        inventTable;
+        Set                onJournal = new Set(Types::String);
+        LineNum            lineNum;
+        TransDate          today = DateTimeUtil::getSystemDate(DateTimeUtil::getUserPreferredTimeZone());
+        int                added;
+        int                inBatch;
+        List               stock = new List(Types::Container);
+        ListEnumerator     records;
+        ItemId             itemId;
+        InventDimId        inventDimId;
+        InventQty          onHand;
+
+        while select ItemId, InventDimId from existing
+            where existing.JournalId == _journalId
+        {
+            onJournal.add(existing.ItemId + '|' + existing.InventDimId);
+        }
+        select maxOf(LineNum) from existing
+            where existing.JournalId == _journalId;
+        lineNum = existing.LineNum;
+
+        // Read first, write after: a commit inside the select would start the select over.
+        while select ItemId, InventDimId, PhysicalInvent from inventSum
+            order by ItemId
+            where inventSum.Closed         == NoYes::No
+               && inventSum.PhysicalInvent != 0
+            exists join inventDim
+                where inventDim.inventDimId      == inventSum.InventDimId
+                   && inventDim.InventLocationId == _warehouse
+        {
+            if (!onJournal.in(inventSum.ItemId + '|' + inventSum.InventDimId))
+            {
+                stock.addEnd([inventSum.ItemId, inventSum.InventDimId, inventSum.PhysicalInvent]);
+            }
+        }
+
+        ttsbegin;
+        records = stock.getEnumerator();
+        while (records.moveNext())
+        {
+            [itemId, inventDimId, onHand] = records.current();
+            inventTable = InventTable::find(itemId);
+            lineNum++;
+            journalTrans.clear();
+            journalTrans.initValue();
+            journalTrans.initFromInventJournalTable(journalTable);
+            journalTrans.LineNum      = lineNum;
+            journalTrans.TransDate    = today;
+            journalTrans.ItemId       = itemId;
+            journalTrans.initFromInventTable(inventTable);
+            journalTrans.InventDimId  = inventDimId;
+            journalTrans.InventOnHand = onHand;
+            journalTrans.Counted      = 0;
+            journalTrans.Qty          = 0;
+            journalTrans.insert();
+            added++;
+            inBatch++;
+            if (inBatch >= 500)
+            {
+                ttscommit;
+                ttsbegin;
+                inBatch = 0;
+            }
+        }
+        ttscommit;
+        return added;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>runPost</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The batch side of requestPost: posts the journal, then releases the warehouse. A journal
+    /// that posted before a crash is not posted again; its freeze is only released.
+    /// </summary>
+    public static void runPost(RefRecId _freezeRecId)
+    {
+        HSMobileOpsWarehouseFreeze freeze = HSMobileOpsCountWallToWall::freezeOf(_freezeRecId);
+        InventJournalTable         journalTable;
+        JournalCheckPost           checkPost;
+        int                        infologFrom = infologLine();
+
+        if (freeze.Status != HSMobileOpsFreezeStatus::Posting)
+        {
+            return;
+        }
+
+        try
+        {
+            journalTable = InventJournalTable::find(freeze.JournalId);
+            if (!journalTable.Posted)
+            {
+                checkPost = InventJournalCheckPost::newPostJournal(journalTable);
+                checkPost.parmThrowCheckFailed(true);
+                checkPost.runOperation();
+            }
+            journalTable = InventJournalTable::find(freeze.JournalId);
+            if (!journalTable.Posted)
+            {
+                throw error(strFmt('%1 did not post.', freeze.JournalId));
+            }
+
+            ttsbegin;
+            freeze = HSMobileOpsCountWallToWall::freezeOf(_freezeRecId, true);
+            freeze.Status      = HSMobileOpsFreezeStatus::Posted;
+            freeze.ReleasedUtc = DateTimeUtil::utcNow();
+            freeze.ReleasedBy  = curUserId();
+            freeze.BatchJobId  = 0;
+            freeze.Message     = subStr(strFmt('%1 posted; warehouse released', freeze.JournalId), 1, 250);
+            freeze.update();
+            ttscommit;
+        }
+        catch (Exception::Error)
+        {
+            ttsbegin;
+            freeze = HSMobileOpsCountWallToWall::freezeOf(_freezeRecId, true);
+            freeze.Status     = HSMobileOpsFreezeStatus::Counting;
+            freeze.BatchJobId = 0;
+            freeze.Message    = subStr(strFmt('Posting failed: %1', HSMobileOpsCountJournalCreateBatch::errorsSince(infologFrom)), 1, 250);
+            freeze.update();
+            ttscommit;
+        }
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>checkJournalCanPost</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// For JournalCheckPost, on every inventory journal. A wall-to-wall journal needs every
+    /// location complete. Any other journal with stock in a frozen warehouse is refused, on
+    /// either side of a transfer.
+    /// </summary>
+    public static boolean checkJournalCanPost(InventJournalId _journalId, boolean _posting = false)
+    {
+        InventJournalTable journalTable = InventJournalTable::find(_journalId);
+        InventJournalTrans journalTrans;
+        InventDim          inventDim;
+        boolean            ok = true;
+        int                openTasks;
+
+        if (!journalTable.RecId)
+        {
+            return true;
+        }
+        if (journalTable.HSMobileOpsWallToWall)
+        {
+            // Posted only by Post wall-to-wall, whose batch releases the warehouse after: posted
+            // any other way, the warehouse would stay frozen with nothing left to count. Validate
+            // (Check) is still allowed.
+            if (HSMobileOpsWarehouseFreeze::findByJournal(_journalId).Status != HSMobileOpsFreezeStatus::Posting
+             && _posting)
+            {
+                ok = checkFailed(strFmt('%1 is a wall-to-wall count. Post it with Post wall-to-wall on Cycle count warehouses, which releases the warehouse when it has posted.', _journalId));
+            }
+            openTasks = HSMobileOpsCountTask::openTasks(_journalId);
+            if (openTasks)
+            {
+                ok = checkFailed(strFmt('%1 has %2 location(s) not complete. Each must be counted and completed, or confirmed empty, before it can post.',
+                    _journalId, openTasks));
+            }
+        }
+
+        while select InventLocationId from inventDim
+            group by InventLocationId
+            exists join journalTrans
+                where journalTrans.JournalId   == _journalId
+                   && journalTrans.InventDimId == inventDim.inventDimId
+        {
+            ok = HSMobileOpsWarehouseFreeze::checkNotFrozen(inventDim.InventLocationId, _journalId) && ok;
+        }
+        while select InventLocationId from inventDim
+            group by InventLocationId
+            exists join journalTrans
+                where journalTrans.JournalId     == _journalId
+                   && journalTrans.ToInventDimId == inventDim.inventDimId
+        {
+            ok = HSMobileOpsWarehouseFreeze::checkNotFrozen(inventDim.InventLocationId, _journalId) && ok;
+        }
+        return ok;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>isWallToWall</Name>
+				<Source><![CDATA[
+
+    public static boolean isWallToWall(InventJournalId _journalId)
+    {
+        return _journalId && InventJournalTable::find(_journalId).HSMobileOpsWallToWall == NoYes::Yes;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>isCountable</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// A wall-to-wall journal is on the handheld only while its count is Counting: not while it is
+    /// being built, nor once it is posting.
+    /// </summary>
+    public static boolean isCountable(InventJournalId _journalId)
+    {
+        return HSMobileOpsWarehouseFreeze::findByJournal(_journalId).Status == HSMobileOpsFreezeStatus::Counting;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>makeTasks</Name>
+				<Source><![CDATA[
+
+    /// <summary>One task per location of the journal; a run again adds only the missing ones.</summary>
+    private static int makeTasks(InventJournalId _journalId, InventLocationId _warehouse)
+    {
+        InventJournalTrans   journalTrans;
+        InventDim            inventDim;
+        HSMobileOpsCountTask task;
+        int                  tasks;
+
+        ttsbegin;
+        while select count(RecId) from journalTrans
+            where journalTrans.JournalId == _journalId
+            join wMSLocationId from inventDim
+                group by wMSLocationId
+                where inventDim.inventDimId == journalTrans.InventDimId
+        {
+            task = HSMobileOpsCountTask::find(_journalId, inventDim.wMSLocationId, true);
+            if (!task.RecId)
+            {
+                task.clear();
+                task.JournalId        = _journalId;
+                task.InventLocationId = _warehouse;
+                task.WMSLocationId    = inventDim.wMSLocationId;
+                task.Status           = HSMobileOpsCountTaskStatus::Open;
+                task.LineCount        = int642int(journalTrans.RecId);
+                task.insert();
+            }
+            else if (task.LineCount != int642int(journalTrans.RecId))
+            {
+                task.LineCount = int642int(journalTrans.RecId);
+                task.update();
+            }
+            tasks++;
+        }
+        ttscommit;
+        return tasks;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>refreshTasks</Name>
+				<Source><![CDATA[
+
+    /// <summary>After lines were added to a journal in count: tasks for any new location, counts right.</summary>
+    public static void refreshTasks(InventJournalId _journalId)
+    {
+        HSMobileOpsWarehouseFreeze freeze = HSMobileOpsWarehouseFreeze::findByJournal(_journalId);
+
+        if (freeze.RecId)
+        {
+            HSMobileOpsCountWallToWall::makeTasks(_journalId, freeze.InventLocationId);
+        }
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>taskRanges</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The journal's locations still to count, as the handheld's claimable ranges: one location
+    /// each. Empty once every location is complete; second counts and recounts then go journal-wide.
+    /// </summary>
+    public static List taskRanges(InventJournalId _journalId)
+    {
+        List                    ranges = new List(Types::Class);
+        HSMobileOpsCountTask    task;
+        HSMobileOpsCountRangeRow range;
+
+        while select task
+            order by WMSLocationId
+            where task.JournalId == _journalId
+               && task.Status    != HSMobileOpsCountTaskStatus::Completed
+        {
+            range = new HSMobileOpsCountRangeRow();
+            range.parmRangeId(HSMobileOpsCountWallToWall::rangeIdOf(task.WMSLocationId));
+            range.parmLabel(task.WMSLocationId ? task.WMSLocationId : '(no location)');
+            range.parmLocationFrom(task.WMSLocationId);
+            range.parmLocationTo(task.WMSLocationId);
+            range.parmLineCount(task.LineCount);
+            ranges.addEnd(range);
+        }
+        return ranges;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>taskClaims</Name>
+				<Source><![CDATA[
+
+    /// <summary>Who is counting which location, for the handheld's "Claimed by".</summary>
+    public static List taskClaims(InventJournalId _journalId)
+    {
+        List                     claims = new List(Types::Class);
+        HSMobileOpsCountTask     task;
+        HSMobileOpsCountClaimRow claim;
+
+        while select task
+            where task.JournalId == _journalId
+               && task.Status    == HSMobileOpsCountTaskStatus::InProgress
+        {
+            claim = new HSMobileOpsCountClaimRow();
+            claim.parmClaimedBy(strFmt('%1 (%2)', HSMobileOpsUser::find(task.AssignedUserId).DisplayName, task.AssignedUserId));
+            claim.parmDeviceId('');
+            claim.parmRangeId(HSMobileOpsCountWallToWall::rangeIdOf(task.WMSLocationId));
+            claim.parmLocationFrom(task.WMSLocationId);
+            claim.parmLocationTo(task.WMSLocationId);
+            claim.parmExpiresUtc(DateTimeUtil::maxValue());
+            claims.addEnd(claim);
+        }
+        return claims;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>claimTask</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// A counter takes a location. Theirs again if they had it; refused while someone else has
+    /// it, or once it is complete. Answers an error code, or empty when it is theirs.
+    /// </summary>
+    public static str claimTask(InventJournalId _journalId, WMSLocationId _location, str _userId, HSMobileOpsCountClaimResponse _response)
+    {
+        HSMobileOpsCountTask task;
+
+        ttsbegin;
+        task = HSMobileOpsCountTask::find(_journalId, _location, true);
+        if (!task.RecId)
+        {
+            ttscommit;
+            _response.parmMessage(strFmt('%1 is not a location of %2.', _location, _journalId));
+            return 'INVALID_REQUEST';
+        }
+        if (task.Status == HSMobileOpsCountTaskStatus::Completed)
+        {
+            ttscommit;
+            _response.parmMessage(strFmt('%1 is already complete.', _location));
+            return 'TASK_COMPLETED';
+        }
+        if (task.Status == HSMobileOpsCountTaskStatus::InProgress && task.AssignedUserId != _userId)
+        {
+            ttscommit;
+            _response.parmClaimedBy(strFmt('%1 (%2)', HSMobileOpsUser::find(task.AssignedUserId).DisplayName, task.AssignedUserId));
+            return 'CLAIMED_BY_OTHER';
+        }
+        if (task.Status != HSMobileOpsCountTaskStatus::InProgress)
+        {
+            task.Status         = HSMobileOpsCountTaskStatus::InProgress;
+            task.AssignedUserId = _userId;
+            task.StartedUtc     = DateTimeUtil::utcNow();
+            task.update();
+        }
+        ttscommit;
+
+        _response.parmSuccess(true);
+        _response.parmClaimToken(HSMobileOpsCountWallToWall::taskToken(task.RecId));
+        _response.parmClaimedBy(strFmt('%1 (%2)', HSMobileOpsUser::find(_userId).DisplayName, _userId));
+        _response.parmRangeId(HSMobileOpsCountWallToWall::rangeIdOf(task.WMSLocationId));
+        _response.parmLocationFrom(task.WMSLocationId);
+        _response.parmLocationTo(task.WMSLocationId);
+        _response.parmExpiresUtc(DateTimeUtil::maxValue());
+        _response.parmHeartbeatSeconds(HSMobileOpsCountTaskService::claimHeartbeatSeconds());
+        return '';
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>rangeIdOf</Name>
+				<Source><![CDATA[
+
+    /// <summary>A location as the handheld's range id: prefixed, so a blank location is a range too.</summary>
+    public static str rangeIdOf(WMSLocationId _location)
+    {
+        return 'LOC:' + _location;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>locationOfRange</Name>
+				<Source><![CDATA[
+
+    public static WMSLocationId locationOfRange(str _rangeId)
+    {
+        return strStartsWith(_rangeId, 'LOC:') ? subStr(_rangeId, 5, 30) : _rangeId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>taskToken</Name>
+				<Source><![CDATA[
+
+    /// <summary>A wall-to-wall claim's token: the task, not a journal claim row.</summary>
+    public static str taskToken(RefRecId _taskRecId)
+    {
+        return 'W2W-' + int642Str(_taskRecId);
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>taskOfToken</Name>
+				<Source><![CDATA[
+
+    public static HSMobileOpsCountTask taskOfToken(str _token, boolean _forUpdate = false)
+    {
+        HSMobileOpsCountTask task;
+
+        if (strStartsWith(_token, 'W2W-'))
+        {
+            task.selectForUpdate(_forUpdate);
+            select firstOnly task
+                where task.RecId == str2Int64(subStr(_token, 5, 30));
+        }
+        return task;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>releaseTask</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// A counter gives a location back without completing it: open for anyone again, unless they
+    /// have counted something there.
+    /// </summary>
+    public static void releaseTask(str _token, str _userId)
+    {
+        HSMobileOpsCountTask task;
+
+        HSMobileOpsCountAttempt attempt;
+        InventJournalTrans      journalTrans;
+        InventDim               inventDim;
+
+        ttsbegin;
+        task = HSMobileOpsCountWallToWall::taskOfToken(_token, true);
+        // Counts already made there keep it theirs: someone else would get those lines as a second count.
+        select firstOnly RecId from attempt
+            where attempt.UserId == task.AssignedUserId
+            exists join journalTrans
+                where journalTrans.RecId     == attempt.InventJournalTransRecId
+                   && journalTrans.JournalId == task.JournalId
+            exists join inventDim
+                where inventDim.inventDimId   == journalTrans.InventDimId
+                   && inventDim.wMSLocationId == task.WMSLocationId;
+        if (task.RecId && task.Status == HSMobileOpsCountTaskStatus::InProgress && !attempt.RecId
+         && (!_userId || task.AssignedUserId == _userId))
+        {
+            task.Status         = HSMobileOpsCountTaskStatus::Open;
+            task.AssignedUserId = '';
+            task.update();
+        }
+        ttscommit;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>completeLocation</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// A counter says a location is done. Refused while any of its lines has no count at all:
+    /// an untouched line is never taken as zero. Answers an error message, or empty.
+    /// </summary>
+    public static str completeLocation(InventJournalId _journalId, WMSLocationId _location, str _userId)
+    {
+        HSMobileOpsCountTask task;
+        int                  uncounted;
+
+        if (!HSMobileOpsWarehouseFreeze::findByJournal(_journalId).isActive())
+        {
+            return strFmt('%1 is not a wall-to-wall count in progress.', _journalId);
+        }
+        uncounted = HSMobileOpsCountWallToWall::linesAt(_journalId, _location, true);
+
+        ttsbegin;
+        task = HSMobileOpsCountTask::find(_journalId, _location, true);
+        if (!task.RecId)
+        {
+            ttscommit;
+            return strFmt('%1 is not a location of %2.', _location, _journalId);
+        }
+        if (task.Status == HSMobileOpsCountTaskStatus::Completed)
+        {
+            ttscommit;
+            return '';
+        }
+        if (task.Status == HSMobileOpsCountTaskStatus::InProgress && task.AssignedUserId && task.AssignedUserId != _userId)
+        {
+            ttscommit;
+            return strFmt('%1 is being counted by %2.', _location, task.AssignedUserId);
+        }
+        if (uncounted)
+        {
+            ttscommit;
+            return strFmt('%1 line(s) at %2 have no count. Count them (0 if the item is not there), or confirm the location empty.', uncounted, _location);
+        }
+        task.Status       = HSMobileOpsCountTaskStatus::Completed;
+        task.CompletedBy  = _userId;
+        task.CompletedUtc = DateTimeUtil::utcNow();
+        task.update();
+        ttscommit;
+        return '';
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>confirmEmpty</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// "Location empty": every line at the location is settled at 0, EmptyConfirmed, and the
+    /// location is complete. Refused once anyone else has counted there, or this counter found
+    /// stock there: a count is not undone by saying the location is empty. This counter's own
+    /// zeros are what the handheld sends with it. Answers an error message, or empty.
+    /// </summary>
+    public static str confirmEmpty(InventJournalId _journalId, WMSLocationId _location, str _userId)
+    {
+        HSMobileOpsCountTask    task;
+        InventJournalTrans      journalTrans;
+        InventDim               inventDim;
+        HSMobileOpsCountAttempt attempt;
+
+        if (!HSMobileOpsWarehouseFreeze::findByJournal(_journalId).isActive())
+        {
+            return strFmt('%1 is not a wall-to-wall count in progress.', _journalId);
+        }
+        select firstOnly RecId from attempt
+            where attempt.UserId     != _userId
+               || attempt.CountedQty != 0
+            exists join journalTrans
+                where journalTrans.RecId     == attempt.InventJournalTransRecId
+                   && journalTrans.JournalId == _journalId
+            exists join inventDim
+                where inventDim.inventDimId   == journalTrans.InventDimId
+                   && inventDim.wMSLocationId == _location;
+        if (attempt.RecId)
+        {
+            return strFmt('Stock is already counted at %1, so it cannot be confirmed empty. Count the rest instead (0 where the item is not there).', _location);
+        }
+
+        ttsbegin;
+        task = HSMobileOpsCountTask::find(_journalId, _location, true);
+        if (!task.RecId)
+        {
+            ttscommit;
+            return strFmt('%1 is not a location of %2.', _location, _journalId);
+        }
+        if (task.Status == HSMobileOpsCountTaskStatus::InProgress && task.AssignedUserId && task.AssignedUserId != _userId)
+        {
+            ttscommit;
+            return strFmt('%1 is being counted by %2.', _location, task.AssignedUserId);
+        }
+        while select forUpdate journalTrans
+            where journalTrans.JournalId              == _journalId
+               && journalTrans.HSMobileOpsCountStatus != HSMobileOpsCountStatus::Approved
+               && journalTrans.HSMobileOpsCountStatus != HSMobileOpsCountStatus::EmptyConfirmed
+            exists join inventDim
+                where inventDim.inventDimId   == journalTrans.InventDimId
+                   && inventDim.wMSLocationId == _location
+        {
+            journalTrans.Counted                = 0;
+            journalTrans.HSMobileOpsFinalQty    = 0;
+            journalTrans.HSMobileOpsCountStatus = HSMobileOpsCountStatus::EmptyConfirmed;
+            journalTrans.modifiedField(fieldNum(InventJournalTrans, Counted));
+            journalTrans.update();
+        }
+        task.Status         = HSMobileOpsCountTaskStatus::Completed;
+        task.EmptyConfirmed = NoYes::Yes;
+        task.CompletedBy    = _userId;
+        task.CompletedUtc   = DateTimeUtil::utcNow();
+        task.update();
+        ttscommit;
+        return '';
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>linesAt</Name>
+				<Source><![CDATA[
+
+    /// <summary>The journal's lines at a location; only those nobody has counted yet when asked.</summary>
+    private static int linesAt(InventJournalId _journalId, WMSLocationId _location, boolean _uncountedOnly)
+    {
+        InventJournalTrans journalTrans;
+        InventDim          inventDim;
+
+        if (_uncountedOnly)
+        {
+            select count(RecId) from journalTrans
+                where journalTrans.JournalId              == _journalId
+                   && journalTrans.HSMobileOpsCountStatus == HSMobileOpsCountStatus::Open
+                exists join inventDim
+                    where inventDim.inventDimId   == journalTrans.InventDimId
+                       && inventDim.wMSLocationId == _location;
+        }
+        else
+        {
+            select count(RecId) from journalTrans
+                where journalTrans.JournalId == _journalId
+                exists join inventDim
+                    where inventDim.inventDimId   == journalTrans.InventDimId
+                       && inventDim.wMSLocationId == _location;
+        }
+        return int642int(journalTrans.RecId);
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>lineCount</Name>
+				<Source><![CDATA[
+
+    private static int lineCount(InventJournalId _journalId)
+    {
+        InventJournalTrans journalTrans;
+
+        select count(RecId) from journalTrans
+            where journalTrans.JournalId == _journalId;
+        return int642int(journalTrans.RecId);
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>freezeOf</Name>
+				<Source><![CDATA[
+
+    public static HSMobileOpsWarehouseFreeze freezeOf(RefRecId _recId, boolean _forUpdate = false)
+    {
+        HSMobileOpsWarehouseFreeze freeze;
+
+        freeze.selectForUpdate(_forUpdate);
+        select firstOnly freeze
+            where freeze.RecId == _recId;
+        return freeze;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>noteJournal</Name>
+				<Source><![CDATA[
+
+    /// <summary>On the freeze as soon as the lines are in, so a crashed build resumes this journal.</summary>
+    private static void noteJournal(RefRecId _freezeRecId, InventJournalId _journalId)
+    {
+        HSMobileOpsWarehouseFreeze freeze;
+
+        ttsbegin;
+        freeze = HSMobileOpsCountWallToWall::freezeOf(_freezeRecId, true);
+        freeze.JournalId = _journalId;
+        freeze.update();
+        ttscommit;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>noteFailure</Name>
+				<Source><![CDATA[
+
+    private static void noteFailure(RefRecId _freezeRecId, str _message)
+    {
+        HSMobileOpsWarehouseFreeze freeze;
+
+        ttsbegin;
+        freeze = HSMobileOpsCountWallToWall::freezeOf(_freezeRecId, true);
+        freeze.BatchJobId = 0;
+        freeze.Message    = subStr(_message, 1, 250);
+        freeze.update();
+        ttscommit;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>jobAlive</Name>
+				<Source><![CDATA[
+
+    public static boolean jobAlive(RefRecId _jobId)
+    {
+        BatchJob batchJob;
+
+        if (!_jobId)
+        {
+            return false;
+        }
+        select firstOnly RecId, Status from batchJob
+            where batchJob.RecId == _jobId;
+        return batchJob.RecId
+            && batchJob.Status != BatchStatus::Finished
+            && batchJob.Status != BatchStatus::Error
+            && batchJob.Status != BatchStatus::Canceled;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

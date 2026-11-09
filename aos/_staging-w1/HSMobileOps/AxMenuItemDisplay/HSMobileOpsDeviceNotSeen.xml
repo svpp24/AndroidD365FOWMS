@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxMenuItemDisplay xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns="Microsoft.Dynamics.AX.Metadata.V1">
+	<Name>HSMobileOpsDeviceNotSeen</Name>
+	<Label>Devices not seen for 7 days</Label>
+	<HelpText>Opens HSMobileOpsDevice filtered to: Devices not seen for 7 days. Used by the Mobile operations workspace tile, which counts the same query.</HelpText>
+	<Object>HSMobileOpsDevice</Object>
+	<ObjectType>Form</ObjectType>
+	<Query>HSMobileOpsWorkspaceDeviceNotSeenQuery</Query>
+</AxMenuItemDisplay>

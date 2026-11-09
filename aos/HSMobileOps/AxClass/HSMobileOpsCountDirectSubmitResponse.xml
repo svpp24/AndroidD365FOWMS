@@ -14,12 +14,64 @@ class HSMobileOpsCountDirectSubmitResponse
     str     errorCode;
     str     message;
     int     acceptedLines;
+    int     matchedLines;
+    int     mismatchedLines;
+    int     sameUserLines;
+    int     settledLines;
 
     boolean thirdCountNeeded;
     str passResult;
 }
 ]]></Declaration>
 		<Methods>
+			<Method>
+				<Name>parmSettledLines</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('SettledLines')]
+    public int parmSettledLines(int _value = settledLines)
+    {
+        settledLines = _value;
+        return settledLines;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmSameUserLines</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('SameUserLines')]
+    public int parmSameUserLines(int _value = sameUserLines)
+    {
+        sameUserLines = _value;
+        return sameUserLines;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmMismatchedLines</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('MismatchedLines')]
+    public int parmMismatchedLines(int _value = mismatchedLines)
+    {
+        mismatchedLines = _value;
+        return mismatchedLines;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmMatchedLines</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('MatchedLines')]
+    public int parmMatchedLines(int _value = matchedLines)
+    {
+        matchedLines = _value;
+        return matchedLines;
+    }
+]]></Source>
+			</Method>
 			<Method>
 				<Name>parmSuccess</Name>
 				<Source><![CDATA[

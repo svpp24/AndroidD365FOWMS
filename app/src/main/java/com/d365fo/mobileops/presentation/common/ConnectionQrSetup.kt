@@ -38,6 +38,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
+import timber.log.Timber
 import javax.inject.Inject
 
 sealed interface ConnectionQrState {
@@ -79,7 +81,7 @@ class ConnectionQrViewModel @Inject constructor(
 
     fun onScanned(raw: String) {
         if (!ConnectionQr.isConnectionQr(raw)) {
-            _state.value = ConnectionQrState.Failed("That is not a connection code. Scan the connection QR code.")
+            _state.value = ConnectionQrState.Failed("Not a connection code.")
             return
         }
         apply(raw, pin = null)
@@ -117,22 +119,40 @@ class ConnectionQrViewModel @Inject constructor(
             val unsent = unsentWork.summary()
             if (!unsent.isEmpty) return ConnectionQrState.UnsentWork(unsent.describe(), ready)
         }
-        withContext(Dispatchers.IO) {
-            if (connectionSettings.saveTenant(ready.config)) database.clearAllTables()
-            tokenProvider.invalidateCache()
-            if (ready.company.isNotBlank()) {
-                workerContextRepository.setRegistration(personnelNumber = null, dataAreaId = ready.company)
+        // First setup has nothing to wipe: skipping it there keeps a fresh install from sitting
+        // on "Setting up…" (30 Oct: the code was saved, but the screen never moved on until the
+        // app was reopened).
+        val hadTarget = connectionSettings.tenant.value.resourceUrl.isNotBlank()
+        try {
+            withContext(Dispatchers.IO) {
+                val changed = connectionSettings.saveTenant(ready.config)
+                Timber.i("connection QR: saved (changed=%s, wipe=%s)", changed, changed && hadTarget)
+                if (changed && hadTarget) database.clearAllTables()
+                tokenProvider.invalidateCache()
+                if (ready.company.isNotBlank()) {
+                    workerContextRepository.setRegistration(personnelNumber = null, dataAreaId = ready.company)
+                }
             }
+        } catch (e: Exception) {
+            Timber.e(e, "connection QR: save failed")
+            return ConnectionQrState.Failed("Couldn't save the connection: ${e.message}")
         }
         val apps = ready.config.credentials.size
         val connected = "${ready.config.host} · $apps app registration" + if (apps == 1) "" else "s"
-        return when (val token = tokenProvider.acquireSilent()) {
+        // Bounded: the connection is saved either way, and the device gate re-checks the token.
+        val token = withTimeoutOrNull(TOKEN_CHECK_MS) { tokenProvider.acquireSilent() }
+        Timber.i("connection QR: token check %s", token?.javaClass?.simpleName ?: "timed out")
+        return when (token) {
             is NetworkResult.Success -> ConnectionQrState.Done("Connected to $connected.")
             is NetworkResult.Error -> ConnectionQrState.Failed(
                 "Saved $connected, but signing in failed: ${token.failure.message}",
             )
-            NetworkResult.Loading -> ConnectionQrState.Done("Saved $connected.")
+            NetworkResult.Loading, null -> ConnectionQrState.Done("Saved $connected.")
         }
+    }
+
+    private companion object {
+        const val TOKEN_CHECK_MS = 45_000L
     }
 }
 
@@ -193,7 +213,7 @@ private fun PinDialog(wrongPin: Boolean, onPin: (String) -> Unit, onCancel: () -
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(
                     if (wrongPin) "That PIN did not open the code. Try again."
-                    else "This connection code is protected. Enter the setup PIN you were given with it.",
+                    else "Enter the setup PIN.",
                 )
                 OutlinedTextField(
                     value = pin,

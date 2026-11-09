@@ -70,6 +70,7 @@ class FailedSyncViewModel @Inject constructor(
     private val companyProvider: CompanyProvider,
     private val stagedLines: com.d365fo.mobileops.data.repository.StagedLineRepository,
     private val countingDownloads: CountingDownloadTracker,
+    private val followUp: com.d365fo.mobileops.data.sync.PostingFollowUp,
 ) : ViewModel() {
 
     /** Counting-journal downloads and submissions, newest first - see [CountingDownloadTracker]. */
@@ -120,6 +121,8 @@ class FailedSyncViewModel @Inject constructor(
                     _queueStatus.value = result.data
                     _queueError.value = null
                     clearSettledStagedLines(result.data)
+                    // A posting refused since it was sent belongs in Failed postings right now.
+                    followUp.check()
                 }
                 is NetworkResult.Error -> _queueError.value = result.failure.message
                 NetworkResult.Loading -> Unit
@@ -191,8 +194,8 @@ class FailedSyncViewModel @Inject constructor(
      * Puts a rejected posting back on the queue.
      *
      * Whatever caused the rejection is expected to have been fixed on the D365FO side — a
-     * reopened period, an unblocked item. Nothing on the device changed, so the payload is
-     * replayed as-is under a fresh idempotency key.
+     * reopened period, an unblocked item. Nothing on the device changed, so the payload goes
+     * again as it is, and D365FO reworks its own staged row - see SyncQueueRepository.isResubmit.
      */
     fun resubmit(failureId: String) {
         viewModelScope.launch {
@@ -235,6 +238,7 @@ fun FailedSyncScreen(
     val queueError by viewModel.queueError.collectAsStateWithLifecycle()
     val online = com.d365fo.mobileops.presentation.common.components.LocalSyncStatus.current?.fullyOnline != false
     val postingEnabled = com.d365fo.mobileops.presentation.common.components.LocalSyncStatus.current?.postingEnabled != false
+    val (acknowledged, needsAction) = failures.partition { it.acknowledged }
 
     // On opening, and again when the connection comes back - the queue lives in D365FO.
     LaunchedEffect(online) { if (online) viewModel.loadQueueStatus() }
@@ -269,6 +273,26 @@ fun FailedSyncScreen(
                     )
                 }
                 items(waiting, key = { it.queueId }) { entry -> WaitingCard(entry, online, postingEnabled) }
+            }
+
+            // Needs someone now, so above the history: under the queue it took 15 swipes to reach
+            // Resubmit. Acknowledged ones have been seen and stay at the bottom.
+            if (needsAction.isNotEmpty()) {
+                item {
+                    Text(
+                        text = "Failed postings · ${needsAction.size}",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = androidx.compose.ui.text.font.FontWeight.ExtraBold,
+                        modifier = Modifier.padding(top = WarehouseDimens.ItemSpacing),
+                    )
+                }
+                items(needsAction, key = { it.failureId }) { failure ->
+                    FailureCard(
+                        failure = failure,
+                        onResubmit = { viewModel.resubmit(failure.failureId) },
+                        onAcknowledge = { viewModel.acknowledge(failure.failureId) },
+                    )
+                }
             }
 
             if (activities.isNotEmpty()) {
@@ -321,7 +345,7 @@ fun FailedSyncScreen(
                 // answers. What this device still has to send is listed above and below.
                 item {
                     Text(
-                        text = "The registration queue in D365FO can be checked when the connection is back.",
+                        text = "Check again when online.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -358,13 +382,15 @@ fun FailedSyncScreen(
                 }
             }
 
-            item {
-                Text(
-                    text = "Failed postings",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = androidx.compose.ui.text.font.FontWeight.ExtraBold,
-                    modifier = Modifier.padding(top = WarehouseDimens.ItemSpacing),
-                )
+            if (failures.isEmpty() || acknowledged.isNotEmpty()) {
+                item {
+                    Text(
+                        text = if (failures.isEmpty()) "Failed postings" else "Failed postings · acknowledged",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = androidx.compose.ui.text.font.FontWeight.ExtraBold,
+                        modifier = Modifier.padding(top = WarehouseDimens.ItemSpacing),
+                    )
+                }
             }
             if (failures.isEmpty()) {
                 item {
@@ -375,7 +401,7 @@ fun FailedSyncScreen(
                     )
                 }
             } else {
-                items(failures, key = { it.failureId }) { failure ->
+                items(acknowledged, key = { it.failureId }) { failure ->
                     FailureCard(
                         failure = failure,
                         onResubmit = { viewModel.resubmit(failure.failureId) },
@@ -403,9 +429,9 @@ private fun WaitingCard(entry: com.d365fo.mobileops.data.local.entity.SyncQueueE
             )
             Text(
                 text = when {
-                    !postingEnabled -> "Held on this device - posting is switched off in Settings"
+                    !postingEnabled -> "Held - posting is off"
                     online -> "Sending to D365FO…"
-                    else -> "Saved on this device - sent when D365FO can be reached"
+                    else -> "Saved - sent when online"
                 },
                 style = MaterialTheme.typography.bodyMedium,
                 color = if (online && postingEnabled) MaterialTheme.colorScheme.onSurfaceVariant else WarehouseStatusColors.amber,
@@ -453,8 +479,8 @@ private fun ActivityCard(activity: CountingActivity, onDismiss: () -> Unit) {
             } else {
                 Text(
                     text = when {
-                        postingOff -> "Held on this device - posting is switched off in Settings"
-                        waiting -> "Waiting for the connection - continues when D365FO answers"
+                        postingOff -> "Held - posting is off"
+                        waiting -> "Waiting for connection"
                         else -> activity.label
                     },
                     style = MaterialTheme.typography.bodyMedium,
@@ -529,6 +555,20 @@ private fun QueueStatusCard(entry: PostQueueEntry) {
                 Text(
                     text = queueLines.joinToString(", ") { "${it.itemId} ×${formatQty(it.quantity)}" },
                     style = MaterialTheme.typography.bodyMedium,
+                )
+            }
+            // A big posting's lines are not sent to this list, only how many there were.
+            if (parseQueueLines(entry.linesJson).isEmpty() && entry.lineCount > 0) {
+                Text(
+                    text = "${entry.lineCount} " + (if (entry.lineCount == 1) "line" else "lines"),
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
+            entry.grnId?.let { grn ->
+                Text(
+                    text = "GRN $grn",
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
                 )
             }
             entry.userName?.takeIf { it.isNotBlank() }?.let { userName ->

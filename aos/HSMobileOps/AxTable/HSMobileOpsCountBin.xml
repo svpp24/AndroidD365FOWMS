@@ -1,0 +1,107 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxTable xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsCountBin</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// A store's virtual bins: where in a location stock sits. Used by counting only, to record where
+/// a count was made. D365FO's on-hand stays at location level and knows nothing of bins. A store
+/// with no bins here counts by location alone, as before.
+/// </summary>
+public class HSMobileOpsCountBin extends common
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>initValue</Name>
+				<Source><![CDATA[
+
+    public void initValue()
+    {
+        super();
+        this.Active = NoYes::Yes;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>find</Name>
+				<Source><![CDATA[
+
+    public static HSMobileOpsCountBin find(InventLocationId _warehouse, str _binId, boolean _forUpdate = false)
+    {
+        HSMobileOpsCountBin bin;
+
+        bin.selectForUpdate(_forUpdate);
+        select firstOnly bin
+            where bin.InventLocationId == _warehouse
+               && bin.BinId            == _binId;
+        return bin;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+	<Label>Count bins</Label>
+	<TableGroup>Main</TableGroup>
+	<Fields>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>InventLocationId</Name>
+			<ExtendedDataType>InventLocationId</ExtendedDataType>
+			<Mandatory>Yes</Mandatory>
+			<Label>Store</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>BinId</Name>
+			<Mandatory>Yes</Mandatory>
+			<StringSize>20</StringSize>
+			<Label>Bin</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>Description</Name>
+			<ExtendedDataType>Description</ExtendedDataType>
+			<Label>Description</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldEnum">
+			<Name>Active</Name>
+			<EnumType>NoYes</EnumType>
+			<Label>Active</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>CreatedByUser</Name>
+			<AllowEdit>No</AllowEdit>
+			<ExtendedDataType>HSMobileOpsUserName</ExtendedDataType>
+			<Label>Added by</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>WMSLocationId</Name>
+			<ExtendedDataType>WMSLocationId</ExtendedDataType>
+			<HelpText>The location the bin is in. A bin is scanned only while counting its own location; blank: any location.</HelpText>
+			<Label>Location</Label>
+		</AxTableField>
+	</Fields>
+	<FullTextIndexes />
+	<Indexes>
+		<AxTableIndex>
+			<Name>StoreBinIdx</Name>
+			<AlternateKey>Yes</AlternateKey>
+			<Fields>
+				<AxTableIndexField>
+					<DataField>InventLocationId</DataField>
+				</AxTableIndexField>
+				<AxTableIndexField>
+					<DataField>BinId</DataField>
+				</AxTableIndexField>
+			</Fields>
+		</AxTableIndex>
+	</Indexes>
+	<Mappings />
+	<Relations />
+	<StateMachines />
+</AxTable>

@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxQuery xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns=""
+	i:type="AxQuerySimple">
+	<Name>HSMobileOpsWorkspacePostStuckQuery</Name>
+	<SourceCode>
+		<Methods>
+			<Method>
+				<Name>classDeclaration</Name>
+				<Source><![CDATA[
+[Query]
+public class HSMobileOpsWorkspacePostStuckQuery extends QueryRun
+{
+}
+]]></Source>
+			</Method>
+		</Methods>
+		<DataSources />
+		<DataControls />
+		<Members />
+	</SourceCode>
+	<DataSources>
+		<AxQuerySimpleRootDataSource>
+			<Name>HSMobileOpsPostQueue</Name>
+			<FirstFast>Yes</FirstFast>
+			<Table>HSMobileOpsPostQueue</Table>
+			<DataSources />
+			<DerivedDataSources />
+			<Fields>
+				<AxQuerySimpleDataSourceField>
+					<Name>RecId</Name>
+					<Field>RecId</Field>
+				</AxQuerySimpleDataSourceField>
+			</Fields>
+			<Ranges>
+							<AxQuerySimpleDataSourceRange>
+								<Name>Warehouse</Name>
+								<Field>Warehouse</Field>
+								<Value>(HSMobileOpsWorkspaceScope::postQueue())</Value>
+							</AxQuerySimpleDataSourceRange>
+							<AxQuerySimpleDataSourceRange>
+								<Name>Status</Name>
+								<Field>Status</Field>
+								<Value>Pending,Processing</Value>
+							</AxQuerySimpleDataSourceRange>
+							<AxQuerySimpleDataSourceRange>
+								<Name>ReceivedUtc</Name>
+								<Field>ReceivedUtc</Field>
+								<Value>(HSMobileOpsWorkspaceRange::stuckBefore())</Value>
+							</AxQuerySimpleDataSourceRange>
+			</Ranges>
+			<GroupBy />
+			<Having />
+			<OrderBy />
+		</AxQuerySimpleRootDataSource>
+	</DataSources>
+</AxQuery>

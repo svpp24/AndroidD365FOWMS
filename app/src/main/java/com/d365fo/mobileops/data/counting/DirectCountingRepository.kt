@@ -19,6 +19,7 @@ import com.d365fo.mobileops.data.remote.error.D365ErrorMapper
 import com.d365fo.mobileops.data.repository.ImportSummary
 import com.d365fo.mobileops.data.security.CompanyProvider
 import com.d365fo.mobileops.data.security.SecureStore
+import com.d365fo.mobileops.domain.model.COUNT_MODE_DOUBLE_BLIND
 import com.d365fo.mobileops.domain.model.CountRange
 import com.d365fo.mobileops.domain.model.CountingJournalSummary
 import com.d365fo.mobileops.util.AppFailure
@@ -44,7 +45,19 @@ class DirectCountingRepository @Inject constructor(
     private val journalDao: JournalDao,
     private val countingDao: CountingDao,
     private val ioDispatcher: CoroutineDispatcher,
+    private val workerSession: com.d365fo.mobileops.data.repository.WorkerSessionRepository,
 ) {
+    /** What D365FO has taken of a submission, so a retry goes on from there. A resend changes nothing. */
+    private data class SubmitProgress(
+        val lines: Int = 0,
+        val accepted: Int = 0,
+        val matched: Int = 0,
+        val mismatched: Int = 0,
+        val sameUser: Int = 0,
+        val settled: Int = 0,
+    )
+    private val submitProgress = java.util.concurrent.ConcurrentHashMap<String, SubmitProgress>()
+
     private fun company(): String = companyProvider()?.takeIf { it.isNotBlank() }?.lowercase().orEmpty()
 
     suspend fun downloadLines(
@@ -53,52 +66,43 @@ class DirectCountingRepository @Inject constructor(
         range: CountRange?,
         claimToken: String?,
     ): NetworkResult<ImportSummary> = withContext(ioDispatcher) {
-        val result = errorMapper.safeCall {
-            api.getJournalLines(
-                DirectLinesServiceRequest(
-                    DirectLinesRequestBody(
-                        dataAreaId = company(),
-                        journalId = journal.journalId,
-                        claimToken = claimToken,
-                        locationFrom = range?.locationFrom,
-                        locationTo = range?.locationTo,
+        // In pages: a dual count journal can be a whole warehouse. A small journal is one page.
+        val rows = ArrayList<com.d365fo.mobileops.data.remote.dto.DirectLineRowDto>()
+        var fromLine = 0.0
+        do {
+            val result = errorMapper.safeCall {
+                api.getJournalLines(
+                    DirectLinesServiceRequest(
+                        DirectLinesRequestBody(
+                            dataAreaId = company(),
+                            journalId = journal.journalId,
+                            claimToken = claimToken,
+                            locationFrom = range?.locationFrom,
+                            locationTo = range?.locationTo,
+                            userId = workerSession.session.value?.userName,
+                            fromLine = fromLine,
+                        ),
                     ),
-                ),
-            )
-        }
-        val body = when (result) {
-            is NetworkResult.Error -> return@withContext result
-            NetworkResult.Loading -> return@withContext NetworkResult.Error(AppFailure.Fatal("unexpected Loading"))
-            is NetworkResult.Success -> result.data
-        }
-        if (!body.success) {
-            return@withContext NetworkResult.Error(
-                AppFailure.BusinessRule(messageFor(body.errorCode), d365ErrorCode = body.errorCode),
-            )
-        }
+                )
+            }
+            val body = when (result) {
+                is NetworkResult.Error -> return@withContext result
+                NetworkResult.Loading -> return@withContext NetworkResult.Error(AppFailure.Fatal("unexpected Loading"))
+                is NetworkResult.Success -> result.data
+            }
+            if (!body.success) {
+                return@withContext NetworkResult.Error(
+                    AppFailure.BusinessRule(messageFor(body.errorCode), d365ErrorCode = body.errorCode),
+                )
+            }
+            rows += body.lines
+            fromLine = body.nextLine
+        } while (fromLine > 0)
 
         val alreadyOnDevice = journalDao.getJournal(journal.journalId) != null
-        if (!alreadyOnDevice) {
-            journalDao.upsertJournal(
-                JournalEntity(
-                    journalId = journal.journalId,
-                    type = JournalType.COUNTING,
-                    journalNameId = journal.journalNameId,
-                    serverJournalNumber = journal.journalId,
-                    description = journal.description,
-                    journalDate = journal.journalDate ?: System.currentTimeMillis(),
-                    siteId = null,
-                    warehouseId = warehouseId,
-                    workerId = secureStore.getString(SecureStore.KEY_WORKER_ID) ?: "unknown",
-                    deviceId = secureStore.deviceId(),
-                    status = JournalStatus.DRAFT,
-                    transferMode = TransferMode.DIRECT,
-                ),
-            )
-        }
 
         val now = System.currentTimeMillis()
-        val lines = body.lines
+        val lines = rows
             .filter { range == null || range.contains(it.locationId) }
             .map { row ->
                 val lineNumber = row.lineNumber.toInt()
@@ -109,7 +113,11 @@ class DirectCountingRepository @Inject constructor(
                     itemId = row.itemNumber,
                     itemName = row.itemName?.takeIf { it.isNotBlank() } ?: row.itemNumber,
                     quantity = "",
-                    unitId = "",
+                    unitId = row.unitId.orEmpty(),
+                    configId = row.configId?.takeIf { it.isNotBlank() },
+                    sizeId = row.sizeId?.takeIf { it.isNotBlank() },
+                    colorId = row.colorId?.takeIf { it.isNotBlank() },
+                    styleId = row.styleId?.takeIf { it.isNotBlank() },
                     siteId = row.siteId,
                     warehouseId = row.warehouseId,
                     locationId = row.locationId,
@@ -127,7 +135,23 @@ class DirectCountingRepository @Inject constructor(
         val merge = if (alreadyOnDevice) {
             journalDao.mergeCountingLines(journal.journalId, lines)
         } else {
-            journalDao.upsertLinesChunked(lines)
+            journalDao.saveDownloadedJournal(
+                JournalEntity(
+                    journalId = journal.journalId,
+                    type = JournalType.COUNTING,
+                    journalNameId = journal.journalNameId,
+                    serverJournalNumber = journal.journalId,
+                    description = journal.description,
+                    journalDate = journal.journalDate ?: System.currentTimeMillis(),
+                    siteId = null,
+                    warehouseId = warehouseId,
+                    workerId = secureStore.getString(SecureStore.KEY_WORKER_ID) ?: "unknown",
+                    deviceId = secureStore.deviceId(),
+                    status = JournalStatus.DRAFT,
+                    transferMode = TransferMode.DIRECT,
+                ),
+                lines,
+            )
             MergeResult(added = lines.size, removed = 0)
         }
         journalDao.updateCountingAttributes(
@@ -149,56 +173,84 @@ class DirectCountingRepository @Inject constructor(
                 )
             }
             val startedByLine = journalDao.getLinesOnce(journalId).associate { it.journalLineId to it.lineCountStartedAt }
+            val doubleBlind = journalDao.getJournal(journalId)?.journal?.countMode == COUNT_MODE_DOUBLE_BLIND
 
-            val result = errorMapper.safeCall {
-                api.submitCounts(
-                    DirectSubmitServiceRequest(
-                        DirectSubmitRequestBody(
-                            dataAreaId = company(),
-                            journalId = journalId,
-                            claimToken = claimToken,
-                            submissionId = audit.submissionId,
-                            userId = audit.userId,
-                            deviceId = audit.deviceId,
-                            startedAtUtc = audit.startedAt?.let { Formatters.isoUtc(it) },
-                            submittedAtUtc = Formatters.isoUtc(audit.submittedAt),
-                            passNumber = audit.passNumber,
-                            originType = audit.originType,
-                            linesJson = rowsJson(DirectCountRowDto.serializer(), counted.map { line ->
-                                DirectCountRowDto(
-                                    lineNumber = line.lineNumber.toDouble(),
-                                    countedQuantity = line.countedQuantity?.toDoubleOrNull() ?: 0.0,
-                                    markedOnly = line.countedQuantity == null && line.markedCounted,
-                                    countedBy = line.countedBy,
-                                    countedAtUtc = line.countedAt?.let { Formatters.isoUtc(it) },
-                                    countStartedAtUtc = startedByLine[line.journalLineId]?.let { Formatters.isoUtc(it) },
-                                )
-                            }),
-                        ),
-                    ),
-                )
-            }
-            when (result) {
-                is NetworkResult.Error -> result
-                NetworkResult.Loading -> NetworkResult.Error(AppFailure.Fatal("unexpected Loading"))
-                is NetworkResult.Success -> if (result.data.success) {
-                    NetworkResult.Success(
-                        DirectSubmitResult(
-                            acceptedLines = result.data.acceptedLines,
-                            thirdCountNeeded = result.data.thirdCountNeeded,
-                            passResult = result.data.passResult?.takeIf { it.isNotBlank() },
-                        ),
-                    )
-                } else {
-                    NetworkResult.Error(
-                        AppFailure.BusinessRule(
-                            result.data.message?.takeIf { it.isNotBlank() } ?: messageFor(result.data.errorCode),
-                            d365ErrorCode = result.data.errorCode,
+            // In batches, like the control center's: a whole warehouse in one call outlasts the read timeout.
+            var progress = submitProgress[audit.submissionId] ?: SubmitProgress()
+            var passResult: String? = null
+            for (batch in counted.drop(progress.lines).chunked(LINES_PER_CALL)) {
+                val result = errorMapper.safeCall {
+                    api.submitCounts(
+                        DirectSubmitServiceRequest(
+                            DirectSubmitRequestBody(
+                                dataAreaId = company(),
+                                journalId = journalId,
+                                claimToken = claimToken,
+                                submissionId = audit.submissionId,
+                                userId = audit.userId,
+                                deviceId = audit.deviceId,
+                                startedAtUtc = audit.startedAt?.let { Formatters.isoUtc(it) },
+                                submittedAtUtc = Formatters.isoUtc(audit.submittedAt),
+                                passNumber = audit.passNumber,
+                                originType = audit.originType,
+                                linesJson = rowsJson(DirectCountRowDto.serializer(), batch.map { line ->
+                                    DirectCountRowDto(
+                                        lineNumber = line.lineNumber.toDouble(),
+                                        countedQuantity = line.countedQuantity?.toDoubleOrNull() ?: 0.0,
+                                        markedOnly = line.countedQuantity == null && line.markedCounted,
+                                        countedBy = line.countedBy,
+                                        countedAtUtc = line.countedAt?.let { Formatters.isoUtc(it) },
+                                        countStartedAtUtc = startedByLine[line.journalLineId]?.let { Formatters.isoUtc(it) },
+                                    )
+                                }),
+                            ),
                         ),
                     )
                 }
+                when (result) {
+                    is NetworkResult.Error -> return@withContext result
+                    NetworkResult.Loading -> return@withContext NetworkResult.Error(AppFailure.Fatal("unexpected Loading"))
+                    is NetworkResult.Success -> {
+                        val answer = result.data
+                        if (!answer.success) {
+                            return@withContext NetworkResult.Error(
+                                AppFailure.BusinessRule(
+                                    answer.message?.takeIf { it.isNotBlank() } ?: messageFor(answer.errorCode),
+                                    d365ErrorCode = answer.errorCode,
+                                ),
+                            )
+                        }
+                        passResult = answer.passResult?.takeIf { it.isNotBlank() }
+                        progress = progress.copy(
+                            lines = progress.lines + batch.size,
+                            accepted = progress.accepted + answer.acceptedLines,
+                            matched = progress.matched + answer.matchedLines,
+                            mismatched = progress.mismatched + answer.mismatchedLines,
+                            sameUser = progress.sameUser + answer.sameUserLines,
+                            settled = progress.settled + answer.settledLines,
+                        )
+                        submitProgress[audit.submissionId] = progress
+                    }
+                }
             }
+            submitProgress.remove(audit.submissionId)
+            NetworkResult.Success(
+                DirectSubmitResult(
+                    acceptedLines = progress.accepted,
+                    thirdCountNeeded = progress.mismatched > 0,
+                    passResult = if (doubleBlind) dualCountSummary(progress, audit.passNumber >= 3) else passResult,
+                ),
+            )
         }
+
+    /** What the counter is told. Counts and outcomes only: never a quantity. */
+    private fun dualCountSummary(progress: SubmitProgress, tiebreak: Boolean): String = listOfNotNull(
+        "${progress.accepted} counted",
+        "${progress.matched} matched".takeIf { progress.matched > 0 },
+        (if (tiebreak) "${progress.mismatched} for the supervisor to decide" else "${progress.mismatched} to recount").takeIf { progress.mismatched > 0 },
+        "${progress.sameUser} you had counted before, not taken".takeIf { progress.sameUser > 0 },
+        "${progress.settled} already settled, not taken".takeIf { progress.settled > 0 },
+    ).joinToString(", ") + "."
 
     /** Unexpected items and verified-empty locations - always via the direct service, whatever the journal's mode. */
     suspend fun submitExceptions(
@@ -270,17 +322,54 @@ class DirectCountingRepository @Inject constructor(
         }
     }
 
+    /**
+     * Wall-to-wall: after a location's counts are in, the server completes it. Its answer is said
+     * to the counter either way: done and how many are left, or what is still missing there.
+     */
+    suspend fun completeLocation(journalId: String, audit: SubmissionAudit, locationId: String): NetworkResult<String> =
+        withContext(ioDispatcher) {
+            val result = errorMapper.safeCall {
+                api.completeLocation(
+                    com.d365fo.mobileops.data.remote.dto.CountLocationServiceRequest(
+                        com.d365fo.mobileops.data.remote.dto.CountLocationRequestBody(
+                            dataAreaId = company(),
+                            journalId = journalId,
+                            userId = audit.userId,
+                            deviceId = audit.deviceId,
+                            locationId = locationId,
+                        ),
+                    ),
+                )
+            }
+            when (result) {
+                is NetworkResult.Error -> result
+                NetworkResult.Loading -> NetworkResult.Error(AppFailure.Fatal("unexpected Loading"))
+                is NetworkResult.Success -> if (result.data.success) {
+                    NetworkResult.Success(result.data.message?.takeIf { it.isNotBlank() } ?: "Location $locationId is complete.")
+                } else {
+                    NetworkResult.Error(
+                        AppFailure.BusinessRule(
+                            result.data.message?.takeIf { it.isNotBlank() } ?: messageFor(result.data.errorCode),
+                            d365ErrorCode = result.data.errorCode,
+                        ),
+                    )
+                }
+            }
+        }
+
     private fun messageFor(code: String?): String = when (code) {
         "JOURNAL_POSTED" -> "This journal has already been posted in D365FO."
-        "JOURNAL_NOT_FOUND" -> "This journal is closed or no longer exists in D365FO."
+        "JOURNAL_NOT_FOUND" -> "Journal closed."
         "TOO_MANY_LINES" -> "This journal is too large for direct transfer."
         "NOT_IMPLEMENTED" -> "This server does not support direct counting yet."
         "CLAIM_LOST", "CLAIM_EXPIRED" -> "Your claim on this journal is no longer valid."
-        "RECOUNT_SAME_USER" -> "This recount must be done by someone other than the previous counter."
+        "RECOUNT_SAME_USER" -> "Someone else must do this recount."
         null -> "The server refused the request."
         else -> code
     }
 }
+
+private const val LINES_PER_CALL = 500
 
 /** What the server said about a DIRECT (or double-blind) submission. */
 data class DirectSubmitResult(

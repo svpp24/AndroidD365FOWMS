@@ -163,13 +163,13 @@ fun PoLinesScreen(
                 Text(
                     text = when {
                         state.itemFilter != null ->
-                            "Lines for ${state.itemFilter}. Scan another item, or another PO."
+                            "Lines for ${state.itemFilter}"
                         // Not necessarily a large order: an older AOS withholds a blocked order's
                         // lines whatever its size (see PoLinesState.linesInline).
                         state.blockNotice != null ->
-                            "${state.outstandingLineCount} open lines. Scan an item to see its lines."
+                            "${state.outstandingLineCount} open lines - scan an item"
                         else ->
-                            "${state.outstandingLineCount} open lines - too many to list. Scan an item to see its lines."
+                            "${state.outstandingLineCount} open lines - scan an item"
                     },
                     style = MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,

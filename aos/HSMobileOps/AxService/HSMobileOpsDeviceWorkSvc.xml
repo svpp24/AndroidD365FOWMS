@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxService xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsDeviceWorkSvc</Name>
+	<Class>HSMobileOpsDeviceWorkService</Class>
+	<ExternalName>DeviceWorkService</ExternalName>
+	<Namespace>http://schemas.hs.com/mobileops</Namespace>
+	<ServiceOperations>
+		<AxServiceOperation>
+			<Name>syncWork</Name>
+			<Method>syncWork</Method>
+		</AxServiceOperation>
+		<AxServiceOperation>
+			<Name>listWork</Name>
+			<Method>listWork</Method>
+		</AxServiceOperation>
+		<AxServiceOperation>
+			<Name>getAppControl</Name>
+			<Method>getAppControl</Method>
+		</AxServiceOperation>
+	</ServiceOperations>
+</AxService>

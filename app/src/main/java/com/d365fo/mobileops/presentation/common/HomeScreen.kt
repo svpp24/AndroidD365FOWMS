@@ -122,11 +122,8 @@ internal data class ModuleTile(
 internal val MODULES = listOf(
     ModuleTile(
         title = "PO receiving",
-        summary = "Scan a PO to start",
-        detail = "Scan a purchase order, then an item, then the quantity, then whichever " +
-            "dimensions that item actually tracks - location, batch, serial. One prompt at a " +
-            "time, each one checked against D365FO before the next appears. Nothing is " +
-            "downloaded in advance: every step fetches only the record it needs.",
+        summary = "Receive a PO",
+        detail = "Scan the PO, then each item and quantity.",
         d365 = "PurchTable / PurchLine - registered (InventTransWMS_Register) by the HSMobileOps batch job or Process pending",
         icon = LineIcons.Receive,
         route = Routes.RECEIVE_FLOW,
@@ -134,11 +131,8 @@ internal val MODULES = listOf(
     ),
     ModuleTile(
         title = "Transfer — Ship",
-        summary = "Scan a transfer to send",
-        detail = "Scan a transfer order, then each item and quantity leaving this warehouse. " +
-            "Only lines with something still to ship are offered, and the order has to belong " +
-            "to this warehouse - shipping from the wrong end is the commonest mistake here and " +
-            "is refused by name rather than shown as an empty list.",
+        summary = "Ship a transfer",
+        detail = "Scan the transfer, then each item and quantity.",
         d365 = "InventTransferTable / InventTransferLine, posted via InventTransferUpdShip",
         icon = LineIcons.Ship,
         route = Routes.TRANSFER_SHIP,
@@ -146,10 +140,8 @@ internal val MODULES = listOf(
     ),
     ModuleTile(
         title = "Transfer — Receive",
-        summary = "Scan a transfer to book in",
-        detail = "Scan an arriving transfer order, then each item, quantity and put-away " +
-            "location. Bounded by what was actually shipped, not by what was ordered - a line " +
-            "with four of ten shipped has four to receive, and the app will not offer more.",
+        summary = "Receive a transfer",
+        detail = "Scan the transfer, then each item, quantity and location.",
         d365 = "InventTransferTable / InventTransferLine, posted via InventTransferUpdReceive",
         icon = LineIcons.Store,
         route = Routes.TRANSFER_RECEIVE,
@@ -157,11 +149,8 @@ internal val MODULES = listOf(
     ),
     ModuleTile(
         title = "PO creation",
-        summary = "Order from a vendor - created and confirmed",
-        detail = "Pick a vendor, scan the items and enter quantities. Prices and discounts are " +
-            "D365FO's own (trade agreements, else the item's purchase price) and are shown " +
-            "while connected. Works offline too: the order waits on the device and D365FO " +
-            "prices it when it is created. Only for workers allowed it in Menu access.",
+        summary = "Order from a vendor",
+        detail = "Pick a vendor, scan items, enter quantities.",
         d365 = "PurchTable / PurchLine, created by HSMobileOpsOrderCreateSvc",
         icon = LineIcons.Create,
         route = Routes.PO_CREATE,
@@ -169,12 +158,8 @@ internal val MODULES = listOf(
     ),
     ModuleTile(
         title = "Purchase return",
-        summary = "Send stock back to a vendor - posted",
-        detail = "Pick the vendor and a return reason, then scan what goes back with its bin, " +
-            "batch or serial and quantity. D365FO creates a return order (with the vendor's " +
-            "RMA number when there is one), confirms it and posts the packing slip, so the " +
-            "stock leaves at once. Works offline too - it is posted when D365FO can be " +
-            "reached. Only for workers allowed it in Menu access.",
+        summary = "Return to a vendor",
+        detail = "Pick a vendor and reason, scan what goes back.",
         d365 = "PurchTable (Returned order) / PurchLine, posted by HSMobileOpsOrderCreateSvc",
         icon = LineIcons.Return,
         route = Routes.PURCHASE_RETURN,
@@ -182,11 +167,8 @@ internal val MODULES = listOf(
     ),
     ModuleTile(
         title = "TO creation",
-        summary = "Move stock between your warehouses",
-        detail = "Choose the From and To warehouses (both must be yours), scan items and " +
-            "enter quantities. While connected the stock at From is shown per batch and " +
-            "serial and more than that is refused. Works offline too - D365FO checks the " +
-            "stock when the order is sent. Ship it straight after with Transfer - Ship.",
+        summary = "Move stock between warehouses",
+        detail = "Pick From and To, scan items, enter quantities.",
         d365 = "InventTransferTable / InventTransferLine, created by HSMobileOpsOrderCreateSvc",
         icon = LineIcons.Create,
         route = Routes.TO_CREATE,
@@ -194,14 +176,11 @@ internal val MODULES = listOf(
     ),
     ModuleTile(
         title = "Inventory count",
-        summary = "Open a counting journal for this warehouse",
-        detail = "Counting journals are created in D365FO, not on the device - this lists the " +
-            "ones open for your assigned warehouse. Get data downloads a journal's lines; count " +
-            "by scanning items, barcodes or serial numbers, then End count sends the counted " +
-            "lines back. Nothing is posted from the device.",
-        d365 = "InventJournalTable / InventJournalTrans - counts imported via DMF, posted in D365FO",
+        summary = "Store, spot, cycle and wall-to-wall counts",
+        detail = "Store count needs no journal; spot, cycle and wall-to-wall count a journal.",
+        d365 = "InventJournalTable / InventJournalTrans - counts imported via DMF, posted in D365FO; store counts via the Stock count control center",
         icon = LineIcons.Count,
-        route = Routes.COUNTING_JOURNALS,
+        route = Routes.COUNTING_HUB,
         workflow = com.d365fo.mobileops.domain.model.WarehouseWorkflow.INVENTORY_COUNT,
     ),
     // The former "Data enquiry" sub-menu's six rows, promoted to first-class tiles here rather
@@ -211,9 +190,8 @@ internal val MODULES = listOf(
     // the three that screen's own EnquiryTile list already marked not built yet.
     ModuleTile(
         title = "Location inquiry",
-        summary = "Scan or type a location",
-        detail = "Scan or type a warehouse and location. Answers whether it exists and " +
-            "whether it can be received into right now.",
+        summary = "Check a location",
+        detail = "Scan a location to see if it can be used.",
         d365 = "WarehouseLocations (OData reads only)",
         icon = LineIcons.Location,
         route = Routes.INQUIRY_LOCATION,
@@ -221,8 +199,8 @@ internal val MODULES = listOf(
     ),
     ModuleTile(
         title = "PO's of today",
-        summary = "POs due today in your warehouse",
-        detail = "Every purchase order requested for delivery today in your warehouse.",
+        summary = "POs due today",
+        detail = "Purchase orders due today here.",
         d365 = "PurchaseOrderHeadersV2 (OData reads only)",
         icon = LineIcons.Today,
         route = Routes.INQUIRY_PO_TODAY,
@@ -230,9 +208,8 @@ internal val MODULES = listOf(
     ),
     ModuleTile(
         title = "PO lines",
-        summary = "Scan or type a PO number",
-        detail = "Scan or type a purchase order number to see its lines - ordered, received " +
-            "and outstanding quantities. Read-only: nothing here starts a receipt.",
+        summary = "See a PO's lines",
+        detail = "Scan a PO to see ordered, received and open.",
         d365 = "PurchaseOrderLinesV2 (OData reads only)",
         icon = LineIcons.ListLines,
         route = Routes.INQUIRY_PO_LINES,
@@ -240,10 +217,8 @@ internal val MODULES = listOf(
     ),
     ModuleTile(
         title = "TO's by Store",
-        summary = "List of transfer orders by store",
-        detail = "Open transfer orders for this warehouse, grouped by the other store - what is " +
-            "to ship to each store, and what each store has sent here. Tap one to ship or " +
-            "receive it.",
+        summary = "Transfers by store",
+        detail = "Open transfers, grouped by store.",
         d365 = "InventTransferTable (HSMobileOpsTransferListSvc, reads only)",
         icon = LineIcons.Store,
         route = Routes.INQUIRY_TRANSFERS_BY_STORE,
@@ -251,10 +226,8 @@ internal val MODULES = listOf(
     ),
     ModuleTile(
         title = "Transfer orders",
-        summary = "List of transfer order headers",
-        detail = "Every open transfer order this warehouse can act on: still to ship from here, " +
-            "or shipped here and not yet received. Search by number or store; tap one to open " +
-            "Transfer - Ship or Receive on it.",
+        summary = "Open transfers",
+        detail = "To ship from here or to receive here.",
         d365 = "InventTransferTable (HSMobileOpsTransferListSvc, reads only)",
         icon = LineIcons.Swap,
         route = Routes.INQUIRY_TRANSFERS,
@@ -262,9 +235,8 @@ internal val MODULES = listOf(
     ),
     ModuleTile(
         title = "Picked serials",
-        summary = "History of picked serial numbers",
-        detail = "Serial numbers that left this warehouse in the last 7, 30 or 90 days - picked, " +
-            "shipped or sold - with the order that took each one. Search by serial or item.",
+        summary = "Serials that left",
+        detail = "Serials picked, shipped or sold recently.",
         d365 = "InventTrans / InventDim (HSMobileOpsTransferListSvc, reads only)",
         icon = LineIcons.Serial,
         route = Routes.INQUIRY_PICKED_SERIALS,
@@ -274,6 +246,8 @@ internal val MODULES = listOf(
     // AppNavGraph's BOTTOM_TABS), and a tile that opens the exact same screen as a tab one
     // scroll away is the duplicate-button problem all over again, just moved into the grid.
 )
+
+private const val UNFINISHED_SHOWN = 3
 
 @Composable
 fun HomeScreen(
@@ -297,8 +271,21 @@ fun HomeScreen(
     var infoFor by remember { mutableStateOf<ModuleTile?>(null) }
     var confirmSignOut by remember { mutableStateOf(false) }
     val unfinished by unfinishedViewModel.unfinished.collectAsStateWithLifecycle()
+    var showAllUnfinished by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableStateOf(false) }
     val onHoldElsewhere by unfinishedViewModel.onHoldElsewhere.collectAsStateWithLifecycle()
     val blockedWorkflows by accessViewModel.blockedWorkflows.collectAsStateWithLifecycle()
+    val switchedOff by accessViewModel.switchedOff.collectAsStateWithLifecycle()
+    var switchedOffNotice by remember { mutableStateOf<String?>(null) }
+    switchedOffNotice?.let { notice ->
+        AlertDialog(
+            onDismissRequest = { switchedOffNotice = null },
+            title = { Text("Switched off") },
+            text = { Text(notice) },
+            confirmButton = {
+                com.d365fo.mobileops.presentation.common.components.ConfirmButton(onClick = { switchedOffNotice = null }) { Text("OK") }
+            },
+        )
+    }
     val handheldMenu by accessViewModel.menu.collectAsStateWithLifecycle()
     // Each time Home shows: pick up Menu access changed in D365FO since the last look.
     androidx.compose.runtime.LaunchedEffect(Unit) {
@@ -306,27 +293,7 @@ fun HomeScreen(
         dashboardViewModel.refresh()
     }
     val figures by dashboardViewModel.figures.collectAsStateWithLifecycle()
-    val sync by dashboardViewModel.sync.collectAsStateWithLifecycle()
     val usage = rememberModuleUsage(warehouseId)
-    // Most-used first; modules this worker has no permission for are left out, planned ones last.
-    // Ordered once per visit to the app, not after every tap - tiles must not move while the
-    // worker goes back and forth.
-    val flatModules = remember(blockedWorkflows) {
-        // Home is rebuilt each time it is shown, so the order is fixed once per app run.
-        val order = HomeTileOrder.titles ?: MODULES
-            .sortedWith(compareBy<ModuleTile>({ !it.available }, { -usage.count(it.title) }))
-            .map { it.title }
-            .also { HomeTileOrder.titles = it }
-        MODULES
-            .filter { it.workflow == null || it.workflow !in blockedWorkflows }
-            .sortedBy { order.indexOf(it.title) }
-    }
-    // With Mobile device menus set up in D365FO, Home is the worker's menu in its own order -
-    // sub-menus and modules as the administrator placed them. Without, the plain list above.
-    val modules = remember(handheldMenu, blockedWorkflows) {
-        handheldMenu?.let { menu -> menuTiles(menu, menu.rootId, blockedWorkflows) }
-    } ?: flatModules
-
     infoFor?.let { module ->
         val enabled = module.workflow == null || module.workflow !in blockedWorkflows
         ModuleInfoDialog(module = module, enabled = enabled, onDismiss = { infoFor = null })
@@ -343,7 +310,7 @@ fun HomeScreen(
         AlertDialog(
             onDismissRequest = { confirmSignOut = false },
             title = { Text("Sign out?") },
-            text = { Text("Anything you posted is still sent to D365FO. Scans you have not posted yet stay on this device for when you sign back in.") },
+            text = { Text("Posted work still goes to D365FO. Unposted scans stay here.") },
             confirmButton = {
                 com.d365fo.mobileops.presentation.common.components.DialogButtonRow(
                     dismiss = { com.d365fo.mobileops.presentation.common.components.CancelOutlinedButton(onClick = { confirmSignOut = false }, modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget)) { Text("Cancel") } },
@@ -374,44 +341,19 @@ fun HomeScreen(
         },
     ) { padding ->
         val side = Modifier.padding(horizontal = WarehouseDimens.ScreenPadding)
-        // Most opened on this device, for the shortcuts row - only modules it may open.
-        // Most opened on this device first; until there is any use, the first modules it may open.
-        val mostUsed = remember(blockedWorkflows, usage.version) {
-            MODULES
-                .filter { it.available && (it.workflow == null || it.workflow !in blockedWorkflows) }
-                .sortedByDescending { usage.count(it.title) }
-                .take(4)
-        }
-        fun allowed(w: com.d365fo.mobileops.domain.model.WarehouseWorkflow) = w !in blockedWorkflows
-        fun n(v: Int?, one: String, many: String) = v?.let { if (it == 1) "1 $one" else "$it $many" } ?: "–"
-        val widgets = buildList<@Composable (Modifier) -> Unit> {
-            if (allowed(com.d365fo.mobileops.domain.model.WarehouseWorkflow.INVENTORY_COUNT)) add { m ->
-                DashboardWidget("Inventory count", LineIcons.Count, Color(0xFF2E7D4F), "In progress",
-                    n(figures.countsInProgress, "journal", "journals"), "Open", { onModuleSelected(Routes.COUNTING_JOURNALS) }, m)
-            }
-            if (allowed(com.d365fo.mobileops.domain.model.WarehouseWorkflow.PO_RECEIVING)) add { m ->
-                DashboardWidget("PO receiving", LineIcons.Receive, Color(0xFF1D63D6), "Due today",
-                    n(figures.posDueToday, "order", "orders"), "Receive", { onModuleSelected(Routes.RECEIVE_FLOW) }, m)
-            }
-            if (allowed(com.d365fo.mobileops.domain.model.WarehouseWorkflow.TRANSFER_SHIP)) add { m ->
-                DashboardWidget("Transfers", LineIcons.Ship, Color(0xFF0E7F74), "To ship",
-                    n(figures.transfersToShip, "order", "orders"), "Ship", { onModuleSelected(Routes.TRANSFER_SHIP) }, m)
-            }
-            add { m ->
-                val failed = sync.failedCount
-                val waiting = sync.pendingCount
-                DashboardWidget("Activity", LineIcons.Activity, WarehouseStatusColors.accent,
-                    if (failed > 0) "Refused" else "Waiting to send",
-                    when { failed > 0 -> n(failed, "posting", "postings"); else -> n(waiting, "posting", "postings") },
-                    "View", { onOpenTab(Routes.FAILED_SYNC) }, m)
-            }
+        // Today's counts on the modules themselves (feedback, 30 Oct: the dashboard cards went,
+        // their numbers moved onto the rows). Activity's count is on its tab.
+        val counts = buildMap {
+            figures.posDueToday?.let { put(com.d365fo.mobileops.domain.model.WarehouseWorkflow.PO_RECEIVING, "$it due") }
+            figures.transfersToShip?.let { put(com.d365fo.mobileops.domain.model.WarehouseWorkflow.TRANSFER_SHIP, "$it to ship") }
+            figures.countsInProgress?.let { put(com.d365fo.mobileops.domain.model.WarehouseWorkflow.INVENTORY_COUNT, "$it open") }
         }
         // Opens at the top: something scrolled it down on sign-in (seen 20 Oct, twice) - held at
         // the top until the worker scrolls it themself.
         val listState = androidx.compose.foundation.lazy.rememberLazyListState()
         var touched by remember { mutableStateOf(false) }
         androidx.compose.runtime.LaunchedEffect(listState.isScrollInProgress) { if (listState.isScrollInProgress) touched = true }
-        androidx.compose.runtime.LaunchedEffect(widgets.size, unfinished.size) { if (!touched) listState.scrollToItem(0) }
+        androidx.compose.runtime.LaunchedEffect(unfinished.size) { if (!touched) listState.scrollToItem(0) }
         LazyColumn(
             state = listState,
             modifier = Modifier
@@ -422,18 +364,12 @@ fun HomeScreen(
         ) {
             item(key = "hero", contentType = "hero") {
                 HomeHero(
-                    onSearch = { onModuleSelected(Routes.ON_HAND) },
+                    onSearch = { onModuleSelected(Routes.SEARCH) },
                 )
             }
-            items(widgets.chunked(2), key = { row -> "w" + widgets.indexOf(row.first()) }, contentType = { "widget-row" }) { row ->
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    modifier = side.fillMaxWidth().height(IntrinsicSize.Min)
-                        .then(if (row.first() == widgets.first()) Modifier.tourTarget("tiles") else Modifier),
-                ) {
-                    row.forEach { widget -> widget(Modifier.weight(1f).fillMaxHeight()) }
-                    if (row.size == 1) Spacer(modifier = Modifier.weight(1f))
-                }
+            // Work saved in D365FO from another device or an earlier install of this app.
+            item(key = "restore", contentType = "restore") {
+                RestoreWorkCard(modifier = side)
             }
 
             // Unfinished work first. It is the only thing on this screen that is time-
@@ -444,7 +380,8 @@ fun HomeScreen(
                     HomeSectionTitle("Continue where you left off", modifier = side)
                 }
                 items(
-                    unfinished,
+                    // Three, then "show all": however many have piled up, the modules stay in reach.
+                    if (showAllUnfinished) unfinished else unfinished.take(UNFINISHED_SHOWN),
                     key = { "${it.flowType}:${it.orderId}" },
                     contentType = { "unfinished" },
                 ) { work ->
@@ -452,19 +389,39 @@ fun HomeScreen(
                         modifier = side,
                         work = work,
                         onResume = {
-                            if (!unfinishedViewModel.justScanned()) {
+                            val workflow = when (work.flowType) {
+                                com.d365fo.mobileops.data.local.entity.FlowType.RECEIVING -> com.d365fo.mobileops.domain.model.WarehouseWorkflow.PO_RECEIVING
+                                com.d365fo.mobileops.data.local.entity.FlowType.TRANSFER_SHIP -> com.d365fo.mobileops.domain.model.WarehouseWorkflow.TRANSFER_SHIP
+                                com.d365fo.mobileops.data.local.entity.FlowType.TRANSFER_RECEIVE -> com.d365fo.mobileops.domain.model.WarehouseWorkflow.TRANSFER_RECEIVE
+                            }
+                            // A switched-off module doesn't open from here either; the job stays.
+                            val off = switchedOff[workflow]
+                            if (off != null) {
+                                switchedOffNotice = "${workflow.label}: $off"
+                            } else if (!unfinishedViewModel.justScanned()) {
                                 onModuleSelected(unfinishedViewModel.resume(work))
                             }
                         },
                         onDiscard = { unfinishedViewModel.discard(work) },
                     )
                 }
+                if (unfinished.size > UNFINISHED_SHOWN) {
+                    item(key = "unfinished-more") {
+                        Text(
+                            text = if (showAllUnfinished) "Show fewer" else "Show all ${unfinished.size} unfinished",
+                            style = MaterialTheme.typography.titleSmall,
+                            color = WarehouseStatusColors.accent,
+                            modifier = side
+                                .clickable { showAllUnfinished = !showAllUnfinished }
+                                .padding(vertical = 10.dp),
+                        )
+                    }
+                }
             }
             if (onHoldElsewhere > 0) {
                 item(key = "on-hold") {
                     Text(
-                        text = "$onHoldElsewhere unfinished job${if (onHoldElsewhere == 1) " is" else "s are"} on hold at " +
-                            "another warehouse. Change warehouse to continue ${if (onHoldElsewhere == 1) "it" else "them"}.",
+                        text = "$onHoldElsewhere unfinished at another warehouse - change warehouse",
                         style = MaterialTheme.typography.bodySmall,
                         color = WarehouseStatusColors.text3,
                         modifier = side.clickable(onClick = onChangeWarehouse).padding(vertical = 4.dp),
@@ -472,26 +429,28 @@ fun HomeScreen(
                 }
             }
 
-            // Two columns of white cards, each with a gradient arrow bar along the bottom - the
-            // reference layout's menu grid, on explicit instruction. Without Mobile device menus,
-            // one grid, most-used first - splitting it into Tasks and Look up was tried and
-            // reverted on request. Chunked into rows rather than a lazy grid, so both cards in a
-            // row stay equal-width.
-            if (mostUsed.isNotEmpty()) {
-                item(key = "most-used-title") { HomeSectionTitle("Your Most Used", modifier = side) }
-                // (Shortcuts open the module straight away; Services has the whole menu.)
-                item(key = "most-used") {
-                    MostUsedRow(mostUsed) { module ->
-                        if (!unfinishedViewModel.justScanned()) module.route?.let { route ->
-                            usage.record(module.title)
-                            onModuleSelected(route)
+            // The tasks by area, with today's counts; look-ups on the Enquiry tab (30 Oct).
+            val visible = visibleModules(handheldMenu, blockedWorkflows)
+            var first = true
+            listOf(ModuleArea.INBOUND, ModuleArea.OUTBOUND, ModuleArea.INVENTORY).forEach { area ->
+                val inArea = modulesIn(area, visible)
+                if (inArea.isNotEmpty()) {
+                    val tour = if (first) Modifier.tourTarget("tiles") else Modifier
+                    first = false
+                    item(key = "area-title-${area.name}") { HomeSectionTitle(area.title, modifier = side) }
+                    item(key = "area-${area.name}") {
+                        ModuleListCard(inArea, modifier = side.then(tour), counts = counts) { module ->
+                            if (!unfinishedViewModel.justScanned()) module.route?.let { route ->
+                                usage.record(module.title)
+                                onModuleSelected(route)
+                            }
                         }
                     }
                 }
             }
-            item(key = "news-title") { HomeSectionTitle("What's New", modifier = side) }
-            item(key = "news") { WhatsNewCard(modifier = side) }
-            item(key = "report-title") { HomeSectionTitle("Report / Suggest", modifier = side) }
+            item(key = "news-title") { HomeSectionTitle("Tips", modifier = side) }
+            item(key = "news") { TipsRow() }
+            item(key = "report-title") { HomeSectionTitle("Tell us", modifier = side) }
             item(key = "report") { ReportSuggestCards(modifier = side) }
         }
     }
@@ -507,18 +466,7 @@ internal fun ModuleInfoDialog(module: ModuleTile, enabled: Boolean, onDismiss: (
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(text = module.detail, style = MaterialTheme.typography.bodyLarge)
 
-                Column {
-                    Text(
-                        text = "In D365FO",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Text(
-                        text = module.d365,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
+                // The D365FO tables (module.d365) are for the docs, not the worker (21 Oct).
 
                 // Two independent reasons a built module can still be unusable - see
                 // ModuleTile.workflow. Not built yet is checked first: an unbuilt module has
@@ -659,9 +607,4 @@ private fun rememberModuleUsage(@Suppress("UNUSED_PARAMETER") key: String?): Mod
     return remember {
         ModuleUsage(runCatching { context.getSharedPreferences("home_module_usage", android.content.Context.MODE_PRIVATE) }.getOrNull())
     }
-}
-
-/** The Home tile order for this app run - see HomeScreen. */
-private object HomeTileOrder {
-    var titles: List<String>? = null
 }

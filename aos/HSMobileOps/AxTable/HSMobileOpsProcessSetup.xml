@@ -34,6 +34,11 @@
 /// location of its own and the item's storage dimension tracks one, does this process still stop
 /// to ask, or accept the receipt without one. See HSMobileOpsPurchOrderResponse and the Android
 /// stepsFor() that reads it.
+///
+/// AutoGrn (Receiving only): each registration from the handheld also posts the product receipt
+/// (GRN) for the registered quantity, numbered from GrnNumberSequence - see
+/// HSMobileOpsPostingService::postGrn. Off, receiving only registers and the product receipt is
+/// posted in D365FO as before.
 /// </summary>
 public class HSMobileOpsProcessSetup extends common
 {
@@ -201,9 +206,49 @@ public class HSMobileOpsProcessSetup extends common
     }
 ]]></Source>
 			</Method>
+			<Method>
+				<Name>nextGrnId</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The next GRN number from GrnNumberSequence - this company's sequence of that code, else a
+    /// shared one. Throws when none is set or it does not exist, so the registration fails with
+    /// the reason rather than posting a product receipt without a number.
+    /// </summary>
+    public PackingSlipId nextGrnId()
+    {
+        NumberSequenceTable sequence;
+        NumberSequenceScope scope;
+
+        if (!this.GrnNumberSequence)
+        {
+            throw error('Auto GRN is on, but Mobile process setup has no GRN number sequence for Receiving');
+        }
+
+        select firstOnly RecId from sequence
+            where sequence.NumberSequence == this.GrnNumberSequence
+            exists join scope
+                where scope.RecId    == sequence.NumberSequenceScope
+                   && scope.DataArea == curExt();
+
+        if (!sequence.RecId)
+        {
+            select firstOnly RecId from sequence
+                where sequence.NumberSequence == this.GrnNumberSequence;
+        }
+
+        if (!sequence.RecId)
+        {
+            throw error(strFmt('The GRN number sequence %1 does not exist', this.GrnNumberSequence));
+        }
+
+        return NumberSeq::newGetNumFromId(sequence.RecId).num();
+    }
+]]></Source>
+			</Method>
 		</Methods>
 	</SourceCode>
-	<Label>Mobile process concurrency setup</Label>
+	<Label>Mobile process setup</Label>
 	<TitleField1>ProcessType</TitleField1>
 	<TitleField2>ConcurrencyMode</TitleField2>
 	<CacheLookup>NotInTTS</CacheLookup>
@@ -238,6 +283,20 @@ public class HSMobileOpsProcessSetup extends common
 			<EnumType>NoYes</EnumType>
 			<HelpText>When a line does not already carry a put-away location, whether this process still asks the operator to scan one. Ignored for a line that already has one - see HSMobileOpsPurchOrderResponse.RequireLocationCapture.</HelpText>
 			<Label>Require location capture</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldEnum">
+			<Name>AutoGrn</Name>
+			<HelpText>Receiving only. Each registration from the handheld also posts the product receipt (GRN) for the registered quantity, numbered from the GRN number sequence.</HelpText>
+			<Label>Auto GRN</Label>
+			<EnumType>NoYes</EnumType>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>GrnNumberSequence</Name>
+			<ExtendedDataType>NumberSequenceCode</ExtendedDataType>
+			<HelpText>The number sequence the GRN (product receipt) numbers come from when Auto GRN is on.</HelpText>
+			<Label>GRN number sequence</Label>
 		</AxTableField>
 	</Fields>
 	<FullTextIndexes />

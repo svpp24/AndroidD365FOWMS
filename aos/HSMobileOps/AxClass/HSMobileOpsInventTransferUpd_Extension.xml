@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsInventTransferUpd_Extension</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Wall-to-wall freeze, in D365FO itself: a transfer order cannot ship from, or be received into,
+/// a frozen warehouse (HSMobileOpsWarehouseFreeze), whoever posts it.
+/// </summary>
+[ExtensionOf(classStr(InventTransferUpd))]
+final class HSMobileOpsInventTransferUpd_Extension
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>run</Name>
+				<Source><![CDATA[
+
+    public void run()
+    {
+        InventTransferTable transferTable;
+        InventLocationId    warehouse;
+
+        if (inventTransferParmTable.TransferId)
+        {
+            transferTable = InventTransferTable::find(inventTransferParmTable.TransferId);
+            if (SysDictClass::isEqualOrSuperclass(classIdGet(this), classNum(InventTransferUpdShip)))
+            {
+                warehouse = transferTable.InventLocationIdFrom;
+            }
+            else if (SysDictClass::isEqualOrSuperclass(classIdGet(this), classNum(InventTransferUpdReceive)))
+            {
+                warehouse = transferTable.InventLocationIdTo;
+            }
+        }
+        if (warehouse && HSMobileOpsWarehouseFreeze::findActive(warehouse).RecId)
+        {
+            throw error(HSMobileOpsWarehouseFreeze::frozenMessage(warehouse));
+        }
+        next run();
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

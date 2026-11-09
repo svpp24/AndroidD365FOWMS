@@ -15,10 +15,36 @@ class HSMobileOpsCountDirectLinesRequest
     str             claimToken;
     str             locationFrom;
     str             locationTo;
+    str             userId;
+    real            fromLine;
 
 }
 ]]></Declaration>
 		<Methods>
+			<Method>
+				<Name>parmFromLine</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('FromLine')]
+    public real parmFromLine(real _value = fromLine)
+    {
+        fromLine = _value;
+        return fromLine;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmUserId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('UserId')]
+    public str parmUserId(str _value = userId)
+    {
+        userId = _value;
+        return userId;
+    }
+]]></Source>
+			</Method>
 			<Method>
 				<Name>parmDataAreaId</Name>
 				<Source><![CDATA[

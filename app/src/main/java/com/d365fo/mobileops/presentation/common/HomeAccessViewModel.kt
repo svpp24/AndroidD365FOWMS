@@ -13,6 +13,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
@@ -37,6 +38,7 @@ class HomeAccessViewModel @Inject constructor(
     permissionDao: PermissionDao,
     private val orderCreationRepository: OrderCreationRepository,
     private val menuRepository: HandheldMenuRepository,
+    private val moduleSwitches: com.d365fo.mobileops.data.sync.ModuleSwitches,
 ) : ViewModel() {
 
     /** The worker's handheld menus (Mobile device menus), or null when none are set up. */
@@ -85,11 +87,15 @@ class HomeAccessViewModel @Inject constructor(
                 permissionDao.observePermissions(userName)
             }
         }
-        .map { permissions ->
+        // Plus whatever is switched off for everyone (Mobile module switches).
+        .combine(moduleSwitches.disabled) { permissions, switchedOff ->
             com.d365fo.mobileops.domain.model.blockedWorkflows(
                 allowed = permissions.filter { it.allowed }.map { it.workflow }.toSet(),
                 hasRows = permissions.isNotEmpty(),
-            )
+            ) + switchedOff.keys
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptySet())
+
+    /** Modules switched off for everyone, with what the worker is told. */
+    val switchedOff: StateFlow<Map<WarehouseWorkflow, String>> = moduleSwitches.disabled
 }

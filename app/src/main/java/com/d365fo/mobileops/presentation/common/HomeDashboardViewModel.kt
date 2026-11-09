@@ -30,6 +30,7 @@ class HomeDashboardViewModel @Inject constructor(
     private val inventoryDao: JournalDao,
     private val lookup: OnDemandLookupRepository,
     private val transfers: TransferListRepository,
+    private val countJournals: com.d365fo.mobileops.data.repository.CountingJournalRepository,
     private val workerSession: WorkerSessionRepository,
     syncStatusProvider: SyncStatusProvider,
 ) : ViewModel() {
@@ -56,6 +57,12 @@ class HomeDashboardViewModel @Inject constructor(
             _figures.update { it.copy(countsInProgress = counts) }
         }
         if (wh.isNullOrBlank()) return
+        // Open in D365FO for this warehouse, which is what the card's "open" promises. Keeps the
+        // device's own figure above when D365FO cannot be reached.
+        viewModelScope.launch {
+            val open = (countJournals.listAssignedJournals(wh, workerSession.session.value?.userName) as? NetworkResult.Success)?.data?.size
+            if (open != null) _figures.update { it.copy(countsInProgress = open) }
+        }
         viewModelScope.launch {
             val due = (lookup.lookupOrdersForToday(wh) as? NetworkResult.Success)?.data?.size
             if (due != null) _figures.update { it.copy(posDueToday = due) }

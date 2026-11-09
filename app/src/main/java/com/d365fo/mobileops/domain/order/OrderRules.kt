@@ -33,8 +33,8 @@ fun checkQuantity(qty: Double, rules: QuantityRules): String? = when {
     qty <= 0 -> "Enter a quantity above zero"
     rules.available != null && qty > rules.available ->
         "Only ${qtyText(rules.available)} available ${rules.availableWhere}"
-    rules.min > 0 && qty < rules.min -> "The minimum order quantity is ${qtyText(rules.min)}"
-    rules.max > 0 && qty > rules.max -> "The maximum order quantity is ${qtyText(rules.max)}"
+    rules.min > 0 && qty < rules.min -> "Minimum ${qtyText(rules.min)}"
+    rules.max > 0 && qty > rules.max -> "Maximum ${qtyText(rules.max)}"
     rules.multiple > 0 && !isMultiple(qty, rules.multiple) -> "Order in multiples of ${qtyText(rules.multiple)}"
     else -> null
 }

@@ -1,0 +1,173 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsCountVarianceSummaryResponse</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// getVarianceSummary's answer: how the journal's lines stand, and the ones needing a decision (at most 500).
+/// </summary>
+[DataContractAttribute]
+class HSMobileOpsCountVarianceSummaryResponse
+{
+    boolean success;
+    str errorCode;
+    int totalLines;
+    int openLines;
+    int firstCounted;
+    int matched;
+    int mismatch;
+    int recount;
+    int approved;
+    int emptyConfirmed;
+    boolean truncated;
+    List lines;
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmSuccess</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Success')]
+    public boolean parmSuccess(boolean _value = success)
+    {
+        success = _value;
+        return success;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmErrorCode</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ErrorCode')]
+    public str parmErrorCode(str _value = errorCode)
+    {
+        errorCode = _value;
+        return errorCode;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmTotalLines</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('TotalLines')]
+    public int parmTotalLines(int _value = totalLines)
+    {
+        totalLines = _value;
+        return totalLines;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmOpenLines</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('OpenLines')]
+    public int parmOpenLines(int _value = openLines)
+    {
+        openLines = _value;
+        return openLines;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmFirstCounted</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('FirstCounted')]
+    public int parmFirstCounted(int _value = firstCounted)
+    {
+        firstCounted = _value;
+        return firstCounted;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmMatched</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Matched')]
+    public int parmMatched(int _value = matched)
+    {
+        matched = _value;
+        return matched;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmMismatch</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Mismatch')]
+    public int parmMismatch(int _value = mismatch)
+    {
+        mismatch = _value;
+        return mismatch;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmRecount</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Recount')]
+    public int parmRecount(int _value = recount)
+    {
+        recount = _value;
+        return recount;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmApproved</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Approved')]
+    public int parmApproved(int _value = approved)
+    {
+        approved = _value;
+        return approved;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmEmptyConfirmed</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('EmptyConfirmed')]
+    public int parmEmptyConfirmed(int _value = emptyConfirmed)
+    {
+        emptyConfirmed = _value;
+        return emptyConfirmed;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmTruncated</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Truncated')]
+    public boolean parmTruncated(boolean _value = truncated)
+    {
+        truncated = _value;
+        return truncated;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmLines</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Lines')]
+    public List parmLines(List _value = lines)
+    {
+        lines = _value;
+        return lines;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

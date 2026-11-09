@@ -87,8 +87,7 @@ fun SupervisorVarianceScreen(
             title = { Text("Post ${state.journalId}?") },
             text = {
                 Text(
-                    "The counting journal is posted in D365FO and on-hand is adjusted. A posted journal " +
-                        "can't be reopened or counted again.",
+                    "On-hand is adjusted. This can't be undone.",
                 )
             },
             confirmButton = {
@@ -351,8 +350,8 @@ private fun DecisionDialog(
                     when (action) {
                         ReviewAction.APPROVE -> "$count line${if (count == 1) "" else "s"} will post with the counted quantity."
                         ReviewAction.RECOUNT -> "$count line${if (count == 1) "" else "s"} will be counted again, blind."
-                        ReviewAction.INVESTIGATE -> "$count line${if (count == 1) "" else "s"} will be held - the journal can't post until ${if (count == 1) "it's" else "they're"} decided."
-                        ReviewAction.REJECT -> "$count line${if (count == 1) "" else "s"} will need a recount before posting."
+                        ReviewAction.INVESTIGATE -> "$count line${if (count == 1) "" else "s"} held."
+                        ReviewAction.REJECT -> "$count line${if (count == 1) "" else "s"} to recount."
                     },
                 )
                 if (reasonCodes.isNotEmpty()) {

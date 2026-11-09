@@ -63,6 +63,9 @@ class WorkerSessionViewModel @Inject constructor(
 
     private fun armIdleTimer() {
         idleJob?.cancel()
+        // Development without a sign-in screen: timing out would strand the app on one until it
+        // is restarted. Always false in a release build.
+        if (com.d365fo.mobileops.BuildConfig.DEV_SKIP_SIGN_IN) return
         // Read fresh every arm, not cached at construction - a change made in Settings mid-shift
         // takes effect from the next touch/restart rather than needing a sign-out first.
         val timeoutMillis = idlePreferences.timeout.value.minutes * 60 * 1000L

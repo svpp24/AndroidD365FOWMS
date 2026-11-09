@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxMenuItemDisplay xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsModuleSwitch</Name>
+	<Label>Mobile module switches</Label>
+	<HelpText>Switch a handheld module off for every worker until a fixed app is installed.</HelpText>
+	<Object>HSMobileOpsModuleSwitch</Object>
+	<ObjectType>Form</ObjectType>
+</AxMenuItemDisplay>

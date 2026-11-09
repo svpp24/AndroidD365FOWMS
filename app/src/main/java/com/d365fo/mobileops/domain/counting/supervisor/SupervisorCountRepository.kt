@@ -120,13 +120,55 @@ enum class SupervisorRefusal {
 }
 
 sealed interface SupervisorResult {
-    data class Done(val affected: Int) : SupervisorResult
+    /** [message]: what the server said it did, when it is more than done - "posting in batch". */
+    data class Done(val affected: Int, val message: String? = null) : SupervisorResult
     data class Refused(val reason: SupervisorRefusal, val message: String?) : SupervisorResult
     data class Unreachable(val message: String) : SupervisorResult
 }
 
 /** `HSMobileOpsCountSupervisorSvc`. The server checks the caller is a supervisor; the app's gate is cosmetic. */
+/** One count of a line. Supervisor only: no counter ever sees another person's count. */
+data class CountAttempt(val attemptNo: Int, val countedQty: Double, val userId: String)
+
+/** A dual count line that disagrees. */
+data class DualCountLine(
+    val lineNumber: Double,
+    val itemNumber: String,
+    val itemName: String,
+    /** Location, batch, serial and product dimensions, as far as the line has them. */
+    val where: String,
+    val status: String,
+    val systemQty: Double,
+    /** Three counts disagree: only a supervisor can settle it. Otherwise a tiebreak can still. */
+    val needsApproval: Boolean,
+    val attempts: List<CountAttempt>,
+)
+
+data class DualCountReview(
+    val total: Int,
+    val notCounted: Int,
+    val firstCounted: Int,
+    val matched: Int,
+    val mismatch: Int,
+    val recount: Int,
+    val approved: Int,
+    val truncated: Boolean,
+    val lines: List<DualCountLine>,
+    /** Settled at 0 by "Location is empty" (wall-to-wall). */
+    val emptyConfirmed: Int = 0,
+) {
+    val settled: Int get() = matched + approved + emptyConfirmed
+    val canPost: Boolean get() = total > 0 && settled == total
+}
+
 interface SupervisorCountRepository {
+    suspend fun dualCountReview(journalId: String): NetworkResult<DualCountReview> =
+        NetworkResult.Error(com.d365fo.mobileops.util.AppFailure.Fatal("Not available"))
+
+    /** [finalQty] null sends the line back for a recount; otherwise it becomes the count. */
+    suspend fun settleDualLine(journalId: String, lineNumber: Double, finalQty: Double?): SupervisorResult =
+        SupervisorResult.Unreachable("Not available")
+
     suspend fun variance(journalId: String): NetworkResult<JournalVariance>
     suspend fun review(
         journalId: String,

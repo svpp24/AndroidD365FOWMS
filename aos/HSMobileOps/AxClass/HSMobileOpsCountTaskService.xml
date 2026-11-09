@@ -59,12 +59,39 @@ class HSMobileOpsCountTaskService
             return response;
         }
 
-        // The whole journal is claimed; location ranges are not offered yet (Ranges is empty
-        // in the journal list), so a RangeId in the request is ignored.
+        // The whole journal is claimed, except a wall-to-wall journal: there each location is a
+        // task, claimed on its own, and several counters work the journal at once.
         changecompany (_request.parmDataAreaId())
         {
             HSMobileOpsLineClaim claim;
             utcdatetime          now = DateTimeUtil::utcNow();
+            str                  taskError;
+
+            if (HSMobileOpsCountWallToWall::isWallToWall(_request.parmJournalId()))
+            {
+                if (_request.parmRangeId())
+                {
+                    taskError = HSMobileOpsCountWallToWall::claimTask(_request.parmJournalId(),
+                        HSMobileOpsCountWallToWall::locationOfRange(_request.parmRangeId()), _request.parmUserId(), response);
+                    if (taskError)
+                    {
+                        response.parmErrorCode(taskError);
+                    }
+                    return response;
+                }
+                if (HSMobileOpsCountTask::openTasks(_request.parmJournalId()))
+                {
+                    response.parmErrorCode('CHOOSE_RANGE');
+                    response.parmMessage('Choose a location to count.');
+                    return response;
+                }
+                // Every location is complete: second counts and recounts, journal-wide, unlocked.
+                response.parmSuccess(true);
+                response.parmClaimToken(HSMobileOpsCountWallToWall::taskToken(0));
+                response.parmExpiresUtc(DateTimeUtil::maxValue());
+                response.parmHeartbeatSeconds(HSMobileOpsCountTaskService::claimHeartbeatSeconds());
+                return response;
+            }
 
             try
             {
@@ -150,6 +177,23 @@ class HSMobileOpsCountTaskService
         {
             HSMobileOpsLineClaim claim;
             utcdatetime          now = DateTimeUtil::utcNow();
+            HSMobileOpsCountTask task;
+
+            if (strStartsWith(_request.parmClaimToken(), 'W2W-'))
+            {
+                task = HSMobileOpsCountWallToWall::taskOfToken(_request.parmClaimToken());
+                if (task.RecId && task.Status == HSMobileOpsCountTaskStatus::InProgress && task.AssignedUserId != _request.parmUserId())
+                {
+                    response.parmErrorCode('CLAIM_LOST');
+                    response.parmClaimedBy(task.AssignedUserId);
+                    return response;
+                }
+                response.parmSuccess(true);
+                response.parmClaimToken(_request.parmClaimToken());
+                response.parmExpiresUtc(DateTimeUtil::maxValue());
+                response.parmHeartbeatSeconds(HSMobileOpsCountTaskService::claimHeartbeatSeconds());
+                return response;
+            }
 
             ttsbegin;
             select forUpdate firstOnly claim
@@ -216,6 +260,13 @@ class HSMobileOpsCountTaskService
         {
             HSMobileOpsLineClaim claim;
 
+            if (strStartsWith(_request.parmClaimToken(), 'W2W-'))
+            {
+                HSMobileOpsCountWallToWall::releaseTask(_request.parmClaimToken(), _request.parmUserId());
+                response.parmSuccess(true);
+                return response;
+            }
+
             ttsbegin;
             select forUpdate firstOnly claim
                 where claim.ProcessType == HSMobileOpsCountTaskService::claimProcess()
@@ -230,6 +281,245 @@ class HSMobileOpsCountTaskService
         }
         response.parmSuccess(true);
         return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>getCountBins</Name>
+				<Source><![CDATA[
+
+    /// <summary>The store's active bins. None means the store counts by location alone.</summary>
+    public HSMobileOpsCountBinResponse getCountBins(HSMobileOpsCountBinRequest _request)
+    {
+        HSMobileOpsCountBinResponse response = new HSMobileOpsCountBinResponse();
+        HSMobileOpsCountBin         bin;
+        HSMobileOpsCountBinRow      row;
+        List                        rows = new List(Types::Class);
+
+        response.parmSuccess(false);
+        response.parmBins(rows);
+        if (!_request || !_request.parmDataAreaId() || !_request.parmWarehouseId()
+            || !CompanyInfo::findDataArea(_request.parmDataAreaId()).RecId)
+        {
+            response.parmErrorCode('INVALID_REQUEST');
+            return response;
+        }
+        changecompany (_request.parmDataAreaId())
+        {
+            while select BinId, Description, WMSLocationId from bin
+                order by BinId
+                where bin.InventLocationId == _request.parmWarehouseId()
+                   && bin.Active           == NoYes::Yes
+            {
+                row = new HSMobileOpsCountBinRow();
+                row.parmBinId(bin.BinId);
+                row.parmDescription(bin.Description);
+                row.parmLocationId(bin.WMSLocationId);
+                rows.addEnd(row);
+            }
+        }
+        response.parmSuccess(true);
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>addCountBin</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// A supervisor adds a bin found on the floor to the store's list, or wakes one up that was
+    /// switched off. Everyone else is refused: a typo must not become a bin.
+    /// </summary>
+    [Wrappable(false), Hookable(false)]
+    public HSMobileOpsCountBinResponse addCountBin(HSMobileOpsCountBinRequest _request)
+    {
+        HSMobileOpsCountBinResponse response = new HSMobileOpsCountBinResponse();
+        HSMobileOpsCountBin         bin;
+        HSMobileOpsCountBinRow      row;
+        List                        rows = new List(Types::Class);
+        str                         binId;
+
+        response.parmSuccess(false);
+        response.parmBins(rows);
+        binId = _request ? strUpr(strLRTrim(_request.parmBinId())) : '';
+        if (!_request || !_request.parmDataAreaId() || !_request.parmWarehouseId() || !binId || strLen(binId) > 20
+            || !CompanyInfo::findDataArea(_request.parmDataAreaId()).RecId)
+        {
+            response.parmErrorCode('INVALID_REQUEST');
+            response.parmMessage('A bin needs a store and a name of up to 20 characters.');
+            return response;
+        }
+        changecompany (_request.parmDataAreaId())
+        {
+            if (!HSMobileOpsCountDualEngine::isSupervisor(HSMobileOpsUser::find(_request.parmUserId())))
+            {
+                response.parmErrorCode('NOT_SUPERVISOR');
+                response.parmMessage('Only a supervisor can add a bin.');
+                return response;
+            }
+            if (!InventLocation::find(_request.parmWarehouseId()).RecId)
+            {
+                response.parmErrorCode('INVALID_REQUEST');
+                response.parmMessage(strFmt('No store %1', _request.parmWarehouseId()));
+                return response;
+            }
+            try
+            {
+                ttsbegin;
+                bin = HSMobileOpsCountBin::find(_request.parmWarehouseId(), binId, true);
+                if (bin.RecId)
+                {
+                    if (!bin.Active)
+                    {
+                        bin.Active = NoYes::Yes;
+                        bin.update();
+                    }
+                }
+                else
+                {
+                    bin.initValue();
+                    bin.InventLocationId = _request.parmWarehouseId();
+                    bin.BinId            = binId;
+                    // Added while counting a location: the bin is in it.
+                    bin.WMSLocationId    = strUpr(strLRTrim(_request.parmLocationId()));
+                    bin.CreatedByUser    = _request.parmUserId();
+                    bin.insert();
+                }
+                ttscommit;
+            }
+            catch (Exception::DuplicateKeyException)
+            {
+                // Someone added the same bin at the same moment: it is there, which is the point.
+                response.parmMessage('');
+            }
+        }
+        row = new HSMobileOpsCountBinRow();
+        row.parmBinId(binId);
+        row.parmLocationId(bin.WMSLocationId);
+        rows.addEnd(row);
+        response.parmSuccess(true);
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>submitBinCounts</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// What this counter counted per bin, for the lines sent: a record beside the count itself. A
+    /// line's rows are replaced, so a corrected count or a resend leaves no stale bin behind.
+    /// </summary>
+    [Wrappable(false), Hookable(false)]
+    public HSMobileOpsCountBinResponse submitBinCounts(HSMobileOpsCountBinLinesRequest _request)
+    {
+        HSMobileOpsCountBinResponse   response = new HSMobileOpsCountBinResponse();
+        HSMobileOpsCountBinLine       binLine;
+        InventJournalTrans            journalTrans;
+        InventDim                     inventDim;
+        Set                           replaced = new Set(Types::Real);
+        Newtonsoft.Json.Linq.JArray   rows;
+        Newtonsoft.Json.Linq.JObject  row;
+        real                          lineNum;
+        int                           i;
+        int                           accepted;
+
+        response.parmSuccess(false);
+        response.parmBins(new List(Types::Class));
+        if (!_request || !_request.parmDataAreaId() || !_request.parmJournalId() || !_request.parmUserId() || !_request.parmRowsJson()
+            || !CompanyInfo::findDataArea(_request.parmDataAreaId()).RecId)
+        {
+            response.parmErrorCode('INVALID_REQUEST');
+            return response;
+        }
+        try
+        {
+            rows = Newtonsoft.Json.Linq.JArray::Parse(_request.parmRowsJson());
+        }
+        catch (Exception::CLRError)
+        {
+            response.parmErrorCode('INVALID_REQUEST');
+            response.parmMessage('The counts per bin could not be read.');
+            return response;
+        }
+        changecompany (_request.parmDataAreaId())
+        {
+            try
+            {
+                ttsbegin;
+                for (i = 0; rows != null && i < rows.get_Count(); i++)
+                {
+                    row     = rows.get_Item(i);
+                    lineNum = HSMobileOpsCountTaskService::jsonNumber(row, 'LineNumber');
+                    if (!replaced.in(lineNum))
+                    {
+                        replaced.add(lineNum);
+                        delete_from binLine
+                            where binLine.JournalId == _request.parmJournalId()
+                               && binLine.LineNum   == lineNum
+                               && binLine.UserId    == _request.parmUserId();
+                    }
+                    journalTrans.clear();
+                    select firstOnly ItemId from journalTrans
+                        where journalTrans.JournalId == _request.parmJournalId()
+                           && journalTrans.LineNum   == lineNum
+                        join wMSLocationId, inventBatchId from inventDim
+                            where inventDim.inventDimId == journalTrans.InventDimId;
+                    binLine.clear();
+                    binLine.JournalId       = _request.parmJournalId();
+                    binLine.LineNum         = lineNum;
+                    binLine.UserId          = _request.parmUserId();
+                    binLine.BinId           = HSMobileOpsCountTaskService::jsonText(row, 'BinId');
+                    binLine.CountedQty      = HSMobileOpsCountTaskService::jsonNumber(row, 'Quantity');
+                    binLine.ItemId          = journalTrans.ItemId;
+                    binLine.WMSLocationId   = inventDim.wMSLocationId;
+                    binLine.InventBatchId   = inventDim.inventBatchId;
+                    binLine.CountedDateTime = DateTimeUtil::utcNow();
+                    binLine.SubmissionId    = _request.parmSubmissionId();
+                    binLine.insert();
+                    accepted++;
+                }
+                ttscommit;
+            }
+            catch (Exception::DuplicateKeyException)
+            {
+                response.parmErrorCode('RETRY');
+                return response;
+            }
+            catch (Exception::Deadlock)
+            {
+                response.parmErrorCode('RETRY');
+                return response;
+            }
+        }
+        response.parmAccepted(accepted);
+        response.parmSuccess(true);
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>jsonText</Name>
+				<Source><![CDATA[
+
+    private static str jsonText(Newtonsoft.Json.Linq.JObject _row, str _property)
+    {
+        Newtonsoft.Json.Linq.JToken token = _row == null ? null : _row.get_Item(_property);
+
+        return token == null ? '' : token.ToString();
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>jsonNumber</Name>
+				<Source><![CDATA[
+
+    private static real jsonNumber(Newtonsoft.Json.Linq.JObject _row, str _property)
+    {
+        str value = HSMobileOpsCountTaskService::jsonText(_row, _property);
+
+        return value ? str2num(value) : 0;
     }
 ]]></Source>
 			</Method>
@@ -305,10 +595,17 @@ class HSMobileOpsCountTaskService
 
         changecompany (_request.parmDataAreaId())
         {
+            if (HSMobileOpsCountDualEngine::isDual(_request.parmJournalId()))
+            {
+                HSMobileOpsCountDualEngine::journalLines(_request, response);
+                return response;
+            }
+
             while select LineNum, ItemId from inventJournalTrans
                 order by LineNum
                 where inventJournalTrans.JournalId == _request.parmJournalId()
-                join InventSiteId, InventLocationId, wMSLocationId, inventBatchId, inventSerialId from inventDim
+                join InventSiteId, InventLocationId, wMSLocationId, inventBatchId, inventSerialId,
+                     configId, InventSizeId, InventColorId, InventStyleId from inventDim
                     where inventDim.InventDimId == inventJournalTrans.InventDimId
             {
                 if (locationFrom && inventDim.wMSLocationId < locationFrom)
@@ -337,7 +634,10 @@ class HSMobileOpsCountTaskService
                 row.parmLocationId(inventDim.wMSLocationId);
                 row.parmBatchId(inventDim.inventBatchId);
                 row.parmSerialId(inventDim.inventSerialId);
-                // TODO (X++ owner): real pass number once recounts exist (attempt table).
+                row.parmConfigId(inventDim.configId);
+                row.parmSizeId(inventDim.InventSizeId);
+                row.parmColorId(inventDim.InventColorId);
+                row.parmStyleId(inventDim.InventStyleId);
                 row.parmPassNumber(1);
                 row.parmRecount(false);
                 // TODO (X++ owner): location type / owner / verify-only, as getLineAttributes.
@@ -407,6 +707,12 @@ class HSMobileOpsCountTaskService
             InventJournalTrans             journalTrans;
             int                            accepted;
             int                            unknown;
+
+            if (HSMobileOpsCountDualEngine::isDual(_request.parmJournalId()))
+            {
+                HSMobileOpsCountDualEngine::submitCounts(_request, response);
+                return response;
+            }
 
             if (!lines || !lines.elements())
             {
@@ -544,9 +850,26 @@ class HSMobileOpsCountTaskService
             int                           i;
             int                           accepted;
             int                           notPlaced;
+            boolean                       dual = HSMobileOpsCountDualEngine::isDual(_request.parmJournalId());
+            HSMobileOpsCountDualEngine    engine = new HSMobileOpsCountDualEngine();
+            boolean                       supervisor = HSMobileOpsCountDualEngine::isSupervisor(HSMobileOpsUser::find(_request.parmUserId()));
+            str                           emptyRefusals;
+
+            // Wall-to-wall: "Location is empty" settles the location's lines at 0 and completes it.
+            if (HSMobileOpsCountWallToWall::isWallToWall(_request.parmJournalId())
+             && _request.parmEmptyLocationsJson() && _request.parmEmptyLocationsJson() != '[]')
+            {
+                emptyRefusals = HSMobileOpsCountTaskService::confirmEmptyLocations(_request);
+            }
 
             if (!_request.parmExceptionsJson() || _request.parmExceptionsJson() == '[]')
             {
+                if (emptyRefusals)
+                {
+                    response.parmErrorCode('EMPTY_REFUSED');
+                    response.parmMessage(emptyRefusals);
+                    return response;
+                }
                 response.parmSuccess(true);
                 return response;
             }
@@ -630,16 +953,31 @@ class HSMobileOpsCountTaskService
                                && inventDim.InventSizeId     == counted.InventSizeId
                                && inventDim.InventColorId    == counted.InventColorId
                                && inventDim.InventStyleId    == counted.InventStyleId;
-                    if (journalTrans.RecId)
+                    if (!journalTrans.RecId)
+                    {
+                        lineNum++;
+                        HSMobileOpsCountControl::addLine(journalTable, lineNum, counted, store, dual ? 0 : e.currentValue());
+                        if (dual)
+                        {
+                            // Found where D365FO holds none: a second counter confirms it.
+                            select forUpdate firstOnly journalTrans
+                                where journalTrans.JournalId == journalTable.JournalId
+                                   && journalTrans.LineNum   == lineNum;
+                            journalTrans.HSMobileOpsDualRequired = NoYes::Yes;
+                            journalTrans.doUpdate();
+                        }
+                    }
+                    if (dual)
+                    {
+                        // A count like any other, by the dual count rules: never straight onto the line.
+                        engine.applyCount(journalTrans, e.currentValue(), _request.parmUserId(), _request.parmDeviceId(),
+                            _request.parmSubmissionId(), supervisor);
+                    }
+                    else if (journalTrans.RecId)
                     {
                         journalTrans.Counted = e.currentValue();
                         journalTrans.modifiedField(fieldNum(InventJournalTrans, Counted));
                         journalTrans.update();
-                    }
-                    else
-                    {
-                        lineNum++;
-                        HSMobileOpsCountControl::addLine(journalTable, lineNum, counted, store, e.currentValue());
                     }
                     accepted++;
                 }
@@ -656,7 +994,18 @@ class HSMobileOpsCountTaskService
                 return response;
             }
 
+            HSMobileOpsCountAssortment::flagUnexpected(_request.parmJournalId());
+            if (HSMobileOpsCountWallToWall::isWallToWall(_request.parmJournalId()))
+            {
+                HSMobileOpsCountWallToWall::refreshTasks(_request.parmJournalId());
+            }
             response.parmAccepted(accepted);
+            if (emptyRefusals)
+            {
+                response.parmErrorCode('EMPTY_REFUSED');
+                response.parmMessage(strFmt('%1 unexpected item(s) added. %2', accepted, emptyRefusals));
+                return response;
+            }
             if (notPlaced)
             {
                 // Kept on the device as not sent, so the counter sees which and can send again.
@@ -667,6 +1016,157 @@ class HSMobileOpsCountTaskService
             }
             response.parmSuccess(true);
             response.parmMessage(strFmt('%1 unexpected item(s) added to the journal', accepted));
+        }
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>confirmEmptyLocations</Name>
+				<Source><![CDATA[
+
+    /// <summary>The locations a counter found empty. Answers the refusals, if any.</summary>
+    private static str confirmEmptyLocations(HSMobileOpsCountExceptionsRequest _request)
+    {
+        Newtonsoft.Json.Linq.JArray  jArray;
+        Newtonsoft.Json.Linq.JObject jRow;
+        str                          refusals;
+        str                          refusal;
+        int                          i;
+
+        try
+        {
+            jArray = Newtonsoft.Json.Linq.JArray::Parse(_request.parmEmptyLocationsJson());
+        }
+        catch (Exception::CLRError)
+        {
+            return 'The empty locations could not be read.';
+        }
+        for (i = 0; jArray != null && i < jArray.get_Count(); i++)
+        {
+            jRow = jArray.get_Item(i);
+            refusal = HSMobileOpsCountWallToWall::confirmEmpty(_request.parmJournalId(),
+                HSMobileOpsCountTaskService::jsonStr(jRow, 'LocationId'), _request.parmUserId());
+            if (refusal)
+            {
+                refusals += (refusals ? ' ' : '') + refusal;
+            }
+        }
+        return refusals;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>completeLocation</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Wall-to-wall: a counter says a location is done, after its counts are in. Refused while
+    /// any line there has no count.
+    /// </summary>
+    [Wrappable(false), Hookable(false)]
+    public HSMobileOpsCountLocationResponse completeLocation(HSMobileOpsCountLocationRequest _request)
+    {
+        return HSMobileOpsCountTaskService::locationAction(_request, false);
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>confirmLocationEmpty</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Wall-to-wall: a counter says a location holds nothing. Its lines settle at 0 and it is
+    /// complete. Refused once anyone has counted a line there.
+    /// </summary>
+    [Wrappable(false), Hookable(false)]
+    public HSMobileOpsCountLocationResponse confirmLocationEmpty(HSMobileOpsCountLocationRequest _request)
+    {
+        return HSMobileOpsCountTaskService::locationAction(_request, true);
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>locationAction</Name>
+				<Source><![CDATA[
+
+    private static HSMobileOpsCountLocationResponse locationAction(HSMobileOpsCountLocationRequest _request, boolean _empty)
+    {
+        HSMobileOpsCountLocationResponse response = new HSMobileOpsCountLocationResponse();
+        HSMobileOpsUser                  user;
+        str                              refusal;
+
+        response.parmSuccess(false);
+        if (!_request || !_request.parmDataAreaId() || !_request.parmJournalId() || !_request.parmUserId()
+            || !CompanyInfo::findDataArea(_request.parmDataAreaId()).RecId)
+        {
+            response.parmErrorCode('INVALID_REQUEST');
+            return response;
+        }
+        changecompany (_request.parmDataAreaId())
+        {
+            user = HSMobileOpsUser::find(_request.parmUserId());
+            if (!user.RecId || !user.IsActive)
+            {
+                response.parmErrorCode('NOT_ALLOWED');
+                return response;
+            }
+            if (!HSMobileOpsCountWallToWall::isWallToWall(_request.parmJournalId()))
+            {
+                response.parmErrorCode('NOT_WALL_TO_WALL');
+                response.parmMessage(strFmt('%1 is not a wall-to-wall count.', _request.parmJournalId()));
+                return response;
+            }
+            refusal = _empty
+                ? HSMobileOpsCountWallToWall::confirmEmpty(_request.parmJournalId(), _request.parmLocationId(), _request.parmUserId())
+                : HSMobileOpsCountWallToWall::completeLocation(_request.parmJournalId(), _request.parmLocationId(), _request.parmUserId());
+            response.parmOpenTasks(HSMobileOpsCountTask::openTasks(_request.parmJournalId()));
+            if (refusal)
+            {
+                response.parmErrorCode('LOCATION_REFUSED');
+                response.parmMessage(refusal);
+                return response;
+            }
+            response.parmSuccess(true);
+            response.parmMessage(strFmt('%1 is complete. %2 location(s) left.', _request.parmLocationId(), response.parmOpenTasks()));
+        }
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>getFreezeStatus</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Is the warehouse frozen for a wall-to-wall count? Asked by the handheld's movement screens
+    /// before work starts; the posting itself refuses too, whatever they were told.
+    /// </summary>
+    [Wrappable(false), Hookable(false)]
+    public HSMobileOpsFreezeStatusResponse getFreezeStatus(HSMobileOpsFreezeStatusRequest _request)
+    {
+        HSMobileOpsFreezeStatusResponse response = new HSMobileOpsFreezeStatusResponse();
+        HSMobileOpsWarehouseFreeze      freeze;
+
+        response.parmSuccess(false);
+        if (!_request || !_request.parmDataAreaId() || !_request.parmWarehouseId()
+            || !CompanyInfo::findDataArea(_request.parmDataAreaId()).RecId)
+        {
+            response.parmErrorCode('INVALID_REQUEST');
+            return response;
+        }
+        changecompany (_request.parmDataAreaId())
+        {
+            freeze = HSMobileOpsWarehouseFreeze::findActive(_request.parmWarehouseId());
+            response.parmFrozen(freeze.RecId != 0);
+            if (freeze.RecId)
+            {
+                response.parmJournalId(freeze.JournalId);
+                response.parmStatus(enum2Str(freeze.Status));
+                response.parmFrozenSinceUtc(freeze.StartedUtc);
+                response.parmMessage(HSMobileOpsWarehouseFreeze::frozenMessage(_request.parmWarehouseId()));
+            }
+            response.parmSuccess(true);
         }
         return response;
     }

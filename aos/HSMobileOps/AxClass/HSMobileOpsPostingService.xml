@@ -13,9 +13,10 @@
 /// load; an operator standing at a scanner should never wait that out. Both methods now do one
 /// thing only - validate the shape, check idempotency, insert a HSMobileOpsPostQueue row, return
 /// - and are back in well under a second regardless of how slow the real work would have been.
-/// The real work happens in processCompany - every few minutes from the recurring batch job
-/// HSMobileOpsProcessPendingBatch, and at once from the Activity screen's "Process pending"
-/// action (processPending) - and is reported back through getQueueStatus.
+/// The real work happens in processWarehouse - one batch task per warehouse, started every few
+/// minutes by the recurring job HSMobileOpsProcessPendingBatch - and in processCompany, at once
+/// from the Activity screen's "Process pending" action (processPending), for small postings only.
+/// Either way it is reported back through getQueueStatus.
 ///
 /// **Every posting is idempotent, and that is not optional.** A handheld on warehouse wifi loses
 /// responses routinely — the request lands, the reply never arrives, the queue retries. Without
@@ -90,6 +91,16 @@ class HSMobileOpsPostingService
             // A replay of an already-staged request is not an error, whatever became of it since.
             if (HSMobileOpsPostQueue::findByKey(_request.parmIdempotencyKey()).RecId)
             {
+                if (_request.parmResubmit())
+                {
+                    problem = HSMobileOpsPostingService::reopenChecked(HSMobileOpsPostQueue::findByKey(_request.parmIdempotencyKey()).RecId);
+                    if (problem)
+                    {
+                        response.parmErrorCode('QTY_NOT_AVAILABLE');
+                        response.parmMessage(problem);
+                        return response;
+                    }
+                }
                 response.parmSuccess(true);
                 response.parmDocumentNumber('');
                 HSMobileOpsPostingService::processNow(_request, response);
@@ -104,6 +115,13 @@ class HSMobileOpsPostingService
             {
                 response.parmErrorCode('NOT_FOUND');
                 response.parmMessage(strFmt('No purchase order %1', _request.parmSourceId()));
+                return response;
+            }
+            problem = HSMobileOpsWarehouseFreeze::frozenMessage(HSMobileOpsPostingService::warehouseOf('Registration', _request.parmSourceId()));
+            if (problem)
+            {
+                response.parmErrorCode('WAREHOUSE_FROZEN');
+                response.parmMessage(problem);
                 return response;
             }
 
@@ -158,8 +176,16 @@ class HSMobileOpsPostingService
     private static void stage(HSMobileOpsPostRequest _request, str _documentType)
     {
         HSMobileOpsPostQueue postQueue;
+        str                  problem;
 
         ttsbegin;
+
+        // In the same transaction as the insert, holding the lines: a second worker's posting of
+        // the same line waits here, then sees this row. Refused now, it costs them a message at
+        // the door rather than a failed posting found later. Stored Failed, not dropped: a
+        // supervisor can then see it and act on it (Mobile posting queue) with nothing rescanned.
+        problem = HSMobileOpsPostingService::stagingProblem(
+            _documentType, _request.parmSourceId(), _request.parmLinesJson());
 
         postQueue.clear();
         postQueue.IdempotencyKey  = _request.parmIdempotencyKey();
@@ -170,8 +196,15 @@ class HSMobileOpsPostingService
         postQueue.PersonnelNumber = _request.parmPersonnelNumber();
         postQueue.DeviceId        = _request.parmDeviceId();
         postQueue.LinesJson       = _request.parmLinesJson();
-        postQueue.Status          = HSMobileOpsPostQueue::statusPending();
+        postQueue.LineCount       = HSMobileOpsPostingService::parseLines(_request.parmLinesJson()).elements();
+        postQueue.Warehouse       = HSMobileOpsPostingService::warehouseOf(_documentType, _request.parmSourceId());
+        postQueue.Status          = problem ? HSMobileOpsPostQueue::statusFailed() : HSMobileOpsPostQueue::statusPending();
         postQueue.ReceivedUtc     = DateTimeUtil::utcNow();
+        if (problem)
+        {
+            postQueue.ErrorMessage = subStr(problem, 1, 250);
+            postQueue.ProcessedUtc = postQueue.ReceivedUtc;
+        }
         postQueue.insert();
 
         ttscommit;
@@ -220,15 +253,17 @@ class HSMobileOpsPostingService
 				<Source><![CDATA[
 
     /// <summary>
-    /// Works every Pending row of one company, oldest received first, and returns what each
-    /// became. Shared by the batch job and the "Process pending" button; each row is claimed
-    /// first (HSMobileOpsPostQueue::claim), so the two never work the same row.
+    /// "Process pending" on the handheld: works the small Pending rows of one company, oldest
+    /// first, for as long as a person should wait, and returns what each became. Big postings
+    /// and whatever is left stay Pending for the batch job. Each row is claimed first
+    /// (HSMobileOpsPostQueue::claim), so this and the batch job never work the same row.
     /// </summary>
     public static List processCompany(DataAreaId _company)
     {
         HSMobileOpsPostQueue postQueue;
         HSMobileOpsPostQueue processed;
-        List                 rows = new List(Types::Class);
+        List                 rows    = new List(Types::Class);
+        utcdatetime          started = DateTimeUtil::utcNow();
 
         changecompany (_company)
         {
@@ -236,22 +271,15 @@ class HSMobileOpsPostingService
 
             while select RecId, DocumentType from postQueue
                 order by ReceivedUtc asc
-                where postQueue.Status == HSMobileOpsPostQueue::statusPending()
+                where postQueue.Status    == HSMobileOpsPostQueue::statusPending()
+                   && postQueue.LineCount <= HSMobileOpsPostingService::inlineLineLimit()
             {
-                switch (postQueue.DocumentType)
+                if (DateTimeUtil::getDifference(DateTimeUtil::utcNow(), started) >= HSMobileOpsPostingService::inlineSeconds())
                 {
-                    case 'Registration':
-                        HSMobileOpsPostingService::processReceiptQueueEntry(postQueue.RecId);
-                        break;
-                    case 'TransferShipment':
-                        HSMobileOpsPostingService::processTransferQueueEntry(postQueue.RecId, true);
-                        break;
-                    case 'TransferReceipt':
-                        HSMobileOpsPostingService::processTransferQueueEntry(postQueue.RecId, false);
-                        break;
-                    default:
-                        continue;
+                    break;
                 }
+
+                HSMobileOpsPostingService::processRow(postQueue.RecId, postQueue.DocumentType);
 
                 processed = null;
                 select firstOnly processed
@@ -269,6 +297,188 @@ class HSMobileOpsPostingService
 ]]></Source>
 			</Method>
 			<Method>
+				<Name>processWarehouse</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// One batch task's work (HSMobileOpsPostingWorker): the Pending rows of one warehouse, oldest
+    /// first, one after the other, until none are left or [workerSeconds] have passed. Postings of
+    /// one warehouse stay in sequence because they are the ones that would wait on each other's
+    /// stock rows. A posting already started always runs to its end, however long that takes.
+    ///
+    /// Stopping on time is what lets the recurring job come round again: it cannot start its next
+    /// run until every task of this one has ended. An error that gets past the posting's own
+    /// handling ends this task; the row stays Processing for failInterrupted, not worked twice.
+    /// </summary>
+    public static void processWarehouse(DataAreaId _company, InventLocationId _warehouse)
+    {
+        HSMobileOpsPostQueue postQueue;
+        utcdatetime          started = DateTimeUtil::utcNow();
+
+        changecompany (_company)
+        {
+            do
+            {
+                postQueue = null;
+                select firstOnly RecId, DocumentType from postQueue
+                    order by ReceivedUtc asc
+                    where postQueue.Status    == HSMobileOpsPostQueue::statusPending()
+                       && postQueue.Warehouse == _warehouse
+                       && (postQueue.DocumentType == 'Registration'
+                        || postQueue.DocumentType == 'TransferShipment'
+                        || postQueue.DocumentType == 'TransferReceipt');
+
+                if (!postQueue.RecId)
+                {
+                    break;
+                }
+
+                try
+                {
+                    HSMobileOpsPostingService::processRow(postQueue.RecId, postQueue.DocumentType);
+                }
+                catch
+                {
+                    exceptionTextFallThrough();
+                    break;
+                }
+            }
+            while (DateTimeUtil::getDifference(DateTimeUtil::utcNow(), started) < HSMobileOpsPostingService::workerSeconds());
+        }
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>failInterruptedIn</Name>
+				<Source><![CDATA[
+
+    /// <summary>The recurring job's check for postings that died part way, for one company.</summary>
+    public static void failInterruptedIn(DataAreaId _company)
+    {
+        changecompany (_company)
+        {
+            HSMobileOpsPostQueue::failInterrupted();
+        }
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>processRow</Name>
+				<Source><![CDATA[
+
+    /// <summary>Works one row by its document type. Each method below claims the row first.</summary>
+    private static void processRow(RecId _recId, str _documentType)
+    {
+        switch (_documentType)
+        {
+            case 'Registration':
+                HSMobileOpsPostingService::processReceiptQueueEntry(_recId);
+                break;
+            case 'TransferShipment':
+                HSMobileOpsPostingService::processTransferQueueEntry(_recId, true);
+                break;
+            case 'TransferReceipt':
+                HSMobileOpsPostingService::processTransferQueueEntry(_recId, false);
+                break;
+        }
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>inlineLineLimit</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The most lines worked while someone waits - Post immediately, Process pending, Retry. A
+    /// 100 line order took 129 s on the dev VM, past the handheld's two minutes, and holds a web
+    /// request all that time. Anything bigger goes straight to the batch job.
+    /// </summary>
+    public static int inlineLineLimit()
+    {
+        return 50;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>inlineSeconds</Name>
+				<Source><![CDATA[
+
+    /// <summary>How long Process pending starts new postings for, inside the handheld's two minutes.</summary>
+    private static int inlineSeconds()
+    {
+        return 60;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>workerSeconds</Name>
+				<Source><![CDATA[
+
+    /// <summary>How long a batch task starts new postings for - see [processWarehouse].</summary>
+    private static int workerSeconds()
+    {
+        return 300;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>deadlockRetries</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Times a posting is worked again after losing to another one: a deadlock, an update conflict
+    /// or a duplicate key. Everything it did was rolled back, so this cannot book anything twice.
+    /// Postings run side by side now, so these are ordinary events that should not reach a
+    /// supervisor unless they keep happening.
+    /// </summary>
+    private static int deadlockRetries()
+    {
+        return 3;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>warehouseOf</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The warehouse whose stock a posting moves, which decides the batch task that works it: the
+    /// order's own, its first line's when the header has none, and for a transfer the end being
+    /// posted. Blank is fine - those rows simply share one task.
+    /// </summary>
+    private static InventLocationId warehouseOf(str _documentType, str _sourceId)
+    {
+        PurchTable          purchTable;
+        PurchLine           purchLine;
+        InventTransferTable transferTable;
+
+        switch (_documentType)
+        {
+            case 'Registration':
+                select firstOnly InventLocationId from purchTable
+                    where purchTable.PurchId == _sourceId;
+                if (purchTable.InventLocationId)
+                {
+                    return purchTable.InventLocationId;
+                }
+                select firstOnly InventDimId from purchLine
+                    order by LineNumber
+                    where purchLine.PurchId == _sourceId;
+                return InventDim::find(purchLine.InventDimId).InventLocationId;
+            case 'TransferShipment':
+                select firstOnly InventLocationIdFrom from transferTable
+                    where transferTable.TransferId == _sourceId;
+                return transferTable.InventLocationIdFrom;
+            case 'TransferReceipt':
+                select firstOnly InventLocationIdTo from transferTable
+                    where transferTable.TransferId == _sourceId;
+                return transferTable.InventLocationIdTo;
+        }
+        return '';
+    }
+]]></Source>
+			</Method>
+			<Method>
 				<Name>processNow</Name>
 				<Source><![CDATA[
 
@@ -276,39 +486,464 @@ class HSMobileOpsPostingService
     /// "Post immediately" on the handheld (Settings > Posting, feedback 301e5d0e): the request
     /// just staged - or staged before, for a resend - is worked now instead of waiting for the
     /// batch job or "Process pending", and the response says what it became. Called inside the
-    /// company of the request. Without ProcessNow nothing changes: the row stays Pending.
+    /// company of the request. Without ProcessNow nothing changes: the row stays Pending. Nor for
+    /// a big posting (inlineLineLimit): nobody should stand waiting for it, and the batch job has it.
     /// </summary>
     private static void processNow(HSMobileOpsPostRequest _request, HSMobileOpsPostResponse _response)
     {
         HSMobileOpsPostQueue postQueue;
 
-        if (!_request.parmProcessNow())
-        {
-            return;
-        }
         postQueue = HSMobileOpsPostQueue::findByKey(_request.parmIdempotencyKey());
         if (!postQueue.RecId)
         {
             return;
         }
-        if (postQueue.Status == HSMobileOpsPostQueue::statusPending())
+        // A Failed row is said whatever the setting: without ProcessNow it read as accepted.
+        if (!_request.parmProcessNow() && postQueue.Status != HSMobileOpsPostQueue::statusFailed())
         {
-            switch (postQueue.DocumentType)
-            {
-                case 'Registration':
-                    HSMobileOpsPostingService::processReceiptQueueEntry(postQueue.RecId);
-                    break;
-                case 'TransferShipment':
-                    HSMobileOpsPostingService::processTransferQueueEntry(postQueue.RecId, true);
-                    break;
-                case 'TransferReceipt':
-                    HSMobileOpsPostingService::processTransferQueueEntry(postQueue.RecId, false);
-                    break;
-            }
+            return;
+        }
+        if (postQueue.Status == HSMobileOpsPostQueue::statusPending()
+         && postQueue.LineCount <= HSMobileOpsPostingService::inlineLineLimit())
+        {
+            HSMobileOpsPostingService::processRow(postQueue.RecId, postQueue.DocumentType);
             postQueue = HSMobileOpsPostQueue::findByKey(_request.parmIdempotencyKey());
         }
         _response.parmQueueStatus(postQueue.Status);
         _response.parmQueueMessage(postQueue.ErrorMessage);
+        // Auto GRN: the product receipt number, shown on the handheld's summary.
+        if (postQueue.GrnId)
+        {
+            _response.parmDocumentNumber(postQueue.GrnId);
+        }
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>retryRow</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Retry on the Mobile posting queue form: a Failed row reopened and worked now, from the
+    /// lines staged on it - a big one is left Pending for the batch job. Called inside the row's
+    /// company. The reason when it could not be reopened - not Failed, or the quantity has gone
+    /// to someone else since - else blank.
+    /// </summary>
+    public static str retryRow(RecId _recId)
+    {
+        HSMobileOpsPostQueue postQueue;
+        str                  problem;
+
+        select firstOnly DocumentType, Status, LineCount from postQueue
+            where postQueue.RecId == _recId;
+
+        if (postQueue.Status != HSMobileOpsPostQueue::statusFailed())
+        {
+            return strFmt('It is %1. Only a failed posting can be retried.', postQueue.Status);
+        }
+
+        problem = HSMobileOpsPostingService::reopenChecked(_recId);
+        if (problem)
+        {
+            return problem;
+        }
+
+        if (postQueue.LineCount <= HSMobileOpsPostingService::inlineLineLimit())
+        {
+            HSMobileOpsPostingService::processRow(_recId, postQueue.DocumentType);
+        }
+        return '';
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>reopenChecked</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// A Failed row back to Pending, if what it asks for is still there for it. The reason if not -
+    /// the row stays Failed, and can be asked for again. Any other status is left alone, blank.
+    /// </summary>
+    private static str reopenChecked(RecId _recId)
+    {
+        HSMobileOpsPostQueue postQueue;
+        str                  problem;
+
+        ttsbegin;
+        select firstOnly postQueue
+            where postQueue.RecId == _recId;
+        if (postQueue.Status == HSMobileOpsPostQueue::statusFailed())
+        {
+            problem = HSMobileOpsPostingService::stagingProblem(
+                postQueue.DocumentType, postQueue.SourceId, postQueue.LinesJson);
+            if (!problem)
+            {
+                HSMobileOpsPostQueue::reopen(_recId);
+            }
+        }
+        ttscommit;
+
+        return problem;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>stagingProblem</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Whether these lines can be staged with what other workers have already staged: the reason
+    /// if not, else blank. Call inside a transaction: the lines stay locked to its end, so two
+    /// postings of one line go through this one after the other. Lines are locked in line order,
+    /// summed first (one line can come in several times, one per batch), so two postings cannot
+    /// deadlock each other here. A line that is not there is left for processing to report.
+    /// </summary>
+    private static str stagingProblem(str _documentType, str _sourceId, str _linesJson)
+    {
+        Map                 requested = new Map(Types::Real, Types::Real);
+        Map                 availableByLine = new Map(Types::Real, Types::Real);
+        Map                 staged;
+        ListEnumerator      lines     = HSMobileOpsPostingService::parseLines(_linesJson).getEnumerator();
+        MapEnumerator       lineEnum;
+        HSMobileOpsPostLine postLine;
+        PurchLine           purchLine;
+        InventTransferLine  transferLine;
+        LineNum             lineNumber;
+        InventQty           quantity;
+        InventQty           stagedForLine;
+        InventQty           available;
+
+        while (lines.moveNext())
+        {
+            postLine = lines.current();
+            quantity = postLine.parmQuantity()
+                + (requested.exists(postLine.parmLineNumber()) ? requested.lookup(postLine.parmLineNumber()) : 0);
+            requested.insert(postLine.parmLineNumber(), quantity);
+        }
+
+        lineEnum = requested.getEnumerator();
+        while (lineEnum.moveNext())
+        {
+            lineNumber = lineEnum.currentKey();
+            quantity   = lineEnum.currentValue();
+
+            if (_documentType == 'Registration')
+            {
+                purchLine = null;
+                select pessimisticLock firstOnly purchLine
+                    where purchLine.PurchId    == _sourceId
+                       && purchLine.LineNumber == lineNumber;
+                if (!purchLine.RecId)
+                {
+                    continue;
+                }
+                available = HSMobileOpsPostingService::orderedQty(purchLine);
+            }
+            else
+            {
+                transferLine = null;
+                select pessimisticLock firstOnly transferLine
+                    where transferLine.TransferId == _sourceId
+                       && transferLine.LineNum    == lineNumber;
+                if (!transferLine.RecId)
+                {
+                    continue;
+                }
+                available = _documentType == 'TransferShipment'
+                    ? transferLine.QtyRemainShip
+                    : transferLine.QtyShipped - transferLine.QtyReceived;
+            }
+
+            availableByLine.insert(lineNumber, available);
+        }
+
+        // Read once, after every lock: whoever held them has finished, and this sees what they did.
+        staged   = HSMobileOpsPostingService::stagedByLine(_documentType, _sourceId);
+        lineEnum = requested.getEnumerator();
+        while (lineEnum.moveNext())
+        {
+            lineNumber = lineEnum.currentKey();
+            quantity   = lineEnum.currentValue();
+            if (!availableByLine.exists(lineNumber))
+            {
+                continue;
+            }
+            available     = availableByLine.lookup(lineNumber);
+            stagedForLine = staged.exists(lineNumber) ? staged.lookup(lineNumber) : 0;
+
+            if (quantity > available - stagedForLine)
+            {
+                return strFmt('Line %1: %2 requested but only %3 left',
+                        HSMobileOpsPostingService::plainQty(lineNumber),
+                        HSMobileOpsPostingService::plainQty(quantity),
+                        HSMobileOpsPostingService::plainQty(max(available - stagedForLine, 0)))
+                    + (stagedForLine > 0
+                        ? strFmt(' - %1 more sent from handhelds is waiting to post', HSMobileOpsPostingService::plainQty(stagedForLine))
+                        : '');
+            }
+        }
+
+        return '';
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>plainQty</Name>
+				<Source><![CDATA[
+
+    /// <summary>A quantity or line number for a worker to read: 10, not 10.00; 2.50 stays.</summary>
+    public static str plainQty(real _value)
+    {
+        return num2str(_value, 0, _value == trunc(_value) ? 0 : 2, 1, 0);
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>changeQuantities</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Change quantity on the Mobile posting queue form: new quantities for a Failed posting, one
+    /// per line in the order of its lines, 0 removing a line. Checked exactly as a new posting is,
+    /// so it cannot go above what is left on the order: over-delivery stays refused. Lowering one
+    /// leaves the rest Ordered and open on the order. The device's lines stay in OriginalLinesJson.
+    /// Called inside the row's company. The reason if not done; if done, it is worked at once.
+    /// </summary>
+    public static str changeQuantities(RecId _recId, List _quantities, str _reason)
+    {
+        HSMobileOpsPostQueue postQueue;
+        str                  problem;
+        str                  linesJson;
+        str                  documentType;
+
+        ttsbegin;
+        select forUpdate firstOnly postQueue
+            where postQueue.RecId == _recId;
+
+        documentType = postQueue.DocumentType;
+        problem      = HSMobileOpsPostingService::changeProblem(postQueue, _reason);
+        if (!problem)
+        {
+            problem = HSMobileOpsPostingService::quantityProblem(postQueue.LinesJson, _quantities);
+        }
+        if (!problem)
+        {
+            linesJson = HSMobileOpsPostingService::linesWithQuantities(postQueue.LinesJson, _quantities);
+            if (strLen(linesJson) > 2000)
+            {
+                problem = 'That is too many lines to change here.';
+            }
+        }
+        if (!problem)
+        {
+            problem = HSMobileOpsPostingService::stagingProblem(documentType, postQueue.SourceId, linesJson);
+        }
+        if (!problem)
+        {
+            if (!postQueue.OriginalLinesJson)
+            {
+                postQueue.OriginalLinesJson = postQueue.LinesJson;
+            }
+            postQueue.LinesJson    = linesJson;
+            postQueue.ChangedBy    = curUserId();
+            postQueue.ChangedUtc   = DateTimeUtil::utcNow();
+            postQueue.ChangeNote   = subStr(_reason, 1, 250);
+            postQueue.ErrorMessage = '';
+            postQueue.Status       = HSMobileOpsPostQueue::statusPending();
+            postQueue.update();
+        }
+        ttscommit;
+
+        if (problem)
+        {
+            return problem;
+        }
+
+        switch (documentType)
+        {
+            case 'Registration':
+                HSMobileOpsPostingService::processReceiptQueueEntry(_recId);
+                break;
+            case 'TransferShipment':
+                HSMobileOpsPostingService::processTransferQueueEntry(_recId, true);
+                break;
+            case 'TransferReceipt':
+                HSMobileOpsPostingService::processTransferQueueEntry(_recId, false);
+                break;
+        }
+        return '';
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>cancelPosting</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Cancel posting on the Mobile posting queue form: closes a Failed posting, posting nothing.
+    /// The handheld holding it clears its card (PostingFollowUp). The reason if not done.
+    /// </summary>
+    public static str cancelPosting(RecId _recId, str _reason)
+    {
+        HSMobileOpsPostQueue postQueue;
+        str                  problem;
+
+        ttsbegin;
+        select forUpdate firstOnly postQueue
+            where postQueue.RecId == _recId;
+
+        problem = HSMobileOpsPostingService::changeProblem(postQueue, _reason);
+        if (!problem)
+        {
+            postQueue.ChangedBy    = curUserId();
+            postQueue.ChangedUtc   = DateTimeUtil::utcNow();
+            postQueue.ChangeNote   = subStr(_reason, 1, 250);
+            postQueue.ErrorMessage = subStr(strFmt('Cancelled by %1: %2', curUserId(), _reason), 1, 250);
+            postQueue.Status       = HSMobileOpsPostQueue::statusCancelled();
+            postQueue.shrinkLines();
+            postQueue.update();
+        }
+        ttscommit;
+
+        return problem;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>changeProblem</Name>
+				<Source><![CDATA[
+
+    private static str changeProblem(HSMobileOpsPostQueue _postQueue, str _reason)
+    {
+        if (!_postQueue.RecId)
+        {
+            return 'That posting is no longer there.';
+        }
+        if (_postQueue.Status != HSMobileOpsPostQueue::statusFailed())
+        {
+            return strFmt('It is %1. Only a failed posting can be changed or cancelled.', _postQueue.Status);
+        }
+        if (!strLTrim(strRTrim(_reason)))
+        {
+            return 'Enter a reason.';
+        }
+        return '';
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>quantityProblem</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Whether these quantities can replace the lines' own. A line with serial numbers carries one
+    /// number per unit, so it can only stay as it is or be removed.
+    /// </summary>
+    private static str quantityProblem(str _linesJson, List _quantities)
+    {
+        ListEnumerator      lines      = HSMobileOpsPostingService::parseLines(_linesJson).getEnumerator();
+        ListEnumerator      quantities = _quantities.getEnumerator();
+        HSMobileOpsPostLine postLine;
+        real                quantity;
+        boolean             anything;
+
+        while (lines.moveNext() && quantities.moveNext())
+        {
+            postLine = lines.current();
+            quantity = quantities.current();
+
+            if (quantity < 0)
+            {
+                return 'A quantity cannot be below zero.';
+            }
+            if (postLine.parmSerialIds().elements() && quantity != 0 && quantity != postLine.parmQuantity())
+            {
+                return strFmt('Line %1 has serial numbers: it can stay at %2, or be removed with 0.',
+                    HSMobileOpsPostingService::plainQty(postLine.parmLineNumber()),
+                    HSMobileOpsPostingService::plainQty(postLine.parmQuantity()));
+            }
+            if (quantity > 0)
+            {
+                anything = true;
+            }
+        }
+        return anything ? '' : 'Every quantity is 0. To post nothing, use Cancel posting.';
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>linesWithQuantities</Name>
+				<Source><![CDATA[
+
+    /// <summary>The lines JSON with its quantities replaced: everything else as the device sent it.</summary>
+    private static str linesWithQuantities(str _linesJson, List _quantities)
+    {
+        System.Object                 parsedObj = Newtonsoft.Json.Linq.JArray::Parse(_linesJson);
+        Newtonsoft.Json.Linq.JArray   jArray    = parsedObj;
+        Newtonsoft.Json.Linq.JObject  jLine;
+        Newtonsoft.Json.Linq.JToken   jQuantity;
+        ListEnumerator                quantities = _quantities.getEnumerator();
+        container                     values;
+        real                          quantity;
+        int                           i;
+
+        while (quantities.moveNext())
+        {
+            values += [quantities.current()];
+        }
+        // Last first: removing a line moves the ones after it.
+        for (i = jArray.get_Count() - 1; i >= 0; i--)
+        {
+            quantity = conPeek(values, i + 1);
+            if (quantity == 0)
+            {
+                jArray.RemoveAt(i);
+            }
+            else
+            {
+                jLine     = jArray.get_Item(i);
+                jQuantity = Newtonsoft.Json.Linq.JToken::Parse(num2str(quantity, 0, 6, 1, 0));
+                jLine.set_Item('Quantity', jQuantity);
+            }
+        }
+        return Newtonsoft.Json.JsonConvert::SerializeObject(jArray);
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>stagedByLine</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Quantity per line on rows of this document that are staged or being worked - spoken for,
+    /// not yet in the order's own figures.
+    /// </summary>
+    private static Map stagedByLine(str _documentType, str _sourceId)
+    {
+        HSMobileOpsPostQueue postQueue;
+        Map                  staged = new Map(Types::Real, Types::Real);
+        ListEnumerator       lines;
+        HSMobileOpsPostLine  postLine;
+        InventQty            quantity;
+
+        while select LinesJson from postQueue
+            index hint SourceIdx
+            where postQueue.SourceId     == _sourceId
+               && postQueue.DocumentType == _documentType
+               && (postQueue.Status      == HSMobileOpsPostQueue::statusPending()
+                || postQueue.Status      == HSMobileOpsPostQueue::statusProcessing())
+        {
+            lines = HSMobileOpsPostingService::parseLines(postQueue.LinesJson).getEnumerator();
+            while (lines.moveNext())
+            {
+                postLine = lines.current();
+                quantity = postLine.parmQuantity()
+                    + (staged.exists(postLine.parmLineNumber()) ? staged.lookup(postLine.parmLineNumber()) : 0);
+                staged.insert(postLine.parmLineNumber(), quantity);
+            }
+        }
+
+        return staged;
     }
 ]]></Source>
 			</Method>
@@ -318,7 +953,8 @@ class HSMobileOpsPostingService
 
     /// <summary>
     /// The most recent 50 requests for one company, whatever their status - Pending, Registered
-    /// or Failed alike. What the Activity screen's status list is built from.
+    /// or Failed alike. What the Activity screen's status list is built from. With
+    /// IdempotencyKeys, those postings instead: a key with no row is simply not in the answer.
     /// </summary>
     public HSMobileOpsPostQueueResponse getQueueStatus(HSMobileOpsPostQueueRequest _request)
     {
@@ -328,6 +964,7 @@ class HSMobileOpsPostingService
         DataAreaId                   company;
         // 'count' is a reserved word in X++ (the aggregate).
         int                          rowCount;
+        ListEnumerator               keys;
 
         if (!_request || !_request.parmDataAreaId())
         {
@@ -340,6 +977,22 @@ class HSMobileOpsPostingService
 
         changecompany (company)
         {
+            if (_request.parmIdempotencyKeys())
+            {
+                keys = strSplit(_request.parmIdempotencyKeys(), ',').getEnumerator();
+                while (keys.moveNext())
+                {
+                    postQueue = HSMobileOpsPostQueue::findByKey(keys.current());
+                    if (postQueue.RecId)
+                    {
+                        rows.addEnd(HSMobileOpsPostingService::toEntry(postQueue));
+                    }
+                }
+                response.parmSuccess(true);
+                response.parmRows(rows);
+                return response;
+            }
+
             while select postQueue
                 order by ReceivedUtc desc
             {
@@ -374,7 +1027,11 @@ class HSMobileOpsPostingService
         entry.parmReceivedUtc(_postQueue.ReceivedUtc);
         entry.parmProcessedUtc(_postQueue.ProcessedUtc);
         entry.parmUserName(_postQueue.UserName);
-        entry.parmLinesJson(_postQueue.LinesJson);
+        // Not a 200 KB order in a list of 50: the count says enough.
+        entry.parmLinesJson(strLen(_postQueue.LinesJson) > 2000 ? '' : _postQueue.LinesJson);
+        entry.parmLineCount(_postQueue.LineCount);
+        entry.parmIdempotencyKey(_postQueue.IdempotencyKey);
+        entry.parmGrnId(_postQueue.GrnId);
 
         return entry;
     }
@@ -400,10 +1057,19 @@ class HSMobileOpsPostingService
         InventQty            requested;
         InventQty            available;
         str                  failMessage;
+        PackingSlipId        grnId;
+        str                  grnStage;
+        int                  infologFrom = infologLine();
 
         select firstOnly postQueue
             where postQueue.RecId == _queueRecId;
 
+        // Staged before its warehouse was frozen: it waits, Pending, until the count is done.
+        if (postQueue.RecId && HSMobileOpsWarehouseFreeze::findActive(
+                HSMobileOpsPostingService::warehouseOf(postQueue.DocumentType, postQueue.SourceId)).RecId)
+        {
+            return;
+        }
         // Claimed, not just checked: the batch job and the button may both have selected it.
         if (!postQueue.RecId || !HSMobileOpsPostQueue::claim(postQueue.RecId))
         {
@@ -414,6 +1080,9 @@ class HSMobileOpsPostingService
 
         try
         {
+            grnStage = '';
+            HSMobileOpsPostingService::ensureBatches(postQueue.LinesJson);
+
             ttsbegin;
 
             purchTable = null;
@@ -429,6 +1098,11 @@ class HSMobileOpsPostingService
             {
                 lines      = HSMobileOpsPostingService::parseLines(postQueue.LinesJson);
                 enumerator = lines.getEnumerator();
+                // Never Registered with nothing registered.
+                if (!lines.elements())
+                {
+                    failMessage = 'This posting has no lines that can be read';
+                }
 
                 while (enumerator.moveNext() && !failMessage)
                 {
@@ -465,8 +1139,10 @@ class HSMobileOpsPostingService
                         if (requested > available)
                         {
                             failMessage = strFmt(
-                                'Line %1: %2 requested but only %3 outstanding',
-                                postLine.parmLineNumber(), requested, available);
+                                'Line %1: %2 requested but only %3 left',
+                                HSMobileOpsPostingService::plainQty(postLine.parmLineNumber()),
+                                HSMobileOpsPostingService::plainQty(requested),
+                                HSMobileOpsPostingService::plainQty(available));
                         }
                         else
                         {
@@ -474,7 +1150,10 @@ class HSMobileOpsPostingService
                             // against its own InventTrans - every line, not only ones carrying
                             // a batch or a location, because registering the quantity is the
                             // point even when neither dimension needs to change.
-                            HSMobileOpsPostingService::registerLine(purchLine, postLine, requested);
+                            HSMobileOpsPostingService::registerLine(
+                                purchLine,
+                                postLine,
+                                HSMobileOpsPostingService::inventQtyOf(purchLine, requested, available));
 
                             // Whatever claim was on this line is done its job the moment it
                             // registers - a no-op outside LineClaim mode.
@@ -488,6 +1167,17 @@ class HSMobileOpsPostingService
                 }
             }
 
+            // Auto GRN (Mobile process setup, Receiving): the registered quantity is posted as a
+            // product receipt in this same transaction - registered and received together, or
+            // neither, so a failed GRN leaves nothing half done to find.
+            if (!failMessage
+             && HSMobileOpsProcessSetup::find(HSMobileOpsProcessSetup::processReceiving()).AutoGrn)
+            {
+                grnStage = 'GRN not posted - ';
+                grnId    = HSMobileOpsPostingService::postGrn(purchTable.PurchId);
+                grnStage = '';
+            }
+
             if (failMessage)
             {
                 ttsabort;
@@ -499,11 +1189,37 @@ class HSMobileOpsPostingService
         }
         catch (Exception::Error)
         {
-            failMessage = HSMobileOpsPostingService::lastError();
+            failMessage = grnStage + HSMobileOpsPostingService::lastError(infologFrom);
+            grnId       = '';
         }
         catch (Exception::Deadlock)
         {
+            if (xSession::currentRetryCount() < HSMobileOpsPostingService::deadlockRetries())
+            {
+                retry;
+            }
             failMessage = 'The registration deadlocked and was rolled back. Retry.';
+            grnId       = '';
+        }
+        catch (Exception::UpdateConflict)
+        {
+            if (xSession::currentRetryCount() < HSMobileOpsPostingService::deadlockRetries())
+            {
+                retry;
+            }
+            failMessage = 'Someone else kept changing the same records. Nothing was posted. Retry.';
+            grnId       = '';
+        }
+        catch (Exception::DuplicateKeyException)
+        {
+            // Two warehouses receiving one new batch number at once: both create its master
+            // record, the second loses. Worked again, it finds the first one's record there.
+            if (xSession::currentRetryCount() < HSMobileOpsPostingService::deadlockRetries())
+            {
+                retry;
+            }
+            failMessage = 'A record this posting creates kept appearing at the same moment. Nothing was posted. Retry.';
+            grnId       = '';
         }
 
         // Separate from the transaction above on purpose - the queue row's own outcome has to
@@ -519,10 +1235,55 @@ class HSMobileOpsPostingService
         else
         {
             postQueue.Status = HSMobileOpsPostQueue::statusRegistered();
+            postQueue.shrinkLines();
+            postQueue.GrnId  = grnId;
         }
         postQueue.ProcessedUtc = DateTimeUtil::utcNow();
         postQueue.update();
         ttscommit;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>postGrn</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Auto GRN: posts the product receipt for the order's registered quantity (PurchUpdate::
+    /// Recorded), numbered from the GRN number sequence on Mobile process setup. Called inside
+    /// processReceiptQueueEntry's transaction, right after the lines registered. Throws when
+    /// nothing was posted, so the registration rolls back with it.
+    /// </summary>
+    private static PackingSlipId postGrn(PurchId _purchId)
+    {
+        HSMobileOpsProcessSetup setup = HSMobileOpsProcessSetup::find(HSMobileOpsProcessSetup::processReceiving());
+        PackingSlipId           grnId;
+        PurchFormLetter         letter;
+        VendPackingSlipJour     slip;
+
+        // Changing a confirmed order (raising a line's quantity, say) takes it back to Approved,
+        // and posting then ends with no journal and no message. Said here, before a number is used.
+        if (PurchTable::find(_purchId).DocumentState != VersioningDocumentState::Confirmed)
+        {
+            throw error(strFmt('%1 has been changed and is not confirmed. Confirm it, then retry.', _purchId));
+        }
+
+        grnId  = setup.nextGrnId();
+        letter = PurchFormLetter::construct(DocumentStatus::PackingSlip);
+        letter.update(PurchTable::find(_purchId), grnId,
+            DateTimeUtil::getSystemDate(DateTimeUtil::getUserPreferredTimeZone()),
+            PurchUpdate::Recorded, AccountOrder::None, NoYes::No, NoYes::No);
+
+        // Posting can end with only an infolog message and no journal - nothing to receive, say.
+        select firstOnly RecId from slip
+            where slip.PurchId       == _purchId
+               && slip.PackingSlipId == grnId;
+        if (!slip.RecId)
+        {
+            throw error(strFmt('Product receipt %1 was not posted for %2', grnId, _purchId));
+        }
+
+        return grnId;
     }
 ]]></Source>
 			</Method>
@@ -550,7 +1311,7 @@ class HSMobileOpsPostingService
     /// Silently a no-op if the line's InventTransId cannot be found - the caller already checked
     /// this line is real and outstanding, so that should not happen, but a missing transaction
     /// here is not a reason to fail an otherwise-valid registration over the one line it could
-    /// not resolve.
+    /// not resolve. _quantity is in the inventory unit - see [inventQtyOf].
     /// </summary>
     private static void registerLine(PurchLine _purchLine, HSMobileOpsPostLine _postLine, InventQty _quantity)
     {
@@ -692,6 +1453,53 @@ class HSMobileOpsPostingService
             inventSerial.InventSerialId = _serialId;
             inventSerial.ProdDate       = DateTimeUtil::getSystemDate(DateTimeUtil::getUserPreferredTimeZone());
             inventSerial.insert();
+        }
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>ensureBatches</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The batches a posting brings, created before its transaction, each in a short one of its
+    /// own. Created inside, a new batch's row stays locked until the whole order commits, and any
+    /// other warehouse receiving that batch waits for it: seven workers waited on one 1,000 line
+    /// order on the dev VM. Left behind if the posting then fails, which is harmless: a batch with
+    /// no stock, found again by the retry.
+    /// </summary>
+    private static void ensureBatches(str _linesJson)
+    {
+        ListEnumerator      enumerator = HSMobileOpsPostingService::parseLines(_linesJson).getEnumerator();
+        HSMobileOpsPostLine postLine;
+        Set                 done = new Set(Types::String);
+        str                 key;
+
+        while (enumerator.moveNext())
+        {
+            postLine = enumerator.current();
+            key      = postLine.parmItemId() + '|' + postLine.parmBatchId();
+            if (!postLine.parmItemId() || !postLine.parmBatchId() || done.in(key))
+            {
+                continue;
+            }
+            done.add(key);
+
+            try
+            {
+                ttsbegin;
+                HSMobileOpsPostingService::ensureBatch(
+                    postLine.parmItemId(),
+                    postLine.parmBatchId(),
+                    postLine.parmBatchManufacturingDate(),
+                    postLine.parmBatchExpiryDate());
+                ttscommit;
+            }
+            catch (Exception::DuplicateKeyException)
+            {
+                // Another posting created it this instant, which is all that was wanted.
+                exceptionTextFallThrough();
+            }
         }
     }
 ]]></Source>
@@ -862,6 +1670,16 @@ class HSMobileOpsPostingService
 
             if (HSMobileOpsPostQueue::findByKey(_request.parmIdempotencyKey()).RecId)
             {
+                if (_request.parmResubmit())
+                {
+                    problem = HSMobileOpsPostingService::reopenChecked(HSMobileOpsPostQueue::findByKey(_request.parmIdempotencyKey()).RecId);
+                    if (problem)
+                    {
+                        response.parmErrorCode('QTY_NOT_AVAILABLE');
+                        response.parmMessage(problem);
+                        return response;
+                    }
+                }
                 response.parmSuccess(true);
                 response.parmDocumentNumber('');
                 HSMobileOpsPostingService::processNow(_request, response);
@@ -876,6 +1694,14 @@ class HSMobileOpsPostingService
             {
                 response.parmErrorCode('NOT_FOUND');
                 response.parmMessage(strFmt('No transfer order %1', _request.parmSourceId()));
+                return response;
+            }
+            problem = HSMobileOpsWarehouseFreeze::frozenMessage(HSMobileOpsPostingService::warehouseOf(
+                _shipping ? 'TransferShipment' : 'TransferReceipt', _request.parmSourceId()));
+            if (problem)
+            {
+                response.parmErrorCode('WAREHOUSE_FROZEN');
+                response.parmMessage(problem);
                 return response;
             }
 
@@ -959,6 +1785,12 @@ class HSMobileOpsPostingService
         select firstOnly postQueue
             where postQueue.RecId == _queueRecId;
 
+        // Staged before its warehouse was frozen: it waits, Pending, until the count is done.
+        if (postQueue.RecId && HSMobileOpsWarehouseFreeze::findActive(
+                HSMobileOpsPostingService::warehouseOf(postQueue.DocumentType, postQueue.SourceId)).RecId)
+        {
+            return;
+        }
         // Claimed, not just checked: the batch job and the button may both have selected it.
         if (!postQueue.RecId || !HSMobileOpsPostQueue::claim(postQueue.RecId))
         {
@@ -971,6 +1803,12 @@ class HSMobileOpsPostingService
 
         try
         {
+            // Empty again if a deadlock brought this back round: all of it was rolled back.
+            takenByLine = new Map(Types::Real, Types::Real);
+            batchOfLine = new Map(Types::Real, Types::String);
+            lineOfBatch = new Map(Types::String, Types::Real);
+            posted      = false;
+
             ttsbegin;
 
             transferTable = null;
@@ -1005,6 +1843,11 @@ class HSMobileOpsPostingService
                 // shipped batch and serial over from transit, as D365FO does.
                 lines      = HSMobileOpsPostingService::parseLines(postQueue.LinesJson);
                 enumerator = lines.getEnumerator();
+                // Never Registered with nothing registered.
+                if (!lines.elements())
+                {
+                    failMessage = 'This posting has no lines that can be read';
+                }
 
                 while (enumerator.moveNext() && !failMessage)
                 {
@@ -1039,8 +1882,10 @@ class HSMobileOpsPostingService
                         if (taken + requested > available)
                         {
                             failMessage = strFmt(
-                                'Line %1: %2 requested but only %3 outstanding',
-                                postLine.parmLineNumber(), taken + requested, available);
+                                'Line %1: %2 requested but only %3 left',
+                                HSMobileOpsPostingService::plainQty(postLine.parmLineNumber()),
+                                HSMobileOpsPostingService::plainQty(taken + requested),
+                                HSMobileOpsPostingService::plainQty(available));
                         }
                         else if (batchProblem)
                         {
@@ -1159,7 +2004,29 @@ class HSMobileOpsPostingService
         }
         catch (Exception::Deadlock)
         {
+            if (xSession::currentRetryCount() < HSMobileOpsPostingService::deadlockRetries())
+            {
+                retry;
+            }
             failMessage = 'The posting deadlocked and was rolled back. Retry.';
+        }
+        catch (Exception::UpdateConflict)
+        {
+            if (xSession::currentRetryCount() < HSMobileOpsPostingService::deadlockRetries())
+            {
+                retry;
+            }
+            failMessage = 'Someone else kept changing the same records. Nothing was posted. Retry.';
+        }
+        catch (Exception::DuplicateKeyException)
+        {
+            // Two warehouses receiving one new batch number at once: both create its master
+            // record, the second loses. Worked again, it finds the first one's record there.
+            if (xSession::currentRetryCount() < HSMobileOpsPostingService::deadlockRetries())
+            {
+                retry;
+            }
+            failMessage = 'A record this posting creates kept appearing at the same moment. Nothing was posted. Retry.';
         }
 
         ttsbegin;
@@ -1173,6 +2040,7 @@ class HSMobileOpsPostingService
         else
         {
             postQueue.Status = HSMobileOpsPostQueue::statusRegistered();
+            postQueue.shrinkLines();
         }
         postQueue.ProcessedUtc = DateTimeUtil::utcNow();
         postQueue.update();
@@ -1326,6 +2194,13 @@ class HSMobileOpsPostingService
 
         changecompany (_request.parmDataAreaId())
         {
+            str frozen = HSMobileOpsWarehouseFreeze::frozenMessage(HSMobileOpsPostingService::warehouseOf('TransferShipment', _request.parmSourceId()));
+            if (frozen)
+            {
+                response.parmErrorCode('WAREHOUSE_FROZEN');
+                response.parmMessage(frozen);
+                return response;
+            }
             try
             {
                 ttsbegin;
@@ -1918,16 +2793,7 @@ class HSMobileOpsPostingService
     /// </summary>
     private static PurchQty orderedQty(PurchLine _purchLine)
     {
-        InventTrans        inventTrans;
-        InventTransOrigin  inventTransOrigin;
-        InventQty          inventQty;
-
-        select sum(Qty) from inventTrans
-            where inventTrans.StatusReceipt == StatusReceipt::Ordered
-            exists join inventTransOrigin
-                where inventTransOrigin.RecId         == inventTrans.InventTransOrigin
-                   && inventTransOrigin.InventTransId == _purchLine.InventTransId;
-        inventQty = inventTrans.Qty;
+        InventQty inventQty = HSMobileOpsPostingService::orderedInventQty(_purchLine);
 
         // InventTrans is in the inventory unit; the line and the request are in the purchase unit.
         // QtyOrdered is the line in the inventory unit, PurchQty in the purchase unit.
@@ -1936,6 +2802,53 @@ class HSMobileOpsPostingService
             return inventQty * _purchLine.PurchQty / _purchLine.QtyOrdered;
         }
         return inventQty;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>orderedInventQty</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The quantity of a purchase line still Ordered in InventTrans, in the inventory unit.
+    /// </summary>
+    private static InventQty orderedInventQty(PurchLine _purchLine)
+    {
+        InventTrans        inventTrans;
+        InventTransOrigin  inventTransOrigin;
+
+        select sum(Qty) from inventTrans
+            where inventTrans.StatusReceipt == StatusReceipt::Ordered
+            exists join inventTransOrigin
+                where inventTransOrigin.RecId         == inventTrans.InventTransOrigin
+                   && inventTransOrigin.InventTransId == _purchLine.InventTransId;
+
+        return inventTrans.Qty;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>inventQtyOf</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// A purchase-unit quantity in the inventory unit, which is what registration takes: 5 Pack
+    /// at 20 pieces a pack is 100. Handed over unconverted it registered 5 pieces, and the GRN
+    /// then failed with "Physical remaining quantity ... must be other than zero" - or, without
+    /// a GRN, booked the wrong stock with no message (BSP-PO-000161720 line 471, 6 Nov 2026).
+    /// All that is left converts to exactly what is left, so rounding leaves no remainder.
+    /// </summary>
+    private static InventQty inventQtyOf(PurchLine _purchLine, PurchQty _quantity, PurchQty _available)
+    {
+        if (!_purchLine.PurchQty || _purchLine.QtyOrdered == _purchLine.PurchQty)
+        {
+            return _quantity;
+        }
+        if (abs(_quantity - _available) < 0.000001)
+        {
+            return HSMobileOpsPostingService::orderedInventQty(_purchLine);
+        }
+        return _quantity * _purchLine.QtyOrdered / _purchLine.PurchQty;
     }
 ]]></Source>
 			</Method>
@@ -2153,9 +3066,10 @@ class HSMobileOpsPostingService
     /// Passed through rather than summarised. "Posting failed" tells a warehouse supervisor
     /// nothing; "the period is closed" or "item is stopped" tells them exactly who to call.
     /// </summary>
-    private static str lastError()
+    private static str lastError(int _fromLine = 0)
     {
-        SysInfologEnumerator enumerator = SysInfologEnumerator::newData(infolog.infologData());
+        // From _fromLine on: run from a form, the infolog still holds what earlier actions logged.
+        SysInfologEnumerator enumerator = SysInfologEnumerator::newData(infolog.copy(_fromLine + 1, infologLine()));
         str                  message;
 
         // Every Error line, joined - a DB failure logs the operation, then "The SQL database

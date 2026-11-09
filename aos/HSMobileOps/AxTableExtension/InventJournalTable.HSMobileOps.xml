@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxTableExtension xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>InventJournalTable.HSMobileOps</Name>
+	<FieldGroupExtensions />
+	<FieldGroups />
+	<FieldModifications />
+	<Fields>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldEnum">
+			<Name>HSMobileOpsDualCount</Name>
+			<AllowEdit>No</AllowEdit>
+			<HelpText>Lines on this journal are settled by the dual count rules: a line needing two independent counts gets two, any other settles at its first. It can only post once every line is resolved.</HelpText>
+			<Label>Dual count</Label>
+			<EnumType>NoYes</EnumType>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldEnum">
+			<Name>HSMobileOpsWallToWall</Name>
+			<AllowEdit>No</AllowEdit>
+			<HelpText>A wall-to-wall count: counted by location task, and it can only post once every line is settled and every location is complete. Its warehouse is frozen until then.</HelpText>
+			<Label>Wall-to-wall</Label>
+			<EnumType>NoYes</EnumType>
+		</AxTableField>
+	</Fields>
+	<FullTextIndexes />
+	<Indexes />
+	<Mappings />
+	<MethodModifications />
+	<PropertyModifications />
+	<RelationExtensions />
+	<RelationModifications />
+	<Relations />
+	<StateMachines />
+</AxTableExtension>

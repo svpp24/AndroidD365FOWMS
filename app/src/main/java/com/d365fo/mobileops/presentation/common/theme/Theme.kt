@@ -43,9 +43,10 @@ import com.d365fo.mobileops.data.security.DisplayScale
 // Very light blue-white page, so white cards read as cards without needing heavy borders - the layout
 // reference this app was restyled to match (white cards, blue accents) uses the same.
 // Light neutral grey with borderless-looking white cards - the 20 Oct restyle (navy on grey).
-private val Bg = Color(0xFFF3F3F6)
+// 21 Oct: own identity - deep petrol on a slightly warm grey, not the reference app's navy.
+private val Bg = Color(0xFFF2F4F3)
 private val Surface = Color(0xFFFFFFFF)
-private val Surface2 = Color(0xFFF5F7FC)
+private val Surface2 = Color(0xFFF4F7F7)
 // Darker than the mockup's own value on both of these - the mockup renders on a backlit
 // monitor at reading distance; this renders on a handheld read at arm's length, often outdoors
 // or under warehouse sodium lighting. Text3 at the original #9CA3AF measured roughly 2:1
@@ -53,16 +54,16 @@ private val Surface2 = Color(0xFFF5F7FC)
 // item code, hint, count and timestamp on this app is set in, not an edge case. Border moved
 // the same direction for the same reason: a card edge or field outline that all but disappears
 // against Bg/Surface is a real "which one is my input" question, not just a look.
-private val Border = Color(0xFFC3C7D8)
+private val Border = Color(0xFFC2CDCF)
 private val Green = Color(0xFF16A34A)
 private val GreenDim = Color(0xFFE3F4E9)
 private val Amber = Color(0xFFD97706)
 private val AmberDim = Color(0xFFFAEFE1)
 private val Red = Color(0xFFDC2626)
 private val RedDim = Color(0xFFFCE9E9)
-private val Text1 = Color(0xFF14183A)
-private val Text2 = Color(0xFF3E4360)
-private val Text3 = Color(0xFF5A5F7A)
+private val Text1 = Color(0xFF10282D)
+private val Text2 = Color(0xFF34484D)
+private val Text3 = Color(0xFF55686C)
 
 /**
  * The one thing a worker can personalise: which accent colour reads as "this app" to them.
@@ -94,6 +95,8 @@ enum class ColorPalette(
 ) {
     /** Deep indigo-navy, the 20 Oct restyle's identity (navy text and outlined buttons on grey). */
     INDIGO("Indigo", Color(0xFF232A7C), Color(0xFFE1E0F6)),
+    /** Deep petrol - the app's own identity from 21 Oct, so it isn't a copy of the reference app. */
+    PETROL("Petrol", Color(0xFF0B5563), Color(0xFFDCEBEE)),
     MICROSOFT("Microsoft blue", Color(0xFF0078D4), Color(0xFFEFF6FC)),
     BLUE("Blue", Color(0xFF0274BE), Color(0xFFEAF7FD)),
     GREEN("Green", Color(0xFF15803D), Color(0xFFE1F3E8)),

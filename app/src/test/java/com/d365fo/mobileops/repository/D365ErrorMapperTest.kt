@@ -102,7 +102,7 @@ class D365ErrorMapperTest {
 
         val failure = mapper.fromResponse(errorResponse(400, body)) as AppFailure.BusinessRule
 
-        assertThat(failure.message).contains("already registered in D365FO")
+        assertThat(failure.message).contains("Serial already registered")
         assertThat(failure.d365ErrorCode).isEqualTo("BadRequest")
     }
 
@@ -114,7 +114,7 @@ class D365ErrorMapperTest {
 
         val failure = mapper.fromResponse(errorResponse(400, body)) as AppFailure.BusinessRule
 
-        assertThat(failure.message).contains("Ask your supervisor")
+        assertThat(failure.message).contains("ask a supervisor")
         assertThat(failure.retryable).isFalse()
     }
 

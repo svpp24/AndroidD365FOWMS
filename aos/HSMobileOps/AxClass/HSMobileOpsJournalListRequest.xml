@@ -10,6 +10,7 @@ class HSMobileOpsJournalListRequest
     InventLocationId warehouseId;
 
     str userId;
+    boolean includeDone;
 }
 ]]></Declaration>
 		<Methods>
@@ -55,6 +56,22 @@ class HSMobileOpsJournalListRequest
     {
         userId = _value;
         return userId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmIncludeDone</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Also list journals finished for this user, each with a DoneNote: the handheld's Done tab.
+    /// Off when absent, so an older app sees only open journals.
+    /// </summary>
+    [DataMemberAttribute('IncludeDone')]
+    public boolean parmIncludeDone(boolean _value = includeDone)
+    {
+        includeDone = _value;
+        return includeDone;
     }
 ]]></Source>
 			</Method>

@@ -1,0 +1,134 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxMenu xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns="Microsoft.Dynamics.AX.Metadata.V1">
+	<Name>HSMobileOps</Name>
+	<Label>Inventory hub</Label>
+	<SetCompany>Yes</SetCompany>
+	<Elements>
+		<AxMenuElement xmlns=""
+			i:type="AxMenuElementMenuItem">
+			<Name>HSMobileOpsWorkspace</Name>
+			<MenuItemName>HSMobileOpsWorkspace</MenuItemName>
+		</AxMenuElement>
+		<AxMenuElement xmlns=""
+			i:type="AxMenuElementSubMenu">
+			<Name>Counting</Name>
+			<Label>Counting</Label>
+			<Elements>
+				<AxMenuElement xmlns=""
+					i:type="AxMenuElementMenuItem">
+					<Name>HSMobileOpsCountControlCenter</Name>
+					<MenuItemName>HSMobileOpsCountControlCenter</MenuItemName>
+				</AxMenuElement>
+			</Elements>
+		</AxMenuElement>
+		<AxMenuElement xmlns=""
+			i:type="AxMenuElementSubMenu">
+			<Name>Inquiries</Name>
+			<Label>Inquiries</Label>
+			<Elements>
+				<AxMenuElement xmlns=""
+					i:type="AxMenuElementMenuItem">
+					<Name>HSMobileOpsFeedback</Name>
+					<MenuItemName>HSMobileOpsFeedback</MenuItemName>
+				</AxMenuElement>
+				<AxMenuElement xmlns=""
+					i:type="AxMenuElementMenuItem">
+					<Name>HSMobileOpsCountBinLine</Name>
+					<MenuItemName>HSMobileOpsCountBinLine</MenuItemName>
+				</AxMenuElement>
+				<AxMenuElement xmlns=""
+					i:type="AxMenuElementMenuItem">
+					<Name>HSMobileOpsSignInLog</Name>
+					<MenuItemName>HSMobileOpsSignInLog</MenuItemName>
+				</AxMenuElement>
+				<AxMenuElement xmlns=""
+					i:type="AxMenuElementMenuItem">
+					<Name>HSMobileOpsDeviceWork</Name>
+					<MenuItemName>HSMobileOpsDeviceWork</MenuItemName>
+				</AxMenuElement>
+				<AxMenuElement xmlns=""
+					i:type="AxMenuElementMenuItem">
+					<Name>HSMobileOpsPostQueue</Name>
+					<MenuItemName>HSMobileOpsPostQueue</MenuItemName>
+				</AxMenuElement>
+			</Elements>
+		</AxMenuElement>
+		<AxMenuElement xmlns=""
+			i:type="AxMenuElementSubMenu">
+			<Name>Setup</Name>
+			<Label>Setup</Label>
+			<Elements>
+				<AxMenuElement xmlns=""
+					i:type="AxMenuElementMenuItem">
+					<Name>HSMobileOpsUser</Name>
+					<MenuItemName>HSMobileOpsUser</MenuItemName>
+				</AxMenuElement>
+				<AxMenuElement xmlns=""
+					i:type="AxMenuElementMenuItem">
+					<Name>HSMobileOpsMenu</Name>
+					<MenuItemName>HSMobileOpsMenu</MenuItemName>
+				</AxMenuElement>
+				<AxMenuElement xmlns=""
+					i:type="AxMenuElementMenuItem">
+					<Name>HSMobileOpsDevice</Name>
+					<MenuItemName>HSMobileOpsDevice</MenuItemName>
+				</AxMenuElement>
+				<AxMenuElement xmlns=""
+					i:type="AxMenuElementMenuItem">
+					<Name>HSMobileOpsLicenseSetup</Name>
+					<MenuItemName>HSMobileOpsLicenseSetup</MenuItemName>
+				</AxMenuElement>
+				<AxMenuElement xmlns=""
+					i:type="AxMenuElementMenuItem">
+					<Name>HSMobileOpsSkuSyncSetup</Name>
+					<MenuItemName>HSMobileOpsSkuSyncSetup</MenuItemName>
+				</AxMenuElement>
+				<AxMenuElement xmlns=""
+					i:type="AxMenuElementMenuItem">
+					<Name>HSMobileOpsCountTolerance</Name>
+					<MenuItemName>HSMobileOpsCountTolerance</MenuItemName>
+				</AxMenuElement>
+				<AxMenuElement xmlns=""
+					i:type="AxMenuElementMenuItem">
+					<Name>HSMobileOpsCountStore</Name>
+					<MenuItemName>HSMobileOpsCountStore</MenuItemName>
+				</AxMenuElement>
+				<AxMenuElement xmlns=""
+					i:type="AxMenuElementMenuItem">
+					<Name>HSMobileOpsModuleSwitch</Name>
+					<MenuItemName>HSMobileOpsModuleSwitch</MenuItemName>
+				</AxMenuElement>
+				<AxMenuElement xmlns=""
+					i:type="AxMenuElementMenuItem">
+					<Name>HSMobileOpsCleanupSetup</Name>
+					<MenuItemName>HSMobileOpsCleanupSetup</MenuItemName>
+				</AxMenuElement>
+				<AxMenuElement xmlns=""
+					i:type="AxMenuElementMenuItem">
+					<Name>HSMobileOpsProcessSetup</Name>
+					<MenuItemName>HSMobileOpsProcessSetup</MenuItemName>
+				</AxMenuElement>
+				<AxMenuElement xmlns=""
+					i:type="AxMenuElementMenuItem">
+					<Name>HSMobileOpsCountWarehouse</Name>
+					<MenuItemName>HSMobileOpsCountWarehouse</MenuItemName>
+				</AxMenuElement>
+				<AxMenuElement xmlns=""
+					i:type="AxMenuElementMenuItem">
+					<Name>HSMobileOpsCountDualGroup</Name>
+					<MenuItemName>HSMobileOpsCountDualGroup</MenuItemName>
+				</AxMenuElement>
+				<AxMenuElement xmlns=""
+					i:type="AxMenuElementMenuItem">
+					<Name>HSMobileOpsCountDualTolerance</Name>
+					<MenuItemName>HSMobileOpsCountDualTolerance</MenuItemName>
+				</AxMenuElement>
+				<AxMenuElement xmlns=""
+					i:type="AxMenuElementMenuItem">
+					<Name>HSMobileOpsCountBin</Name>
+					<MenuItemName>HSMobileOpsCountBin</MenuItemName>
+				</AxMenuElement>
+			</Elements>
+		</AxMenuElement>
+	</Elements>
+</AxMenu>

@@ -75,8 +75,22 @@ interface ItemDao {
     @Query("SELECT * FROM item WHERE itemId = :itemId")
     suspend fun getItem(itemId: String): ItemEntity?
 
+    /** Home search's suggestions: items whose number or name contains [query], numbers first. */
+    @Query(
+        """
+        SELECT * FROM item
+        WHERE itemId LIKE '%' || :query || '%' OR itemName LIKE '%' || :query || '%' OR searchName LIKE '%' || :query || '%'
+        ORDER BY CASE WHEN itemId LIKE :query || '%' THEN 0 ELSE 1 END, itemId
+        LIMIT :limit
+        """,
+    )
+    suspend fun searchItems(query: String, limit: Int = 20): List<ItemEntity>
+
     @Query("SELECT COUNT(*) FROM item")
     suspend fun itemCount(): Int
+
+    @Query("SELECT COUNT(*) FROM barcode")
+    suspend fun barcodeCount(): Int
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertItems(items: List<ItemEntity>)

@@ -12,6 +12,7 @@ import androidx.work.WorkManager
 import com.d365fo.mobileops.data.sync.worker.SkuSyncWorker
 import com.d365fo.mobileops.data.sync.worker.TransactionPushWorker
 import com.d365fo.mobileops.util.Constants
+import kotlinx.coroutines.flow.map
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -145,8 +146,84 @@ class SyncScheduler @Inject constructor(context: Context) {
 
 
 
+    /**
+     * A push run in a couple of minutes, for PostingFollowUp. One per two-minute slot: the run
+     * asking is itself the follow-up work, so keeping a single name would keep nothing new.
+     */
+    fun requestPostingFollowUp(now: Long = System.currentTimeMillis()) {
+        val slot = TimeUnit.MILLISECONDS.toMinutes(now) / 2
+        workManager.enqueueUniqueWork(
+            "$POSTING_FOLLOW_UP.$slot",
+            ExistingWorkPolicy.KEEP,
+            OneTimeWorkRequestBuilder<TransactionPushWorker>()
+                .setConstraints(connectedOnly)
+                .setInitialDelay(2, TimeUnit.MINUTES)
+                .build(),
+        )
+    }
+
+    /**
+     * Settings > Sync masters now (30 Oct): the item, barcode and variant sync at once, on any
+     * connection - not waiting for Wi-Fi and charging. Debug builds too: it is asked for.
+     * Replaces a manual sync already queued; the daily one is left as it is.
+     */
+    fun syncMastersNow(sync: com.d365fo.mobileops.data.repository.ManualSync) {
+        workManager.cancelUniqueWork(SKU_CONTINUE)
+        workManager.enqueueUniqueWork(
+            WORK_SYNC_MASTERS_NOW,
+            ExistingWorkPolicy.REPLACE,
+            OneTimeWorkRequestBuilder<SkuSyncWorker>()
+                .setConstraints(connectedOnly)
+                .setInputData(
+                    androidx.work.workDataOf(
+                        SkuSyncWorker.KEY_MANUAL to sync.name,
+                        SkuSyncWorker.KEY_MANUAL_CHAIN to true,
+                    ),
+                )
+                .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 1, TimeUnit.MINUTES)
+                .build(),
+        )
+    }
+
+    /** The next step of a manual sync - appended to the same chain, so its state stays visible. */
+    fun continueMasterSyncNow() {
+        workManager.enqueueUniqueWork(
+            WORK_SYNC_MASTERS_NOW,
+            ExistingWorkPolicy.APPEND_OR_REPLACE,
+            OneTimeWorkRequestBuilder<SkuSyncWorker>()
+                .setConstraints(connectedOnly)
+                .setInputData(androidx.work.workDataOf(SkuSyncWorker.KEY_MANUAL_CHAIN to true))
+                .setInitialDelay(1, TimeUnit.MINUTES)
+                .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 1, TimeUnit.MINUTES)
+                .build(),
+        )
+    }
+
+    /** Where the last "Sync masters now" is: running (queued too), failed with D365FO's reason, or neither. */
+    val mastersSync: kotlinx.coroutines.flow.Flow<MasterSyncState> =
+        workManager.getWorkInfosForUniqueWorkFlow(WORK_SYNC_MASTERS_NOW)
+            .map { infos ->
+                val failed = infos.firstOrNull { it.state == androidx.work.WorkInfo.State.FAILED }
+                when {
+                    infos.any { !it.state.isFinished } -> MasterSyncState.Running
+                    failed != null -> MasterSyncState.Failed(
+                        failed.outputData.getString(SkuSyncWorker.KEY_ERROR) ?: "D365FO could not be reached",
+                    )
+                    else -> MasterSyncState.Idle
+                }
+            }
+
     private companion object {
         const val WORK_PUSH_NOW = "d365.push.now"
         const val SKU_CONTINUE = "d365.sync.skumaster.continue"
+        const val WORK_SYNC_MASTERS_NOW = "d365.sync.skumaster.now"
+        const val POSTING_FOLLOW_UP = "d365.posting.followup"
     }
+}
+
+/** See [SyncScheduler.mastersSync]. */
+sealed interface MasterSyncState {
+    data object Idle : MasterSyncState
+    data object Running : MasterSyncState
+    data class Failed(val reason: String) : MasterSyncState
 }

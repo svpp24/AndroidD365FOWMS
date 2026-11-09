@@ -193,6 +193,11 @@ class LiveMobileOpsServiceApi @Inject constructor(
 
     override suspend fun dmfGetAzureWriteUrl(body: com.d365fo.mobileops.data.remote.dto.DmfServiceRequest) = delegate.get().dmfGetAzureWriteUrl(body)
 
+    override suspend fun search(
+        body: com.d365fo.mobileops.data.remote.dto.SearchServiceRequest,
+        tag: com.d365fo.mobileops.data.remote.interceptor.IdempotentRead,
+    ) = delegate.get().search(body, tag)
+
     override suspend fun listTransferOrders(
         body: com.d365fo.mobileops.data.remote.dto.TransferListServiceRequest,
         tag: com.d365fo.mobileops.data.remote.interceptor.IdempotentRead,
@@ -410,6 +415,17 @@ class LiveCountTaskServiceApi @Inject constructor(
         settings.tenant.value.servicesRoot
     }
 
+    override suspend fun getCountBins(
+        body: com.d365fo.mobileops.data.remote.dto.CountBinServiceRequest,
+        tag: com.d365fo.mobileops.data.remote.interceptor.IdempotentRead,
+    ) = delegate.get().getCountBins(body, tag)
+
+    override suspend fun addCountBin(body: com.d365fo.mobileops.data.remote.dto.CountBinServiceRequest) =
+        delegate.get().addCountBin(body)
+
+    override suspend fun submitBinCounts(body: com.d365fo.mobileops.data.remote.dto.CountBinLinesServiceRequest) =
+        delegate.get().submitBinCounts(body)
+
     override suspend fun claimJournal(body: com.d365fo.mobileops.data.remote.dto.CountClaimServiceRequest) =
         delegate.get().claimJournal(body)
 
@@ -434,6 +450,14 @@ class LiveCountTaskServiceApi @Inject constructor(
 
     override suspend fun submitExceptions(body: com.d365fo.mobileops.data.remote.dto.CountExceptionsServiceRequest) =
         delegate.get().submitExceptions(body)
+
+    override suspend fun completeLocation(body: com.d365fo.mobileops.data.remote.dto.CountLocationServiceRequest) =
+        delegate.get().completeLocation(body)
+
+    override suspend fun getFreezeStatus(
+        body: com.d365fo.mobileops.data.remote.dto.FreezeStatusServiceRequest,
+        tag: com.d365fo.mobileops.data.remote.interceptor.IdempotentRead,
+    ) = delegate.get().getFreezeStatus(body, tag)
 
     override suspend fun createSpotCount(body: com.d365fo.mobileops.data.remote.dto.SpotCountServiceRequest) =
         delegate.get().createSpotCount(body)
@@ -472,6 +496,14 @@ class LiveCountSupervisorServiceApi @Inject constructor(
         tag: com.d365fo.mobileops.data.remote.interceptor.IdempotentRead,
     ) = delegate.get().getVariance(body, tag)
 
+    override suspend fun getVarianceSummary(
+        body: com.d365fo.mobileops.data.remote.dto.VarianceServiceRequest,
+        tag: com.d365fo.mobileops.data.remote.interceptor.IdempotentRead,
+    ) = delegate.get().getVarianceSummary(body, tag)
+
+    override suspend fun approveLine(body: com.d365fo.mobileops.data.remote.dto.ApproveLineServiceRequest) =
+        delegate.get().approveLine(body)
+
     override suspend fun reviewLines(body: com.d365fo.mobileops.data.remote.dto.ReviewServiceRequest) =
         delegate.get().reviewLines(body)
 
@@ -499,6 +531,31 @@ class LiveMenuServiceApi @Inject constructor(
         body: com.d365fo.mobileops.data.remote.dto.MenuServiceRequest,
         tag: com.d365fo.mobileops.data.remote.interceptor.IdempotentRead,
     ) = delegate.get().getMenu(body, tag)
+}
+
+/** `HSMobileOpsDeviceWorkSvc` - unsent work saved in D365FO, module switches (see WorkBackup). */
+@Singleton
+class LiveDeviceWorkServiceApi @Inject constructor(
+    factory: D365RetrofitFactory,
+    settings: ConnectionSettings,
+) : DeviceWorkServiceApi {
+
+    private val delegate = RebuildingApi(factory, DeviceWorkServiceApi::class.java) {
+        settings.tenant.value.servicesRoot
+    }
+
+    override suspend fun syncWork(body: com.d365fo.mobileops.data.remote.dto.DeviceWorkServiceRequest) =
+        delegate.get().syncWork(body)
+
+    override suspend fun listWork(
+        body: com.d365fo.mobileops.data.remote.dto.DeviceWorkServiceRequest,
+        tag: com.d365fo.mobileops.data.remote.interceptor.IdempotentRead,
+    ) = delegate.get().listWork(body, tag)
+
+    override suspend fun getAppControl(
+        body: com.d365fo.mobileops.data.remote.dto.DeviceWorkServiceRequest,
+        tag: com.d365fo.mobileops.data.remote.interceptor.IdempotentRead,
+    ) = delegate.get().getAppControl(body, tag)
 }
 
 /** `HSMobileOpsSessionSvc` - one active device per worker (see ActiveSessionGuard). */

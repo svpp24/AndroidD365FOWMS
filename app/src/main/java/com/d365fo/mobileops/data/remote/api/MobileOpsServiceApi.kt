@@ -296,6 +296,14 @@ interface MobileOpsServiceApi {
         @Tag tag: IdempotentRead = IdempotentRead,
     ): Response<com.d365fo.mobileops.data.remote.dto.OrdersForDateServiceResponse>
 
+    // -- Home search (HSMobileOpsSearchSvc) - a pure read --------------------------------------
+
+    @POST("HSMobileOpsServiceGroup/HSMobileOpsSearchSvc/search")
+    suspend fun search(
+        @Body body: com.d365fo.mobileops.data.remote.dto.SearchServiceRequest,
+        @Tag tag: IdempotentRead = IdempotentRead,
+    ): Response<com.d365fo.mobileops.data.remote.dto.SearchServiceResponse>
+
     // -- Transfer order lists and serial history (HSMobileOpsTransferListSvc) - pure reads ------
 
     @POST("HSMobileOpsServiceGroup/HSMobileOpsTransferListSvc/listTransferOrders")

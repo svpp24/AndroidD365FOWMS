@@ -30,6 +30,9 @@ class D365MobileApp : Application(), Configuration.Provider {
     @Inject lateinit var countSubmissions: CountSubmissions
     @Inject lateinit var triggeredCountAlerts: com.d365fo.mobileops.data.counting.TriggeredCountAlerts
     @Inject lateinit var featureFlags: com.d365fo.mobileops.domain.FeatureFlags
+    @Inject lateinit var workBackup: com.d365fo.mobileops.data.sync.WorkBackup
+    @Inject lateinit var moduleSwitches: com.d365fo.mobileops.data.sync.ModuleSwitches
+    @Inject lateinit var deviceCleanup: com.d365fo.mobileops.data.sync.DeviceCleanup
 
     override val workManagerConfiguration: Configuration
         get() = Configuration.Builder()
@@ -55,6 +58,8 @@ class D365MobileApp : Application(), Configuration.Provider {
         // only observed first.
         val previousHandler = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
+            // First, and synchronously: a crash loop has to be noticed even when logging fails.
+            com.d365fo.mobileops.data.crash.CrashLoopGuard.recordCrash(this, throwable)
             Timber.e(throwable, "Uncaught exception on thread '${thread.name}' - app is terminating")
             // Blocks briefly (see LogStore.flush/LogFilePersistence.flush) so the crash line
             // above has actually reached disk before the process dies - logging it into the
@@ -75,6 +80,22 @@ class D365MobileApp : Application(), Configuration.Provider {
         // thread, and it has to exist before the first background posting failure tries to
         // notify through it.
         syncNotifier.createChannel()
+
+        // Stopping again and again at start: nothing below runs - one of these may be what keeps
+        // failing - and MainActivity shows the recovery screen (see CrashLoopGuard).
+        if (com.d365fo.mobileops.data.crash.CrashLoopGuard.inRecovery(this)) {
+            Timber.w("crash loop - starting in recovery mode, background work not started")
+            return
+        }
+        applicationScope.launch {
+            kotlinx.coroutines.delay(com.d365fo.mobileops.data.crash.CrashLoopGuard.STABLE_MS)
+            com.d365fo.mobileops.data.crash.CrashLoopGuard.reset(this@D365MobileApp)
+        }
+        // A copy of unsent work in D365FO, and the module switches - see WorkBackup, ModuleSwitches.
+        moduleSwitches.start()
+        workBackup.start()
+        // Old records removed once a day, by the days on Mobile clean-up in D365FO.
+        deviceCleanup.start()
 
         // Off the main thread, and deliberately so.
         //

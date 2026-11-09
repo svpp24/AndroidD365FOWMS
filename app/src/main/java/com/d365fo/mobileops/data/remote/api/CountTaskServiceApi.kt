@@ -62,6 +62,22 @@ interface CountTaskServiceApi {
         @Body body: com.d365fo.mobileops.data.remote.dto.DiscrepancyServiceRequest,
     ): Response<com.d365fo.mobileops.data.remote.dto.DiscrepancyServiceResponse>
 
+    @POST("HSMobileOpsServiceGroup/HSMobileOpsCountTaskSvc/getCountBins")
+    suspend fun getCountBins(
+        @Body body: com.d365fo.mobileops.data.remote.dto.CountBinServiceRequest,
+        @Tag tag: IdempotentRead = IdempotentRead,
+    ): Response<com.d365fo.mobileops.data.remote.dto.CountBinServiceResponse>
+
+    @POST("HSMobileOpsServiceGroup/HSMobileOpsCountTaskSvc/addCountBin")
+    suspend fun addCountBin(
+        @Body body: com.d365fo.mobileops.data.remote.dto.CountBinServiceRequest,
+    ): Response<com.d365fo.mobileops.data.remote.dto.CountBinServiceResponse>
+
+    @POST("HSMobileOpsServiceGroup/HSMobileOpsCountTaskSvc/submitBinCounts")
+    suspend fun submitBinCounts(
+        @Body body: com.d365fo.mobileops.data.remote.dto.CountBinLinesServiceRequest,
+    ): Response<com.d365fo.mobileops.data.remote.dto.CountBinServiceResponse>
+
     @POST("HSMobileOpsServiceGroup/HSMobileOpsCountTaskSvc/getCounterProfile")
     suspend fun getCounterProfile(
         @Body body: com.d365fo.mobileops.data.remote.dto.CounterProfileServiceRequest,
@@ -78,4 +94,16 @@ interface CountTaskServiceApi {
     suspend fun submitExceptions(
         @Body body: com.d365fo.mobileops.data.remote.dto.CountExceptionsServiceRequest,
     ): Response<com.d365fo.mobileops.data.remote.dto.CountExceptionsServiceResponse>
+
+    /** Wall-to-wall: a location's counts are in; the server completes it, or says what is missing. */
+    @POST("HSMobileOpsServiceGroup/HSMobileOpsCountTaskSvc/completeLocation")
+    suspend fun completeLocation(
+        @Body body: com.d365fo.mobileops.data.remote.dto.CountLocationServiceRequest,
+    ): Response<com.d365fo.mobileops.data.remote.dto.CountLocationServiceResponse>
+
+    @POST("HSMobileOpsServiceGroup/HSMobileOpsCountTaskSvc/getFreezeStatus")
+    suspend fun getFreezeStatus(
+        @Body body: com.d365fo.mobileops.data.remote.dto.FreezeStatusServiceRequest,
+        @Tag tag: IdempotentRead = IdempotentRead,
+    ): Response<com.d365fo.mobileops.data.remote.dto.FreezeStatusServiceResponse>
 }

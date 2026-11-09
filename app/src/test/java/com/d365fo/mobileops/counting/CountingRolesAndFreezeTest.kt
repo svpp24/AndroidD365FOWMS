@@ -48,7 +48,7 @@ class CountingRolesAndFreezeTest {
     @Test
     fun `freeze banner says what the server decided`() {
         assertThat(freezeBanner("NONE", null) { "x" }).isNull()
-        assertThat(freezeBanner("LOCATION_FROZEN", null) { "x" }).contains("blocked")
+        assertThat(freezeBanner("LOCATION_FROZEN", null) { "x" }).contains("frozen")
         assertThat(freezeBanner("SNAPSHOT_ONLY", 1_000L) { "14:30" }).isEqualTo("Count is measured against stock at 14:30.")
     }
 

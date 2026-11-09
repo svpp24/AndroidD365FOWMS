@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsModuleSwitchRow</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// A module switched off on Mobile module switches: Module is the HSMobileOpsModule element name (the app's WarehouseWorkflow), Message what the worker is told.
+/// </summary>
+[DataContractAttribute]
+class HSMobileOpsModuleSwitchRow
+{
+    str        module;
+    str        message;
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmModule</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Module')]
+    public str parmModule(str _value = module)
+    {
+        module = _value;
+        return module;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmMessage</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Message')]
+    public str parmMessage(str _value = message)
+    {
+        message = _value;
+        return message;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

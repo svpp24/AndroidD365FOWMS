@@ -238,7 +238,9 @@ class HSMobileOpsCountSupervisorService
 
         changecompany (_request.parmDataAreaId())
         {
-            unapproved = HSMobileOpsCountSupervisorService::unapprovedLines(_request.parmJournalId());
+            unapproved = HSMobileOpsCountDualEngine::isDual(_request.parmJournalId())
+                ? HSMobileOpsCountDualEngine::unresolvedLines(_request.parmJournalId())
+                : HSMobileOpsCountSupervisorService::unapprovedLines(_request.parmJournalId());
             if (unapproved)
             {
                 response.parmErrorCode('LINES_NEED_APPROVAL');
@@ -248,6 +250,24 @@ class HSMobileOpsCountSupervisorService
 
             inventJournalTable = InventJournalTable::find(_request.parmJournalId());
             infologStart = infologLine();
+            // A wall-to-wall count posts in batch, which releases its warehouse when it has posted.
+            if (inventJournalTable.HSMobileOpsWallToWall)
+            {
+                try
+                {
+                    HSMobileOpsCountWallToWall::requestPost(inventJournalTable.InventLocationId);
+                }
+                catch (Exception::Error)
+                {
+                    response.parmErrorCode('POST_FAILED');
+                    response.parmMessage(HSMobileOpsCountSupervisorService::infologSince(infologStart));
+                    return response;
+                }
+                response.parmSuccess(true);
+                response.parmMessage(strFmt('%1 is posting in batch. %2 is released when it has posted.',
+                    inventJournalTable.JournalId, inventJournalTable.InventLocationId));
+                return response;
+            }
             try
             {
                 journalCheckPost = InventJournalCheckPost::newPostJournal(inventJournalTable);
@@ -270,6 +290,186 @@ class HSMobileOpsCountSupervisorService
         }
 
         response.parmSuccess(true);
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>getVarianceSummary</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// A dual count journal: how its lines stand, and those needing a decision with every count
+    /// side by side. Supervisors only. This is the only call that returns other people's counts.
+    /// </summary>
+    public HSMobileOpsCountVarianceSummaryResponse getVarianceSummary(HSMobileOpsCountVarianceRequest _request)
+    {
+        HSMobileOpsCountVarianceSummaryResponse response = new HSMobileOpsCountVarianceSummaryResponse();
+        HSMobileOpsCountVarianceSummaryLine     line;
+        HSMobileOpsCountAttemptRow           attemptRow;
+        List                        lines = new List(Types::Class);
+        List                        attempts;
+        InventJournalTrans          journalTrans;
+        InventDim                   inventDim;
+        HSMobileOpsCountAttempt              attempt;
+        str                         refusal;
+        int                         total;
+
+        response.parmSuccess(false);
+        response.parmLines(lines);
+
+        refusal = HSMobileOpsCountSupervisorService::refusal(_request ? _request.parmDataAreaId() : '',
+            _request ? _request.parmJournalId() : '', _request ? _request.parmUserId() : '', false);
+        if (refusal)
+        {
+            response.parmErrorCode(refusal);
+            return response;
+        }
+
+        changecompany (_request.parmDataAreaId())
+        {
+            while select count(RecId), HSMobileOpsCountStatus from journalTrans
+                group by HSMobileOpsCountStatus
+                where journalTrans.JournalId == _request.parmJournalId()
+            {
+                total += int642int(journalTrans.RecId);
+                switch (journalTrans.HSMobileOpsCountStatus)
+                {
+                    case HSMobileOpsCountStatus::Open:           response.parmOpenLines(int642int(journalTrans.RecId));      break;
+                    case HSMobileOpsCountStatus::FirstCounted:   response.parmFirstCounted(int642int(journalTrans.RecId));   break;
+                    case HSMobileOpsCountStatus::Matched:        response.parmMatched(int642int(journalTrans.RecId));        break;
+                    case HSMobileOpsCountStatus::Mismatch:       response.parmMismatch(int642int(journalTrans.RecId));       break;
+                    case HSMobileOpsCountStatus::Recount:        response.parmRecount(int642int(journalTrans.RecId));        break;
+                    case HSMobileOpsCountStatus::Approved:       response.parmApproved(int642int(journalTrans.RecId));       break;
+                    case HSMobileOpsCountStatus::EmptyConfirmed: response.parmEmptyConfirmed(int642int(journalTrans.RecId)); break;
+                }
+            }
+            response.parmTotalLines(total);
+
+            journalTrans.clear();
+            while select RecId, LineNum, ItemId, InventOnHand, HSMobileOpsCountStatus, HSMobileOpsAttemptCount from journalTrans
+                order by LineNum
+                where journalTrans.JournalId == _request.parmJournalId()
+                   && (journalTrans.HSMobileOpsCountStatus == HSMobileOpsCountStatus::Mismatch
+                    || journalTrans.HSMobileOpsCountStatus == HSMobileOpsCountStatus::Recount)
+                join wMSLocationId, inventBatchId, inventSerialId, configId, InventSizeId, InventColorId, InventStyleId from inventDim
+                    where inventDim.inventDimId == journalTrans.InventDimId
+            {
+                if (lines.elements() >= 500)
+                {
+                    response.parmTruncated(true);
+                    break;
+                }
+                attempts = new List(Types::Class);
+                while select AttemptNo, CountedQty, UserId, CountedDateTime from attempt
+                    order by AttemptNo
+                    where attempt.InventJournalTransRecId == journalTrans.RecId
+                {
+                    attemptRow = new HSMobileOpsCountAttemptRow();
+                    attemptRow.parmAttemptNo(attempt.AttemptNo);
+                    attemptRow.parmCountedQty(attempt.CountedQty);
+                    attemptRow.parmUserId(attempt.UserId);
+                    attemptRow.parmCountedDateTime(DateTimeUtil::toStr(attempt.CountedDateTime));
+                    attempts.addEnd(attemptRow);
+                }
+                line = new HSMobileOpsCountVarianceSummaryLine();
+                line.parmLineNumber(journalTrans.LineNum);
+                line.parmItemNumber(journalTrans.ItemId);
+                line.parmItemName(InventTable::find(journalTrans.ItemId).itemName());
+                line.parmLocationId(inventDim.wMSLocationId);
+                line.parmBatchId(inventDim.inventBatchId);
+                line.parmSerialId(inventDim.inventSerialId);
+                line.parmConfigId(inventDim.configId);
+                line.parmSizeId(inventDim.InventSizeId);
+                line.parmColorId(inventDim.InventColorId);
+                line.parmStyleId(inventDim.InventStyleId);
+                line.parmStatus(enum2Symbol(enumNum(HSMobileOpsCountStatus), journalTrans.HSMobileOpsCountStatus));
+                line.parmSystemQty(journalTrans.InventOnHand);
+                line.parmNeedsApproval(journalTrans.HSMobileOpsCountStatus == HSMobileOpsCountStatus::Mismatch && journalTrans.HSMobileOpsAttemptCount >= 3);
+                line.parmAttempts(attempts);
+                lines.addEnd(line);
+            }
+        }
+        response.parmLines(lines);
+        response.parmSuccess(true);
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>approveLine</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// A supervisor settles a disagreement: APPROVE makes FinalQty the count, RECOUNT sends the
+    /// line back to the counters. Only for lines that disagree. Never posts.
+    /// </summary>
+    [Wrappable(false), Hookable(false)]
+    public HSMobileOpsCountSupervisorResponse approveLine(HSMobileOpsCountApproveRequest _request)
+    {
+        HSMobileOpsCountSupervisorResponse response = new HSMobileOpsCountSupervisorResponse();
+        InventJournalTrans                 journalTrans;
+        str                                action;
+        str                                refusal;
+
+        response.parmSuccess(false);
+
+        refusal = HSMobileOpsCountSupervisorService::refusal(_request ? _request.parmDataAreaId() : '',
+            _request ? _request.parmJournalId() : '', _request ? _request.parmUserId() : '', true);
+        if (refusal)
+        {
+            response.parmErrorCode(refusal);
+            return response;
+        }
+        action = strUpr(_request.parmAction());
+        if ((action != 'APPROVE' && action != 'RECOUNT') || _request.parmFinalQty() < 0)
+        {
+            response.parmErrorCode('INVALID_REQUEST');
+            return response;
+        }
+
+        changecompany (_request.parmDataAreaId())
+        {
+            if (_request.parmReasonCode() && !InventCountingReasonCode::exist(_request.parmReasonCode()))
+            {
+                response.parmErrorCode('INVALID_REASON_CODE');
+                return response;
+            }
+            ttsbegin;
+            select forUpdate firstOnly journalTrans
+                where journalTrans.JournalId == _request.parmJournalId()
+                   && journalTrans.LineNum   == _request.parmLineNumber();
+            if (!journalTrans.RecId)
+            {
+                ttsabort;
+                response.parmErrorCode('LINE_NOT_FOUND');
+                return response;
+            }
+            if (journalTrans.HSMobileOpsCountStatus != HSMobileOpsCountStatus::Mismatch
+             && journalTrans.HSMobileOpsCountStatus != HSMobileOpsCountStatus::Recount)
+            {
+                ttsabort;
+                response.parmErrorCode('LINE_NOT_IN_DISPUTE');
+                response.parmMessage(strFmt('Line %1 is %2.', journalTrans.LineNum, journalTrans.HSMobileOpsCountStatus));
+                return response;
+            }
+            if (_request.parmReasonCode())
+            {
+                journalTrans.CountingReasonCode = _request.parmReasonCode();
+            }
+            if (action == 'APPROVE')
+            {
+                HSMobileOpsCountDualEngine::settleLine(journalTrans, _request.parmFinalQty(), HSMobileOpsCountStatus::Approved);
+            }
+            else
+            {
+                journalTrans.HSMobileOpsCountStatus = HSMobileOpsCountStatus::Recount;
+                journalTrans.doUpdate();
+            }
+            ttscommit;
+        }
+        response.parmSuccess(true);
+        response.parmAffected(1);
         return response;
     }
 ]]></Source>

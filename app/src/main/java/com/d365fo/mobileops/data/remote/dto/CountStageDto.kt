@@ -35,6 +35,8 @@ data class CountStageLineDto(
     @SerialName("BatchId") val batchId: String? = null,
     @SerialName("SerialId") val serialId: String? = null,
     @SerialName("LocationId") val locationId: String? = null,
+    /** The bin it was counted in - for counting only; D365FO adds a location's bins together. */
+    @SerialName("BinId") val binId: String? = null,
     @SerialName("Quantity") val quantity: Double,
     @SerialName("UnitId") val unitId: String? = null,
     @SerialName("CountedAtUtc") val countedAtUtc: String? = null,

@@ -77,6 +77,8 @@ import com.d365fo.mobileops.data.local.entity.WorkerPermissionEntity
         CountExceptionEntity::class,
         CountLocationCheckEntity::class,
         CountLineAttemptEntity::class,
+        com.d365fo.mobileops.data.local.entity.CountBinEntity::class,
+        com.d365fo.mobileops.data.local.entity.CountLineBinEntity::class,
         // transfer orders
         TransferOrderEntity::class,
         TransferLineEntity::class,
@@ -86,6 +88,7 @@ import com.d365fo.mobileops.data.local.entity.WorkerPermissionEntity
         // sync
         SyncQueueEntity::class,
         FailedSyncEntity::class,
+        com.d365fo.mobileops.data.local.entity.SentPostingEntity::class,
         StagedLineEntity::class,
         // roles / permissions
         WorkerPermissionEntity::class,
@@ -97,7 +100,7 @@ import com.d365fo.mobileops.data.local.entity.WorkerPermissionEntity
         com.d365fo.mobileops.data.local.entity.CreatedOrderEntity::class,
         com.d365fo.mobileops.data.local.entity.OrderDraftEntity::class,
     ],
-    version = 18,
+    version = 21,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -122,6 +125,8 @@ abstract class D365Database : RoomDatabase() {
     abstract fun readCacheDao(): ReadCacheDao
     abstract fun orderCreationDao(): com.d365fo.mobileops.data.local.dao.OrderCreationDao
     abstract fun unsentWorkDao(): com.d365fo.mobileops.data.sync.UnsentWorkDao
+    abstract fun workBackupDao(): com.d365fo.mobileops.data.sync.WorkBackupDao
+    abstract fun deviceCleanupDao(): com.d365fo.mobileops.data.sync.DeviceCleanupDao
 
     companion object {
         /**
@@ -471,11 +476,47 @@ abstract class D365Database : RoomDatabase() {
             }
         }
 
+        /** Sent postings awaiting D365FO's final answer - see SentPostingEntity. */
+        private val MIGRATION_18_19 = object : androidx.room.migration.Migration(18, 19) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `sent_posting` (`idempotencyKey` TEXT NOT NULL, " +
+                        "`dataAreaId` TEXT NOT NULL, `operation` TEXT NOT NULL, `aggregateId` TEXT NOT NULL, " +
+                        "`payloadJson` TEXT NOT NULL, `workerId` TEXT NOT NULL, `deviceId` TEXT NOT NULL, " +
+                        "`originallyQueuedAt` INTEGER NOT NULL, `sentAt` INTEGER NOT NULL, `attempts` INTEGER NOT NULL, " +
+                        "PRIMARY KEY(`idempotencyKey`))",
+                )
+            }
+        }
+
+        /** Virtual bins for counting. */
+        private val MIGRATION_19_20 = object : androidx.room.migration.Migration(19, 20) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `count_bin` (`warehouseId` TEXT NOT NULL, `binId` TEXT NOT NULL, " +
+                        "`description` TEXT, PRIMARY KEY(`warehouseId`, `binId`))",
+                )
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `count_line_bin` (`journalLineId` TEXT NOT NULL, `binId` TEXT NOT NULL, " +
+                        "`journalId` TEXT NOT NULL, `quantity` TEXT NOT NULL, PRIMARY KEY(`journalLineId`, `binId`), " +
+                        "FOREIGN KEY(`journalId`) REFERENCES `invent_journal`(`journalId`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_count_line_bin_journalId` ON `count_line_bin` (`journalId`)")
+            }
+        }
+
+        /** A bin's location: bins are per location (store count, 8 Nov). */
+        private val MIGRATION_20_21 = object : androidx.room.migration.Migration(20, 21) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `count_bin` ADD COLUMN `locationId` TEXT")
+            }
+        }
+
         val MIGRATIONS: Array<androidx.room.migration.Migration> =
             arrayOf(
                 MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7,
                 MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13,
-                MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18,
+                MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21,
             )
     }
 }

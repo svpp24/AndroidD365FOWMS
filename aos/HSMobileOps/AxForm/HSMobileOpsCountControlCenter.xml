@@ -462,6 +462,15 @@ public class HSMobileOpsCountControlCenter extends FormRun
 								<DataField>TransferredUtc</DataField>
 								<DataSource>HSMobileOpsCountMaster</DataSource>
 							</AxFormControl>
+							<AxFormControl xmlns=""
+								i:type="AxFormStringControl">
+								<Name>Head_TransferMessage</Name>
+								<Type>String</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<DataField>TransferMessage</DataField>
+								<DataSource>HSMobileOpsCountMaster</DataSource>
+							</AxFormControl>
 				</Controls>
 				<ColumnsMode>Fill</ColumnsMode>
 				<FrameType>None</FrameType>
@@ -670,6 +679,15 @@ public class HSMobileOpsCountControlCenter extends FormRun
 										<FormControlExtension
 											i:nil="true" />
 										<DataField>WMSLocationId</DataField>
+										<DataSource>HSMobileOpsCountStageLine</DataSource>
+									</AxFormControl>
+									<AxFormControl xmlns=""
+										i:type="AxFormStringControl">
+										<Name>Line_BinId</Name>
+										<Type>String</Type>
+										<FormControlExtension
+											i:nil="true" />
+										<DataField>BinId</DataField>
 										<DataSource>HSMobileOpsCountStageLine</DataSource>
 									</AxFormControl>
 									<AxFormControl xmlns=""

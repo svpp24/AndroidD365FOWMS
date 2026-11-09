@@ -1,0 +1,123 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsCountJournalCreateController</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Runs HSMobileOpsCountJournalCreateBatch. Opened from ?mi=SysClassRunner&amp;cls=HSMobileOpsCountJournalCreateController
+/// it schedules the nightly job if there is none, and one run now. Changing or withholding the job
+/// under System administration > Batch jobs is respected: only a job that is gone is made again.
+/// </summary>
+class HSMobileOpsCountJournalCreateController extends SysOperationServiceController implements BatchRetryable
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>isRetryable</Name>
+				<Source><![CDATA[
+
+    /// <summary>A server restart must not lose the run: see HSMobileOpsCountJournalCreateBatch.</summary>
+    [Hookable(false)]
+    public final boolean isRetryable()
+    {
+        return true;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>captionText</Name>
+				<Source><![CDATA[
+
+    public static str captionText()
+    {
+        return 'Mobile ops: create cycle counting journals';
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>newBatchTask</Name>
+				<Source><![CDATA[
+
+    private static HSMobileOpsCountJournalCreateController newBatchTask()
+    {
+        HSMobileOpsCountJournalCreateController controller = new HSMobileOpsCountJournalCreateController(
+            classStr(HSMobileOpsCountJournalCreateBatch),
+            methodStr(HSMobileOpsCountJournalCreateBatch, createJournals),
+            SysOperationExecutionMode::Synchronous);
+
+        controller.parmShowDialog(false);
+        return controller;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>run</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Always in place. This already is the batch task: left on ScheduledBatch, each run scheduled
+    /// more jobs of its own instead of doing the work, and they raced each other.
+    /// </summary>
+    public void run()
+    {
+        this.parmExecutionMode(SysOperationExecutionMode::Synchronous);
+        super();
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>isScheduled</Name>
+				<Source><![CDATA[
+
+    private static boolean isScheduled()
+    {
+        BatchJob batchJob;
+
+        select firstOnly RecId from batchJob
+            where batchJob.Caption == HSMobileOpsCountJournalCreateController::captionText()
+               && batchJob.Status  != BatchStatus::Canceled
+               && batchJob.Status  != BatchStatus::Finished
+               && batchJob.RecurrenceData != conNull();
+
+        return batchJob.RecId != 0;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>main</Name>
+				<Source><![CDATA[
+
+    public static void main(Args _args)
+    {
+        BatchHeader       batchHeader;
+        SysRecurrenceData recurrence;
+        TransDate         today = DateTimeUtil::getSystemDate(DateTimeUtil::getUserPreferredTimeZone());
+
+        if (!HSMobileOpsCountJournalCreateController::isScheduled())
+        {
+            // 21:00 UTC is 1 am in the Gulf, once receiving has stopped.
+            recurrence = SysRecurrence::defaultRecurrence();
+            recurrence = SysRecurrence::setRecurrenceStartDateTime(recurrence, DateTimeUtil::newDateTime(today, 75600));
+            recurrence = SysRecurrence::setRecurrenceNoEnd(recurrence);
+            recurrence = SysRecurrence::setRecurrenceUnit(recurrence, SysRecurrenceUnit::Day, 1);
+
+            batchHeader = BatchHeader::construct();
+            batchHeader.parmCaption(HSMobileOpsCountJournalCreateController::captionText());
+            batchHeader.parmRecurrenceData(recurrence);
+            batchHeader.addTask(HSMobileOpsCountJournalCreateController::newBatchTask());
+            batchHeader.save();
+            info('Nightly job scheduled.');
+        }
+
+        batchHeader = BatchHeader::construct();
+        batchHeader.parmCaption(HSMobileOpsCountJournalCreateController::captionText() + ' (now)');
+        batchHeader.addTask(HSMobileOpsCountJournalCreateController::newBatchTask());
+        batchHeader.save();
+        info('One run scheduled now.');
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

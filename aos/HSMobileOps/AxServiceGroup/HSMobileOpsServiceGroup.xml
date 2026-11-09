@@ -72,6 +72,10 @@
 			<Service>HSMobileOpsSearchSvc</Service>
 		</AxServiceGroupService>
 		<AxServiceGroupService>
+			<Name>HSMobileOpsDeviceWorkSvc</Name>
+			<Service>HSMobileOpsDeviceWorkSvc</Service>
+		</AxServiceGroupService>
+		<AxServiceGroupService>
 			<Name>HSMobileOpsTransferListSvc</Name>
 			<Service>HSMobileOpsTransferListSvc</Service>
 		</AxServiceGroupService>

@@ -24,6 +24,9 @@ class HSMobileOpsPostQueueEntry
     utcdatetime processedUtc;
     str         userName;
     str         linesJson;
+    str         idempotencyKey;
+    str         grnId;
+    int         lineCount;
 
 }
 ]]></Declaration>
@@ -127,6 +130,43 @@ class HSMobileOpsPostQueueEntry
     {
         linesJson = _value;
         return linesJson;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmIdempotencyKey</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('IdempotencyKey')]
+    public str parmIdempotencyKey(str _value = idempotencyKey)
+    {
+        idempotencyKey = _value;
+        return idempotencyKey;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmGrnId</Name>
+				<Source><![CDATA[
+
+    /// <summary>The product receipt posted with this registration, when Auto GRN is on.</summary>
+    [DataMemberAttribute('GrnId')]
+    public str parmGrnId(str _value = grnId)
+    {
+        grnId = _value;
+        return grnId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmLineCount</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('LineCount')]
+    public int parmLineCount(int _value = lineCount)
+    {
+        lineCount = _value;
+        return lineCount;
     }
 ]]></Source>
 			</Method>

@@ -109,7 +109,11 @@ class CountingJournalRepository @Inject constructor(
     /** DMF's legalEntityId, not lowercased like the AOS dataAreaId - matches what a working ExportToPackage call used (BSP). */
     private fun legalEntity(): String = companyProvider()?.takeIf { it.isNotBlank() }.orEmpty()
 
-    suspend fun listAssignedJournals(warehouseId: String, userId: String? = null): NetworkResult<List<CountingJournalSummary>> =
+    suspend fun listAssignedJournals(
+        warehouseId: String,
+        userId: String? = null,
+        includeDone: Boolean = false,
+    ): NetworkResult<List<CountingJournalSummary>> =
         withContext(ioDispatcher) {
             val trimmedWarehouse = warehouseId.trim()
             if (trimmedWarehouse.isEmpty()) {
@@ -119,7 +123,7 @@ class CountingJournalRepository @Inject constructor(
             val result = errorMapper.safeCall {
                 service.listOpenJournals(
                     JournalListServiceRequest(
-                        JournalListRequestBody(company(), trimmedWarehouse, userId),
+                        JournalListRequestBody(company(), trimmedWarehouse, userId, includeDone),
                     ),
                 )
             }
@@ -160,6 +164,7 @@ class CountingJournalRepository @Inject constructor(
                             zeroStockCheck = row.zeroStockCheck,
                             countMode = row.countMode?.takeIf { it.isNotBlank() } ?: COUNT_MODE_SINGLE,
                             passNumber = row.passNumber.coerceAtLeast(1),
+                            recountLines = row.recountLines,
                             recountOf = row.recountOf?.takeIf { it.isNotBlank() },
                             originType = row.originType?.takeIf { it.isNotBlank() } ?: ORIGIN_SCHEDULED,
                             priority = row.priority,
@@ -169,6 +174,7 @@ class CountingJournalRepository @Inject constructor(
                             snapshotAt = Formatters.serviceDateTimeToEpochMillis(row.snapshotAtUtc),
                             controlGroupId = row.controlGroupId?.takeIf { it.isNotBlank() },
                             repeatInfo = row.repeatInfo?.takeIf { it.isNotBlank() },
+                            doneNote = row.doneNote?.takeIf { it.isNotBlank() },
                         )
                     }.byPriority(),
                 )
@@ -327,8 +333,7 @@ class CountingJournalRepository @Inject constructor(
         if (table.rows.isEmpty()) {
             return@withContext NetworkResult.Error(
                 AppFailure.Fatal(
-                    "${journal.journalId} was not in the exported package - it may have been " +
-                        "closed since the export started",
+                    "${journal.journalId} is closed",
                 ),
             )
         }
@@ -446,7 +451,7 @@ class CountingJournalRepository @Inject constructor(
     ): NetworkResult<String> = withContext(ioDispatcher) {
         val cached = readCachedPackageFiles(journalId)
             ?: return@withContext NetworkResult.Error(
-                AppFailure.Fatal("No cached package for $journalId - fetch its lines again first"),
+                AppFailure.Fatal("Get data again for $journalId"),
             )
 
         val table = DmfCsv.parse(cached.dataFileBytes)
@@ -507,7 +512,7 @@ class CountingJournalRepository @Inject constructor(
         if (updatedRows.isEmpty()) {
             return@withContext NetworkResult.Error(
                 AppFailure.BusinessRule(
-                    "Nothing has been counted yet - count or mark at least one line first.",
+                    "Nothing counted yet.",
                     d365ErrorCode = "NOTHING_COUNTED",
                 ),
             )

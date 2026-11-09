@@ -97,8 +97,7 @@ fun NotConfiguredScreen(
                 }
 
                 Text(
-                    text = "Scan the connection QR code from your administrator, " +
-                        "or ask a supervisor to check the connection settings.",
+                    text = "Scan the connection QR code from your administrator.",
                     style = MaterialTheme.typography.bodyMedium,
                     modifier = Modifier.padding(top = 12.dp),
                 )

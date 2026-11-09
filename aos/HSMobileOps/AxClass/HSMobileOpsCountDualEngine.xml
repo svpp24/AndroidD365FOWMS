@@ -1,0 +1,672 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsCountDualEngine</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// The rules of dual counting, in one place. Two different people count a line without seeing
+/// what D365FO holds or what the other counted.
+///
+/// First count: FirstCounted, nothing reaches the journal. Second, by someone else: within
+/// tolerance is Matched and writes Counted with the second count; otherwise Mismatch, and the line
+/// joins the recount queue. Third, by a third person or a supervisor: equal to an earlier count is
+/// Matched with that value; otherwise it stays Mismatch for a supervisor to approve a quantity, or
+/// send back as Recount.
+///
+/// A dual count journal skips DMF and the control center: the DMF export carries on-hand, and the
+/// control center's duplicate review is a different way of settling two counts.
+/// </summary>
+class HSMobileOpsCountDualEngine
+{
+    Map toleranceByItem;
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>new</Name>
+				<Source><![CDATA[
+
+    public void new()
+    {
+        toleranceByItem = new Map(Types::String, Types::Container);
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>isDual</Name>
+				<Source><![CDATA[
+
+    public static boolean isDual(InventJournalId _journalId)
+    {
+        return InventJournalTable::find(_journalId).HSMobileOpsDualCount == NoYes::Yes;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>isSupervisor</Name>
+				<Source><![CDATA[
+
+    public static boolean isSupervisor(HSMobileOpsUser _user)
+    {
+        return _user.RecId && _user.IsActive && _user.IsCycleCountSupervisor && !_user.IsExternalCounter;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>markDualLines</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// After a journal is created: its lines whose items are in a counting group with dual counting
+    /// on need two counts, and if any do the journal is a dual count journal. The group comes from
+    /// the item's record for this warehouse, else the item's default, as D365FO looks it up. Lines
+    /// of items with no group at all follow the journal.
+    /// </summary>
+    public static boolean markDualLines(InventJournalId _journalId, InventLocationId _warehouse)
+    {
+        InventCountGroup   countGroup;
+        InventJournalTrans journalTrans;
+        InventJournalTable journalTable;
+        InventItemLocation itemLocation;
+        InventItemLocation warehouseLocation;
+        InventDim          warehouseDim;
+        InventDimId        blankDimId = InventDim::inventDimIdBlank();
+
+        warehouseDim.InventLocationId = _warehouse;
+        warehouseDim = InventDim::findDim(warehouseDim);
+
+        ttsbegin;
+        journalTrans.skipDataMethods(true);
+        journalTrans.skipDatabaseLog(true);
+        journalTrans.skipEvents(true);
+        while select CountGroupId from countGroup
+            where countGroup.HSMobileOpsDualCount == NoYes::Yes
+        {
+            update_recordset journalTrans
+                setting HSMobileOpsDualRequired = NoYes::Yes
+                where journalTrans.JournalId == _journalId
+                exists join itemLocation
+                    where itemLocation.ItemId       == journalTrans.ItemId
+                       && itemLocation.InventDimId  == warehouseDim.inventDimId
+                       && itemLocation.CountGroupId == countGroup.CountGroupId;
+
+            update_recordset journalTrans
+                setting HSMobileOpsDualRequired = NoYes::Yes
+                where journalTrans.JournalId == _journalId
+                exists join itemLocation
+                    where itemLocation.ItemId       == journalTrans.ItemId
+                       && itemLocation.InventDimId  == blankDimId
+                       && itemLocation.CountGroupId == countGroup.CountGroupId
+                notexists join warehouseLocation
+                    where warehouseLocation.ItemId       == journalTrans.ItemId
+                       && warehouseLocation.InventDimId  == warehouseDim.inventDimId
+                       && warehouseLocation.CountGroupId != '';
+        }
+
+        select firstOnly RecId from journalTrans
+            where journalTrans.JournalId      == _journalId
+               && journalTrans.HSMobileOpsDualRequired == NoYes::Yes;
+        if (journalTrans.RecId)
+        {
+            // An item with no counting group of its own, which only counting by assortment puts on
+            // a journal, follows the journal: two counts, like the lines around it. A line whose
+            // group has dual counting off keeps its single count.
+            InventJournalTrans noGroupLine;
+            InventItemLocation anyLocation;
+
+            noGroupLine.skipDataMethods(true);
+            noGroupLine.skipDatabaseLog(true);
+            noGroupLine.skipEvents(true);
+            update_recordset noGroupLine
+                setting HSMobileOpsDualRequired = NoYes::Yes
+                where noGroupLine.JournalId == _journalId
+                notexists join anyLocation
+                    where anyLocation.ItemId == noGroupLine.ItemId
+                       && (anyLocation.InventDimId == warehouseDim.inventDimId || anyLocation.InventDimId == blankDimId)
+                       && anyLocation.CountGroupId != '';
+
+            select forUpdate journalTable
+                where journalTable.JournalId == _journalId;
+            journalTable.HSMobileOpsDualCount = NoYes::Yes;
+            journalTable.update();
+        }
+        ttscommit;
+
+        return journalTrans.RecId != 0;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>pendingLines</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Lines of a dual count journal this person still has to count. Never a line they have
+    /// counted already, except that a supervisor may settle a disagreement they were part of.
+    /// </summary>
+    public static int pendingLines(InventJournalId _journalId, str _userId, boolean _supervisor, boolean _recountOnly = false)
+    {
+        InventJournalTrans journalTrans;
+        HSMobileOpsCountAttempt     attempt;
+        int                pending;
+
+        if (!_recountOnly)
+        {
+            select count(RecId) from journalTrans
+                where journalTrans.JournalId == _journalId
+                   && (journalTrans.HSMobileOpsCountStatus == HSMobileOpsCountStatus::Open
+                    || journalTrans.HSMobileOpsCountStatus == HSMobileOpsCountStatus::FirstCounted)
+                notexists join attempt
+                    where attempt.InventJournalTransRecId == journalTrans.RecId
+                       && attempt.UserId            == _userId;
+            pending = int642int(journalTrans.RecId);
+        }
+
+        journalTrans.clear();
+        select count(RecId) from journalTrans
+            where journalTrans.JournalId == _journalId
+               && ((journalTrans.HSMobileOpsCountStatus == HSMobileOpsCountStatus::Mismatch && journalTrans.HSMobileOpsAttemptCount < 3)
+                 || journalTrans.HSMobileOpsCountStatus == HSMobileOpsCountStatus::Recount)
+            notexists join attempt
+                where attempt.InventJournalTransRecId == journalTrans.RecId
+                   && attempt.UserId            == _userId;
+        pending += int642int(journalTrans.RecId);
+
+        if (_supervisor)
+        {
+            journalTrans.clear();
+            select count(RecId) from journalTrans
+                where journalTrans.JournalId == _journalId
+                   && ((journalTrans.HSMobileOpsCountStatus == HSMobileOpsCountStatus::Mismatch && journalTrans.HSMobileOpsAttemptCount < 3)
+                     || journalTrans.HSMobileOpsCountStatus == HSMobileOpsCountStatus::Recount)
+                exists join attempt
+                    where attempt.InventJournalTransRecId == journalTrans.RecId
+                       && attempt.UserId            == _userId;
+            pending += int642int(journalTrans.RecId);
+        }
+        return pending;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>passNumberFor</Name>
+				<Source><![CDATA[
+
+    /// <summary>What kind of count the list shows this person: 1 first, 2 second, 3 tiebreak.</summary>
+    public static int passNumberFor(InventJournalId _journalId, int _pending, int _recounts)
+    {
+        InventJournalTrans journalTrans;
+
+        if (_recounts >= _pending)
+        {
+            return 3;
+        }
+        select firstOnly RecId from journalTrans
+            where journalTrans.JournalId     == _journalId
+               && journalTrans.HSMobileOpsCountStatus == HSMobileOpsCountStatus::Open;
+        return journalTrans.RecId ? 1 : 2;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>journalLines</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// A page of the lines due from this person. Blind: nothing here says what D365FO holds or
+    /// what anyone else counted. The line they have counted is simply not in the list.
+    /// </summary>
+    public static void journalLines(HSMobileOpsCountDirectLinesRequest _request, HSMobileOpsCountDirectLinesResponse _response)
+    {
+        HSMobileOpsUser                user = HSMobileOpsUser::find(_request.parmUserId());
+        boolean                        supervisor = HSMobileOpsCountDualEngine::isSupervisor(user);
+        InventJournalTrans             journalTrans;
+        InventDim                      inventDim;
+        HSMobileOpsCountAttempt                 attempt;
+        HSMobileOpsCountDirectLineRow  row;
+        InventTable                    inventTable;
+        List                           lines = new List(Types::Class);
+        Map                            names = new Map(Types::String, Types::Container);
+        container                      nameAndUnit;
+        boolean                        isDisputed;
+        int                            linesFound;
+
+        if (!user.RecId || !user.IsActive)
+        {
+            _response.parmErrorCode('NOT_ALLOWED');
+            return;
+        }
+
+        while select LineNum, ItemId, RecId, HSMobileOpsCountStatus, HSMobileOpsAttemptCount from journalTrans
+            order by LineNum
+            where journalTrans.JournalId == _request.parmJournalId()
+               && journalTrans.LineNum   >  _request.parmFromLine()
+               && (journalTrans.HSMobileOpsCountStatus == HSMobileOpsCountStatus::Open
+                || journalTrans.HSMobileOpsCountStatus == HSMobileOpsCountStatus::FirstCounted
+                || (journalTrans.HSMobileOpsCountStatus == HSMobileOpsCountStatus::Mismatch && journalTrans.HSMobileOpsAttemptCount < 3)
+                || journalTrans.HSMobileOpsCountStatus == HSMobileOpsCountStatus::Recount)
+            join InventSiteId, InventLocationId, wMSLocationId, inventBatchId, inventSerialId,
+                 configId, InventSizeId, InventColorId, InventStyleId from inventDim
+                where inventDim.inventDimId == journalTrans.InventDimId
+                   && (!_request.parmLocationFrom() || inventDim.wMSLocationId >= _request.parmLocationFrom())
+                   && (!_request.parmLocationTo()   || inventDim.wMSLocationId <= _request.parmLocationTo())
+        {
+            isDisputed = journalTrans.HSMobileOpsCountStatus == HSMobileOpsCountStatus::Mismatch
+                    || journalTrans.HSMobileOpsCountStatus == HSMobileOpsCountStatus::Recount;
+            if (journalTrans.HSMobileOpsAttemptCount && !(isDisputed && supervisor))
+            {
+                select firstOnly RecId from attempt
+                    where attempt.InventJournalTransRecId == journalTrans.RecId
+                       && attempt.UserId            == _request.parmUserId();
+                if (attempt.RecId)
+                {
+                    continue;
+                }
+            }
+
+            if (linesFound >= HSMobileOpsCountDualEngine::linesPerPage())
+            {
+                _response.parmNextLine(lines.elements() ? row.parmLineNumber() : 0);
+                break;
+            }
+            linesFound++;
+
+            if (names.exists(journalTrans.ItemId))
+            {
+                nameAndUnit = names.lookup(journalTrans.ItemId);
+            }
+            else
+            {
+                inventTable = InventTable::find(journalTrans.ItemId);
+                nameAndUnit = [inventTable.itemName(), inventTable.inventUnitId()];
+                names.insert(journalTrans.ItemId, nameAndUnit);
+            }
+
+            row = new HSMobileOpsCountDirectLineRow();
+            row.parmLineNumber(journalTrans.LineNum);
+            row.parmItemNumber(journalTrans.ItemId);
+            row.parmItemName(conPeek(nameAndUnit, 1));
+            row.parmUnitId(conPeek(nameAndUnit, 2));
+            row.parmSiteId(inventDim.InventSiteId);
+            row.parmWarehouseId(inventDim.InventLocationId);
+            row.parmLocationId(inventDim.wMSLocationId);
+            row.parmBatchId(inventDim.inventBatchId);
+            row.parmSerialId(inventDim.inventSerialId);
+            row.parmConfigId(inventDim.configId);
+            row.parmSizeId(inventDim.InventSizeId);
+            row.parmColorId(inventDim.InventColorId);
+            row.parmStyleId(inventDim.InventStyleId);
+            row.parmPassNumber(journalTrans.HSMobileOpsAttemptCount + 1);
+            row.parmRecount(isDisputed);
+            row.parmLocationType('PHYSICAL');
+            row.parmOwner('');
+            row.parmVerifyOnly(false);
+            lines.addEnd(row);
+        }
+
+        _response.parmLines(lines);
+        _response.parmSuccess(true);
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>linesPerPage</Name>
+				<Source><![CDATA[
+
+    private static int linesPerPage()
+    {
+        return 1000;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>submitCounts</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// A batch of counts against a dual count journal. A line the rules refuse does not stop the
+    /// others: the answer says how many of each. A resend of the same submission changes nothing.
+    /// RETRY means nothing was applied and the same batch can be sent again.
+    /// </summary>
+    public static void submitCounts(HSMobileOpsCountDirectSubmitRequest _request, HSMobileOpsCountDirectSubmitResponse _response)
+    {
+        HSMobileOpsUser                user = HSMobileOpsUser::find(_request.parmUserId());
+        boolean                        supervisor = HSMobileOpsCountDualEngine::isSupervisor(user);
+        HSMobileOpsCountDualEngine                    engine = new HSMobileOpsCountDualEngine();
+        List                           lines = _request.parmLines();
+        ListEnumerator                 enumerator;
+        HSMobileOpsCountDirectCountRow row;
+        InventJournalTrans             journalTrans;
+        str                            outcome;
+        int                            accepted;
+        int                            matched;
+        int                            mismatched;
+        int                            sameUser;
+        int                            settled;
+        int                            unknownLines;
+
+        if (!user.RecId || !user.IsActive)
+        {
+            _response.parmErrorCode('NOT_ALLOWED');
+            _response.parmMessage(strFmt('%1 is not an active mobile user', _request.parmUserId()));
+            return;
+        }
+        if (!lines || !lines.elements())
+        {
+            _response.parmErrorCode('INVALID_REQUEST');
+            _response.parmMessage('No counted lines were sent');
+            return;
+        }
+
+        try
+        {
+            ttsbegin;
+            enumerator = lines.getEnumerator();
+            while (enumerator.moveNext())
+            {
+                row = enumerator.current();
+                if (row.parmMarkedOnly())
+                {
+                    continue;
+                }
+                if (row.parmCountedQuantity() < 0)
+                {
+                    throw error(strFmt('Line %1: a count cannot be negative', row.parmLineNumber()));
+                }
+                select forUpdate firstOnly journalTrans
+                    where journalTrans.JournalId == _request.parmJournalId()
+                       && journalTrans.LineNum   == row.parmLineNumber();
+                if (!journalTrans.RecId)
+                {
+                    unknownLines++;
+                    continue;
+                }
+                outcome = engine.applyCount(journalTrans, row.parmCountedQuantity(), _request.parmUserId(),
+                    _request.parmDeviceId(), _request.parmSubmissionId(), supervisor);
+                switch (outcome)
+                {
+                    case 'FIRST':
+                        accepted++;
+                        break;
+                    case 'MATCHED':
+                        accepted++;
+                        matched++;
+                        break;
+                    case 'MISMATCH':
+                        accepted++;
+                        mismatched++;
+                        break;
+                    case 'REPEAT':
+                        // The same batch sent twice, as a dropped connection can: applied once, and
+                        // answered as the first time was, or the counter's totals come up short.
+                        accepted++;
+                        if (journalTrans.HSMobileOpsCountStatus == HSMobileOpsCountStatus::Matched)
+                        {
+                            matched++;
+                        }
+                        else if (journalTrans.HSMobileOpsCountStatus == HSMobileOpsCountStatus::Mismatch)
+                        {
+                            mismatched++;
+                        }
+                        break;
+                    case 'SAME_USER':
+                        sameUser++;
+                        break;
+                    default:
+                        settled++;
+                        break;
+                }
+            }
+            ttscommit;
+        }
+        catch (Exception::DuplicateKeyException)
+        {
+            _response.parmErrorCode('RETRY');
+            _response.parmMessage(strFmt('D365FO met a duplicate count on line %1. Nothing in this batch was applied.', row ? row.parmLineNumber() : 0));
+            return;
+        }
+        catch (Exception::UpdateConflict)
+        {
+            _response.parmErrorCode('RETRY');
+            _response.parmMessage(strFmt('D365FO met an update conflict on line %1. Nothing in this batch was applied.', row ? row.parmLineNumber() : 0));
+            return;
+        }
+        catch (Exception::Deadlock)
+        {
+            _response.parmErrorCode('RETRY');
+            _response.parmMessage(strFmt('D365FO met a deadlock on line %1. Nothing in this batch was applied.', row ? row.parmLineNumber() : 0));
+            return;
+        }
+        catch (Exception::Error)
+        {
+            _response.parmErrorCode('REJECTED');
+            _response.parmMessage(infolog.text(infologLine()));
+            return;
+        }
+
+        if (!accepted && sameUser)
+        {
+            _response.parmErrorCode('RECOUNT_SAME_USER');
+            _response.parmMessage('You have already counted these lines. Someone else must count them.');
+            return;
+        }
+        _response.parmSuccess(true);
+        _response.parmAcceptedLines(accepted);
+        _response.parmMatchedLines(matched);
+        _response.parmMismatchedLines(mismatched);
+        _response.parmSameUserLines(sameUser);
+        _response.parmSettledLines(settled);
+        _response.parmThirdCountNeeded(mismatched > 0);
+        _response.parmPassResult('ACCEPTED');
+        _response.parmMessage(strFmt('%1 counted, %2 matched, %3 to recount, %4 refused: same counter, %5 already settled, %6 not on the journal',
+            accepted, matched, mismatched, sameUser, settled, unknownLines));
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>applyCount</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// One count of one line, in the caller's transaction. Answers FIRST, MATCHED, MISMATCH,
+    /// REPEAT (this submission has been applied), SAME_USER (refused) or SETTLED (nothing to do).
+    /// The first count never touches Counted: nothing reaches the journal until the line is settled.
+    /// </summary>
+    public str applyCount(InventJournalTrans _journalTrans, real _qty, str _userId, str _deviceId, str _requestId, boolean _supervisor)
+    {
+        HSMobileOpsCountAttempt attempt;
+        container      earlierCounts;
+        boolean        countedByUser;
+        int            attempts;
+        int            i;
+        boolean        isDisputed = _journalTrans.HSMobileOpsCountStatus == HSMobileOpsCountStatus::Mismatch
+                               || _journalTrans.HSMobileOpsCountStatus == HSMobileOpsCountStatus::Recount;
+
+        while select attempt
+            order by AttemptNo
+            where attempt.InventJournalTransRecId == _journalTrans.RecId
+        {
+            attempts = attempt.AttemptNo;
+            earlierCounts += attempt.CountedQty;
+            if (strUpr(attempt.UserId) == strUpr(_userId))
+            {
+                countedByUser = true;
+                if (_requestId && attempt.ClientRequestId == _requestId)
+                {
+                    return 'REPEAT';
+                }
+            }
+        }
+
+        if (_journalTrans.HSMobileOpsCountStatus == HSMobileOpsCountStatus::Matched
+         || _journalTrans.HSMobileOpsCountStatus == HSMobileOpsCountStatus::Approved
+         || _journalTrans.HSMobileOpsCountStatus == HSMobileOpsCountStatus::EmptyConfirmed
+         || (_journalTrans.HSMobileOpsCountStatus == HSMobileOpsCountStatus::Mismatch && attempts >= 3))
+        {
+            return 'SETTLED';
+        }
+        if (countedByUser && !(isDisputed && _supervisor))
+        {
+            return 'SAME_USER';
+        }
+
+        attempt.clear();
+        attempt.JournalId         = _journalTrans.JournalId;
+        attempt.InventJournalTransRecId = _journalTrans.RecId;
+        attempt.AttemptNo         = attempts + 1;
+        attempt.CountedQty        = _qty;
+        attempt.UserId            = _userId;
+        attempt.DeviceId          = _deviceId;
+        attempt.CountedDateTime        = DateTimeUtil::utcNow();
+        attempt.ClientRequestId   = _requestId;
+        attempt.insert();
+
+        _journalTrans.HSMobileOpsAttemptCount = attempt.AttemptNo;
+
+        if (!_journalTrans.HSMobileOpsDualRequired)
+        {
+            return HSMobileOpsCountDualEngine::settleLine(_journalTrans, _qty, HSMobileOpsCountStatus::Matched);
+        }
+        if (attempt.AttemptNo == 1)
+        {
+            _journalTrans.HSMobileOpsCountStatus = HSMobileOpsCountStatus::FirstCounted;
+            _journalTrans.doUpdate();
+            return 'FIRST';
+        }
+        if (attempt.AttemptNo == 2)
+        {
+            if (this.withinTolerance(_journalTrans, conPeek(earlierCounts, 1), _qty))
+            {
+                return HSMobileOpsCountDualEngine::settleLine(_journalTrans, _qty, HSMobileOpsCountStatus::Matched);
+            }
+        }
+        else
+        {
+            // A tiebreak has to agree with an earlier count exactly: anything less is a supervisor's call.
+            for (i = 1; i <= conLen(earlierCounts); i++)
+            {
+                if (conPeek(earlierCounts, i) == _qty)
+                {
+                    return HSMobileOpsCountDualEngine::settleLine(_journalTrans, _qty, HSMobileOpsCountStatus::Matched);
+                }
+            }
+        }
+        _journalTrans.HSMobileOpsCountStatus = HSMobileOpsCountStatus::Mismatch;
+        _journalTrans.doUpdate();
+        return 'MISMATCH';
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>settleLine</Name>
+				<Source><![CDATA[
+
+    /// <summary>The line's final quantity, and the count D365FO will post.</summary>
+    public static str settleLine(InventJournalTrans _journalTrans, real _qty, HSMobileOpsCountStatus _status)
+    {
+        _journalTrans.HSMobileOpsFinalQty    = _qty;
+        _journalTrans.HSMobileOpsCountStatus = _status;
+        _journalTrans.Counted       = _qty;
+        _journalTrans.modifiedField(fieldNum(InventJournalTrans, Counted));
+        _journalTrans.update();
+        return 'MATCHED';
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>withinTolerance</Name>
+				<Source><![CDATA[
+
+    private boolean withinTolerance(InventJournalTrans _journalTrans, real _first, real _second)
+    {
+        real      difference = abs(_first - _second);
+        real      larger = max(abs(_first), abs(_second));
+        container toleranceLimits;
+        real      limitQty;
+        real      limitPct;
+
+        if (!difference)
+        {
+            return true;
+        }
+        toleranceLimits   = this.toleranceLimitsOf(_journalTrans);
+        limitQty = conPeek(toleranceLimits, 1);
+        limitPct = conPeek(toleranceLimits, 2);
+        return difference <= limitQty || (limitPct > 0 && larger && difference / larger * 100 <= limitPct);
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>toleranceLimitsOf</Name>
+				<Source><![CDATA[
+
+    private container toleranceLimitsOf(InventJournalTrans _journalTrans)
+    {
+        container toleranceLimits;
+        InventDim warehouseDim;
+        InventItemLocation itemLocation;
+
+        if (toleranceByItem.exists(_journalTrans.ItemId))
+        {
+            return toleranceByItem.lookup(_journalTrans.ItemId);
+        }
+        warehouseDim.InventLocationId = InventDim::find(_journalTrans.InventDimId).InventLocationId;
+        warehouseDim = InventDim::findDim(warehouseDim);
+        select firstOnly CountGroupId from itemLocation
+            where itemLocation.ItemId      == _journalTrans.ItemId
+               && itemLocation.InventDimId == warehouseDim.inventDimId;
+        if (!itemLocation.CountGroupId)
+        {
+            select firstOnly CountGroupId from itemLocation
+                where itemLocation.ItemId      == _journalTrans.ItemId
+                   && itemLocation.InventDimId == InventDim::inventDimIdBlank();
+        }
+        toleranceLimits = HSMobileOpsCountDualTolerance::toleranceLimits(itemLocation.CountGroupId, InventTable::find(_journalTrans.ItemId).itemGroupId());
+        toleranceByItem.insert(_journalTrans.ItemId, toleranceLimits);
+        return toleranceLimits;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>unresolvedLines</Name>
+				<Source><![CDATA[
+
+    /// <summary>Lines not Matched, Approved or EmptyConfirmed: untouched lines included.</summary>
+    public static int unresolvedLines(InventJournalId _journalId)
+    {
+        InventJournalTrans journalTrans;
+
+        select count(RecId) from journalTrans
+            where journalTrans.JournalId     == _journalId
+               && journalTrans.HSMobileOpsCountStatus != HSMobileOpsCountStatus::Matched
+               && journalTrans.HSMobileOpsCountStatus != HSMobileOpsCountStatus::Approved
+               && journalTrans.HSMobileOpsCountStatus != HSMobileOpsCountStatus::EmptyConfirmed;
+        return int642int(journalTrans.RecId);
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>checkCanPost</Name>
+				<Source><![CDATA[
+
+    public static boolean checkCanPost(InventJournalId _journalId)
+    {
+        int unresolved;
+
+        if (!_journalId || !HSMobileOpsCountDualEngine::isDual(_journalId))
+        {
+            return true;
+        }
+        unresolved = HSMobileOpsCountDualEngine::unresolvedLines(_journalId);
+        if (unresolved)
+        {
+            return checkFailed(strFmt('%1 has %2 line(s) not settled by dual counting. Each must be matched by two counters or approved by a supervisor before it can post.',
+                _journalId, unresolved));
+        }
+        return true;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

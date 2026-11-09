@@ -131,6 +131,9 @@ interface SyncQueueDao {
     @Query("SELECT * FROM failed_sync ORDER BY failedAt DESC")
     fun observeFailures(): Flow<List<FailedSyncEntity>>
 
+    @Query("SELECT * FROM failed_sync ORDER BY failedAt DESC LIMIT :limit")
+    suspend fun recentFailures(limit: Int): List<FailedSyncEntity>
+
     @Query("SELECT COUNT(*) FROM failed_sync WHERE acknowledged = 0")
     fun observeUnacknowledgedFailureCount(): Flow<Int>
 
@@ -149,5 +152,30 @@ interface SyncQueueDao {
 
     @Query("DELETE FROM failed_sync WHERE failureId = :failureId")
     suspend fun removeFailure(failureId: String)
+
+    // -- Sent, awaiting D365FO's final answer ---------------------------------------------
+
+    /** Off the live queue and onto the sent list together, so a posting is always on one of them. */
+    @Transaction
+    suspend fun markSent(queueId: String, sent: com.d365fo.mobileops.data.local.entity.SentPostingEntity) {
+        insertSent(sent)
+        remove(queueId)
+    }
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertSent(sent: com.d365fo.mobileops.data.local.entity.SentPostingEntity)
+
+    @Query("SELECT * FROM sent_posting ORDER BY sentAt")
+    suspend fun sentPostings(): List<com.d365fo.mobileops.data.local.entity.SentPostingEntity>
+
+    @Query("DELETE FROM sent_posting WHERE idempotencyKey = :idempotencyKey")
+    suspend fun removeSent(idempotencyKey: String)
+
+    /** D365FO refused it after all: to Failed postings, and off the sent list, together. */
+    @Transaction
+    suspend fun sentFailed(idempotencyKey: String, failure: FailedSyncEntity) {
+        insertFailure(failure)
+        removeSent(idempotencyKey)
+    }
 
 }

@@ -75,6 +75,51 @@ interface CountingDao {
     )
     suspend fun getCountLines(journalId: String): List<CountLine>
 
+    // -- Virtual bins ------------------------------------------------------------------------
+
+    @Query("SELECT * FROM count_bin WHERE warehouseId = :warehouseId ORDER BY binId")
+    fun observeBins(warehouseId: String): Flow<List<com.d365fo.mobileops.data.local.entity.CountBinEntity>>
+
+    @androidx.room.Upsert
+    suspend fun upsertBin(bin: com.d365fo.mobileops.data.local.entity.CountBinEntity)
+
+    @Query("DELETE FROM count_bin WHERE warehouseId = :warehouseId")
+    suspend fun deleteBins(warehouseId: String)
+
+    @androidx.room.Upsert
+    suspend fun upsertBins(bins: List<com.d365fo.mobileops.data.local.entity.CountBinEntity>)
+
+    @androidx.room.Transaction
+    suspend fun replaceBins(warehouseId: String, bins: List<com.d365fo.mobileops.data.local.entity.CountBinEntity>) {
+        deleteBins(warehouseId)
+        upsertBins(bins)
+    }
+
+    @Query("SELECT quantity FROM count_line_bin WHERE journalLineId = :journalLineId")
+    suspend fun lineBinQuantities(journalLineId: String): List<String>
+
+    @Query("SELECT quantity FROM count_line_bin WHERE journalLineId = :journalLineId AND binId = :binId")
+    suspend fun lineBinQuantity(journalLineId: String, binId: String): String?
+
+    @androidx.room.Upsert
+    suspend fun upsertLineBin(row: com.d365fo.mobileops.data.local.entity.CountLineBinEntity)
+
+    @Query("DELETE FROM count_line_bin WHERE journalLineId = :journalLineId AND binId = :binId")
+    suspend fun deleteLineBin(journalLineId: String, binId: String)
+
+    @Query("SELECT * FROM count_line_bin WHERE journalId = :journalId")
+    suspend fun getLineBins(journalId: String): List<com.d365fo.mobileops.data.local.entity.CountLineBinEntity>
+
+    /** "Location is empty": it replaces whatever was counted there, bin by bin. */
+    @Query(
+        """
+        DELETE FROM count_line_bin WHERE journalLineId IN (
+            SELECT journalLineId FROM invent_journal_line WHERE journalId = :journalId AND locationId = :locationId COLLATE NOCASE
+        )
+        """,
+    )
+    suspend fun deleteLineBinsAt(journalId: String, locationId: String)
+
     /** A null [countedQuantity] clears the count. Written the moment the worker confirms it. */
     @Query(
         """

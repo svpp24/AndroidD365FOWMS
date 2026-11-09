@@ -123,7 +123,7 @@ class CountClaimManager @Inject constructor(
             outcome.claimedBy?.let { "This journal is now claimed by $it." } ?: "Your claim on this journal was taken over."
         ClaimRefusal.JOURNAL_POSTED -> "This journal has been posted in D365FO."
         ClaimRefusal.JOURNAL_NOT_FOUND -> "This journal no longer exists in D365FO."
-        ClaimRefusal.SAME_COUNTER -> "This recount must be done by someone other than the previous counter."
+        ClaimRefusal.SAME_COUNTER -> "Someone else must do this recount."
         ClaimRefusal.NOT_AVAILABLE, ClaimRefusal.OTHER -> outcome.message ?: "Your claim on this journal is no longer valid."
     }
 

@@ -50,8 +50,32 @@
 			<Method>getCounterProfile</Method>
 		</AxServiceOperation>
 		<AxServiceOperation>
+			<Name>getCountBins</Name>
+			<Method>getCountBins</Method>
+		</AxServiceOperation>
+		<AxServiceOperation>
+			<Name>addCountBin</Name>
+			<Method>addCountBin</Method>
+		</AxServiceOperation>
+		<AxServiceOperation>
+			<Name>submitBinCounts</Name>
+			<Method>submitBinCounts</Method>
+		</AxServiceOperation>
+		<AxServiceOperation>
 			<Name>getLineAttributes</Name>
 			<Method>getLineAttributes</Method>
+		</AxServiceOperation>
+		<AxServiceOperation>
+			<Name>completeLocation</Name>
+			<Method>completeLocation</Method>
+		</AxServiceOperation>
+		<AxServiceOperation>
+			<Name>confirmLocationEmpty</Name>
+			<Method>confirmLocationEmpty</Method>
+		</AxServiceOperation>
+		<AxServiceOperation>
+			<Name>getFreezeStatus</Name>
+			<Method>getFreezeStatus</Method>
 		</AxServiceOperation>
 	</ServiceOperations>
 </AxService>

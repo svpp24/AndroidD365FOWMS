@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -61,12 +62,12 @@ import com.d365fo.mobileops.presentation.common.theme.WarehouseStatusColors
  * are HomeScreen's as before.
  */
 
-private val HeroBand = Color(0xFFE9EAF6)
-private val HeroShelf = Color(0xFFD6D8EE)
-private val HeroBox = Color(0xFFC3C6E6)
-private val HeroBoxTeal = Color(0xFFB9DDD9)
-private val HeroLift = Color(0xFFB7BBE0)
-private val HeroWheel = Color(0xFF9EA3CF)
+// The scene in faint white on the accent band (21 Oct) - the lavender band read as the reference app.
+private val HeroShelf = Color.White.copy(alpha = 0.13f)
+private val HeroBox = Color.White.copy(alpha = 0.19f)
+private val HeroBoxTeal = Color(0xFFF2B544).copy(alpha = 0.55f)
+private val HeroLift = Color.White.copy(alpha = 0.24f)
+private val HeroWheel = Color.White.copy(alpha = 0.34f)
 private val CardShape = RoundedCornerShape(10.dp)
 
 /**
@@ -83,13 +84,13 @@ internal fun HomeGreeting(onWarehouse: (() -> Unit)? = null, viewModel: Warehous
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         Box(
             contentAlignment = Alignment.Center,
-            modifier = Modifier.size(36.dp).background(WarehouseStatusColors.accent, CircleShape),
+            modifier = Modifier.size(36.dp).background(WarehouseStatusColors.accent, RoundedCornerShape(10.dp)),
         ) {
             Text(initials.ifBlank { "?" }, color = Color.White, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
         }
         Column {
             Text(
-                text = if (first.isNotBlank()) "Hello $first" else "Hello",
+                text = greeting() + if (first.isNotBlank()) ", $first" else "",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold,
             )
@@ -107,15 +108,15 @@ internal fun HomeGreeting(onWarehouse: (() -> Unit)? = null, viewModel: Warehous
 }
 
 /**
- * The band under the bar (the mock's): a search field - opens On-hand, the app's item and stock
- * search - and the "My Dashboard" heading. No More button: Services is a tab already (20 Oct).
+ * The band under the bar (the mock's): a search field - opens Search (items, orders, journals)
+ * - and the "My Dashboard" heading. No More button: Services is a tab already (20 Oct).
  */
 @Composable
 internal fun HomeHero(
     onSearch: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Box(modifier = modifier.fillMaxWidth().heightIn(min = 140.dp).background(HeroBand)) {
+    Box(modifier = modifier.fillMaxWidth().heightIn(min = 140.dp).background(WarehouseStatusColors.accent)) {
         // A warehouse scene across the whole band (20 Oct): a long, sparsely stocked rack and a
         // forklift carrying a pallet - quiet shapes behind the search and "My Dashboard", not a
         // grid of boxes (the first fill read as a checkerboard).
@@ -178,92 +179,63 @@ internal fun HomeHero(
                     .heightIn(min = 50.dp)
                     .clip(CardShape)
                     .background(Color.White)
-                    .clickable(role = Role.Button, onClickLabel = "Search items and stock", onClick = onSearch)
+                    .clickable(role = Role.Button, onClickLabel = "Search items, orders, journals", onClick = onSearch)
                     .padding(horizontal = 14.dp),
             ) {
                 Icon(LineIcons.SearchThin, contentDescription = null, tint = WarehouseStatusColors.text3)
-                Text("Search items and stock", style = MaterialTheme.typography.bodyLarge, color = WarehouseStatusColors.text3)
+                Text("Search items, orders, journals", style = MaterialTheme.typography.bodyLarge, color = WarehouseStatusColors.text3)
             }
             Text(
-                "My Dashboard",
+                "Today",
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.ExtraBold,
+                color = Color.White,
                 modifier = Modifier.heightIn(min = 38.dp).wrapContentHeight(Alignment.CenterVertically),
             )
         }
     }
 }
 
-/** One "My Dashboard" widget: badge and title, a label and a figure, and an outlined action. */
-@Composable
-internal fun DashboardWidget(
-    title: String,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    tint: Color,
-    label: String,
-    value: String,
-    action: String,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Column(
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-        modifier = modifier
-            .heightIn(min = 156.dp)
-            .clip(CardShape)
-            .background(Color.White)
-            .clickable(role = Role.Button, onClick = onClick)
-            .padding(12.dp),
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Box(contentAlignment = Alignment.Center, modifier = Modifier.size(30.dp).background(tint, RoundedCornerShape(8.dp))) {
-                Icon(icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
-            }
-            Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-        }
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center,
-            modifier = Modifier.fillMaxWidth().weight(1f),
-        ) {
-            Text(label, style = MaterialTheme.typography.bodySmall, color = WarehouseStatusColors.text3)
-            Text(value, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
-        }
-        Box(
-            contentAlignment = Alignment.Center,
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(min = 40.dp)
-                .border(1.5.dp, WarehouseStatusColors.accent, RoundedCornerShape(8.dp)),
-        ) {
-            Text(action, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, color = WarehouseStatusColors.accent)
-        }
-    }
-}
+/** One tip: a short title and a line - workers glance, they don't read (21 Oct). */
+private data class Tip(val icon: androidx.compose.ui.graphics.vector.ImageVector, val tint: Color, val title: String, val text: String)
 
-/** What's New: one card about a recent change, so workers notice it. */
+private val TIPS = listOf(
+    Tip(LineIcons.Count, Color(0xFF2E7D4F), "Not on the journal?", "Scan it anyway - it's added and marked."),
+    Tip(LineIcons.Search, Color(0xFF7B2FB0), "Find anything", "Search an item, PO, transfer or journal."),
+    Tip(LineIcons.Store, Color(0xFFB5222D), "Quick stock check", "Red button: scan an item, see its stock."),
+    Tip(LineIcons.Upload, Color(0xFF0B5563), "No signal?", "Keep working. It sends when you're back."),
+    Tip(LineIcons.Activity, Color(0xFF8A5A00), "Did it post?", "Activity shows what's sent and what's waiting."),
+    Tip(LineIcons.Ship, Color(0xFF0E7F74), "Whole line?", "Use Ship all outstanding - no typing."),
+)
+
+/** Tips: short cards in a row, swiped through. */
 @Composable
-internal fun WhatsNewCard(modifier: Modifier = Modifier) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        modifier = modifier.fillMaxWidth().clip(CardShape).background(Color.White).padding(14.dp),
+internal fun TipsRow(modifier: Modifier = Modifier) {
+    androidx.compose.foundation.lazy.LazyRow(
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 16.dp),
+        modifier = modifier.fillMaxWidth(),
     ) {
-        Box(
-            contentAlignment = Alignment.Center,
-            modifier = Modifier.size(width = 84.dp, height = 72.dp).background(Color(0xFFEEF0FA), RoundedCornerShape(8.dp)),
-        ) {
-            Box(contentAlignment = Alignment.Center, modifier = Modifier.size(34.dp).background(Color(0xFFC2410C), CircleShape)) {
-                Icon(androidx.compose.material.icons.Icons.Default.Add, contentDescription = null, tint = Color.White)
+        items(TIPS.size) { i ->
+            val tip = TIPS[i]
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                modifier = Modifier
+                    .width(250.dp)
+                    .heightIn(min = 76.dp)
+                    .clip(CardShape)
+                    .background(Color.White)
+                    .padding(12.dp),
+            ) {
+                Box(contentAlignment = Alignment.Center, modifier = Modifier.size(34.dp).background(tip.tint, RoundedCornerShape(9.dp))) {
+                    Icon(tip.icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+                }
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(tip.title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.ExtraBold)
+                    Text(tip.text, style = MaterialTheme.typography.bodySmall, color = WarehouseStatusColors.text3)
+                }
             }
-        }
-        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text("Found something extra?", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold, color = WarehouseStatusColors.accent)
-            Text(
-                "While counting, scan an item that is not on the journal and it goes straight into your list, marked as such.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
         }
     }
 }
@@ -278,7 +250,7 @@ internal fun HomeSectionTitle(text: String, modifier: Modifier = Modifier) {
 internal fun moduleTint(module: ModuleTile): Color {
     val t = module.title.lowercase()
     return when {
-        "count" in t -> Color(0xFF2E7D4F)
+        "count" in t || t.startsWith("inventory") -> Color(0xFF2E7D4F)
         "receiv" in t || "inbound" in t || t.startsWith("po ") || "po receiving" in t -> Color(0xFF1D63D6)
         "ship" in t || "outbound" in t || "transfer" in t || "to " in t || "to's" in t -> Color(0xFF0E7F74)
         "return" in t -> Color(0xFFB4441A)
@@ -349,33 +321,6 @@ internal fun ServiceCard(
     }
 }
 
-/** Shortcuts to the modules this device opens most - a row of white chips, scrolling sideways. */
-@Composable
-internal fun MostUsedRow(modules: List<ModuleTile>, onOpen: (ModuleTile) -> Unit) {
-    LazyRow(
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-        contentPadding = PaddingValues(horizontal = 16.dp),
-    ) {
-        items(modules, key = { it.title }) { module ->
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                modifier = Modifier
-                    .heightIn(min = 56.dp)
-                    .clip(CardShape)
-                    .background(Color.White)
-                    .clickable(role = Role.Button, onClick = { onOpen(module) })
-                    .padding(horizontal = 14.dp),
-            ) {
-                Box(contentAlignment = Alignment.Center, modifier = Modifier.size(30.dp).background(moduleTint(module), CircleShape)) {
-                    Icon(module.icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(17.dp))
-                }
-                Text(module.title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
-            }
-        }
-    }
-}
-
 /**
  * Report / Suggest (the mock's two cards): a stock discrepancy at a location - the counting
  * team's report, which may trigger a count - when that is switched on, and feedback about the app
@@ -396,7 +341,7 @@ internal fun ReportSuggestCards(modifier: Modifier = Modifier) {
                 icon = androidx.compose.material.icons.Icons.Outlined.ReportProblem,
                 tint = Color(0xFFB4441A),
                 title = "Discrepancy",
-                text = "Stock not where D365FO says it is.",
+                text = "Wrong stock at a location",
                 onClick = { discrepancy.open() },
                 modifier = Modifier.weight(1f).fillMaxHeight(),
             )
@@ -406,7 +351,7 @@ internal fun ReportSuggestCards(modifier: Modifier = Modifier) {
                 icon = Icons.AutoMirrored.Outlined.Chat,
                 tint = Color(0xFF2E7D4F),
                 title = "Share feedback",
-                text = "A problem, an idea or a question.",
+                text = "A problem or an idea",
                 onClick = { launch(runCatching { view.rootView.drawToBitmap() }.getOrNull()) },
                 modifier = Modifier.weight(1f).fillMaxHeight(),
             )
@@ -437,4 +382,11 @@ private fun ReportCard(
         }
         Text(text, style = MaterialTheme.typography.bodyMedium, color = WarehouseStatusColors.text3)
     }
+}
+
+/** "Good morning" / "Good afternoon" / "Good evening" by the device clock. */
+private fun greeting(): String = when (java.time.LocalTime.now().hour) {
+    in 4..11 -> "Good morning"
+    in 12..16 -> "Good afternoon"
+    else -> "Good evening"
 }

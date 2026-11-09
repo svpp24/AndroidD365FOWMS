@@ -1,0 +1,199 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsCountVarianceSummaryLine</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// A dual-count line needing a decision, for the supervisor only: this is the one place expected and counted are side by side.
+/// </summary>
+[DataContractAttribute]
+class HSMobileOpsCountVarianceSummaryLine
+{
+    real lineNumber;
+    str itemNumber;
+    str itemName;
+    str locationId;
+    str batchId;
+    str serialId;
+    str configId;
+    str sizeId;
+    str colorId;
+    str styleId;
+    str status;
+    real systemQty;
+    boolean needsApproval;
+    List attempts;
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmLineNumber</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('LineNumber')]
+    public real parmLineNumber(real _value = lineNumber)
+    {
+        lineNumber = _value;
+        return lineNumber;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmItemNumber</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ItemNumber')]
+    public str parmItemNumber(str _value = itemNumber)
+    {
+        itemNumber = _value;
+        return itemNumber;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmItemName</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ItemName')]
+    public str parmItemName(str _value = itemName)
+    {
+        itemName = _value;
+        return itemName;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmLocationId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('LocationId')]
+    public str parmLocationId(str _value = locationId)
+    {
+        locationId = _value;
+        return locationId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmBatchId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('BatchId')]
+    public str parmBatchId(str _value = batchId)
+    {
+        batchId = _value;
+        return batchId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmSerialId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('SerialId')]
+    public str parmSerialId(str _value = serialId)
+    {
+        serialId = _value;
+        return serialId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmConfigId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ConfigId')]
+    public str parmConfigId(str _value = configId)
+    {
+        configId = _value;
+        return configId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmSizeId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('SizeId')]
+    public str parmSizeId(str _value = sizeId)
+    {
+        sizeId = _value;
+        return sizeId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmColorId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ColorId')]
+    public str parmColorId(str _value = colorId)
+    {
+        colorId = _value;
+        return colorId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmStyleId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('StyleId')]
+    public str parmStyleId(str _value = styleId)
+    {
+        styleId = _value;
+        return styleId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmStatus</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Status')]
+    public str parmStatus(str _value = status)
+    {
+        status = _value;
+        return status;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmSystemQty</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('SystemQty')]
+    public real parmSystemQty(real _value = systemQty)
+    {
+        systemQty = _value;
+        return systemQty;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmNeedsApproval</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('NeedsApproval')]
+    public boolean parmNeedsApproval(boolean _value = needsApproval)
+    {
+        needsApproval = _value;
+        return needsApproval;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmAttempts</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Attempts')]
+    public List parmAttempts(List _value = attempts)
+    {
+        attempts = _value;
+        return attempts;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

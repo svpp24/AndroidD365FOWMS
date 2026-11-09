@@ -87,6 +87,49 @@ data class JournalStateServiceResponse(
     @SerialName("State") val state: String? = null,
 )
 
+/** Wall-to-wall: one location of the count, to complete (or confirm empty). */
+@Serializable
+data class CountLocationServiceRequest(@SerialName("_request") val request: CountLocationRequestBody)
+
+@Serializable
+data class CountLocationRequestBody(
+    @SerialName("DataAreaId") val dataAreaId: String,
+    @SerialName("JournalId") val journalId: String,
+    @SerialName("UserId") val userId: String,
+    @SerialName("DeviceId") val deviceId: String,
+    @SerialName("LocationId") val locationId: String,
+)
+
+@Serializable
+data class CountLocationServiceResponse(
+    @SerialName("Success") val success: Boolean = false,
+    @SerialName("ErrorCode") val errorCode: String? = null,
+    @SerialName("Message") val message: String? = null,
+    /** Locations of the count not complete yet. */
+    @SerialName("OpenTasks") val openTasks: Int = 0,
+)
+
+/** Is a warehouse frozen for a wall-to-wall count? Asked before a stock movement starts. */
+@Serializable
+data class FreezeStatusServiceRequest(@SerialName("_request") val request: FreezeStatusRequestBody)
+
+@Serializable
+data class FreezeStatusRequestBody(
+    @SerialName("DataAreaId") val dataAreaId: String,
+    @SerialName("WarehouseId") val warehouseId: String,
+)
+
+@Serializable
+data class FreezeStatusServiceResponse(
+    @SerialName("Success") val success: Boolean = false,
+    @SerialName("ErrorCode") val errorCode: String? = null,
+    @SerialName("Frozen") val frozen: Boolean = false,
+    @SerialName("JournalId") val journalId: String? = null,
+    @SerialName("Status") val status: String? = null,
+    /** The text a refused movement shows, from D365FO. */
+    @SerialName("Message") val message: String? = null,
+)
+
 @Serializable
 data class DirectLinesServiceRequest(@SerialName("_request") val request: DirectLinesRequestBody)
 
@@ -97,6 +140,59 @@ data class DirectLinesRequestBody(
     @SerialName("ClaimToken") val claimToken: String? = null,
     @SerialName("LocationFrom") val locationFrom: String? = null,
     @SerialName("LocationTo") val locationTo: String? = null,
+    /** Dual count: whose lines these are, so a line they have counted is left out. */
+    @SerialName("UserId") val userId: String? = null,
+    /** Dual count pages: the last line of the page before. */
+    @SerialName("FromLine") val fromLine: Double = 0.0,
+)
+
+@Serializable
+data class CountBinServiceRequest(@SerialName("_request") val request: CountBinRequestBody)
+
+@Serializable
+data class CountBinRequestBody(
+    @SerialName("DataAreaId") val dataAreaId: String,
+    @SerialName("WarehouseId") val warehouseId: String,
+    @SerialName("UserId") val userId: String,
+    @SerialName("BinId") val binId: String? = null,
+    /** addCountBin: the location being counted - the new bin is in it. */
+    @SerialName("LocationId") val locationId: String? = null,
+)
+
+@Serializable
+data class CountBinRowDto(
+    @SerialName("BinId") val binId: String = "",
+    @SerialName("Description") val description: String? = null,
+    @SerialName("LocationId") val locationId: String? = null,
+)
+
+@Serializable
+data class CountBinServiceResponse(
+    @SerialName("Success") val success: Boolean = false,
+    @SerialName("ErrorCode") val errorCode: String? = null,
+    @SerialName("Message") val message: String? = null,
+    @SerialName("Accepted") val accepted: Int = 0,
+    @SerialName("Bins") val bins: List<CountBinRowDto> = emptyList(),
+)
+
+@Serializable
+data class CountBinLinesServiceRequest(@SerialName("_request") val request: CountBinLinesRequestBody)
+
+@Serializable
+data class CountBinLinesRequestBody(
+    @SerialName("DataAreaId") val dataAreaId: String,
+    @SerialName("JournalId") val journalId: String,
+    @SerialName("UserId") val userId: String,
+    @SerialName("SubmissionId") val submissionId: String,
+    /** [rowsJson] of [CountBinLineRowDto]s. */
+    @SerialName("RowsJson") val rowsJson: String,
+)
+
+@Serializable
+data class CountBinLineRowDto(
+    @SerialName("LineNumber") val lineNumber: Double,
+    @SerialName("BinId") val binId: String,
+    @SerialName("Quantity") val quantity: Double,
 )
 
 /** Blind by contract: no on-hand, counted or variance quantity. */
@@ -110,6 +206,11 @@ data class DirectLineRowDto(
     @SerialName("LocationId") val locationId: String? = null,
     @SerialName("BatchId") val batchId: String? = null,
     @SerialName("SerialId") val serialId: String? = null,
+    @SerialName("UnitId") val unitId: String? = null,
+    @SerialName("ConfigId") val configId: String? = null,
+    @SerialName("SizeId") val sizeId: String? = null,
+    @SerialName("ColorId") val colorId: String? = null,
+    @SerialName("StyleId") val styleId: String? = null,
     @SerialName("PassNumber") val passNumber: Int = 1,
     @SerialName("Recount") val recount: Boolean = false,
     @SerialName("LocationType") val locationType: String? = null,
@@ -122,6 +223,8 @@ data class DirectLinesServiceResponse(
     @SerialName("Success") val success: Boolean = false,
     @SerialName("ErrorCode") val errorCode: String? = null,
     @SerialName("Lines") val lines: List<DirectLineRowDto> = emptyList(),
+    /** Above zero: there are more lines, ask again from this one. */
+    @SerialName("NextLine") val nextLine: Double = 0.0,
 )
 
 @Serializable
@@ -159,6 +262,10 @@ data class DirectSubmitServiceResponse(
     @SerialName("ErrorCode") val errorCode: String? = null,
     @SerialName("Message") val message: String? = null,
     @SerialName("AcceptedLines") val acceptedLines: Int = 0,
+    @SerialName("MatchedLines") val matchedLines: Int = 0,
+    @SerialName("MismatchedLines") val mismatchedLines: Int = 0,
+    @SerialName("SameUserLines") val sameUserLines: Int = 0,
+    @SerialName("SettledLines") val settledLines: Int = 0,
     @SerialName("ThirdCountNeeded") val thirdCountNeeded: Boolean = false,
     @SerialName("PassResult") val passResult: String? = null,
 )

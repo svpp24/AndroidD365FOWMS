@@ -78,9 +78,9 @@ private fun subMenuTile(subMenu: MenuDefinition, menu: HandheldMenu, isShown: (W
 internal fun EmptyMenuNotice(menuMissing: Boolean = false) {
     Text(
         text = if (menuMissing) {
-            "This menu is no longer set up in D365FO. Go back to Home."
+            "This menu is gone. Go back to Home."
         } else {
-            "Nothing on this menu is open to you yet. Ask your supervisor to add it in D365FO (Mobile device menus or Menu access)."
+            "Nothing here for you yet - ask a supervisor."
         },
         style = MaterialTheme.typography.bodyMedium,
         color = WarehouseStatusColors.text3,

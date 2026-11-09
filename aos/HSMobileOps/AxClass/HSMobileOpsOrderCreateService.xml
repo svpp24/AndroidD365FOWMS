@@ -1556,6 +1556,13 @@ class HSMobileOpsOrderCreateService
                 response.parmMessage(strFmt('Warehouse %1 is not assigned to you', _request.parmWarehouseId()));
                 return response;
             }
+            // A return ships stock out at once: not from a warehouse frozen for a wall-to-wall count.
+            if (HSMobileOpsWarehouseFreeze::findActive(_request.parmWarehouseId()).RecId)
+            {
+                response.parmErrorCode('WAREHOUSE_FROZEN');
+                response.parmMessage(HSMobileOpsWarehouseFreeze::frozenMessage(_request.parmWarehouseId()));
+                return response;
+            }
             vendTable = VendTable::find(_request.parmVendorAccount());
             if (!vendTable.RecId)
             {

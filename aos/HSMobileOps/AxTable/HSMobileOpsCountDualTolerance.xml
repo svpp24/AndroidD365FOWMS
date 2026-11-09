@@ -1,0 +1,120 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxTable xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsCountDualTolerance</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// How far apart two counters may be and still match, by counting group and item group. Most
+/// specific row wins: both, then counting group, then item group, then the blank row. No row at
+/// all means the two counts must be equal, which is also what zeros on a row mean.
+/// </summary>
+public class HSMobileOpsCountDualTolerance extends common
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>toleranceLimits</Name>
+				<Source><![CDATA[
+
+    /// <summary>[quantity, percent] for this counting group and item group.</summary>
+    public static container toleranceLimits(CountGroupId _countGroup, ItemGroupId _itemGroup)
+    {
+        HSMobileOpsCountDualTolerance row;
+
+        select firstOnly ToleranceQty, TolerancePct from row
+            where row.CountGroupId == _countGroup
+               && row.ItemGroupId  == _itemGroup;
+        if (!row.RecId)
+        {
+            select firstOnly ToleranceQty, TolerancePct from row
+                where row.CountGroupId == _countGroup
+                   && row.ItemGroupId  == '';
+        }
+        if (!row.RecId)
+        {
+            select firstOnly ToleranceQty, TolerancePct from row
+                where row.CountGroupId == ''
+                   && row.ItemGroupId  == _itemGroup;
+        }
+        if (!row.RecId)
+        {
+            select firstOnly ToleranceQty, TolerancePct from row
+                where row.CountGroupId == ''
+                   && row.ItemGroupId  == '';
+        }
+        return [row.ToleranceQty, row.TolerancePct];
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>validateWrite</Name>
+				<Source><![CDATA[
+
+    public boolean validateWrite()
+    {
+        boolean ret = super();
+
+        if (this.TolerancePct < 0 || this.ToleranceQty < 0)
+        {
+            ret = checkFailed("Tolerance can't be negative.");
+        }
+        if (this.TolerancePct > 100)
+        {
+            ret = checkFailed("Tolerance % can't be more than 100.");
+        }
+        return ret;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+	<Label>Dual count tolerance</Label>
+	<TableGroup>Parameter</TableGroup>
+	<Fields>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>CountGroupId</Name>
+			<ExtendedDataType>CountGroupId</ExtendedDataType>
+			<HelpText>Blank means any counting group.</HelpText>
+			<Label>Counting group</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>ItemGroupId</Name>
+			<ExtendedDataType>ItemGroupId</ExtendedDataType>
+			<HelpText>Blank means any item group.</HelpText>
+			<Label>Item group</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldReal">
+			<Name>ToleranceQty</Name>
+			<HelpText>Largest difference in units between two counts that still match. Zero means they must be equal, as for serial numbers or high-value items.</HelpText>
+			<Label>Tolerance quantity</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldReal">
+			<Name>TolerancePct</Name>
+			<HelpText>Largest difference between two counts that still match, as a percentage of the larger one.</HelpText>
+			<Label>Tolerance %</Label>
+		</AxTableField>
+	</Fields>
+	<FullTextIndexes />
+	<Indexes>
+		<AxTableIndex>
+			<Name>GroupsIdx</Name>
+			<AlternateKey>Yes</AlternateKey>
+			<Fields>
+				<AxTableIndexField>
+					<DataField>CountGroupId</DataField>
+				</AxTableIndexField>
+				<AxTableIndexField>
+					<DataField>ItemGroupId</DataField>
+				</AxTableIndexField>
+			</Fields>
+		</AxTableIndex>
+	</Indexes>
+	<Mappings />
+	<Relations />
+	<StateMachines />
+</AxTable>

@@ -1,0 +1,176 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsCountWallToWallBatch</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// The batch side of a wall-to-wall count (HSMobileOpsCountWallToWall): building its journal,
+/// posting it, or cancelling it. Retryable: each step is safe to run again after a crash.
+/// </summary>
+class HSMobileOpsCountWallToWallBatch extends RunBaseBatch implements BatchRetryable
+{
+    RefRecId freezeRecId;
+    str      operation;
+
+    #define.CurrentVersion(1)
+    #localmacro.CurrentList
+        freezeRecId,
+        operation
+    #endmacro
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>isRetryable</Name>
+				<Source><![CDATA[
+
+    [Hookable(false)]
+    public final boolean isRetryable()
+    {
+        return true;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>opBuild</Name>
+				<Source><![CDATA[
+
+    public static str opBuild()
+    {
+        return 'BUILD';
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>opPost</Name>
+				<Source><![CDATA[
+
+    public static str opPost()
+    {
+        return 'POST';
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>opCancel</Name>
+				<Source><![CDATA[
+
+    public static str opCancel()
+    {
+        return 'CANCEL';
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmFreezeRecId</Name>
+				<Source><![CDATA[
+
+    public RefRecId parmFreezeRecId(RefRecId _value = freezeRecId)
+    {
+        freezeRecId = _value;
+        return freezeRecId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmOperation</Name>
+				<Source><![CDATA[
+
+    public str parmOperation(str _value = operation)
+    {
+        operation = _value;
+        return operation;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>schedule</Name>
+				<Source><![CDATA[
+
+    /// <summary>One batch run of the step; answers its job, for the freeze to keep.</summary>
+    public static RefRecId schedule(RefRecId _freezeRecId, str _operation, str _caption)
+    {
+        HSMobileOpsCountWallToWallBatch task = new HSMobileOpsCountWallToWallBatch();
+        BatchHeader                     batchHeader;
+
+        task.parmFreezeRecId(_freezeRecId);
+        task.parmOperation(_operation);
+        batchHeader = BatchHeader::construct();
+        batchHeader.parmCaption(_caption);
+        batchHeader.addTask(task);
+        batchHeader.save();
+        return batchHeader.parmBatchHeaderId();
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>run</Name>
+				<Source><![CDATA[
+
+    public void run()
+    {
+        if (operation == HSMobileOpsCountWallToWallBatch::opBuild())
+        {
+            HSMobileOpsCountWallToWall::runBuild(freezeRecId);
+        }
+        else if (operation == HSMobileOpsCountWallToWallBatch::opPost())
+        {
+            HSMobileOpsCountWallToWall::runPost(freezeRecId);
+        }
+        else if (operation == HSMobileOpsCountWallToWallBatch::opCancel())
+        {
+            HSMobileOpsCountWallToWall::runCancel(freezeRecId);
+        }
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>description</Name>
+				<Source><![CDATA[
+
+    public static ClassDescription description()
+    {
+        return 'Mobile ops: wall-to-wall count';
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>canGoBatch</Name>
+				<Source><![CDATA[
+
+    public boolean canGoBatch()
+    {
+        return true;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>pack</Name>
+				<Source><![CDATA[
+
+    public container pack()
+    {
+        return [#CurrentVersion, #CurrentList];
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>unpack</Name>
+				<Source><![CDATA[
+
+    public boolean unpack(container _packedClass)
+    {
+        int version = RunBase::getVersion(_packedClass);
+
+        if (version == #CurrentVersion)
+        {
+            [version, #CurrentList] = _packedClass;
+            return true;
+        }
+        return false;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

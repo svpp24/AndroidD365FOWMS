@@ -566,7 +566,7 @@ class HSMobileOpsReceivingService
     /// the same PO each stage their own row, and both must be netted out together. Registration
     /// is the only DocumentType that can name this PurchId, so no further narrowing is needed.
     /// </summary>
-    private static Map stagedQtyByLine(PurchId _purchId)
+    internal static Map stagedQtyByLine(PurchId _purchId)
     {
         HSMobileOpsPostQueue postQueue;
         Map                  staged = new Map(Types::Real, Types::Real);
@@ -635,7 +635,7 @@ class HSMobileOpsReceivingService
     /// genuinely still Ordered come back at all, so an order that is already fully registered
     /// costs nothing more than this one query returning empty.
     /// </summary>
-    private static Map orderedQtyByLine(PurchId _purchId)
+    internal static Map orderedQtyByLine(PurchId _purchId)
     {
         PurchLine          purchLine;
         InventTrans        inventTrans;

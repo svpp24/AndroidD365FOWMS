@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsFormletterJournalPost_Extension</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Wall-to-wall freeze, in D365FO itself: a purchase product receipt or a sales packing slip line
+/// for a frozen warehouse is refused (HSMobileOpsWarehouseFreeze). Invoices are left alone, so
+/// retail statements keep posting.
+/// </summary>
+[ExtensionOf(classStr(FormletterJournalPost))]
+final class HSMobileOpsFormletterJournalPost_Extension
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>checkBeforePostingLine</Name>
+				<Source><![CDATA[
+
+    protected void checkBeforePostingLine()
+    {
+        InventLocationId warehouse;
+        PurchLine        purchLine;
+        // The sales tables by name: naming them in code would make this model depend on the
+        // Retail package, which they reference.
+        TableId          custPackingSlipJour = tableName2Id('CustPackingSlipJour');
+        TableId          salesLine = tableName2Id('SalesLine');
+
+        if (journalTable && sourceLine)
+        {
+            if (journalTable.TableId == tableNum(VendPackingSlipJour) && sourceLine.TableId == tableNum(PurchLine))
+            {
+                purchLine = sourceLine;
+                warehouse = purchLine.inventDim().InventLocationId;
+            }
+            else if (journalTable.TableId == custPackingSlipJour && sourceLine.TableId == salesLine)
+            {
+                warehouse = InventDim::find(sourceLine.(fieldName2Id(salesLine, 'InventDimId'))).InventLocationId;
+            }
+        }
+        if (warehouse && HSMobileOpsWarehouseFreeze::findActive(warehouse).RecId)
+        {
+            throw error(HSMobileOpsWarehouseFreeze::frozenMessage(warehouse));
+        }
+        next checkBeforePostingLine();
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

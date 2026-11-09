@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxTable xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsCountBinLine</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// What one counter counted of one journal line in one bin. A record only: the line's own count is
+/// the total across bins, and that total is what the counting rules and the journal use.
+/// </summary>
+public class HSMobileOpsCountBinLine extends common
+{
+}
+]]></Declaration>
+		<Methods />
+	</SourceCode>
+	<Label>Counted by bin</Label>
+	<TableGroup>Transaction</TableGroup>
+	<Fields>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>JournalId</Name>
+			<AllowEdit>No</AllowEdit>
+			<ExtendedDataType>InventJournalId</ExtendedDataType>
+			<Label>Journal</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldReal">
+			<Name>LineNum</Name>
+			<AllowEdit>No</AllowEdit>
+			<ExtendedDataType>LineNum</ExtendedDataType>
+			<Label>Line</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>UserId</Name>
+			<AllowEdit>No</AllowEdit>
+			<ExtendedDataType>HSMobileOpsUserName</ExtendedDataType>
+			<Label>Counter</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>BinId</Name>
+			<AllowEdit>No</AllowEdit>
+			<StringSize>20</StringSize>
+			<Label>Bin</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldReal">
+			<Name>CountedQty</Name>
+			<AllowEdit>No</AllowEdit>
+			<ExtendedDataType>InventQty</ExtendedDataType>
+			<Label>Counted</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>ItemId</Name>
+			<AllowEdit>No</AllowEdit>
+			<ExtendedDataType>ItemId</ExtendedDataType>
+			<Label>Item</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>WMSLocationId</Name>
+			<AllowEdit>No</AllowEdit>
+			<ExtendedDataType>WMSLocationId</ExtendedDataType>
+			<Label>Location</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>InventBatchId</Name>
+			<AllowEdit>No</AllowEdit>
+			<ExtendedDataType>InventBatchId</ExtendedDataType>
+			<Label>Batch</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldUtcDateTime">
+			<Name>CountedDateTime</Name>
+			<AllowEdit>No</AllowEdit>
+			<Label>Counted at</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>SubmissionId</Name>
+			<AllowEdit>No</AllowEdit>
+			<StringSize>64</StringSize>
+			<Label>Submission</Label>
+		</AxTableField>
+	</Fields>
+	<FullTextIndexes />
+	<Indexes>
+		<AxTableIndex>
+			<Name>LineUserBinIdx</Name>
+			<AlternateKey>Yes</AlternateKey>
+			<Fields>
+				<AxTableIndexField>
+					<DataField>JournalId</DataField>
+				</AxTableIndexField>
+				<AxTableIndexField>
+					<DataField>LineNum</DataField>
+				</AxTableIndexField>
+				<AxTableIndexField>
+					<DataField>UserId</DataField>
+				</AxTableIndexField>
+				<AxTableIndexField>
+					<DataField>BinId</DataField>
+				</AxTableIndexField>
+			</Fields>
+		</AxTableIndex>
+	</Indexes>
+	<Mappings />
+	<Relations />
+	<StateMachines />
+</AxTable>

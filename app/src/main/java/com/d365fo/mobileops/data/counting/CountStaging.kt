@@ -45,6 +45,9 @@ class CountStagingRepository @Inject constructor(
 ) {
     private val stageModes = ConcurrentHashMap<String, Boolean>()
 
+    /** submissionId -> lines D365FO has taken, so a retry goes on from there. A resend is harmless. */
+    private val sentLines = ConcurrentHashMap<String, Int>()
+
     private fun company(): String = companyProvider()?.takeIf { it.isNotBlank() }?.lowercase().orEmpty()
     private fun userName(): String = workerSession.session.value?.userName.orEmpty()
 
@@ -116,6 +119,7 @@ class CountStagingRepository @Inject constructor(
      */
     suspend fun submitJournal(journalId: String, audit: SubmissionAudit): TransportResult<StagedCount>? {
         val journal = journalDao.getJournal(journalId)?.journal ?: return null
+        if (journal.countMode == com.d365fo.mobileops.domain.model.COUNT_MODE_DOUBLE_BLIND) return null
         val warehouseId = journal.warehouseId?.takeIf { it.isNotBlank() } ?: return null
         when (val mode = stagesJournalCounts(warehouseId)) {
             is NetworkResult.Success -> if (!mode.data) return null
@@ -164,14 +168,27 @@ class CountStagingRepository @Inject constructor(
                 countedAtUtc = Formatters.isoUtc(item.capturedAt),
             )
         }
-        return when (val sent = submit(stage.stageId, audit.submissionId, lines, endCount = true, user = user)) {
-            is NetworkResult.Success -> {
-                if (unexpected.isNotEmpty()) countingDao.markExceptionsSent(journalId, System.currentTimeMillis())
-                TransportResult.Ok(sent.data)
+        // In batches: a whole warehouse in one call is one transaction that outlasts the read
+        // timeout, and each retry then starts the same one again beside the first.
+        val batches = lines.chunked(LINES_PER_CALL)
+        val alreadySent = sentLines[audit.submissionId] ?: 0
+        var lastAnswer: StagedCount? = null
+        batches.forEachIndexed { index, batch ->
+            val last = index == batches.lastIndex
+            if (!last && (index + 1) * LINES_PER_CALL <= alreadySent) return@forEachIndexed
+            when (val sent = submit(stage.stageId, audit.submissionId, batch, endCount = last, user = user)) {
+                is NetworkResult.Success -> {
+                    sentLines[audit.submissionId] = (index + 1) * LINES_PER_CALL
+                    lastAnswer = sent.data
+                }
+                is NetworkResult.Error -> return sent.failure.stageTransport()
+                NetworkResult.Loading -> return TransportResult.Retry("did not complete")
             }
-            is NetworkResult.Error -> sent.failure.stageTransport()
-            NetworkResult.Loading -> TransportResult.Retry("did not complete")
         }
+        sentLines.remove(audit.submissionId)
+        if (unexpected.isNotEmpty()) countingDao.markExceptionsSent(journalId, System.currentTimeMillis())
+        // The last call's count is one batch; the worker's message is about the whole count.
+        return lastAnswer?.let { TransportResult.Ok(it.copy(accepted = lines.size)) } ?: TransportResult.Retry("did not complete")
     }
 
     private fun <T> NetworkResult<CountStageServiceResponse>.answer(map: (CountStageServiceResponse) -> T): NetworkResult<T> =
@@ -197,11 +214,15 @@ class CountStagingRepository @Inject constructor(
 
     private fun AppFailure.notDeployed(): Boolean = this is AppFailure.BusinessRule && httpCode == 404
 
+    private companion object {
+        const val LINES_PER_CALL = 500
+    }
+
     private fun messageFor(code: String?): String = when (code) {
         "NOT_ALLOWED" -> "You are not an active mobile user in D365FO."
         "JOURNAL_POSTED" -> "This journal has already been posted in D365FO."
-        "JOURNAL_NOT_FOUND" -> "This journal is closed or no longer exists in D365FO."
-        "RETRY" -> "Another counter started the same count at the same moment - try again."
+        "JOURNAL_NOT_FOUND" -> "Journal closed."
+        "RETRY" -> "Started elsewhere at the same time - try again."
         else -> code ?: "D365FO refused the count."
     }
 }

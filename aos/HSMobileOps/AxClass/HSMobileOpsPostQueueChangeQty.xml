@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsPostQueueChangeQty</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Change quantity on the Mobile posting queue form: the correct quantities for a failed posting,
+/// with a reason, then worked at once from the lines staged in D365FO. Nothing is rescanned. Cannot
+/// go above what is left on the order - see HSMobileOpsPostingService::changeQuantities.
+/// </summary>
+class HSMobileOpsPostQueueChangeQty
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>main</Name>
+				<Source><![CDATA[
+
+    public static void main(Args _args)
+    {
+        HSMobileOpsPostQueue postQueue;
+        HSMobileOpsPostQueue result;
+        HSMobileOpsPostLine  postLine;
+        FormDataSource       dataSource;
+        Dialog               dialog;
+        DialogField          field;
+        DialogField          reason;
+        ListEnumerator       lines;
+        ListEnumerator       fieldEnum;
+        List                 fields     = new List(Types::Class);
+        List                 quantities = new List(Types::Real);
+        str                  label;
+        str                  problem;
+
+        if (!_args || !(_args.record() is HSMobileOpsPostQueue))
+        {
+            throw error('Select a posting.');
+        }
+
+        postQueue  = _args.record();
+        dataSource = postQueue.dataSource();
+
+        if (postQueue.Status != HSMobileOpsPostQueue::statusFailed())
+        {
+            warning(strFmt('%1 is %2. Only a failed posting can be changed.', postQueue.SourceId, postQueue.Status));
+            return;
+        }
+
+        dialog = new Dialog(strFmt('Change quantity - %1', postQueue.SourceId));
+        dialog.addText('It cannot go above what is left on the order. 0 removes a line. A lower quantity leaves the rest open on the order.');
+        lines = HSMobileOpsPostingService::parseLines(postQueue.LinesJson).getEnumerator();
+        while (lines.moveNext())
+        {
+            postLine = lines.current();
+            label    = strFmt('Line %1 %2', HSMobileOpsPostingService::plainQty(postLine.parmLineNumber()), postLine.parmItemId());
+            if (postLine.parmBatchId())
+            {
+                label += strFmt(' - batch %1', postLine.parmBatchId());
+            }
+            fields.addEnd(dialog.addFieldValue(extendedTypeStr(Qty), postLine.parmQuantity(), label));
+        }
+        reason = dialog.addField(extendedTypeStr(Description255), 'Reason');
+
+        if (!dialog.run())
+        {
+            return;
+        }
+
+        fieldEnum = fields.getEnumerator();
+        while (fieldEnum.moveNext())
+        {
+            field = fieldEnum.current();
+            quantities.addEnd(field.value());
+        }
+
+        problem = HSMobileOpsPostingService::changeQuantities(postQueue.RecId, quantities, reason.value());
+        if (problem)
+        {
+            warning(strFmt('%1 was not changed: %2', postQueue.SourceId, problem));
+        }
+        else
+        {
+            select firstOnly Status, ErrorMessage, GrnId from result
+                where result.RecId == postQueue.RecId;
+            if (result.Status == HSMobileOpsPostQueue::statusFailed())
+            {
+                warning(strFmt('%1 was changed, then failed: %2', postQueue.SourceId, result.ErrorMessage));
+            }
+            else
+            {
+                info(strFmt('%1 changed: %2 %3', postQueue.SourceId, result.Status, result.GrnId));
+            }
+        }
+
+        if (dataSource)
+        {
+            dataSource.research(true);
+        }
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

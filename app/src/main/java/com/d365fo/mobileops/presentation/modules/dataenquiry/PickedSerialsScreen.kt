@@ -186,9 +186,9 @@ fun PickedSerialsScreen(onBack: () -> Unit, viewModel: PickedSerialsViewModel = 
                     )
                     state.entries.isEmpty() -> Text(
                         text = if (state.query.isBlank()) {
-                            "No serial numbers left ${state.warehouseId.orEmpty()} in the last ${state.days} days."
+                            "None in the last ${state.days} days."
                         } else {
-                            "Nothing matches \"${state.query}\" in the last ${state.days} days."
+                            "No match for \"${state.query}\"."
                         },
                         style = MaterialTheme.typography.bodyLarge,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,

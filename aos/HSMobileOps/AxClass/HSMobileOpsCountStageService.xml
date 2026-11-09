@@ -66,6 +66,22 @@ class HSMobileOpsCountStageService
                     response.parmErrorCode(journal.RecId ? 'JOURNAL_POSTED' : 'JOURNAL_NOT_FOUND');
                     return response;
                 }
+                if (journal.HSMobileOpsDualCount)
+                {
+                    response.parmErrorCode('BLIND_JOURNAL');
+                    response.parmMessage('This journal is counted twice, blind. Its counts do not go through the control center.');
+                    return response;
+                }
+            }
+            select firstonly MasterId from master
+                where master.InventLocationId == _request.parmWarehouseId()
+                   && master.SourceJournalId  == _request.parmSourceJournalId()
+                   && master.Status           == HSMobileOpsCountMasterStatus::Transferring;
+            if (master.MasterId)
+            {
+                response.parmErrorCode('COUNT_TRANSFERRED');
+                response.parmMessage(strFmt('%1 is being transferred by the supervisor - these counts were not added.', master.MasterId));
+                return response;
             }
             try
             {
@@ -80,7 +96,7 @@ class HSMobileOpsCountStageService
                 response.parmMessage('Another counter started the same count at the same moment - try again.');
                 return response;
             }
-            HSMobileOpsCountControl::refresh(master.RecId);
+            HSMobileOpsCountControl::refresh(master.RecId, false);
             master = HSMobileOpsCountControl::masterOf(master.RecId);
             response.parmSuccess(true);
             response.parmMasterId(master.MasterId);
@@ -98,7 +114,8 @@ class HSMobileOpsCountStageService
     /// <summary>
     /// Stages counted lines in the counter's staging journal. A line is keyed by its ClientLineId,
     /// so a resend replaces it rather than counting it twice; with EndCount the counter's journal
-    /// is Submitted. Refused once the stock count has been transferred or cancelled.
+    /// is Submitted. Refused once the stock count has been transferred or cancelled. A big count
+    /// comes in several calls, so the totals and duplicates are worked out on the last, not on each.
     /// </summary>
     [Wrappable(false), Hookable(false)]
     public HSMobileOpsCountStageResponse submitLines(HSMobileOpsCountStageRequest _request)
@@ -130,9 +147,9 @@ class HSMobileOpsCountStageService
             master = HSMobileOpsCountControl::masterOf(stage.MasterRecId);
             if (master.Status != HSMobileOpsCountMasterStatus::Open)
             {
-                response.parmErrorCode(master.Status == HSMobileOpsCountMasterStatus::Transferred ? 'COUNT_TRANSFERRED' : 'COUNT_CANCELLED');
+                response.parmErrorCode(master.Status == HSMobileOpsCountMasterStatus::Cancelled ? 'COUNT_CANCELLED' : 'COUNT_TRANSFERRED');
                 response.parmMessage(strFmt('%1 has been %2 by the supervisor - these counts were not added.', master.MasterId,
-                    master.Status == HSMobileOpsCountMasterStatus::Transferred ? 'transferred' : 'cancelled'));
+                    master.Status == HSMobileOpsCountMasterStatus::Cancelled ? 'cancelled' : 'transferred'));
                 return response;
             }
 
@@ -185,6 +202,7 @@ class HSMobileOpsCountStageService
                 line.InventBatchId  = HSMobileOpsCountStageService::jsonStr(jLine, 'BatchId');
                 line.InventSerialId = HSMobileOpsCountStageService::jsonStr(jLine, 'SerialId');
                 line.WMSLocationId  = HSMobileOpsCountStageService::jsonStr(jLine, 'LocationId');
+                line.BinId          = strUpr(HSMobileOpsCountStageService::jsonStr(jLine, 'BinId'));
                 line.Qty            = HSMobileOpsCountStageService::jsonNum(jLine, 'Quantity');
                 line.UnitId         = HSMobileOpsCountStageService::jsonStr(jLine, 'UnitId');
                 line.SourceLineNum  = HSMobileOpsCountStageService::jsonNum(jLine, 'SourceLineNum');
@@ -211,7 +229,10 @@ class HSMobileOpsCountStageService
             }
             ttscommit;
 
-            HSMobileOpsCountControl::refresh(stage.MasterRecId);
+            if (_request.parmEndCount())
+            {
+                HSMobileOpsCountControl::refresh(stage.MasterRecId, false);
+            }
             master = HSMobileOpsCountControl::masterOf(stage.MasterRecId);
             response.parmSuccess(true);
             response.parmMasterId(master.MasterId);

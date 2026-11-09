@@ -34,9 +34,22 @@ class TransactionPushWorker @AssistedInject constructor(
     private val dispatcher: PostingDispatcher,
     private val notifier: SyncNotifier,
     private val connectionSettings: com.d365fo.mobileops.data.security.ConnectionSettings,
+    private val followUp: com.d365fo.mobileops.data.sync.PostingFollowUp,
 ) : CoroutineWorker(context, params) {
 
     override suspend fun doWork(): Result {
+        val result = drain()
+        // What became of what was sent, this run or before. Never fails the run: it is asked again.
+        try {
+            followUp.check()
+        } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
+            Timber.w(e, "posting follow-up failed")
+        }
+        return result
+    }
+
+    private suspend fun drain(): Result {
         // Settings > Data posting is off: every capture stays queued on the device, untouched -
         // not attempted, so not failed. Switching it on sends them (see SyncStatusProvider). An
         // admin's permission change is configuration, not a capture, so it still goes.

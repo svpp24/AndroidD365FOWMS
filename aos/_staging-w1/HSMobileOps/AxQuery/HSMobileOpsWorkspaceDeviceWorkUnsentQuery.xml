@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxQuery xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns=""
+	i:type="AxQuerySimple">
+	<Name>HSMobileOpsWorkspaceDeviceWorkUnsentQuery</Name>
+	<SourceCode>
+		<Methods>
+			<Method>
+				<Name>classDeclaration</Name>
+				<Source><![CDATA[
+[Query]
+public class HSMobileOpsWorkspaceDeviceWorkUnsentQuery extends QueryRun
+{
+}
+]]></Source>
+			</Method>
+		</Methods>
+		<DataSources />
+		<DataControls />
+		<Members />
+	</SourceCode>
+	<DataSources>
+		<AxQuerySimpleRootDataSource>
+			<Name>HSMobileOpsDeviceWork</Name>
+			<FirstFast>Yes</FirstFast>
+			<Table>HSMobileOpsDeviceWork</Table>
+			<DataSources />
+			<DerivedDataSources />
+			<Fields>
+				<AxQuerySimpleDataSourceField>
+					<Name>RecId</Name>
+					<Field>RecId</Field>
+				</AxQuerySimpleDataSourceField>
+			</Fields>
+			<Ranges>
+							<AxQuerySimpleDataSourceRange>
+								<Name>WarehouseId</Name>
+								<Field>WarehouseId</Field>
+								<Value>(HSMobileOpsWorkspaceScope::deviceWork())</Value>
+							</AxQuerySimpleDataSourceRange>
+							<AxQuerySimpleDataSourceRange>
+								<Name>Archived</Name>
+								<Field>Archived</Field>
+								<Value>No</Value>
+							</AxQuerySimpleDataSourceRange>
+			</Ranges>
+			<GroupBy />
+			<Having />
+			<OrderBy />
+		</AxQuerySimpleRootDataSource>
+	</DataSources>
+</AxQuery>

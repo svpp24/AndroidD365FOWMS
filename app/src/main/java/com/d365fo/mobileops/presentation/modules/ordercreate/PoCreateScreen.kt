@@ -108,9 +108,11 @@ fun PoCreateScreen(
                 // rows) they could not be reached. Hidden while searching, to keep results in view.
                 // Keyed: the cards above disappear with the first letter typed, and an unkeyed
                 // field would be recomposed at a new index - losing focus and the next letters.
-                item(key = "vendor-title") { Text("Vendor", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 8.dp)) }
+                // The white prompt card the other start screens use (20 Oct restyle).
                 item(key = "vendor-search") {
-                    TapToTypeField(state.vendorQuery, viewModel::onVendorQuery, "Search by name or account")
+                    com.d365fo.mobileops.presentation.common.components.PromptHeroCard(prompt = "Choose vendor") {
+                        TapToTypeField(state.vendorQuery, viewModel::onVendorQuery, "Search by name or account")
+                    }
                 }
                 // After the search field, which comes first as the thing to act on (the cards
                 // still hide while searching).
@@ -124,7 +126,7 @@ fun PoCreateScreen(
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                         Text(
                             if (state.vendorCount == 0) {
-                                if (online) "Getting the vendor list from D365FO..." else "No vendors saved on this device yet - connect once to get the list."
+                                if (online) "Getting vendors..." else "No vendors yet - connect once."
                             } else {
                                 "${state.vendorCount} vendors saved" + (state.vendorsSavedAt?.let { " · updated ${Formatters.clockTime(it)}" } ?: "")
                             },
@@ -183,7 +185,7 @@ fun PoCreateScreen(
                             if (priced) {
                                 "${linesText(draft.lines.size)} · total ${amountText(draft.lines.sumOf { it.lineAmount ?: 0.0 })} ${draft.currencyCode}".trim()
                             } else {
-                                "${linesText(draft.lines.size)} · D365FO sets the prices when it creates the order"
+                                "${linesText(draft.lines.size)} · priced by D365FO"
                             },
                             style = MaterialTheme.typography.titleMedium,
                         )
@@ -255,7 +257,7 @@ fun PoCreateScreen(
         AlertDialog(
             onDismissRequest = { confirmDiscard = false },
             title = { Text("Discard this order?") },
-            text = { Text("${linesText(draft.lines.size)} (${qtyText(draft.lines.sumOf { it.qty })} in all) will be removed from this device. Nothing was sent to D365FO.") },
+            text = { Text("${linesText(draft.lines.size)} removed. Nothing was sent.") },
             confirmButton = {
                 com.d365fo.mobileops.presentation.common.components.DialogButtonRow(
                     dismiss = { com.d365fo.mobileops.presentation.common.components.CancelOutlinedButton(onClick = { confirmDiscard = false }, modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget)) { Text("Keep") } },

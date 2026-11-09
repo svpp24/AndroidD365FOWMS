@@ -1,0 +1,155 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsLoadPO</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Load test data, dev environments only: one 100 line and one 1,500 line purchase order in BSP,
+/// vendor 19721, warehouse AAC, quantity 5 a line, confirmed - the shape of a DC and a store order.
+/// Batch items as well as plain ones, like real orders; no serials or product dimensions. An item
+/// D365FO will not take on an order is skipped. Not on any menu or role: run from
+/// ?mi=SysClassRunner&amp;cls=HSMobileOpsLoadPO, which schedules one batch run.
+/// </summary>
+class HSMobileOpsLoadPO extends RunBaseBatch
+{
+    #define.CurrentVersion(1)
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>main</Name>
+				<Source><![CDATA[
+
+    public static void main(Args _args)
+    {
+        BatchHeader batchHeader = BatchHeader::construct();
+
+        batchHeader.parmCaption('Mobile ops: load test POs');
+        batchHeader.addTask(new HSMobileOpsLoadPO());
+        batchHeader.save();
+        info('Mobile ops: load test POs scheduled, once.');
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>run</Name>
+				<Source><![CDATA[
+
+    public void run()
+    {
+        changecompany ('bsp')
+        {
+            this.createOrder(100);
+            this.createOrder(1500);
+        }
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>createOrder</Name>
+				<Source><![CDATA[
+
+    private void createOrder(int _lines)
+    {
+        PurchTable          purchTable;
+        PurchLine           purchLine;
+        InventTable         inventTable;
+        InventDimGroupSetup setup;
+        int                 created;
+
+        ttsbegin;
+        purchTable.clear();
+        purchTable.initValue();
+        purchTable.PurchId      = NumberSeq::newGetNum(PurchParameters::numRefPurchId()).num();
+        purchTable.OrderAccount = '19721';
+        purchTable.initFromVendTable(VendTable::find(purchTable.OrderAccount));
+        purchTable.InventSiteId     = 'AAC';
+        purchTable.InventLocationId = 'AAC';
+        purchTable.DeliveryDate     = DateTimeUtil::getSystemDate(DateTimeUtil::getUserPreferredTimeZone());
+        purchTable.insert();
+        ttscommit;
+
+        while select ItemId from inventTable
+            order by ItemId
+            where inventTable.ItemType == ItemType::Item
+        {
+            if (created >= _lines)
+            {
+                break;
+            }
+            setup = InventDimGroupSetup::newItemId(inventTable.ItemId);
+            if (setup.isDimensionActive(fieldNum(InventDim, InventSerialId))
+             || setup.isDimensionActive(fieldNum(InventDim, configId))
+             || setup.isDimensionActive(fieldNum(InventDim, InventSizeId))
+             || setup.isDimensionActive(fieldNum(InventDim, InventColorId))
+             || setup.isDimensionActive(fieldNum(InventDim, InventStyleId)))
+            {
+                continue;
+            }
+            try
+            {
+                ttsbegin;
+                purchLine.clear();
+                purchLine.initFromPurchTable(purchTable);
+                purchLine.ItemId   = inventTable.ItemId;
+                purchLine.PurchQty = 5;
+                purchLine.createLine(true, false, true, true, true, true);
+                ttscommit;
+                created++;
+            }
+            catch (Exception::Error)
+            {
+                // That item cannot go on this order: next one.
+                exceptionTextFallThrough();
+            }
+        }
+
+        purchTable = PurchTable::find(purchTable.PurchId);
+        HSMobileOpsCreateVariantTestPO::confirm(purchTable);
+        info(strFmt('PO %1: %2 lines', purchTable.PurchId, created));
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>description</Name>
+				<Source><![CDATA[
+
+    public static ClassDescription description()
+    {
+        return 'Mobile ops: load test POs';
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>canGoBatch</Name>
+				<Source><![CDATA[
+
+    public boolean canGoBatch()
+    {
+        return true;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>pack</Name>
+				<Source><![CDATA[
+
+    public container pack()
+    {
+        return [#CurrentVersion];
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>unpack</Name>
+				<Source><![CDATA[
+
+    public boolean unpack(container _packedClass)
+    {
+        return RunBase::getVersion(_packedClass) == #CurrentVersion;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxTable xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsModuleSwitch</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Modules switched off in the handheld app (Mobile module switches, Setup), for every worker and
+/// device - to stop a broken module until a fixed app is installed. AppVersions limits it to the
+/// listed versions (comma separated, e.g. 1.1.35,1.1.36); blank means every version. The app
+/// picks it up within a few minutes and keeps the last answer for when it is offline.
+/// </summary>
+public class HSMobileOpsModuleSwitch extends common
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>disabledFor</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The modules switched off for app version _appVersion: Disabled, with AppVersions blank
+    /// (every version) or listing it. Rows of HSMobileOpsModuleSwitchRow, element names.
+    /// </summary>
+    public static List disabledFor(str _appVersion)
+    {
+        HSMobileOpsModuleSwitch   moduleSwitch;
+        HSMobileOpsModuleSwitchRow row;
+        List                      rows = new List(Types::Class);
+        str                       versions;
+
+        while select moduleSwitch
+            where moduleSwitch.Disabled == NoYes::Yes
+        {
+            versions = strRem(moduleSwitch.AppVersions, ' ');
+            if (versions && (!_appVersion || !strScan(',' + versions + ',', ',' + _appVersion + ',', 1, strLen(versions) + 2)))
+            {
+                continue;
+            }
+            row = new HSMobileOpsModuleSwitchRow();
+            row.parmModule(enum2Symbol(enumNum(HSMobileOpsModule), moduleSwitch.Module));
+            row.parmMessage(moduleSwitch.Message);
+            rows.addEnd(row);
+        }
+        return rows;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+	<Label>Mobile module switch</Label>
+	<TitleField1>Module</TitleField1>
+	<TitleField2>Disabled</TitleField2>
+	<CacheLookup>NotInTTS</CacheLookup>
+	<ReplacementKey>ModuleIdx</ReplacementKey>
+	<SaveDataPerCompany>No</SaveDataPerCompany>
+	<Fields>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldEnum">
+			<Name>Module</Name>
+			<Label>Module</Label>
+			<EnumType>HSMobileOpsModule</EnumType>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldEnum">
+			<Name>Disabled</Name>
+			<HelpText>Hides the module in the app and stops it opening.</HelpText>
+			<Label>Switched off</Label>
+			<EnumType>NoYes</EnumType>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>AppVersions</Name>
+			<HelpText>Only these app versions, comma separated. Blank: every version.</HelpText>
+			<Label>App versions</Label>
+			<StringSize>100</StringSize>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>Message</Name>
+			<HelpText>Shown in the app when a worker tries to open the module.</HelpText>
+			<Label>Message to workers</Label>
+			<StringSize>120</StringSize>
+		</AxTableField>
+	</Fields>
+	<FullTextIndexes />
+	<Indexes>
+		<AxTableIndex>
+			<Name>ModuleIdx</Name>
+			<AllowDuplicates>No</AllowDuplicates>
+			<Fields>
+				<AxTableIndexField>
+					<DataField>Module</DataField>
+				</AxTableIndexField>
+			</Fields>
+		</AxTableIndex>
+	</Indexes>
+	<Mappings />
+	<Relations />
+	<StateMachines />
+</AxTable>

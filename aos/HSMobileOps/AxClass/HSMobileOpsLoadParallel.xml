@@ -1,0 +1,204 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsLoadParallel</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Load test, dev environments only: a handheld alongside a big posting in one warehouse. Creates test
+/// purchase orders in BSP (vendor 19721), warehouse AAC, the same items first on each: three of 3
+/// lines and one of 60, not staged, for the handheld, then one of 500 lines, staged. Not on any
+/// menu or role: run from ?mi=SysClassRunner&amp;cls=HSMobileOpsLoadParallel.
+/// </summary>
+class HSMobileOpsLoadParallel extends RunBaseBatch
+{
+    #define.CurrentVersion(1)
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>main</Name>
+				<Source><![CDATA[
+
+    public static void main(Args _args)
+    {
+        BatchHeader batchHeader = BatchHeader::construct();
+
+        batchHeader.parmCaption('Mobile ops: load test parallel posting');
+        batchHeader.addTask(new HSMobileOpsLoadParallel());
+        batchHeader.save();
+        info('Mobile ops: load test parallel posting scheduled, once.');
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>run</Name>
+				<Source><![CDATA[
+
+    public void run()
+    {
+        str batchId = 'PAR' + int2Str(DateTimeUtil::time(DateTimeUtil::utcNow()));
+        int i;
+
+        changecompany ('bsp')
+        {
+            for (i = 1; i <= 3; i++)
+            {
+                info(strFmt('%1', this.createOrder('AAC', 3)));
+            }
+            info(strFmt('%1', this.createOrder('AAC', 60)));
+            this.stageOrder(this.createOrder('AAC', 500), 'AAC', batchId);
+        }
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>createOrder</Name>
+				<Source><![CDATA[
+
+    private PurchId createOrder(InventLocationId _warehouse, int _lines)
+    {
+        PurchTable          purchTable;
+        PurchLine           purchLine;
+        InventTable         inventTable;
+        InventDimGroupSetup setup;
+        int                 created;
+
+        ttsbegin;
+        purchTable.clear();
+        purchTable.initValue();
+        purchTable.PurchId      = NumberSeq::newGetNum(PurchParameters::numRefPurchId()).num();
+        purchTable.OrderAccount = '19721';
+        purchTable.initFromVendTable(VendTable::find(purchTable.OrderAccount));
+        purchTable.InventSiteId     = InventLocation::find(_warehouse).InventSiteId;
+        purchTable.InventLocationId = _warehouse;
+        purchTable.DeliveryDate     = DateTimeUtil::getSystemDate(DateTimeUtil::getUserPreferredTimeZone());
+        purchTable.insert();
+        ttscommit;
+
+        while select ItemId from inventTable
+            order by ItemId
+            where inventTable.ItemType == ItemType::Item
+        {
+            if (created >= _lines)
+            {
+                break;
+            }
+            setup = InventDimGroupSetup::newItemId(inventTable.ItemId);
+            if (setup.isDimensionActive(fieldNum(InventDim, InventSerialId))
+             || setup.isDimensionActive(fieldNum(InventDim, configId))
+             || setup.isDimensionActive(fieldNum(InventDim, InventSizeId))
+             || setup.isDimensionActive(fieldNum(InventDim, InventColorId))
+             || setup.isDimensionActive(fieldNum(InventDim, InventStyleId)))
+            {
+                continue;
+            }
+            try
+            {
+                ttsbegin;
+                purchLine.clear();
+                purchLine.initFromPurchTable(purchTable);
+                purchLine.ItemId   = inventTable.ItemId;
+                purchLine.PurchQty = 5;
+                purchLine.createLine(true, false, true, true, true, true);
+                ttscommit;
+                created++;
+            }
+            catch (Exception::Error)
+            {
+                // That item cannot go on this order: next one.
+                exceptionTextFallThrough();
+            }
+        }
+
+        purchTable = PurchTable::find(purchTable.PurchId);
+        HSMobileOpsCreateVariantTestPO::confirm(purchTable);
+        return purchTable.PurchId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>stageOrder</Name>
+				<Source><![CDATA[
+
+    /// <summary>A whole order, quantity 5 a line, as a handheld would stage it.</summary>
+    private void stageOrder(PurchId _purchId, InventLocationId _warehouse, str _batchId)
+    {
+        HSMobileOpsPostQueue postQueue;
+        PurchLine            purchLine;
+        System.Text.StringBuilder json = new System.Text.StringBuilder();
+        str                  batchPart;
+        int                  added;
+
+        json.Append('[');
+        while select LineNumber, ItemId, PurchUnit from purchLine
+            order by LineNumber
+            where purchLine.PurchId == _purchId
+        {
+            batchPart = InventDimGroupSetup::newItemId(purchLine.ItemId).isDimensionActive(fieldNum(InventDim, InventBatchId))
+                ? strFmt(',"BatchId":"%1","BatchExpiryDate":"2028-12-31"', _batchId)
+                : '';
+            json.Append(strFmt('%1{"LineNumber":%2,"ItemId":"%3","Quantity":5,"UnitId":"%4","LocationId":"%5"%6}',
+                added ? ',' : '', purchLine.LineNumber, purchLine.ItemId, purchLine.PurchUnit, _warehouse, batchPart));
+            added++;
+        }
+        json.Append(']');
+
+        ttsbegin;
+        postQueue.clear();
+        postQueue.IdempotencyKey = 'PAR-' + _purchId;
+        postQueue.DocumentType   = 'Registration';
+        postQueue.SourceId       = _purchId;
+        postQueue.UserName       = 'LOADTEST';
+        postQueue.LinesJson      = json.ToString();
+        postQueue.LineCount      = added;
+        postQueue.Warehouse      = _warehouse;
+        postQueue.Status         = HSMobileOpsPostQueue::statusPending();
+        postQueue.ReceivedUtc    = DateTimeUtil::utcNow();
+        postQueue.insert();
+        ttscommit;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>description</Name>
+				<Source><![CDATA[
+
+    public static ClassDescription description()
+    {
+        return 'Mobile ops: load test parallel posting';
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>canGoBatch</Name>
+				<Source><![CDATA[
+
+    public boolean canGoBatch()
+    {
+        return true;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>pack</Name>
+				<Source><![CDATA[
+
+    public container pack()
+    {
+        return [#CurrentVersion];
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>unpack</Name>
+				<Source><![CDATA[
+
+    public boolean unpack(container _packedClass)
+    {
+        return RunBase::getVersion(_packedClass) == #CurrentVersion;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

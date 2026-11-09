@@ -14,6 +14,7 @@ import androidx.compose.runtime.getValue
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import com.d365fo.mobileops.data.crash.CrashLoopGuard
 import com.d365fo.mobileops.data.security.DisplayPreferences
 import com.d365fo.mobileops.data.security.SessionGuard
 import com.d365fo.mobileops.data.security.ThemePreferences
@@ -68,14 +69,35 @@ class MainActivity : ComponentActivity() {
             requestNotificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
 
+        // Stopped again and again at start: the recovery screen instead of the app, so unsent
+        // work can be saved before anyone reinstalls (see CrashLoopGuard).
+        val recovery = CrashLoopGuard.inRecovery(this)
         setContent {
             val palette by themePreferences.palette.collectAsState()
             val scale by displayPreferences.scale.collectAsState()
             D365MobileTheme(palette = palette, scale = scale) {
-                val status by syncStatusProvider.status.collectAsState(initial = SyncStatus.UNKNOWN)
-                AppRoot(syncStatus = status)
+                if (recovery) {
+                    com.d365fo.mobileops.presentation.recovery.RecoveryScreen(
+                        lastCrash = CrashLoopGuard.lastCrash(this),
+                        onStartNormally = ::restartNormally,
+                    )
+                } else {
+                    val status by syncStatusProvider.status.collectAsState(initial = SyncStatus.UNKNOWN)
+                    AppRoot(syncStatus = status)
+                }
             }
         }
+    }
+
+    /** Leaves recovery: a fresh process, so everything recovery mode skipped starts as usual. */
+    private fun restartNormally() {
+        CrashLoopGuard.reset(this)
+        packageManager.getLaunchIntentForPackage(packageName)?.let { intent ->
+            intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_CLEAR_TASK)
+            startActivity(intent)
+        }
+        finishAffinity()
+        Runtime.getRuntime().exit(0)
     }
 
     /**

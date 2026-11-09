@@ -13,6 +13,7 @@ import androidx.compose.material.icons.filled.RadioButtonUnchecked
 import com.d365fo.mobileops.data.local.entity.CountExceptionEntity
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -119,6 +120,7 @@ fun CountingScanScreen(
         delay(300)
         runCatching { scanFocus.requestFocus() }
     }
+    LaunchedEffect(viewModel) { viewModel.leave.collect { onBack() } }
     LaunchedEffect(state.refocusNonce) {
         if (state.refocusNonce > 0) {
             typing = false
@@ -142,7 +144,7 @@ fun CountingScanScreen(
                 // Record an item not on this journal - in the top bar (feedback 3c03d94e); it was
                 // a whole row under the scan card, there even with nothing recorded.
                 actions = {
-                    if (state.exceptionsEnabled && !state.locked) {
+                    if (state.exceptionsEnabled && !state.locked && state.showList) {
                         IconButton(onClick = { viewModel.openUnexpected() }) {
                             Icon(Icons.Default.Add, contentDescription = "Record an item not on this journal")
                         }
@@ -151,17 +153,66 @@ fun CountingScanScreen(
             )
         },
     ) { padding ->
-        Column(modifier = Modifier.fillMaxSize().padding(padding)) {
+        androidx.compose.foundation.layout.BoxWithConstraints(modifier = Modifier.fillMaxSize().padding(padding)) {
+        val headerMax = maxHeight * 0.6f
+        // A triggered check of one line: that line alone, no list, filters or progress (user, 8 Nov).
+        val focusLine = state.focusLine
+        if (focusLine != null) {
+            FocusedCountCard(
+                line = focusLine,
+                originType = state.originType,
+                locked = state.locked,
+                message = state.message,
+                onConfirm = viewModel::confirmAndEnd,
+            )
+        } else Column(modifier = Modifier.fillMaxSize()) {
+            // At most 60% of the height, scrolling on its own past that: with a bin, a location
+            // and the freeze notice, a small handheld (360x640dp) left the list one row, mostly
+            // under the gesture bar (seen 8 Nov, wall-to-wall). It takes only what it needs.
+            val headerScroll = rememberScrollState()
+            // A scan's result and its Undo sit under the scan card: brought into view each time,
+            // or with a bin on a small screen they were below the fold (test, 8 Nov).
+            LaunchedEffect(state.message) {
+                if (state.message != null) {
+                    delay(50)
+                    headerScroll.animateScrollTo(headerScroll.maxValue)
+                }
+            }
+            // Where the counter is in location > bin > items, the same trail as PO receiving
+            // (user, 8 Nov). Above the scrolling header, so it stays in view when a scan message
+            // scrolls the header down. Only when there is more than the item step.
+            if (state.byLocation || state.binsRequired) {
+                val steps = listOfNotNull(
+                    "Location".takeIf { state.byLocation },
+                    "Bin".takeIf { state.binsRequired },
+                    "Items",
+                )
+                val current = when {
+                    state.byLocation && state.selectedLocation == null -> 0
+                    state.binsRequired && state.currentBin == null -> steps.indexOf("Bin")
+                    else -> steps.lastIndex
+                }
+                com.d365fo.mobileops.presentation.common.components.StepTrail(
+                    names = steps,
+                    current = current,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = WarehouseDimens.ScreenPadding)
+                        .padding(top = 8.dp),
+                )
+            }
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .heightIn(max = headerMax)
+                    .verticalScroll(headerScroll)
                     .padding(horizontal = WarehouseDimens.ScreenPadding, vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 // One header row (feedback, 14 Oct): the progress as a ring with the percentage
                 // inside, the journal and its count beside it, Count by location on the right -
                 // three rows before, so the scan card sits higher.
-                Row(
+                if (state.showProgress) Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .background(MaterialTheme.colorScheme.surfaceContainerHighest, MaterialTheme.shapes.medium)
@@ -194,7 +245,7 @@ fun CountingScanScreen(
                     }
                     // Before the scan card (feedback 3c03d94e): it decides what the card asks for -
                     // an item, or a location first.
-                    if (state.locationModeAvailable) {
+                    if (state.showLocationSwitch) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Switch(
                                 checked = state.byLocation,
@@ -206,12 +257,58 @@ fun CountingScanScreen(
                     }
                 }
 
+                // Where the counter is - location and bin - in one card above the scan card, with
+                // Change location / Change bin side by side (user, 8 Nov: the header was cluttered).
+                if (state.byLocation || state.binsRequired) {
+                    PlaceCard(
+                        state = state,
+                        onEmpty = viewModel::requestLocationEmpty,
+                        onChangeLocation = viewModel::clearLocation,
+                        onChangeBin = viewModel::changeBin,
+                        onCancel = viewModel::cancelChange,
+                        onPick = viewModel::pickLocation,
+                    )
+                }
+
                 // The shared scan card, first under the top bar - the same place as every other
                 // scan screen. It sat below the progress, filters, "Count by location" and the
                 // location bar, so it moved whenever one of those appeared (feedback, 10 Oct).
+                state.addBinPrompt?.let { bin ->
+                    androidx.compose.material3.AlertDialog(
+                        onDismissRequest = viewModel::cancelAddBin,
+                        title = { Text("Add bin $bin?") },
+                        text = { Text("$bin is not on this store's list. Add it, and count in it now?") },
+                        confirmButton = {
+                            com.d365fo.mobileops.presentation.common.components.DialogButtonRow(
+                                dismiss = {
+                                    com.d365fo.mobileops.presentation.common.components.CancelOutlinedButton(
+                                        onClick = viewModel::cancelAddBin,
+                                        modifier = Modifier.weight(1f).heightIn(min = 48.dp),
+                                    ) { Text("Cancel") }
+                                },
+                                confirm = {
+                                    com.d365fo.mobileops.presentation.common.components.ConfirmButton(
+                                        onClick = viewModel::confirmAddBin,
+                                        modifier = Modifier.weight(1f).heightIn(min = 48.dp),
+                                    ) { Text("Add bin") }
+                                },
+                            )
+                        },
+                    )
+                }
+                val needsBin = state.binsRequired && state.currentBin == null
                 com.d365fo.mobileops.presentation.common.components.PromptHeroCard(
-                    prompt = if (state.byLocation && state.selectedLocation == null) "Scan a location" else "Scan item",
-                    hint = if (state.byLocation && state.selectedLocation == null) "Or choose a location below" else null,
+                    // Location, then bin, then item.
+                    prompt = when {
+                        state.byLocation && state.selectedLocation == null -> "Scan a location"
+                        needsBin -> "Scan a bin"
+                        else -> "Scan item"
+                    },
+                    hint = when {
+                        state.byLocation && state.selectedLocation == null -> "Or choose one above"
+                        needsBin -> state.selectedLocation?.let { "A bin in $it - or type it and press Enter" } ?: "Or type it and press Enter"
+                        else -> null
+                    },
                 ) {
                     OutlinedTextField(
                         value = state.query,
@@ -264,22 +361,13 @@ fun CountingScanScreen(
 
                 if (state.zeroStockCheck) {
                     Text(
-                        text = "D365FO expects these locations to be empty. Confirm each one empty, " +
-                            "or record what you find.",
+                        text = "Should be empty - confirm, or count what's there.",
                         style = MaterialTheme.typography.bodySmall,
                         color = WarehouseStatusColors.amber,
                     )
                 }
 
 
-                if (state.byLocation) {
-                    LocationBar(
-                        state = state,
-                        onEmpty = viewModel::requestLocationEmpty,
-                        onChange = viewModel::clearLocation,
-                        onPick = viewModel::pickLocation,
-                    )
-                }
 
 
                 state.message?.let { message ->
@@ -307,7 +395,7 @@ fun CountingScanScreen(
 
                 if (state.locked) {
                     Text(
-                        text = "Counts submitted - reopen counting from the journal to change them.",
+                        text = "Submitted - reopen to change.",
                         style = MaterialTheme.typography.bodySmall,
                         color = WarehouseStatusColors.text3,
                     )
@@ -357,11 +445,13 @@ fun CountingScanScreen(
                 }
             }
         }
+        }
     }
 
     state.prompt?.let { prompt ->
         QuantityDialog(
             prompt = prompt,
+            bin = state.currentBin,
             onOk = { text -> viewModel.confirmQuantity(prompt.line.journalLineId, text) },
             onCancel = viewModel::cancelPrompt,
         )
@@ -383,7 +473,7 @@ fun CountingScanScreen(
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text("${line.itemId} · ${com.d365fo.mobileops.domain.model.locationTypeLabel(line.locationType) ?: "Physical"}")
                     line.locationOwner?.let { Text("Owner $it", style = MaterialTheme.typography.bodySmall) }
-                    Text("This line is confirmed, not counted. Is it there?")
+                    Text("Is it there?")
                 }
             },
             confirmButton = {
@@ -404,12 +494,11 @@ fun CountingScanScreen(
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
-                        "All ${prompt.lines} line${if (prompt.lines == 1) "" else "s"} at this location will be " +
-                            "counted as 0, and the location recorded as verified empty by you.",
+                        "${prompt.lines} line${if (prompt.lines == 1) "" else "s"} set to 0.",
                     )
                     if (prompt.alreadyCounted > 0) {
                         Text(
-                            "${prompt.alreadyCounted} of them already have a count, which will be replaced with 0.",
+                            "${prompt.alreadyCounted} counted already - replaced with 0.",
                             color = WarehouseStatusColors.amber,
                         )
                     }
@@ -442,7 +531,7 @@ fun CountingScanScreen(
                 var filter by remember(choice) { mutableStateOf("") }
                 val shown = choice.variants.filter { filter.isBlank() || it.matches(filter.trim()) || it.label.contains(filter.trim(), ignoreCase = true) }
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Not on this journal - choose the variant you found.", style = MaterialTheme.typography.bodyMedium)
+                    Text("Which variant?", style = MaterialTheme.typography.bodyMedium)
                     if (choice.variants.size > 5) {
                         OutlinedTextField(
                             value = filter,
@@ -502,7 +591,7 @@ fun CountingScanScreen(
  * were easy to mis-hit with a glove).
  */
 @Composable
-private fun QuantityDialog(prompt: CountPrompt, onOk: (String) -> Unit, onCancel: () -> Unit) {
+private fun QuantityDialog(prompt: CountPrompt, bin: String?, onOk: (String) -> Unit, onCancel: () -> Unit) {
     val line = prompt.line
     // The shared picker (QuantityPicker): whole numbers, and the first key replaces an existing count.
     com.d365fo.mobileops.presentation.common.components.QuantityPicker(
@@ -510,7 +599,8 @@ private fun QuantityDialog(prompt: CountPrompt, onOk: (String) -> Unit, onCancel
             line.itemId,
             line.itemName.takeIf { it.isNotBlank() && !it.equals(line.itemId, ignoreCase = true) },
         ).joinToString(" · "),
-        hint = whereLine(line),
+        // With bins the quantity is for this bin, not the line's total: it says so.
+        hint = listOfNotNull(bin?.let { "Bin $it" }, whereLine(line)).joinToString(" · "),
         initial = prompt.initial,
         replaceInitial = true,
         allowDecimal = false,
@@ -618,57 +708,111 @@ private fun whereLine(line: CountLine): String? =
     ).joinToString(" · ").ifEmpty { null }
 
 /** Location-first: the location being counted, or a prompt to scan one. */
+/**
+ * Where the counter is: "AAC  >  BIN-A1" and how much of the location is counted. Moving is the
+ * same in every count type (user, 8 Nov): Back one step (bin step: to the location; item step: to
+ * the bin) and "Change location / bin", a dialog showing the current location and bin. Choose
+ * location before one is chosen. While changing, what is being left and Cancel back to it.
+ * Location is empty only on a wall-to-wall count, which settles a location at a time.
+ */
 @Composable
-private fun LocationBar(
+private fun PlaceCard(
     state: CountingScanState,
     onEmpty: () -> Unit,
-    onChange: () -> Unit,
+    onChangeLocation: () -> Unit,
+    onChangeBin: () -> Unit,
+    onCancel: () -> Unit,
     onPick: (String) -> Unit,
 ) {
     val location = state.selectedLocation
-    if (location == null) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                text = if (state.locations.isEmpty()) "Scan a location to start counting it." else "Scan or choose a location.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = WarehouseStatusColors.text3,
-                modifier = Modifier.weight(1f),
-            )
-            if (state.locations.isNotEmpty()) LocationPicker(state.locations, onPick)
-        }
-        return
+    val bin = state.currentBin
+    val place = listOfNotNull(
+        if (state.byLocation) location ?: "Choose a location" else null,
+        if (state.binsRequired && (location != null || !state.byLocation)) bin ?: "Scan a bin" else null,
+    ).joinToString("  \u203A  ")
+    val pick = state.byLocation && location == null && state.locations.isNotEmpty()
+    // Only where there is another location to go to: a journal of one location starts in it.
+    val changeLocation = state.byLocation && location != null && state.locations.size > 1
+    val changeBin = state.binsRequired && bin != null
+    val atBinStep = state.binsRequired && bin == null && (location != null || !state.byLocation)
+    // One step up: from the bin step to the location, from the item step to the bin (or to the
+    // location where there are no bins).
+    val back: Pair<String, () -> Unit>? = when {
+        atBinStep -> ("Back to location" to onChangeLocation).takeIf { changeLocation }
+        changeBin -> "Back to bin" to onChangeBin
+        changeLocation -> "Back to location" to onChangeLocation
+        else -> null
+    }
+    var showChange by remember { mutableStateOf(false) }
+    if (showChange) {
+        ChangePlaceDialog(
+            location = location,
+            bin = bin,
+            binsUsed = state.binsRequired,
+            canChangeLocation = changeLocation,
+            onChangeLocation = { showChange = false; onChangeLocation() },
+            onChangeBin = { showChange = false; onChangeBin() },
+            onDismiss = { showChange = false },
+        )
     }
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    text = "Location $location",
+                    text = place,
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold,
+                    color = WarehouseStatusColors.accent,
+                    modifier = Modifier.weight(1f),
                 )
-                Text(
-                    text = "${state.locationCounted} of ${state.locationTotal}",
-                    style = MaterialTheme.typography.bodyMedium,
-                )
+                if (location != null) {
+                    Text(
+                        text = "${state.locationCounted} of ${state.locationTotal}",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                }
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                OutlinedButton(
+            state.changingFrom?.let { from ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = "Changing from $from",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = WarehouseStatusColors.text3,
+                        modifier = Modifier.weight(1f),
+                    )
+                    CancelOutlinedButton(
+                        onClick = onCancel,
+                        modifier = Modifier.heightIn(min = WarehouseDimens.MinTouchTarget),
+                    ) { Text("Cancel") }
+                }
+            }
+            if (state.isWallToWall && location != null) {
+                androidx.compose.material3.OutlinedButton(
                     onClick = onEmpty,
                     enabled = !state.locked,
-                    modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget),
-                ) { Text("Location is empty") }
-                OutlinedButton(
-                    onClick = onChange,
-                    modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget),
-                ) { Text("Other location") }
+                    shape = com.d365fo.mobileops.presentation.common.components.HeroFieldShape,
+                    border = androidx.compose.foundation.BorderStroke(1.5.dp, WarehouseStatusColors.amber),
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
+                ) { Text("Location is empty", fontWeight = FontWeight.Bold, color = WarehouseStatusColors.amber) }
+            }
+            if (pick) LocationPicker(state.locations, onPick, Modifier.fillMaxWidth())
+            if (back != null || changeLocation || changeBin) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                    back?.let { (label, go) -> StepBackButton(label, go, enabled = !state.locked, modifier = Modifier.weight(1f)) }
+                    if ((changeLocation || changeBin) && !atBinStep) OutlinedButton(
+                        onClick = { showChange = true },
+                        enabled = !state.locked,
+                        modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget),
+                    ) { Text(changePlaceLabel(state.binsRequired, changeLocation)) }
+                }
             }
         }
     }
@@ -676,10 +820,13 @@ private fun LocationBar(
 
 /** The journal's locations as a dropdown - each with how many of its lines are counted. */
 @Composable
-private fun LocationPicker(locations: List<LocationChoice>, onPick: (String) -> Unit) {
+private fun LocationPicker(locations: List<LocationChoice>, onPick: (String) -> Unit, modifier: Modifier = Modifier) {
     var open by remember { mutableStateOf(false) }
-    Box {
-        TextButton(onClick = { open = true }) { Text("Choose location") }
+    Box(modifier = modifier) {
+        OutlinedButton(
+            onClick = { open = true },
+            modifier = Modifier.fillMaxWidth().heightIn(min = WarehouseDimens.MinTouchTarget),
+        ) { Text("Choose location") }
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
             locations.forEach { choice ->
                 DropdownMenuItem(
@@ -789,7 +936,7 @@ private fun NotOnJournalRow(exception: CountExceptionEntity, onClick: (() -> Uni
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(MaterialTheme.colorScheme.surfaceContainerHighest, shape)
+            .background(WarehouseStatusColors.amberDim, shape)
             .border(1.5.dp, WarehouseStatusColors.amber, shape)
             .then(if (onClick != null) Modifier.clip(shape).clickable(onClick = onClick) else Modifier)
             .padding(horizontal = 10.dp, vertical = 8.dp),
@@ -847,4 +994,84 @@ private fun NotOnJournalQuantityDialog(
             )
         },
     )
+}
+
+/**
+ * A triggered or opportunity check of one line: where, what, and one large quantity box that is
+ * focused on arrival. Confirm saves it and ends the count; the screen then closes.
+ */
+@Composable
+private fun FocusedCountCard(
+    line: CountLine,
+    originType: String,
+    locked: Boolean,
+    message: ScanMessage?,
+    onConfirm: (String) -> Unit,
+) {
+    var quantity by androidx.compose.runtime.saveable.rememberSaveable(line.journalLineId) { mutableStateOf(line.countedQuantity.orEmpty()) }
+    val focus = remember { FocusRequester() }
+    LaunchedEffect(line.journalLineId) {
+        delay(300)
+        runCatching { focus.requestFocus() }
+    }
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = WarehouseDimens.ScreenPadding, vertical = 16.dp)
+            .background(MaterialTheme.colorScheme.surfaceContainerHighest, MaterialTheme.shapes.medium)
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Text(
+            text = (com.d365fo.mobileops.domain.model.originLabel(originType) ?: "Count").uppercase(),
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.Bold,
+            color = WarehouseStatusColors.amber,
+        )
+        Text(
+            text = line.locationId?.takeIf { it.isNotBlank() }?.let { "Location $it" } ?: "No location",
+            style = MaterialTheme.typography.headlineSmall,
+            fontWeight = FontWeight.Bold,
+        )
+        Text(line.itemId, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold, color = WarehouseStatusColors.accent)
+        val details = listOfNotNull(
+            line.itemName.takeIf { it.isNotBlank() && !it.equals(line.itemId, ignoreCase = true) },
+            line.variant.label.takeIf { it.isNotBlank() },
+            line.batchId?.takeIf { it.isNotBlank() }?.let { "Batch $it" },
+            line.serialId?.takeIf { it.isNotBlank() }?.let { "Serial $it" },
+        )
+        if (details.isNotEmpty()) {
+            Text(details.joinToString(" · "), style = MaterialTheme.typography.bodyLarge, color = WarehouseStatusColors.text3)
+        }
+        OutlinedTextField(
+            value = quantity,
+            onValueChange = { quantity = it.filter(Char::isDigit).take(12) },
+            label = { Text("Quantity found") },
+            singleLine = true,
+            enabled = !locked,
+            textStyle = MaterialTheme.typography.displaySmall.copy(textAlign = TextAlign.Center, fontWeight = FontWeight.Bold),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
+            keyboardActions = KeyboardActions(onDone = { if (quantity.isNotEmpty()) onConfirm(quantity) }),
+            shape = com.d365fo.mobileops.presentation.common.components.HeroFieldShape,
+            modifier = Modifier.fillMaxWidth().heightIn(min = 96.dp).focusRequester(focus),
+        )
+        message?.let {
+            Text(
+                text = it.text,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = if (it.isError) MaterialTheme.colorScheme.error else WarehouseStatusColors.green,
+            )
+        }
+        if (locked) {
+            Text("Submitted - reopen to change.", style = MaterialTheme.typography.bodySmall, color = WarehouseStatusColors.text3)
+        } else {
+            Button(
+                onClick = { onConfirm(quantity) },
+                enabled = quantity.isNotEmpty(),
+                modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
+            ) { Text("Confirm and end count", fontWeight = FontWeight.Bold) }
+        }
+    }
 }

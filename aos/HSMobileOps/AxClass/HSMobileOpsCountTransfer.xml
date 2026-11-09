@@ -4,7 +4,7 @@
 	<SourceCode>
 		<Declaration><![CDATA[
 /// <summary>
-/// Stock count control center: Transfer to counting journal (see HSMobileOpsCountControl::transfer).
+/// Stock count control center: Transfer to counting journal. Runs in batch (HSMobileOpsCountTransferBatch).
 /// </summary>
 class HSMobileOpsCountTransfer
 {
@@ -32,7 +32,7 @@ class HSMobileOpsCountTransfer
         {
             return;
         }
-        HSMobileOpsCountControl::transfer(master.RecId);
+        HSMobileOpsCountTransferBatch::schedule(master.RecId);
         if (_args && _args.caller() is FormRun)
         {
             FormRun callerForm = _args.caller() as FormRun;

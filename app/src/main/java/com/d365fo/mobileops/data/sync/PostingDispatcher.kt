@@ -57,6 +57,21 @@ class PostingDispatcher @Inject constructor(
     /** Settings > Data posting. Off: captures are queued but never sent - see TransactionPushWorker. */
     fun postingAllowed(): Boolean = connectionSettings.postingEnabled.value
 
+    /** idempotencyKey -> the document D365FO posted for it (Auto GRN: the product receipt number). */
+    private val documents = java.util.concurrent.ConcurrentHashMap<String, String>()
+
+    /** The document number D365FO answered with for this posting, when it posted one. */
+    fun documentFor(idempotencyKey: String): String? = documents[idempotencyKey]
+
+    /** idempotencyKey -> D365FO answered that it finished this posting within the call. */
+    private val finishedInCall = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+
+    /**
+     * Whether D365FO said this posting is done, rather than only taken. Post immediately is a
+     * request: a big order is left for its batch job, and the worker must not be told otherwise.
+     */
+    fun finishedInCall(idempotencyKey: String): Boolean = idempotencyKey in finishedInCall
+
     suspend fun dispatch(entry: SyncQueueEntity): NetworkResult<Unit> {
         // D365FO already known to be down: stays queued at once, rather than the worker watching
         // "Shipping..." for the 15 s connect timeout. The background probe notices it is back, and
@@ -74,13 +89,13 @@ class PostingDispatcher @Inject constructor(
 
         return when (entry.operation) {
             SyncOperation.POST_PRODUCT_RECEIPT ->
-                postProductReceipt(payload as ProductReceiptPayload)
+                postProductReceipt(payload as ProductReceiptPayload, queue.isResubmit(entry))
 
             SyncOperation.TRANSFER_ORDER_SHIP ->
-                postTransfer(payload as TransferShipPayload)
+                postTransfer(payload as TransferShipPayload, queue.isResubmit(entry))
 
             SyncOperation.TRANSFER_ORDER_RECEIVE ->
-                postTransfer(payload as TransferReceivePayload)
+                postTransfer(payload as TransferReceivePayload, queue.isResubmit(entry))
 
             SyncOperation.SET_WORKER_PERMISSION ->
                 setWorkerPermission(payload as SetWorkerPermissionPayload)
@@ -112,8 +127,9 @@ class PostingDispatcher @Inject constructor(
         }
     }
 
-    private suspend fun postProductReceipt(payload: ProductReceiptPayload): NetworkResult<Unit> =
+    private suspend fun postProductReceipt(payload: ProductReceiptPayload, resubmit: Boolean): NetworkResult<Unit> =
         post(
+            resubmit = resubmit,
             call = { req -> serviceApi.postProductReceipt(req) },
             dataAreaId = payload.dataAreaId,
             idempotencyKey = payload.idempotencyKey,
@@ -147,7 +163,7 @@ class PostingDispatcher @Inject constructor(
      * share every field except which one they are, so the call is picked by type rather than
      * duplicating this method for each.
      */
-    private suspend fun postTransfer(payload: SyncPayload): NetworkResult<Unit> {
+    private suspend fun postTransfer(payload: SyncPayload, resubmit: Boolean): NetworkResult<Unit> {
         val transferId: String
         val lines: List<TransferLinePayload>
         val flowType: FlowType
@@ -184,6 +200,7 @@ class PostingDispatcher @Inject constructor(
 
         return post(
             call = call,
+            resubmit = resubmit,
             dataAreaId = payload.dataAreaId,
             idempotencyKey = payload.idempotencyKey,
             sourceId = transferId,
@@ -254,6 +271,7 @@ class PostingDispatcher @Inject constructor(
         personnelNumber: String,
         deviceId: String,
         lines: List<PostLineDto>,
+        resubmit: Boolean,
         onPosted: suspend () -> Unit,
     ): NetworkResult<Unit> {
         val request = PostServiceRequest(
@@ -266,6 +284,7 @@ class PostingDispatcher @Inject constructor(
                 personnelNumber = personnelNumber,
                 deviceId = deviceId,
                 processNow = networkPreferences.postImmediately.value,
+                resubmit = resubmit,
                 // Serialized here, once, rather than carried as a nested array — see
                 // PostRequestBody.linesJson for why.
                 linesJson = json.encodeToString(ListSerializer(PostLineDto.serializer()), lines),
@@ -290,6 +309,11 @@ class PostingDispatcher @Inject constructor(
                         ),
                     )
                 } else if (body.success || body.alreadyPosted) {
+                    if (body.documentNumber.isNotBlank()) documents[idempotencyKey] = body.documentNumber
+                    if (body.queueStatus == REGISTERED) {
+                        queue.noteRegistered(idempotencyKey)
+                        finishedInCall.add(idempotencyKey)
+                    }
                     onPosted()
                     NetworkResult.Success(Unit)
                 } else {
@@ -308,10 +332,10 @@ class PostingDispatcher @Inject constructor(
     }
 
     /**
-     * Works every Pending row of `HSMobileOpsPostQueue` for [dataAreaId] and returns what each
-     * became. This is the one call in this class that is slow on purpose - it is where the
-     * registration or transfer-posting work that used to block [postProductReceipt] now happens,
-     * off the operator's own trigger on the Activity screen rather than off a scan.
+     * Works the small Pending rows of `HSMobileOpsPostQueue` for [dataAreaId], for about a minute,
+     * and returns what each became; big postings and the rest stay Pending for the batch job. The
+     * one call in this class that is slow on purpose - off the operator's own trigger on the
+     * Activity screen rather than off a scan.
      */
     suspend fun processPending(dataAreaId: String): NetworkResult<List<PostQueueEntry>> =
         queueCall(dataAreaId) { serviceApi.processPending(it) }
@@ -320,11 +344,16 @@ class PostingDispatcher @Inject constructor(
     suspend fun getQueueStatus(dataAreaId: String): NetworkResult<List<PostQueueEntry>> =
         queueCall(dataAreaId) { serviceApi.getQueueStatus(it) }
 
+    /** What became of these postings. A key D365FO has no row for is simply not in the answer. */
+    suspend fun postingResults(dataAreaId: String, keys: List<String>): NetworkResult<List<PostQueueEntry>> =
+        queueCall(dataAreaId, keys.joinToString(",")) { serviceApi.getQueueStatus(it) }
+
     private suspend fun queueCall(
         dataAreaId: String,
+        keys: String = "",
         call: suspend (PostQueueServiceRequest) -> retrofit2.Response<PostQueueServiceResponse>,
     ): NetworkResult<List<PostQueueEntry>> {
-        val request = PostQueueServiceRequest(PostQueueRequestBody(dataAreaId))
+        val request = PostQueueServiceRequest(PostQueueRequestBody(dataAreaId, keys))
         return when (val result = errorMapper.safeCall { call(request) }) {
             is NetworkResult.Success -> NetworkResult.Success(result.data.rows.map { it.toDomain() })
             is NetworkResult.Error -> result
@@ -341,10 +370,16 @@ class PostingDispatcher @Inject constructor(
         processedUtc = processedUtc,
         userName = userName,
         linesJson = linesJson,
+        idempotencyKey = idempotencyKey,
+        grnId = grnId?.takeIf { it.isNotBlank() },
+        lineCount = lineCount,
     )
 
     private companion object {
         /** HSMobileOpsPostQueue::statusFailed. */
         const val FAILED = "Failed"
+
+        /** HSMobileOpsPostQueue::statusRegistered. */
+        const val REGISTERED = "Registered"
     }
 }

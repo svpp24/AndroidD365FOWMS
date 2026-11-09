@@ -38,6 +38,9 @@ class HSMobileOpsSearchService
         ItemId                    itemId;
         str                       unitId;
         boolean                   outbound;
+        Map                       ordered = new Map(Types::String, Types::Class);
+        Map                       staged = new Map(Types::String, Types::Class);
+        real                      remaining;
 
         response.parmSuccess(false);
         response.parmHits(hits);
@@ -62,8 +65,20 @@ class HSMobileOpsSearchService
             purchTable = PurchTable::find(query);
             if (purchTable.RecId)
             {
+                // Received in full reads as such: the app registers without a packing slip, so
+                // PurchStatus stays Backorder (see HSMobileOpsReceivingService.orderedQtyByLine).
+                remaining = 0;
+                while select LineNumber from purchLine
+                    where purchLine.PurchId             == purchTable.PurchId
+                       && purchLine.PurchStatus         != PurchStatus::Canceled
+                       && purchLine.RemainPurchPhysical > 0
+                {
+                    remaining += max(0.0, HSMobileOpsSearchService::remainingOnLine(purchLine.PurchId, purchLine.LineNumber, ordered, staged));
+                }
                 hits.addEnd(HSMobileOpsSearchService::hit('PO', 'ORDER', purchTable.PurchId, purchTable.PurchName,
-                    purchTable.OrderAccount, enum2Symbol(enumNum(PurchStatus), purchTable.PurchStatus),
+                    purchTable.OrderAccount,
+                    purchTable.PurchStatus == PurchStatus::Backorder && remaining <= 0
+                        ? 'Received' : enum2Symbol(enumNum(PurchStatus), purchTable.PurchStatus),
                     purchTable.DeliveryDate, 0, '', 'IN'));
             }
             transferTable = InventTransferTable::find(query);
@@ -115,9 +130,15 @@ class HSMobileOpsSearchService
                     join PurchName from purchTable
                         where purchTable.PurchId == purchLine.PurchId
                 {
+                    // What receiving offers: still Ordered, less what devices have queued.
+                    remaining = HSMobileOpsSearchService::remainingOnLine(purchLine.PurchId, purchLine.LineNumber, ordered, staged);
+                    if (remaining <= 0)
+                    {
+                        continue;
+                    }
                     hits.addEnd(HSMobileOpsSearchService::hit('PO', 'ITEM', purchLine.PurchId, purchTable.PurchName,
                         strFmt('Line %1', purchLine.LineNumber), 'To receive', purchLine.DeliveryDate,
-                        purchLine.RemainPurchPhysical, purchLine.PurchUnit, 'IN'));
+                        remaining, unitId, 'IN'));
                     if (hits.elements() >= HSMobileOpsSearchService::maxRows())
                     {
                         break;
@@ -200,6 +221,32 @@ class HSMobileOpsSearchService
         row.parmUnitId(_unitId);
         row.parmDirection(_direction);
         return row;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>remainingOnLine</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// A PO line's quantity still to receive, as receiving computes it: Ordered inventory
+    /// transactions less what devices have queued. Per order, the two maps are fetched once.
+    /// </summary>
+    private static real remainingOnLine(PurchId _purchId, LineNum _lineNumber, Map _ordered, Map _staged)
+    {
+        Map ordered;
+        Map staged;
+
+        if (!_ordered.exists(_purchId))
+        {
+            _ordered.insert(_purchId, HSMobileOpsReceivingService::orderedQtyByLine(_purchId));
+            _staged.insert(_purchId, HSMobileOpsReceivingService::stagedQtyByLine(_purchId));
+        }
+        ordered = _ordered.lookup(_purchId);
+        staged  = _staged.lookup(_purchId);
+
+        return (ordered.exists(_lineNumber) ? ordered.lookup(_lineNumber) : 0)
+             - (staged.exists(_lineNumber) ? staged.lookup(_lineNumber) : 0);
     }
 ]]></Source>
 			</Method>

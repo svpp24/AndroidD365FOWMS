@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxTableExtension xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>InventJournalTrans.HSMobileOps</Name>
+	<FieldGroupExtensions />
+	<FieldGroups />
+	<FieldModifications />
+	<Fields>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldEnum">
+			<Name>HSMobileOpsCountStatus</Name>
+			<AllowEdit>No</AllowEdit>
+			<HelpText>Where this line is in dual counting.</HelpText>
+			<Label>Count status</Label>
+			<EnumType>HSMobileOpsCountStatus</EnumType>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldReal">
+			<Name>HSMobileOpsFinalQty</Name>
+			<AllowEdit>No</AllowEdit>
+			<ExtendedDataType>InventQty</ExtendedDataType>
+			<HelpText>The quantity dual counting settled on: matched by two counters, or approved by a supervisor.</HelpText>
+			<Label>Final quantity</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldInt">
+			<Name>HSMobileOpsAttemptCount</Name>
+			<AllowEdit>No</AllowEdit>
+			<HelpText>How many counts have been made of this line.</HelpText>
+			<Label>Counts made</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldEnum">
+			<Name>HSMobileOpsDualRequired</Name>
+			<AllowEdit>No</AllowEdit>
+			<HelpText>This line needs two independent counts: its item is in a counting group with dual counting on.</HelpText>
+			<Label>Dual count</Label>
+			<EnumType>NoYes</EnumType>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldEnum">
+			<Name>HSMobileOpsOutsideAssortment</Name>
+			<AllowEdit>No</AllowEdit>
+			<HelpText>This item is not in the store's assortment, but was found or has stock there.</HelpText>
+			<Label>Outside assortment</Label>
+			<EnumType>NoYes</EnumType>
+		</AxTableField>
+	</Fields>
+	<FullTextIndexes />
+	<Indexes />
+	<Mappings />
+	<MethodModifications />
+	<PropertyModifications />
+	<RelationExtensions />
+	<RelationModifications />
+	<Relations />
+	<StateMachines />
+</AxTableExtension>

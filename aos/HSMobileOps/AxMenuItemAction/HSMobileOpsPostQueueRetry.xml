@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxMenuItemAction xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsPostQueueRetry</Name>
+	<Label>Retry</Label>
+	<HelpText>Works the selected failed posting again from the lines staged in D365FO. Nothing is rescanned.</HelpText>
+	<Object>HSMobileOpsPostQueueRetry</Object>
+	<ObjectType>Class</ObjectType>
+</AxMenuItemAction>
