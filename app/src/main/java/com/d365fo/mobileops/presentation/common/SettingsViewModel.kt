@@ -70,7 +70,29 @@ class SettingsViewModel @Inject constructor(
     private val unsentWork: com.d365fo.mobileops.data.sync.UnsentWork,
     private val offlineSignIn: com.d365fo.mobileops.data.security.OfflineSignIn,
     workerSessions: WorkerSessionRepository,
+    @dagger.hilt.android.qualifiers.ApplicationContext private val appContext: android.content.Context,
 ) : ViewModel() {
+
+    /**
+     * Settings > Delete all app data (user, 9 Nov): everything this device keeps of the work -
+     * orders, counts, unsent work, the item master, offline sign-ins, sync history and the cache.
+     * The device's setup stays (connection profiles and licence), so it can be signed in to again
+     * without scanning the connection QR code. [onDone] signs out.
+     */
+    fun deleteAllData(onDone: () -> Unit) {
+        viewModelScope.launch(handler) {
+            withContext(Dispatchers.IO) {
+                database.clearAllTables()
+                listOf("sku_sync", "signin_log", "home_module_usage").forEach { name ->
+                    runCatching { appContext.getSharedPreferences(name, android.content.Context.MODE_PRIVATE).edit().clear().commit() }
+                }
+                runCatching { appContext.cacheDir.listFiles()?.forEach { it.deleteRecursively() } }
+            }
+            offlineSignIn.forgetAll()
+            clientCredentialsTokenProvider.invalidateCache()
+            onDone()
+        }
+    }
 
     val displayScale: StateFlow<DisplayScale> = displayPreferences.scale
 

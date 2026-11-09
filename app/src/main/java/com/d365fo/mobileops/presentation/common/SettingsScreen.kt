@@ -164,6 +164,46 @@ fun SettingsScreen(
         )
     }
 
+    var confirmDeleteAll by remember { mutableStateOf(false) }
+    if (confirmDeleteAll) {
+        var unsent by remember { mutableStateOf<String?>(null) }
+        LaunchedEffect(Unit) { unsent = viewModel.unsentDescription() }
+        AlertDialog(
+            onDismissRequest = { confirmDeleteAll = false },
+            title = { Text("Delete all app data?") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        "Orders, counts, the item master, offline sign-ins and sync history are " +
+                            "removed from this device, and you are signed out. Nothing in D365FO is " +
+                            "changed. The connection setup is kept.",
+                    )
+                    unsent?.let {
+                        Text(
+                            "Not sent to D365FO yet, and lost: $it",
+                            color = WarehouseStatusColors.red,
+                            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                com.d365fo.mobileops.presentation.common.components.DialogButtonRow(
+                    dismiss = { com.d365fo.mobileops.presentation.common.components.CancelOutlinedButton(onClick = { confirmDeleteAll = false }, modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget)) { Text("Keep") } },
+                    confirm = {
+                        com.d365fo.mobileops.presentation.common.components.CancelButton(
+                            onClick = {
+                                confirmDeleteAll = false
+                                viewModel.deleteAllData { onSignOut?.invoke() }
+                            },
+                            modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget),
+                        ) { Text("Delete") }
+                    },
+                )
+            },
+        )
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -206,6 +246,14 @@ fun SettingsScreen(
                         colors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(contentColor = WarehouseStatusColors.red),
                         modifier = Modifier.fillMaxWidth().heightIn(min = WarehouseDimens.MinTouchTarget).padding(top = 4.dp),
                     ) { Text("Sign out", fontWeight = androidx.compose.ui.text.font.FontWeight.ExtraBold) }
+                    // Wipes this device's work data, then signs out (user, 9 Nov). Asks first and
+                    // says what unsent work would be lost.
+                    com.d365fo.mobileops.presentation.common.components.SquareTextButton(
+                        onClick = { confirmDeleteAll = true },
+                        modifier = Modifier.fillMaxWidth().heightIn(min = WarehouseDimens.MinTouchTarget),
+                    ) {
+                        Text("Delete all app data", color = WarehouseStatusColors.red, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+                    }
                 }
                 // Which build this is - what support asks first, and what D365FO's device list records.
                 Text(
