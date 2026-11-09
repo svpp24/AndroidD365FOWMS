@@ -19,12 +19,20 @@ sealed interface ScanContext {
      *   (a bin label scanned twice settles an empty bin, brief §4).
      * @param documentItemIds the open lines' items, once known - an item outside it is
      *   [RejectReason.NOT_ON_DOCUMENT] and nothing is added. Null: not checked here.
+     * @param acceptUnknown pass a barcode nothing on the device recognises to the flow instead of
+     *   turning it away: a batch, serial or expiry is free text no table knows, and an item
+     *   barcode the device hasn't synced yet can still resolve online. The flow's own lookup then
+     *   decides, as it always has.
+     * @param expecting what to ask for when a scan isn't what this step needs ("Scan the
+     *   batch"); null builds it from [accepts].
      */
     data class Flow(
         val accepts: Set<ScanKind>,
         val documentKind: ScanKind? = null,
         val currentDocument: String? = null,
         val documentItemIds: Set<String>? = null,
+        val acceptUnknown: Boolean = false,
+        val expecting: String? = null,
     ) : ScanContext
 }
 
@@ -110,7 +118,9 @@ private fun routeFromHome(identity: ScanIdentity): ScanRoute = when (identity) {
 }
 
 private fun routeInFlow(identity: ScanIdentity, flow: ScanContext.Flow): ScanRoute {
-    if (identity is ScanIdentity.Unknown) return unknown(identity)
+    if (identity is ScanIdentity.Unknown) {
+        return if (flow.acceptUnknown) ScanRoute.Accept(identity) else unknown(identity)
+    }
 
     // The flow's own kind of document: the current one again is a real action (a bin scanned
     // twice), any other switches to it.
@@ -150,7 +160,7 @@ private fun routeInFlow(identity: ScanIdentity, flow: ScanContext.Flow): ScanRou
 
     return ScanRoute.Reject(
         identity, RejectReason.NOT_EXPECTED,
-        "Scan " + flow.accepts.sortedBy { it.ordinal }.joinToString(" or ") { it.noun() },
+        flow.expecting ?: ("Scan " + flow.accepts.sortedBy { it.ordinal }.joinToString(" or ") { it.noun() }),
         "${identity.documentKey()} is ${identity.kind.noun()}",
     )
 }

@@ -49,12 +49,15 @@ class ScanRouter @Inject constructor(
     inner class Handle internal constructor(
         context: ScanContext,
         internal val onRoute: suspend (ScanRoute) -> Unit,
+        private val provider: (() -> ScanContext)? = null,
     ) {
-        @Volatile var context: ScanContext = context
-            private set
+        @Volatile private var fixed: ScanContext = context
+
+        /** The context the next scan is routed by - read fresh from the provider when there is one. */
+        val context: ScanContext get() = provider?.invoke() ?: fixed
 
         fun update(context: ScanContext) {
-            this.context = context
+            fixed = context
         }
 
         /** Stop receiving. A no-op when another screen has already replaced this one. */
@@ -74,6 +77,17 @@ class ScanRouter @Inject constructor(
      */
     fun attach(context: ScanContext, onRoute: suspend (ScanRoute) -> Unit): Handle {
         val handle = Handle(context, onRoute)
+        attached.value = handle
+        return handle
+    }
+
+    /**
+     * The same, with the context read from [context] at the moment each scan is routed - for a
+     * flow whose context follows its own state step by step, so it can never route by a context
+     * one step behind.
+     */
+    fun attach(context: () -> ScanContext, onRoute: suspend (ScanRoute) -> Unit): Handle {
+        val handle = Handle(context(), onRoute, provider = context)
         attached.value = handle
         return handle
     }

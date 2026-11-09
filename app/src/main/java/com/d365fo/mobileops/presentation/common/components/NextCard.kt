@@ -45,7 +45,8 @@ import com.d365fo.mobileops.presentation.common.theme.breakableCode
 fun NextCard(
     label: String,
     code: String,
-    quantity: String,
+    /** Null when there is no quantity yet - the card shows the code and location only. */
+    quantity: String?,
     modifier: Modifier = Modifier,
     description: String? = null,
     location: String? = null,
@@ -82,7 +83,7 @@ fun NextCard(
                 }
             },
         ) {
-            Column(
+            if (quantity != null) Column(
                 horizontalAlignment = Alignment.End,
                 modifier = Modifier
                     .widthIn(min = WarehouseDimens.MinTouchTarget)
@@ -121,8 +122,13 @@ private fun LocationQuantityRow(
     Layout(contents = listOf(location, quantity), modifier = modifier) { (locs, qtys), constraints ->
         val gap = 12.dp.roundToPx()
         val loose = constraints.copy(minWidth = 0, minHeight = 0)
-        val qty = qtys.single().measure(loose)
         val locMeasurable = locs.single()
+        // No quantity on the card: the location row on its own.
+        val qtyMeasurable = qtys.singleOrNull() ?: run {
+            val loc = locMeasurable.measure(loose)
+            return@Layout layout(constraints.maxWidth, loc.height) { loc.placeRelative(0, 0) }
+        }
+        val qty = qtyMeasurable.measure(loose)
         val sideBySide = locMeasurable.maxIntrinsicWidth(Constraints.Infinity) + gap + qty.width <= constraints.maxWidth
         val loc = locMeasurable.measure(
             if (sideBySide) loose.copy(maxWidth = constraints.maxWidth - qty.width - gap) else loose,

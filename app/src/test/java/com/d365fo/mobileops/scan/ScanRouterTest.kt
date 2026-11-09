@@ -92,6 +92,22 @@ class ScanRouterTest {
     }
 
     @Test
+    fun `a context provider is read at the moment each scan is routed`() = runTest {
+        val router = router()
+        var context: ScanContext = ScanContext.Flow(accepts = setOf(ScanKind.PURCHASE_ORDER), documentKind = ScanKind.PURCHASE_ORDER)
+        val routes = mutableListOf<String>()
+        router.attach({ context }) { route ->
+            routes += route::class.simpleName!!
+            // The flow's own state moves on; nothing calls update().
+            context = ScanContext.Flow(accepts = setOf(ScanKind.ITEM), documentKind = ScanKind.PURCHASE_ORDER, currentDocument = "BSP-PO-000161763")
+        }
+        router.submit(scan("BSP-PO-000161763"))
+        router.submit(scan("A-01-02"))
+        advanceUntilIdle()
+        assertThat(routes).containsExactly("Accept", "Reject").inOrder()
+    }
+
+    @Test
     fun `a scan during the hand-over to the next screen waits for it`() = runTest {
         val router = router()
         val home = router.attach(ScanContext.Home) {}

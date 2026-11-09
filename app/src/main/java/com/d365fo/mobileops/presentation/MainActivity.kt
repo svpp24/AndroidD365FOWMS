@@ -121,6 +121,8 @@ class MainActivity : ComponentActivity() {
     @android.annotation.SuppressLint("RestrictedApi")
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         sessionGuard.touch()
+        // F1-F4 on a flow screen: Back, Lines, Undo, Keypad (redesign brief §5).
+        if (com.d365fo.mobileops.presentation.common.components.FlowKeys.onKeyEvent(event)) return true
         if (scannerBridge.onKeyEvent(event)) return true
         return super.dispatchKeyEvent(event)
     }

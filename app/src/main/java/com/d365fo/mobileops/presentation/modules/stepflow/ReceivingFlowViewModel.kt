@@ -25,7 +25,14 @@ import com.d365fo.mobileops.data.sync.payload.ReceiptLinePayload
 import com.d365fo.mobileops.domain.repository.ItemFacts
 import com.d365fo.mobileops.domain.repository.OnDemandLookupRepository
 import com.d365fo.mobileops.presentation.common.scan.HidScannerBridge
+import com.d365fo.mobileops.presentation.common.scan.RejectReason
+import com.d365fo.mobileops.presentation.common.scan.ScanContext
 import com.d365fo.mobileops.presentation.common.scan.ScanFeedback
+import com.d365fo.mobileops.presentation.common.scan.ScanKind
+import com.d365fo.mobileops.presentation.common.scan.ScanRoute
+import com.d365fo.mobileops.presentation.common.scan.ScanRouter
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import com.d365fo.mobileops.util.AppFailure
 import com.d365fo.mobileops.util.NetworkResult
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -87,23 +94,102 @@ class ReceivingFlowViewModel @Inject constructor(
     private val opportunityCounts: com.d365fo.mobileops.data.counting.OpportunityCounts,
     private val networkPreferences: com.d365fo.mobileops.data.security.NetworkPreferences,
     private val freezes: com.d365fo.mobileops.data.repository.WarehouseFreezeRepository,
+    private val scanRouter: ScanRouter,
 ) : ViewModel() {
 
     init {
-        // Every scan answers the step that is showing. That is the entire routing rule, and it
-        // is why this flow needs no per-field focus management: there is only ever one question
-        // on screen, so a scan cannot land in the wrong box.
-        viewModelScope.launch {
-            scannerBridge.scans.collect {
-                // Which step each scan landed on - so feedback about a scan "not taking" shows
-                // whether it reached the app at all (see ReceivingFlowScreen's scan prompt).
-                timber.log.Timber.i("receiving scan (%s) at %s%s", it.source, _state.value.step,
-                    if (_state.value.busy) ", busy" else "")
-                submit(it.value)
-            }
-        }
         loadTodaysOrders()
     }
+
+    // -- scans (redesign phase 4: through ScanRouter) ------------------------------------------
+
+    /**
+     * Scans arrive through [ScanRouter] while this flow is on screen - the flow screen and its
+     * typing screen both register (see [scannerOnScreen]), so a scan made while the keypad is
+     * open still reaches this flow. The router identifies the barcode, routes it by
+     * [scanContext] - read fresh for every scan - and waits for [onRoute] to finish before the
+     * next one, so rapid scans queue in order instead of cancelling each other.
+     */
+    private var scanHandle: ScanRouter.Handle? = null
+    private var scanScreens = 0
+
+    fun scannerOnScreen(visible: Boolean) {
+        if (visible) {
+            if (scanScreens++ == 0) scanHandle = scanRouter.attach({ scanContext() }, ::onRoute)
+        } else if (scanScreens > 0 && --scanScreens == 0) {
+            scanHandle?.close()
+            scanHandle = null
+        }
+    }
+
+    override fun onCleared() {
+        scanHandle?.close()
+        super.onCleared()
+    }
+
+    /** What each step accepts - see [ScanContext.Flow]. */
+    private fun scanContext(s: ReceivingFlowState = _state.value): ScanContext {
+        val po = s.capture.purchId
+        return when (s.step) {
+            ReceivingStep.PURCHASE_ORDER -> ScanContext.Flow(
+                accepts = setOf(ScanKind.PURCHASE_ORDER),
+                documentKind = ScanKind.PURCHASE_ORDER,
+                expecting = "Scan a purchase order",
+            )
+            // The order's items, so a wrong item is turned away at once - when its lines are in
+            // hand. A barcode the device doesn't know still goes to the online lookup.
+            ReceivingStep.ITEM, ReceivingStep.QUANTITY -> ScanContext.Flow(
+                accepts = setOf(ScanKind.ITEM),
+                documentKind = ScanKind.PURCHASE_ORDER,
+                currentDocument = po,
+                documentItemIds = if (s.linesInline && itemsOnOrder.isNotEmpty()) itemsOnOrder.toSet() else null,
+                acceptUnknown = true,
+                expecting = "Scan an item on this order",
+            )
+            // Batch, expiry, serial and location: free text or a location the online lookup
+            // checks - everything but another document goes to the step.
+            else -> ScanContext.Flow(
+                accepts = setOf(ScanKind.ITEM, ScanKind.LOCATION, ScanKind.BIN),
+                documentKind = ScanKind.PURCHASE_ORDER,
+                currentDocument = po,
+                acceptUnknown = true,
+            )
+        }
+    }
+
+    private suspend fun onRoute(route: ScanRoute) {
+        // A posting in progress finishes first: the next scan is about what comes after it.
+        _state.first { !it.posting }
+        val raw = route.identity.raw.value
+        timber.log.Timber.i("receiving scan (%s) at %s: %s", route.identity.raw.source, _state.value.step, route::class.simpleName)
+        when (route) {
+            is ScanRoute.Accept -> submit(raw)?.join()
+            // Another PO: what is banked on this one posts, then that order opens.
+            is ScanRoute.SwitchDocument -> {
+                pending?.cancel()
+                switchToOrder(route.documentId)
+            }
+            is ScanRoute.Leave -> {
+                scanFeedback.error()
+                val what = when (route.identity.kind) {
+                    ScanKind.TRANSFER_ORDER -> "a transfer order"
+                    ScanKind.COUNT_JOURNAL -> "a counting journal"
+                    else -> "another document"
+                }
+                notice(ReceivingNotice.Tone.WARN, "That's $what", "Finish this receipt, then scan it on Home")
+            }
+            is ScanRoute.Reject -> {
+                scanFeedback.error()
+                val tone = if (route.reason == RejectReason.NOT_EXPECTED) ReceivingNotice.Tone.WARN else ReceivingNotice.Tone.BAD
+                notice(tone, route.title, route.line)
+            }
+            // Home routes - never produced for a flow context.
+            else -> Unit
+        }
+    }
+
+    private fun notice(tone: ReceivingNotice.Tone, title: String, line: String? = null, undoable: Boolean = false) =
+        _state.update { it.copy(notice = ReceivingNotice(tone, title, line, undoable), error = null) }
 
     /**
      * Today's purchase orders for the worker's warehouse, offered under the PO step so a tap
@@ -140,6 +226,7 @@ class ReceivingFlowViewModel @Inject constructor(
         if (s.busy || !com.d365fo.mobileops.domain.model.canSkipStep(s.step, s.capture)) return
         _state.update { it.copy(capture = it.capture.copy(skipped = it.capture.skipped + it.step), error = null) }
         advance()
+        if (labelAnswer != null) viewModelScope.launch { drainLabelAnswers() }
     }
 
     /** Typed entry - damaged label, or a device with neither imager nor wedge. */
@@ -217,33 +304,57 @@ class ReceivingFlowViewModel @Inject constructor(
         pendingFlowResume.consume(FlowType.RECEIVING)?.let(::submit)
     }
 
-    /** Answers the current step. [raw] is whatever was scanned or typed. */
-    fun submit(raw: String) {
+    /**
+     * Answers the current step. [raw] is whatever was scanned or typed. Returns the job doing it,
+     * so [onRoute] can wait for it before routing the next scan; null when nothing was started.
+     */
+    fun submit(raw: String): Job? {
         val value = raw.trim()
-        if (value.isEmpty()) return
+        if (value.isEmpty()) return null
 
         val now = android.os.SystemClock.elapsedRealtime()
-        if (value == lastRaw && now - lastRawAtMs < DUPLICATE_SCAN_WINDOW_MS) return
+        if (value == lastRaw && now - lastRawAtMs < DUPLICATE_SCAN_WINDOW_MS) return null
         lastRaw = value
         lastRawAtMs = now
 
         pending?.cancel()
-        pending = viewModelScope.launch {
-            _state.update { it.copy(busy = true, error = null) }
-            when (_state.value.step) {
-                ReceivingStep.PURCHASE_ORDER -> onPurchaseOrder(value)
-                ReceivingStep.PACKING_SLIP -> onPackingSlip(value)
-                ReceivingStep.ITEM -> if (!switchedOrder(value)) onItem(value)
-                // A single-line order opens straight at the quantity, so another PO scanned
-                // there is the same "wrong order" case as at the item step.
-                ReceivingStep.QUANTITY -> if (!switchedOrder(value) && !isScanOfCurrentItem(value)) onQuantity(value)
-                ReceivingStep.LOCATION -> onLocation(value)
-                ReceivingStep.BATCH -> onBatch(value)
-                ReceivingStep.BATCH_EXPIRY_DATE -> onBatchExpiryDate(value)
-                ReceivingStep.SERIAL -> onSerial(value)
-                ReceivingStep.CONFIRM -> Unit
-            }
+        val job = viewModelScope.launch {
+            _state.update { it.copy(busy = true, error = null, notice = null) }
+            dispatch(value)
+            // What a GS1 label already answered (batch, expiry, serial), step by step, in this
+            // same job - so the next scan can never land on a step the label is still filling.
+            drainLabelAnswers()
             _state.update { it.copy(busy = false) }
+        }
+        pending = job
+        return job
+    }
+
+    private suspend fun dispatch(value: String) {
+        when (_state.value.step) {
+            ReceivingStep.PURCHASE_ORDER -> onPurchaseOrder(value)
+            ReceivingStep.PACKING_SLIP -> onPackingSlip(value)
+            ReceivingStep.ITEM -> if (!switchedOrder(value)) onItem(value)
+            // A single-line order opens straight at the quantity, so another PO scanned
+            // there is the same "wrong order" case as at the item step.
+            ReceivingStep.QUANTITY -> if (!switchedOrder(value) && !isScanOfCurrentItem(value)) onQuantity(value)
+            ReceivingStep.LOCATION -> onLocation(value)
+            ReceivingStep.BATCH -> onBatch(value)
+            ReceivingStep.BATCH_EXPIRY_DATE -> onBatchExpiryDate(value)
+            ReceivingStep.SERIAL -> onSerial(value)
+            ReceivingStep.CONFIRM -> Unit
+        }
+    }
+
+    /** The label's answer for the step [advance] just moved to, applied until none is left. */
+    private var labelAnswer: String? = null
+
+    private suspend fun drainLabelAnswers() {
+        while (true) {
+            val answer = labelAnswer ?: return
+            labelAnswer = null
+            if (_state.value.error != null) return
+            dispatch(answer)
         }
     }
 
@@ -313,10 +424,17 @@ class ReceivingFlowViewModel @Inject constructor(
         _state.update {
             it.copy(
                 captured = it.captured + entry,
-                lineNotice = com.d365fo.mobileops.presentation.common.components.QuickNoticeMessage(
-                    id = System.nanoTime(),
-                    text = "Received ${quantity.stripTrailingZeros().toPlainString()} × " +
-                        item.productName.ifBlank { item.itemNumber },
+                // The scan is the confirm: a green band says it counted, with Undo for a moment.
+                notice = ReceivingNotice(
+                    ReceivingNotice.Tone.OK,
+                    "Received " + com.d365fo.mobileops.util.Formatters.qtyUnit(quantity, capture.unitSymbol),
+                    listOfNotNull(
+                        item.itemNumber,
+                        item.productName.takeIf { n -> n.isNotBlank() && !n.equals(item.itemNumber, ignoreCase = true) },
+                        capture.batchId?.let { b -> "batch $b" },
+                        capture.locationId?.let { l -> "to $l" },
+                    ).joinToString(" · "),
+                    undoable = true,
                 ),
                 capture = ReceivingCapture(
                     purchId = capture.purchId,
@@ -354,6 +472,7 @@ class ReceivingFlowViewModel @Inject constructor(
             }
         }
         persist()
+        maybeAutoPost()
     }
 
     /**
@@ -379,6 +498,7 @@ class ReceivingFlowViewModel @Inject constructor(
             )
         }
         persist()
+        maybeAutoPost()
     }
 
     fun showCaptured(show: Boolean) = _state.update { it.copy(showingCaptured = show) }
@@ -415,6 +535,19 @@ class ReceivingFlowViewModel @Inject constructor(
      * service treats a repeat of the same key as the same document, not a new one.
      */
     fun postReceipt() {
+        if (_state.value.posting) return
+        autoPost?.cancel()
+        autoPost = null
+        viewModelScope.launch { postNow(orderDone = orderComplete(_state.value)) }
+    }
+
+    /**
+     * [postReceipt]'s work, suspending so a caller can post and then carry on - the next PO
+     * scanned over banked lines ([switchToOrder]), the auto-post after the last line
+     * ([maybeAutoPost]). [orderDone]: nothing left on the order, so the screen goes back to a
+     * fresh order prompt rather than the same order's item step.
+     */
+    private suspend fun postNow(orderDone: Boolean) {
         val state = _state.value
         val purchId = state.capture.purchId
         if (purchId.isNullOrBlank() || state.captured.isEmpty()) return
@@ -430,9 +563,11 @@ class ReceivingFlowViewModel @Inject constructor(
         if (state.posting || state.postOutcome != null) return
 
         pending?.cancel()
-        _state.update { it.copy(posting = true, error = null) }
+        _state.update { it.copy(posting = true, error = null, autoPostAt = null) }
 
-        viewModelScope.launch {
+        // Once started, a posting runs to the end whatever is pressed meanwhile - an Undo after
+        // the countdown, or the screen closing - the same guarantee the queue write needs.
+        kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) {
             val session = workerSession.session.value
             val payload = ProductReceiptPayload(
                 idempotencyKey = java.util.UUID.randomUUID().toString(),
@@ -567,22 +702,185 @@ class ReceivingFlowViewModel @Inject constructor(
             // etc. all stay exactly as they were so that summary (and a retry, if it did not
             // post live) has something to show. dismissPostOutcome is what actually resets, once
             // the operator has seen it.
+            val outcome = PostOutcome(
+                purchId = purchId,
+                lineCount = state.captured.size,
+                postedAtEpochMs = System.currentTimeMillis(),
+                postedLive = postedLive,
+                rejectedReason = rejectedReason,
+                held = held,
+                postedNow = postedLive && postingDispatcher.finishedInCall(payload.idempotencyKey),
+                grnId = if (postedLive) postingDispatcher.documentFor(payload.idempotencyKey) else null,
+            )
+            settleAfterPost(outcome, orderDone)
+        }
+    }
+
+    /**
+     * No summary screen and no Done tap any more (redesign phase 4): the band says what happened
+     * and the flow is ready at once - a fresh order prompt when the order is done, otherwise the
+     * same order's item step (workers often bring the next pallet of the same PO, 6 Oct).
+     */
+    private fun settleAfterPost(outcome: PostOutcome, orderDone: Boolean) {
+        val notice = noticeFor(outcome)
+        if (orderDone) {
+            _state.value = ReceivingFlowState(todaysOrders = _state.value.todaysOrders, lastPost = outcome, notice = notice)
+            loadTodaysOrders()
+        } else {
+            _state.update { it.copy(posting = false, postOutcome = outcome) }
+            dismissPostOutcome()
+            _state.update { it.copy(lastPost = outcome, notice = notice) }
+        }
+    }
+
+    private fun noticeFor(o: PostOutcome): ReceivingNotice {
+        val what = "${o.lineCount} " + (if (o.lineCount == 1) "line" else "lines") + " · ${o.purchId}"
+        return when {
+            o.rejectedReason != null ->
+                ReceivingNotice(ReceivingNotice.Tone.BAD, "Not registered", "Refused: ${o.rejectedReason}. Fix it in Activity.")
+            o.grnId != null -> ReceivingNotice(ReceivingNotice.Tone.OK, "Received · GRN ${o.grnId}", what)
+            o.postedNow -> ReceivingNotice(ReceivingNotice.Tone.OK, "Registered in D365FO", what)
+            o.postedLive -> ReceivingNotice(ReceivingNotice.Tone.OK, "Sent to D365FO", "$what · posts in a few minutes")
+            o.held -> ReceivingNotice(ReceivingNotice.Tone.WARN, "Kept on this device", "$what · posting is off in Settings")
+            else -> ReceivingNotice(ReceivingNotice.Tone.INFO, "Saved on this device", "$what · sends when D365FO answers", retry = true)
+        }
+    }
+
+    // -- auto-post, undo, keypad (redesign phase 4) ------------------------------------------
+
+    /** The countdown from the last line to its posting - see [AUTO_POST_DELAY_MS]. */
+    private var autoPost: Job? = null
+
+    /** After every banked line, and after any change to the banked lines: start, restart or stop the countdown. */
+    private fun maybeAutoPost() {
+        autoPost?.cancel()
+        autoPost = null
+        if (_state.value.posting || !orderComplete(_state.value)) {
+            _state.update { it.copy(autoPostAt = null) }
+            return
+        }
+        _state.update { it.copy(autoPostAt = System.currentTimeMillis() + AUTO_POST_DELAY_MS) }
+        autoPost = viewModelScope.launch {
+            delay(AUTO_POST_DELAY_MS)
+            postNow(orderDone = true)
+        }
+    }
+
+    /** True while the last line's countdown is running - Back then posts at once instead of leaving. */
+    val autoPostPending: Boolean get() = autoPost?.isActive == true
+
+    /** Back during the countdown: post now and stay until it has gone (it is never left behind). */
+    fun postPendingNow() {
+        if (!autoPostPending) return
+        autoPost?.cancel()
+        autoPost = null
+        viewModelScope.launch { postNow(orderDone = true) }
+    }
+
+    /** What Undo (F3, or the band's Undo) would take back - nothing while a posting is going. */
+    val canUndo: Boolean
+        get() = _state.value.let { !it.posting && (it.capture.line != null || it.captured.isNotEmpty()) }
+
+    /**
+     * Undo replaces "are you sure?" (brief §3): the line in hand is dropped, back to Scan item;
+     * otherwise the last banked line is removed. Stops the countdown either way.
+     */
+    fun undo() {
+        val s = _state.value
+        if (s.posting) return
+        pending?.cancel()
+        autoPost?.cancel()
+        autoPost = null
+        gs1Answers.clear()
+        labelAnswer = null
+        if (s.capture.line != null) {
+            val item = s.capture.line.itemId
             _state.update {
                 it.copy(
-                    posting = false,
-                    postOutcome = PostOutcome(
-                        purchId = purchId,
-                        lineCount = state.captured.size,
-                        postedAtEpochMs = System.currentTimeMillis(),
-                        postedLive = postedLive,
-                        rejectedReason = rejectedReason,
-                        held = held,
-                        postedNow = postedLive && postingDispatcher.finishedInCall(payload.idempotencyKey),
-                        grnId = if (postedLive) postingDispatcher.documentFor(payload.idempotencyKey) else null,
-                    ),
+                    capture = it.capture.cleared(ReceivingStep.ITEM), step = ReceivingStep.ITEM,
+                    busy = false, error = null, autoPostAt = null,
+                    notice = ReceivingNotice(ReceivingNotice.Tone.INFO, "Undone", "$item not added - scan it again"),
                 )
             }
+            return
         }
+        val last = s.captured.lastOrNull() ?: return
+        _state.update {
+            it.copy(
+                captured = it.captured.dropLast(1), error = null, autoPostAt = null,
+                notice = ReceivingNotice(
+                    ReceivingNotice.Tone.INFO, "Removed ${last.itemId}",
+                    com.d365fo.mobileops.util.Formatters.qtyUnit(last.quantity, last.unitSymbol) + " not received - scan it again",
+                ),
+            )
+        }
+        persist()
+    }
+
+    /** What the keypad (F4, or tapping the quantity) changes: the quantity step, the line in hand, or the last banked line. */
+    val keypadValue: BigDecimal?
+        get() = _state.value.let { s ->
+            when {
+                s.posting -> null
+                s.step == ReceivingStep.QUANTITY -> s.suggestedQuantity ?: BigDecimal.ZERO
+                s.capture.line != null -> s.capture.quantity
+                else -> s.captured.lastOrNull()?.takeIf { it.serialIds.isEmpty() }?.quantity
+            }
+        }
+
+    /** Why [value] can't be the keypad's quantity, or null when it can. */
+    fun keypadError(value: String): String? {
+        val s = _state.value
+        if (s.step == ReceivingStep.QUANTITY || s.capture.line != null) return checkQuantity(value.trim())
+        val last = s.captured.lastOrNull() ?: return "Nothing to change"
+        val q = value.trim().toBigDecimalOrNull() ?: return "\"$value\" is not a number"
+        if (q.signum() <= 0) return "Quantity must be more than zero - Undo removes the line"
+        last.maxQuantity?.let { if (q > it) return "Only ${plain(it)} open" }
+        return null
+    }
+
+    fun applyKeypad(value: String) {
+        if (keypadError(value) != null) return
+        val s = _state.value
+        when {
+            s.step == ReceivingStep.QUANTITY -> onManualEntry(value)
+            s.capture.line != null -> {
+                val q = value.trim().toBigDecimal()
+                _state.update { it.copy(capture = it.capture.copy(quantity = q)) }
+            }
+            else -> {
+                val q = value.trim().toBigDecimal()
+                _state.update {
+                    val last = it.captured.last()
+                    it.copy(
+                        captured = it.captured.dropLast(1) + last.copy(quantity = q),
+                        notice = ReceivingNotice(
+                            ReceivingNotice.Tone.OK,
+                            "Received " + com.d365fo.mobileops.util.Formatters.qtyUnit(q, last.unitSymbol),
+                            "${last.itemId} · changed on the keypad",
+                            undoable = true,
+                        ),
+                    )
+                }
+                persist()
+                maybeAutoPost()
+            }
+        }
+    }
+
+    /**
+     * Another PO scanned while this one has banked lines: those post first - the work ended -
+     * then the new order opens (brief §3: scanning the next document posts).
+     */
+    private suspend fun switchToOrder(purchId: String) {
+        autoPost?.cancel()
+        autoPost = null
+        if (_state.value.captured.isNotEmpty()) postNow(orderDone = true)
+        val keep = _state.value
+        _state.value = ReceivingFlowState(todaysOrders = keep.todaysOrders, lastPost = keep.lastPost, busy = true)
+        lastRaw = null
+        onPurchaseOrder(purchId)
+        _state.update { it.copy(busy = false) }
     }
 
     /**
@@ -659,7 +957,7 @@ class ReceivingFlowViewModel @Inject constructor(
      * entries are made due first, or the worker would skip them until their backoff ran out.
      */
     fun retryPost() {
-        val purchId = _state.value.postOutcome?.purchId ?: return
+        val purchId = (_state.value.postOutcome ?: _state.value.lastPost)?.purchId ?: return
         viewModelScope.launch {
             // A timed-out live post put the entry on the backoff ladder (1 minute first); the
             // push alone would find nothing due and do nothing. The worker asked for now.
@@ -998,6 +1296,7 @@ class ReceivingFlowViewModel @Inject constructor(
             val packUnit = _state.value.scannedPackUnit
             _state.update { it.copy(busy = true, lineChoices = emptyList(), scannedPackSize = null, scannedPackUnit = null) }
             selectLine(line, packSize, packUnit)
+            drainLabelAnswers()
             _state.update { it.copy(busy = false) }
         }
     }
@@ -1070,7 +1369,28 @@ class ReceivingFlowViewModel @Inject constructor(
                 error = null,
             )
         }
+        autoFillQuantity(line)
         advance()
+    }
+
+    /**
+     * The scan is the confirm (redesign phase 4): the quantity is filled in, not asked - the
+     * label's own count (GS1 AI 30/37) when it carries one, since that says what is in the
+     * carton, otherwise everything still open on the line. F4 or tapping the quantity changes it.
+     * Left for the quantity step to ask only when it can't be right: a label count above what is
+     * open (said in the band), or a part unit on a serial item.
+     */
+    private fun autoFillQuantity(line: PurchaseOrderLine) {
+        val label = gs1Answers.remove(ReceivingStep.QUANTITY)
+        val open = sessionRemaining(line)
+        if (open.signum() <= 0) return
+        val proposed = label ?: plain(open)
+        val problem = checkQuantity(proposed)
+        if (problem != null) {
+            if (label != null) notice(ReceivingNotice.Tone.WARN, "Label says $label", "$problem - enter the quantity")
+            return
+        }
+        _state.update { it.copy(capture = it.capture.copy(quantity = BigDecimal(proposed))) }
     }
 
     /**
@@ -1083,12 +1403,14 @@ class ReceivingFlowViewModel @Inject constructor(
         val current = _state.value.capture.purchId ?: return false
         val prefix = current.substringBeforeLast('-', missingDelimiterValue = "").takeIf { it.isNotBlank() } ?: return false
         if (!value.startsWith("$prefix-", ignoreCase = true)) return false
+        // Lines banked on this order post first - the same as a scanned switch (switchToOrder).
         if (_state.value.captured.isNotEmpty()) {
-            fail("Finish or clear $current first")
-            return true
+            autoPost?.cancel()
+            autoPost = null
+            postNow(orderDone = true)
         }
-        val todays = _state.value.todaysOrders
-        _state.value = ReceivingFlowState(todaysOrders = todays)
+        val keep = _state.value
+        _state.value = ReceivingFlowState(todaysOrders = keep.todaysOrders, lastPost = keep.lastPost, busy = true)
         onPurchaseOrder(value)
         return true
     }
@@ -1105,17 +1427,7 @@ class ReceivingFlowViewModel @Inject constructor(
         if (value.length < 8 && value.all { it.isDigit() || it == '.' }) return false
         val same = value.equals(line.itemId, ignoreCase = true) ||
             ((lookups.lookupBarcode(value) as? NetworkResult.Success)?.data?.itemNumber?.equals(line.itemId, ignoreCase = true) == true)
-        if (same) {
-            _state.update {
-                it.copy(
-                    lineNotice = com.d365fo.mobileops.presentation.common.components.QuickNoticeMessage(
-                        id = System.nanoTime(),
-                        text = "Enter the quantity",
-                        hint = true,
-                    ),
-                )
-            }
-        }
+        if (same) notice(ReceivingNotice.Tone.WARN, "Enter the quantity", "Already scanned - F4 or tap the quantity")
         return same
     }
 
@@ -1319,17 +1631,14 @@ class ReceivingFlowViewModel @Inject constructor(
         } else {
             scanFeedback.success()
             _state.update { it.copy(step = next) }
-            // A GS1 scan already answered this step: apply it, after this submit has finished.
-            gs1Answers.remove(next)?.let { answer ->
-                viewModelScope.launch {
-                    kotlinx.coroutines.delay(GS1_AUTOFILL_DELAY_MS)
-                    lastRaw = null
-                    submit(answer)
-                }
-            }
+            // A GS1 scan already answered this step: drainLabelAnswers applies it next, in the
+            // job that is running now.
+            labelAnswer = gs1Answers.remove(next)
             return
         }
         gs1Answers.clear()
+        labelAnswer = null
+        maybeAutoPost()
     }
 
     private fun fail(message: String) {
@@ -1339,6 +1648,29 @@ class ReceivingFlowViewModel @Inject constructor(
 
     private fun plain(value: BigDecimal) = value.stripTrailingZeros().toPlainString()
 }
+
+/**
+ * Nothing left to scan on the order. Small orders: every open line has nothing left for this
+ * device. Large ones (lines fetched per item): as many lines banked in full as the order
+ * has outstanding.
+ */
+internal fun orderComplete(s: ReceivingFlowState): Boolean {
+    if (s.captured.isEmpty()) return false
+    if (s.linesInline) {
+        return s.openLines.isNotEmpty() && s.openLines.all { line ->
+            (line.outstandingQuantity -
+                s.captured.filter { it.lineNumber == line.lineNumber }.fold(BigDecimal.ZERO) { t, c -> t + c.quantity } -
+                (s.stagedElsewhere[line.lineNumber] ?: BigDecimal.ZERO)).signum() <= 0
+        }
+    }
+    if (s.outstandingLineCount <= 0) return false
+    val full = s.captured.groupBy { it.lineNumber }.count { (_, banked) ->
+        val max = banked.first().maxQuantity ?: return@count false
+        banked.fold(BigDecimal.ZERO) { t, c -> t + c.quantity } >= max
+    }
+    return full >= s.outstandingLineCount
+}
+
 
 /**
  * Everything the step screen renders.
@@ -1393,7 +1725,31 @@ data class ReceivingFlowState(
     val posting: Boolean = false,
     /** Set once a post attempt finishes; cleared only when the operator dismisses the summary. */
     val postOutcome: PostOutcome? = null,
+    /** What the last scan or action did, for the status band - see [ReceivingNotice]. */
+    val notice: ReceivingNotice? = null,
+    /** The last posting this screen made: the band's and send tray's "GRN …" after it settles. */
+    val lastPost: PostOutcome? = null,
+    /** When the last line's countdown posts (epoch ms) - null when none is running. */
+    val autoPostAt: Long? = null,
 )
+
+/**
+ * What the last scan or action did, for the redesigned status band (phase 4) - a received line
+ * with its Undo, a wrong item, a posting's result. Cleared by the next scan; the band then says
+ * what the current step needs.
+ */
+data class ReceivingNotice(
+    val tone: Tone,
+    val title: String,
+    val line: String? = null,
+    /** Offer Undo (for the band's Undo window). */
+    val undoable: Boolean = false,
+    /** Offer Retry now: queued, D365FO didn't answer in time. */
+    val retry: Boolean = false,
+    val id: Long = System.nanoTime(),
+) {
+    enum class Tone { INFO, OK, WARN, BAD }
+}
 
 /**
  * What happened the last time this order's captured lines were registered - shown as a summary
@@ -1517,7 +1873,13 @@ private fun StoredLine.toCaptured() = CapturedLine(
     serialIds = serialIds,
 )
 
-private const val GS1_AUTOFILL_DELAY_MS = 150L
+/**
+ * The wait between the last line being scanned and the receipt posting by itself (redesign
+ * phase 4, user's choice): long enough to Undo or change the quantity on a one-scan order,
+ * short enough that a worker walking off doesn't leave it behind. The same as the band's own
+ * Undo window.
+ */
+internal const val AUTO_POST_DELAY_MS = com.d365fo.mobileops.presentation.common.components.UNDO_WINDOW_MS
 
 /** How long a line picked in the item search stays the answer to "which line?". */
 private const val SEARCHED_LINE_VALID_MS = 10_000L

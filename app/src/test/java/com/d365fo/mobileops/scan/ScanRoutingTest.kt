@@ -127,6 +127,20 @@ class ScanRoutingTest {
         fun `an unknown barcode is turned away`() = runTest {
             assertThat((route("ZZZ", onOrder) as ScanRoute.Reject).reason).isEqualTo(RejectReason.UNKNOWN)
         }
+
+        @Test
+        fun `a free-text step takes what nothing on the device knows - a batch number`() = runTest {
+            val batchStep = onOrder.copy(accepts = setOf(ScanKind.ITEM, ScanKind.LOCATION, ScanKind.BIN), acceptUnknown = true)
+            assertThat(route("24A17", batchStep)).isInstanceOf(ScanRoute.Accept::class.java)
+            // Another PO still switches, rather than being taken as the batch.
+            assertThat(route("BSP-PO-000161764", batchStep)).isInstanceOf(ScanRoute.SwitchDocument::class.java)
+        }
+
+        @Test
+        fun `a step can say what it is waiting for`() = runTest {
+            val r = route("A-01-02", onOrder.copy(expecting = "Scan the item")) as ScanRoute.Reject
+            assertThat(r.title).isEqualTo("Scan the item")
+        }
     }
 
     @Nested
