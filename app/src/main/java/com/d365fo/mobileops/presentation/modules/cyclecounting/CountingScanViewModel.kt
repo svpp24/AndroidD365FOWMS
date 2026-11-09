@@ -435,7 +435,7 @@ class CountingScanViewModel @Inject constructor(
         _query.value = ""
         _currentBin.value = bin
         _back.value = null
-        _message.value = ScanMessage("Counting bin $bin", isError = false)
+        _message.value = null
         scanFeedback.success()
         _refocus.update { it + 1 }
     }
@@ -677,7 +677,7 @@ class CountingScanViewModel @Inject constructor(
         // A bin is in a location: another location starts with its own bin.
         if (!location.equals(_ui.value.selectedLocation, ignoreCase = true)) _currentBin.value = null
         val askBin = _bins.value.isNotEmpty() && _currentBin.value == null
-        _message.value = ScanMessage("Counting location $location" + if (askBin) " - scan a bin" else "", isError = false)
+        _message.value = null
         _ui.update { it.copy(selectedLocation = location) }
         scanFeedback.success()
         _refocus.update { it + 1 }

@@ -297,7 +297,7 @@ class StoreCountViewModel @Inject constructor(
                         it.copy(
                             busy = false,
                             locationId = location,
-                            message = "Counting for ${opened.data.masterId}." + nextStep(location, it.binsRequired),
+                            message = null,
                         )
                     }
                 }
@@ -319,7 +319,7 @@ class StoreCountViewModel @Inject constructor(
                 busy = false,
                 error = null,
                 locationId = location,
-                message = "Offline - counting on this device. Counts go to D365FO when it answers." + nextStep(location, it.binsRequired),
+                message = "Offline - counting on this device. Counts go to D365FO when it answers.",
             )
         }
     }
@@ -362,7 +362,7 @@ class StoreCountViewModel @Inject constructor(
                 it.copy(message = null, error = "${bin.binId} is in ${bin.locationId}, not ${s.locationId}. Change location to count it.")
             }
         }
-        _state.update { it.copy(binId = bin.binId, back = null, pending = null, error = null, message = "Counting ${s.locationId} \u203A ${bin.binId}.") }
+        _state.update { it.copy(binId = bin.binId, back = null, pending = null, error = null, message = null) }
     }
 
     /** A location tapped in the list under the scan card - the same as scanning it. */
@@ -426,7 +426,7 @@ class StoreCountViewModel @Inject constructor(
             if (!online) {
                 val known = runCatching { locationDao.find(wh, value) ?: locationDao.find(wh, value.uppercase()) }.getOrNull()
                 val id = known?.locationId ?: value.uppercase()
-                _state.update { it.copy(busy = false, locationId = id, binId = "", back = null, message = nextStep(id, it.binsRequired).trim()) }
+                _state.update { it.copy(busy = false, locationId = id, binId = "", back = null, message = null) }
                 return@launch
             }
             val checked = lookup.lookupLocation(wh, value)
@@ -436,7 +436,7 @@ class StoreCountViewModel @Inject constructor(
                     checked is NetworkResult.Success && known == null ->
                         it.copy(busy = false, error = "No location $value in $wh.")
                     else -> (known?.locationId ?: value.uppercase()).let { id ->
-                        it.copy(busy = false, locationId = id, binId = "", back = null, message = nextStep(id, it.binsRequired).trim())
+                        it.copy(busy = false, locationId = id, binId = "", back = null, message = null)
                     }
                 }
             }
