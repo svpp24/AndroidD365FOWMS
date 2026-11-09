@@ -20,8 +20,8 @@ class ThemePreferences @Inject constructor(
     val palette: StateFlow<ColorPalette> = _palette.asStateFlow()
 
     /**
-     * Always Indigo - the navy look the app was restyled to (user, 20 Oct); the palette picker
-     * was removed on request, so a colour saved by an older build is ignored rather than kept.
+     * Always Industrial - the Focus design's navy (docs/ui-redesign-brief.md, 10 Nov). There is no
+     * palette picker, so a colour saved by an older build is ignored rather than kept.
      */
-    private fun loadPalette(): ColorPalette = ColorPalette.PETROL
+    private fun loadPalette(): ColorPalette = ColorPalette.INDUSTRIAL
 }

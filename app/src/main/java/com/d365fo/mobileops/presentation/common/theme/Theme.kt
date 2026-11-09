@@ -40,30 +40,26 @@ import com.d365fo.mobileops.data.security.DisplayScale
  * `rgba(accent, 10-12%)` over a white surface; translated to flat colours by blending at the
  * same alpha over white, since Compose colour roles here are drawn as solid fills, not overlays.
  */
-// Very light blue-white page, so white cards read as cards without needing heavy borders - the layout
-// reference this app was restyled to match (white cards, blue accents) uses the same.
-// Light neutral grey with borderless-looking white cards - the 20 Oct restyle (navy on grey).
-// 21 Oct: own identity - deep petrol on a slightly warm grey, not the reference app's navy.
-private val Bg = Color(0xFFF2F4F3)
-private val Surface = Color(0xFFFFFFFF)
-private val Surface2 = Color(0xFFF4F7F7)
-// Darker than the mockup's own value on both of these - the mockup renders on a backlit
-// monitor at reading distance; this renders on a handheld read at arm's length, often outdoors
-// or under warehouse sodium lighting. Text3 at the original #9CA3AF measured roughly 2:1
-// against white, well under WCAG AA's 4.5:1 floor for body text - and it is the colour every
-// item code, hint, count and timestamp on this app is set in, not an edge case. Border moved
-// the same direction for the same reason: a card edge or field outline that all but disappears
-// against Bg/Surface is a real "which one is my input" question, not just a look.
-private val Border = Color(0xFFC2CDCF)
-private val Green = Color(0xFF16A34A)
-private val GreenDim = Color(0xFFE3F4E9)
-private val Amber = Color(0xFFD97706)
-private val AmberDim = Color(0xFFFAEFE1)
-private val Red = Color(0xFFDC2626)
-private val RedDim = Color(0xFFFCE9E9)
-private val Text1 = Color(0xFF10282D)
-private val Text2 = Color(0xFF34484D)
-private val Text3 = Color(0xFF55686C)
+// The Focus design (docs/ui-redesign-brief.md section 5, 10 Nov): slate text on a near-white page,
+// navy brand, orange action, and fixed ok/bad/warn/info bands. The base colours below are the
+// Focus tokens, so every screen picks the new look up through the Material roles and
+// [WarehouseStatusColors]; [FocusColors] names each token for the Focus components.
+private val Bg = Color(0xFFF8FAFC) // page
+private val Surface = Color(0xFFFFFFFF) // surface
+// The number-pad keys and quiet tiles in the Focus mock-ups.
+private val Surface2 = Color(0xFFF1F5F9)
+// Field outlines and card edges: slate, a step darker than the divider so an input still reads as
+// one under warehouse lighting (the divider alone, #E2E8F0, all but disappears on the page).
+private val Border = Color(0xFFCBD5E1)
+private val Green = Color(0xFF16A34A) // okIcon
+private val GreenDim = Color(0xFFDCFCE7) // okBg
+private val Amber = Color(0xFFD97706) // warnIcon
+private val AmberDim = Color(0xFFFEF3C7) // warnBg
+private val Red = Color(0xFFDC2626) // badIcon
+private val RedDim = Color(0xFFFEE2E2) // badBg
+private val Text1 = Color(0xFF1E293B) // ink
+private val Text2 = Color(0xFF334155) // inkSoft
+private val Text3 = Color(0xFF475569) // muted
 
 /**
  * The one thing a worker can personalise: which accent colour reads as "this app" to them.
@@ -94,9 +90,11 @@ enum class ColorPalette(
     val gradientStart: Color? = null,
 ) {
     /** Deep indigo-navy, the 20 Oct restyle's identity (navy text and outlined buttons on grey). */
+    /** Navy on pale blue - the Focus design's brand colour and the default (10 Nov). */
+    INDUSTRIAL("Industrial", Color(0xFF1E3A8A), Color(0xFFDBEAFE)),
     INDIGO("Indigo", Color(0xFF232A7C), Color(0xFFE1E0F6)),
     /** Deep petrol - the app's own identity from 21 Oct, so it isn't a copy of the reference app. */
-    PETROL("Harbour", Color(0xFF0B5563), Color(0xFFDCEBEE), Color(0xFF3FB8AF)),
+    PETROL("Petrol", Color(0xFF0B5563), Color(0xFFDCEBEE)),
     MICROSOFT("Microsoft blue", Color(0xFF0078D4), Color(0xFFEFF6FC)),
     BLUE("Blue", Color(0xFF0274BE), Color(0xFFEAF7FD)),
     GREEN("Green", Color(0xFF15803D), Color(0xFFE1F3E8)),
@@ -167,14 +165,14 @@ private fun Color.darken(factor: Float = 0.72f): Color = copy(
  * `State` during composition.
  */
 object WarehouseStatusColors {
-    var accent by mutableStateOf(ColorPalette.MICROSOFT.accent)
+    var accent by mutableStateOf(ColorPalette.INDUSTRIAL.accent)
         internal set
-    var accentDim by mutableStateOf(ColorPalette.MICROSOFT.accentDim)
+    var accentDim by mutableStateOf(ColorPalette.INDUSTRIAL.accentDim)
         internal set
     /** The top and bottom bars' fill - a shade darker than [accent] so the chrome framing a
      * screen reads as distinct from the accent-filled tiles/buttons inside it, rather than the
      * whole screen bleeding into one flat colour top to bottom. */
-    var accentDark by mutableStateOf(ColorPalette.MICROSOFT.accent.darken())
+    var accentDark by mutableStateOf(ColorPalette.INDUSTRIAL.accent.darken())
         internal set
     /** [ColorPalette.gradientStart] of whichever palette is active - a real second hue for a
      *  dedicated gradient entry, or null for a flat one (in which case [accentGradient] falls
@@ -207,7 +205,7 @@ object WarehouseStatusColors {
     val text2 = Text2
     val text3 = Text3
     /** Hairlines between rows and under bars (Harbour design). */
-    val overlay = Color(0xFFE3E5EE)
+    val overlay = FocusColors.divider
 }
 
 private fun industrialColors(palette: ColorPalette) = lightColorScheme(
@@ -239,11 +237,11 @@ private fun industrialColors(palette: ColorPalette) = lightColorScheme(
     secondaryContainer = palette.accentDim,
     onSecondaryContainer = palette.accent,
     tertiaryContainer = AmberDim,
-    onTertiaryContainer = Color(0xFF92400E),
+    onTertiaryContainer = FocusColors.warnText,
     errorContainer = RedDim,
-    onErrorContainer = Color(0xFF991B1B),
+    onErrorContainer = FocusColors.badText,
     outline = Border,
-    outlineVariant = Color(0xFFE3E5EE),
+    outlineVariant = FocusColors.divider,
 )
 
 /**
@@ -407,7 +405,7 @@ object WarehouseDimens {
 
 @Composable
 fun D365MobileTheme(
-    palette: ColorPalette = ColorPalette.MICROSOFT,
+    palette: ColorPalette = ColorPalette.INDUSTRIAL,
     scale: DisplayScale = DisplayScale.STANDARD,
     content: @Composable () -> Unit,
 ) {
@@ -425,6 +423,7 @@ fun D365MobileTheme(
         WarehouseStatusColors.accentGradientStart = palette.gradientStart
         WarehouseDimens.MinTouchTarget = BaseMinTouchTarget * scale.factor
         WarehouseDimens.StepperButton = BaseStepperButton * scale.factor
+        FocusType.scale = scale.factor
     }
 
     MaterialTheme(
@@ -433,4 +432,117 @@ fun D365MobileTheme(
         shapes = AppShapes,
         content = content,
     )
+}
+
+/**
+ * The Focus design's colour tokens (docs/ui-redesign-brief.md section 5). Focus components read
+ * these by name - nothing in a screen hard-codes a colour. Fixed, not palette-driven: a status
+ * band means the same thing on every device.
+ *
+ * [padKey], [iconMuted] and [scrim] are not in the brief's table; they are the number-pad key,
+ * the chevron / open-line circle and the menu backdrop of the Focus mock-ups.
+ */
+object FocusColors {
+    val page = Color(0xFFF8FAFC)
+    val surface = Color(0xFFFFFFFF)
+    val ink = Color(0xFF1E293B)
+    val inkSoft = Color(0xFF334155)
+    val muted = Color(0xFF475569)
+    val caption = Color(0xFF64748B)
+    val divider = Color(0xFFE2E8F0)
+    val navy = Color(0xFF1E3A8A)
+    val navyDim = Color(0xFFDBEAFE)
+    val navyText = Color(0xFFBFDBFE)
+    val action = Color(0xFFEA6A12)
+
+    val okBg = Color(0xFFDCFCE7)
+    val okIcon = Color(0xFF16A34A)
+    val okText = Color(0xFF14532D)
+    val badBg = Color(0xFFFEE2E2)
+    val badIcon = Color(0xFFDC2626)
+    val badText = Color(0xFF7F1D1D)
+    val warnBg = Color(0xFFFEF3C7)
+    val warnIcon = Color(0xFFD97706)
+    val warnText = Color(0xFF78350F)
+    val infoBg = Color(0xFFDBEAFE)
+    val infoIcon = Color(0xFF1E3A8A)
+    val infoText = Color(0xFF1E3A8A)
+
+    val availableQty = Color(0xFF15803D)
+
+    val padKey = Color(0xFFF1F5F9)
+    val iconMuted = Color(0xFF94A3B8)
+    val scrim = Color(0xFF0F172A).copy(alpha = 0.35f)
+}
+
+/**
+ * Barlow Condensed (SemiBold, Bold) for item codes, document numbers, bin codes, counts and
+ * quantities - narrow, so a long code still fits large. SIL Open Font License,
+ * assets/licenses/BarlowCondensed-OFL.txt. Everything else stays Nunito Sans.
+ */
+val CodeFont: FontFamily = FontFamily(
+    androidx.compose.ui.text.font.Font(com.d365fo.mobileops.R.font.barlow_condensed_semibold, FontWeight.SemiBold),
+    androidx.compose.ui.text.font.Font(com.d365fo.mobileops.R.font.barlow_condensed_bold, FontWeight.Bold),
+)
+
+/**
+ * The Focus type scale (brief section 5), in sp and multiplied by the worker's [DisplayScale] -
+ * [D365MobileTheme] sets [scale]. Captions are drawn upper-case by the component that shows them.
+ * The sizes past the brief's list (pill, remaining line, Home rows, panel title, number pad,
+ * menu items) are the Focus mock-ups'.
+ */
+object FocusType {
+    var scale by mutableStateOf(1f)
+        internal set
+
+    private fun nunito(size: Float, weight: FontWeight, line: Float = 1.25f, spacing: Float = 0f) = TextStyle(
+        fontFamily = AppFont,
+        fontWeight = weight,
+        fontSize = (size * scale).sp,
+        lineHeight = (size * line * scale).sp,
+        letterSpacing = spacing.sp,
+    )
+
+    private fun code(size: Float, weight: FontWeight = FontWeight.SemiBold) = TextStyle(
+        fontFamily = CodeFont,
+        fontWeight = weight,
+        fontSize = (size * scale).sp,
+        // Leading-none, as the mock-ups: a 96sp number with normal leading pushes everything apart.
+        lineHeight = (size * scale).sp,
+    )
+
+    val topBarTitle get() = nunito(18f, FontWeight.Bold)
+    val topBarCounter get() = nunito(17f, FontWeight.Bold)
+    val bandTitle get() = nunito(19f, FontWeight.ExtraBold, line = 1.2f)
+    val bandDetail get() = nunito(14f, FontWeight.SemiBold, line = 1.3f)
+    val caption get() = nunito(14f, FontWeight.Bold, spacing = 1.4f)
+    val code get() = code(50f)
+    val description get() = nunito(19f, FontWeight.SemiBold)
+    val bigQuantity get() = code(96f)
+    val unitLine get() = nunito(15f, FontWeight.Bold)
+    val rowTitle get() = nunito(19f, FontWeight.Bold)
+    val rowCode get() = code(26f)
+    val rowCount get() = code(30f)
+    val rowDetail get() = nunito(14f, FontWeight.SemiBold)
+    val button get() = nunito(18f, FontWeight.Bold)
+    val pill get() = nunito(17f, FontWeight.SemiBold)
+    val remaining get() = nunito(17f, FontWeight.Bold)
+    val homeRow get() = nunito(20f, FontWeight.Bold)
+    val panelTitle get() = nunito(24f, FontWeight.ExtraBold)
+    val panelSubtitle get() = nunito(15f, FontWeight.SemiBold)
+    val menuItem get() = nunito(19f, FontWeight.Bold)
+    val holdHint get() = nunito(13f, FontWeight.SemiBold)
+    val padNumber get() = code(72f)
+    val padKey get() = nunito(22f, FontWeight.Bold)
+    val fieldValue get() = nunito(20f, FontWeight.Bold)
+}
+
+/** The Focus shapes (brief section 5): buttons and bands 16dp, Home panel 24dp, the scan pill
+ *  fully rounded, bottom sheets 24dp at the top. */
+object FocusShapes {
+    val button = RoundedCornerShape(16.dp)
+    val band = RoundedCornerShape(16.dp)
+    val panel = RoundedCornerShape(24.dp)
+    val pill = RoundedCornerShape(percent = 50)
+    val sheet = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
 }
