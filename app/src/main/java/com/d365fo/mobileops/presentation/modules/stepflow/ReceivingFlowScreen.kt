@@ -1257,35 +1257,27 @@ private fun TodaysOrders(
     enabled: Boolean,
     onPick: (String) -> Unit,
 ) {
+    // Harbour rows under a list header (9 Nov): the PO, its vendor, a chevron; tap = scan it.
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Text(
-            "Due today - tap to start",
-            style = MaterialTheme.typography.titleSmall,
-            fontWeight = FontWeight.SemiBold,
+        com.d365fo.mobileops.presentation.common.components.ListHeader(
+            icon = Icons.Default.CalendarMonth,
+            title = "Due today",
+            count = orders.size,
         )
-        orders.take(MAX_TODAYS_ORDERS).forEach { order ->
-            com.d365fo.mobileops.presentation.common.components.AppCard(
-                modifier = Modifier.fillMaxWidth().clickable(enabled = enabled) { onPick(order.purchId) },
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(order.purchId, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                        Text(
-                            "Vendor ${order.vendorAccount}",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = WarehouseStatusColors.text3,
-                        )
-                    }
-                    Text("\u203A", style = MaterialTheme.typography.titleLarge, color = WarehouseStatusColors.accent)
-                }
+        com.d365fo.mobileops.presentation.common.components.ListCard {
+            orders.take(MAX_TODAYS_ORDERS).forEachIndexed { i, order ->
+                if (i > 0) com.d365fo.mobileops.presentation.common.components.RowDivider()
+                com.d365fo.mobileops.presentation.common.components.LineRow(
+                    title = order.purchId,
+                    lines = listOf("Vendor ${order.vendorAccount}"),
+                    trailing = { com.d365fo.mobileops.presentation.common.components.RowChevron() },
+                    onClick = { if (enabled) onPick(order.purchId) },
+                )
             }
         }
         if (orders.size > MAX_TODAYS_ORDERS) {
             Text(
-                "+${orders.size - MAX_TODAYS_ORDERS} more",
+                "${orders.size - MAX_TODAYS_ORDERS} more - scan the PO",
                 style = MaterialTheme.typography.bodySmall,
                 color = WarehouseStatusColors.text3,
             )

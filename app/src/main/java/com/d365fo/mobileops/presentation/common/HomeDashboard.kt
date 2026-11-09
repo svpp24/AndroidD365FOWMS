@@ -118,7 +118,8 @@ internal fun HomeHero(
     modifier: Modifier = Modifier,
 ) {
     // The Harbour gradient behind the same warehouse scene (kept, 9 Nov).
-    Box(modifier = modifier.fillMaxWidth().heightIn(min = 140.dp).background(WarehouseStatusColors.accentGradient)) {
+    // Shorter without the "Your store today" caption (9 Nov: nothing on the band but search).
+    Box(modifier = modifier.fillMaxWidth().heightIn(min = 112.dp).background(WarehouseStatusColors.accentGradient)) {
         // A warehouse scene across the whole band (20 Oct): a long, sparsely stocked rack and a
         // forklift carrying a pallet - quiet shapes behind the search and "My Dashboard", not a
         // grid of boxes (the first fill read as a checkerboard).
@@ -187,13 +188,6 @@ internal fun HomeHero(
                 Icon(LineIcons.SearchThin, contentDescription = null, tint = WarehouseStatusColors.text3)
                 Text("Find a product or order", style = MaterialTheme.typography.bodyLarge, color = WarehouseStatusColors.text3)
             }
-            Text(
-                "Your store today",
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.ExtraBold,
-                color = Color.White,
-                modifier = Modifier.heightIn(min = 38.dp).wrapContentHeight(Alignment.CenterVertically),
-            )
         }
     }
 }
