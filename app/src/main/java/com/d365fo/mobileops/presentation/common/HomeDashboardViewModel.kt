@@ -64,7 +64,10 @@ class HomeDashboardViewModel @Inject constructor(
             if (open != null) _figures.update { it.copy(countsInProgress = open) }
         }
         viewModelScope.launch {
-            val due = (lookup.lookupOrdersForToday(wh) as? NetworkResult.Success)?.data?.size
+            // The same POs PO receiving lists under "Due today": open, with something left to
+            // receive - one received in full earlier today no longer counts (user, 9 Nov: the
+            // card said 3 while the list showed 1).
+            val due = (lookup.lookupOrdersForToday(wh) as? NetworkResult.Success)?.data?.count { it.receivable }
             if (due != null) _figures.update { it.copy(posDueToday = due) }
         }
         viewModelScope.launch {
