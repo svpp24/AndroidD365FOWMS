@@ -84,20 +84,21 @@ internal fun HomeGreeting(onWarehouse: (() -> Unit)? = null, viewModel: Warehous
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         Box(
             contentAlignment = Alignment.Center,
-            modifier = Modifier.size(36.dp).background(WarehouseStatusColors.accent, RoundedCornerShape(10.dp)),
+            modifier = Modifier.size(36.dp).clip(RoundedCornerShape(10.dp)).background(WarehouseStatusColors.accentGradient),
         ) {
-            Text(initials.ifBlank { "?" }, color = Color.White, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+            Text(initials.ifBlank { "?" }, color = Color.White, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.ExtraBold)
         }
         Column {
+            // Store layout (Harbour): "Hi Pradeep", the store under it.
             Text(
-                text = greeting() + if (first.isNotBlank()) ", $first" else "",
+                text = if (first.isNotBlank()) "Hi $first" else greeting(),
                 style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
+                fontWeight = FontWeight.ExtraBold,
             )
             val code = session?.selected?.warehouseId
             if (onWarehouse != null && code != null) {
                 Text(
-                    text = "Warehouse $code" + if (session?.warehouses.orEmpty().size > 1) "  ·  Change" else "",
+                    text = "Store $code" + if (session?.warehouses.orEmpty().size > 1) "  ·  Change" else "",
                     style = MaterialTheme.typography.labelLarge,
                     color = WarehouseStatusColors.accent,
                     modifier = Modifier.clickable(role = Role.Button, onClick = onWarehouse),
@@ -116,7 +117,8 @@ internal fun HomeHero(
     onSearch: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Box(modifier = modifier.fillMaxWidth().heightIn(min = 140.dp).background(WarehouseStatusColors.accent)) {
+    // The Harbour gradient behind the same warehouse scene (kept, 9 Nov).
+    Box(modifier = modifier.fillMaxWidth().heightIn(min = 140.dp).background(WarehouseStatusColors.accentGradient)) {
         // A warehouse scene across the whole band (20 Oct): a long, sparsely stocked rack and a
         // forklift carrying a pallet - quiet shapes behind the search and "My Dashboard", not a
         // grid of boxes (the first fill read as a checkerboard).
@@ -183,10 +185,10 @@ internal fun HomeHero(
                     .padding(horizontal = 14.dp),
             ) {
                 Icon(LineIcons.SearchThin, contentDescription = null, tint = WarehouseStatusColors.text3)
-                Text("Search items, orders, journals", style = MaterialTheme.typography.bodyLarge, color = WarehouseStatusColors.text3)
+                Text("Find a product or order", style = MaterialTheme.typography.bodyLarge, color = WarehouseStatusColors.text3)
             }
             Text(
-                "Today",
+                "Your store today",
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.ExtraBold,
                 color = Color.White,

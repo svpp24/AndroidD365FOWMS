@@ -330,7 +330,7 @@ fun HomeScreen(
         // Today's counts on the modules themselves (feedback, 30 Oct: the dashboard cards went,
         // their numbers moved onto the rows). Activity's count is on its tab.
         val counts = buildMap {
-            figures.posDueToday?.let { put(com.d365fo.mobileops.domain.model.WarehouseWorkflow.PO_RECEIVING, "$it due") }
+            figures.posDueToday?.let { put(com.d365fo.mobileops.domain.model.WarehouseWorkflow.PO_RECEIVING, "$it due today") }
             figures.transfersToShip?.let { put(com.d365fo.mobileops.domain.model.WarehouseWorkflow.TRANSFER_SHIP, "$it to ship") }
             figures.countsInProgress?.let { put(com.d365fo.mobileops.domain.model.WarehouseWorkflow.INVENTORY_COUNT, "$it open") }
         }
@@ -362,19 +362,15 @@ fun HomeScreen(
 
             // The tasks by area, with today's counts; look-ups on the Enquiry tab (30 Oct).
             val visible = visibleModules(handheldMenu, blockedWorkflows)
-            var first = true
-            listOf(ModuleArea.INBOUND, ModuleArea.OUTBOUND, ModuleArea.INVENTORY).forEach { area ->
-                val inArea = modulesIn(area, visible)
-                if (inArea.isNotEmpty()) {
-                    val tour = if (first) Modifier.tourTarget("tiles") else Modifier
-                    first = false
-                    item(key = "area-title-${area.name}") { HomeSectionTitle(area.title, modifier = side) }
-                    item(key = "area-${area.name}") {
-                        ModuleListCard(inArea, modifier = side.then(tour), counts = counts) { module ->
-                            if (!unfinishedViewModel.justScanned()) module.route?.let { route ->
-                                usage.record(module.title)
-                                onModuleSelected(route)
-                            }
+            // Store layout (Harbour, 9 Nov): one card per module, inbound then outbound then
+            // counting, no area headings.
+            val tasks = listOf(ModuleArea.INBOUND, ModuleArea.OUTBOUND, ModuleArea.INVENTORY).flatMap { modulesIn(it, visible) }
+            if (tasks.isNotEmpty()) {
+                item(key = "modules") {
+                    ModuleListCard(tasks, modifier = side.tourTarget("tiles"), counts = counts) { module ->
+                        if (!unfinishedViewModel.justScanned()) module.route?.let { route ->
+                            usage.record(module.title)
+                            onModuleSelected(route)
                         }
                     }
                 }

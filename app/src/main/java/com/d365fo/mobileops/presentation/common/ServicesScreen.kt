@@ -100,14 +100,14 @@ fun ServicesScreen(
     val enquiries = remember(menu, blocked) { modulesIn(ModuleArea.ENQUIRY, visibleModules(menu, blocked)) }
 
     Scaffold(
-        topBar = { AppTopBar(title = { HomeGreeting() }, expandedHeight = WarehouseDimens.TopBarHeight) },
+        // A tab's own name in the bar (Harbour) - the greeting is Home's.
+        topBar = { AppTopBar(title = { Text("Enquiry") }, expandedHeight = WarehouseDimens.TopBarHeight) },
     ) { padding ->
         LazyColumn(
             modifier = Modifier.fillMaxSize().padding(padding),
             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 14.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            item(key = "title") { HomeSectionTitle("Enquiry") }
             item(key = "list") {
                 if (enquiries.isEmpty()) {
                     Text("No enquiries on your menu", style = MaterialTheme.typography.bodyMedium, color = WarehouseStatusColors.text3)
@@ -130,43 +130,30 @@ internal fun ModuleListCard(
     counts: Map<WarehouseWorkflow, String> = emptyMap(),
     onOpen: (ModuleTile) -> Unit,
 ) {
-    Column(modifier = modifier.fillMaxWidth().background(Color.White, RoundedCornerShape(10.dp))) {
-        modules.forEachIndexed { i, module ->
-            if (i > 0) HorizontalDivider(color = WarehouseStatusColors.border.copy(alpha = 0.45f), modifier = Modifier.padding(horizontal = 14.dp))
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = WarehouseDimens.MinTouchTarget)
-                    .clickable(role = Role.Button) { onOpen(module) }
-                    .padding(horizontal = 14.dp, vertical = 10.dp),
-            ) {
-                Box(
-                    contentAlignment = Alignment.Center,
-                    modifier = Modifier.size(32.dp).background(moduleTint(module), RoundedCornerShape(8.dp)),
-                ) {
-                    Icon(module.icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(19.dp))
-                }
-                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text(module.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                    Text(module.summary, style = MaterialTheme.typography.bodyMedium, color = WarehouseStatusColors.text3)
-                }
-                val count = module.workflow?.let(counts::get)
-                if (count != null) {
-                    Text(
-                        "$count  ›",
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = WarehouseStatusColors.accent,
-                        modifier = Modifier
-                            .background(WarehouseStatusColors.accentDim, RoundedCornerShape(10.dp))
-                            .padding(horizontal = 12.dp, vertical = 8.dp),
-                    )
-                } else {
-                    Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null)
-                }
-            }
+    // Each module its own card (Harbour): coloured icon, name, and a tag - today's count when
+    // there is one, else what the module is for.
+    Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+        modules.forEach { module ->
+            com.d365fo.mobileops.presentation.common.components.ModuleCard(
+                icon = module.icon,
+                color = harbourColor(module),
+                title = module.title,
+                tags = listOf(module.workflow?.let(counts::get) ?: module.summary),
+                onClick = { onOpen(module) },
+            )
         }
+    }
+}
+
+/** A module's colour in the Harbour design - by the kind of work, so it keeps its colour. */
+internal fun harbourColor(module: ModuleTile): com.d365fo.mobileops.presentation.common.components.ModuleColor {
+    val c = com.d365fo.mobileops.presentation.common.components.ModuleColor
+    return when (module.workflow) {
+        WarehouseWorkflow.PO_RECEIVING, WarehouseWorkflow.PO_CREATE, WarehouseWorkflow.PO_CONFIRM -> c.Purple
+        WarehouseWorkflow.TRANSFER_SHIP, WarehouseWorkflow.TRANSFER_RECEIVE, WarehouseWorkflow.TO_CREATE,
+        WarehouseWorkflow.PURCHASE_RETURN -> c.Sienna
+        WarehouseWorkflow.INVENTORY_COUNT -> c.Green
+        null -> c.Petrol
+        else -> if (areaOf(module.workflow) == ModuleArea.ENQUIRY) c.Blue else c.Petrol
     }
 }
