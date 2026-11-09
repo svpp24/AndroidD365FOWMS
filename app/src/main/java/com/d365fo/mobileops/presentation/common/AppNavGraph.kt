@@ -765,7 +765,7 @@ private fun AppBottomBar(
         onClick = onScan,
         // The logo's red, in a rounded square (21 Oct) - a round teal button was the reference app's.
         shape = androidx.compose.foundation.shape.RoundedCornerShape(18.dp),
-        containerColor = Color(0xFFB5222D),
+        containerColor = com.d365fo.mobileops.presentation.common.theme.WarehouseStatusColors.scanButton,
         contentColor = Color.White,
         modifier = Modifier
             .align(Alignment.TopEnd)

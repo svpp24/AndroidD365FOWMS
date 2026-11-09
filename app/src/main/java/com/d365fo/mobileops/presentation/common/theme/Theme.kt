@@ -93,6 +93,12 @@ enum class ColorPalette(
      */
     val gradientStart: Color? = null,
 ) {
+    /**
+     * Deep industrial navy on a pale blue tint - the default from the 9 Nov handheld redesign
+     * (docs/ui-redesign-brief.md, §1.1). Same hue as [WarehouseStatusColors.infoEdge], so the
+     * "document found" band reads as this app's own colour rather than a second blue.
+     */
+    INDUSTRIAL("Industrial", Color(0xFF1E3A8A), Color(0xFFDBEAFE)),
     /** Deep indigo-navy, the 20 Oct restyle's identity (navy text and outlined buttons on grey). */
     INDIGO("Indigo", Color(0xFF232A7C), Color(0xFFE1E0F6)),
     /** Deep petrol - the app's own identity from 21 Oct, so it isn't a copy of the reference app. */
@@ -167,14 +173,16 @@ private fun Color.darken(factor: Float = 0.72f): Color = copy(
  * `State` during composition.
  */
 object WarehouseStatusColors {
-    var accent by mutableStateOf(ColorPalette.MICROSOFT.accent)
+    // Start on the default palette, so the first frame (before D365MobileTheme's SideEffect has
+    // run) is already the colour the app settles on rather than a one-frame flash of another.
+    var accent by mutableStateOf(ColorPalette.INDUSTRIAL.accent)
         internal set
-    var accentDim by mutableStateOf(ColorPalette.MICROSOFT.accentDim)
+    var accentDim by mutableStateOf(ColorPalette.INDUSTRIAL.accentDim)
         internal set
     /** The top and bottom bars' fill - a shade darker than [accent] so the chrome framing a
      * screen reads as distinct from the accent-filled tiles/buttons inside it, rather than the
      * whole screen bleeding into one flat colour top to bottom. */
-    var accentDark by mutableStateOf(ColorPalette.MICROSOFT.accent.darken())
+    var accentDark by mutableStateOf(ColorPalette.INDUSTRIAL.accent.darken())
         internal set
     /** [ColorPalette.gradientStart] of whichever palette is active - a real second hue for a
      *  dedicated gradient entry, or null for a flat one (in which case [accentGradient] falls
@@ -204,6 +212,49 @@ object WarehouseStatusColors {
     val border = Border
     val surface2 = Surface2
     val text3 = Text3
+
+    // Comfort colours (9 Nov redesign, docs/ui-redesign-brief.md §1.2). Fixed, not palette-
+    // derived, for the same fleet-consistency reason as the status colours above: a worker who
+    // picked a different accent must still see the same green "done" and red "wrong item" bands.
+    // Kept alongside the older names rather than replacing them - existing screens still read
+    // green/amber/red/border/text3, and move over screen by screen as each is redesigned.
+
+    /** Page background on flow screens - a cool off-white, never a full-screen pure white. */
+    val pageComfort = Color(0xFFF1F5F9)
+    /** Cards and bars sitting on [pageComfort]. */
+    val surface = Surface
+    /** Main text. */
+    val ink = Color(0xFF1E293B)
+    /** Labels and secondary text - 7.6:1 on [pageComfort], well clear of WCAG AA. */
+    val inkMuted = Color(0xFF475569)
+    /** Dividers and card borders. */
+    val divider = Color(0xFFE2E8F0)
+    /** Primary action buttons, with white text - deliberately not the accent, so "press this"
+     *  reads the same whichever palette is chosen. */
+    val action = Color(0xFFEA6A12)
+
+    /** Success band: tint, 10dp left edge, text. */
+    val okBand = Color(0xFFDCFCE7)
+    val okEdge = Green
+    val okText = Color(0xFF14532D)
+    /** Info / document found. */
+    val infoBand = Color(0xFFDBEAFE)
+    val infoEdge = Color(0xFF1E3A8A)
+    val infoText = Color(0xFF1E3A8A)
+    /** Warning - needs a choice. */
+    val warnBand = Color(0xFFFEF3C7)
+    val warnEdge = Amber
+    val warnText = Color(0xFF78350F)
+    /** Error - wrong item, nothing added. */
+    val badBand = Color(0xFFFEE2E2)
+    val badEdge = Red
+    val badText = Color(0xFF7F1D1D)
+    /** Waiting for the first scan. */
+    val idleBand = Color(0xFFE2E8F0)
+    val idleEdge = Color(0xFF64748B)
+
+    /** The red scan FAB - the logo's red, unchanged from the 21 Oct rounded-square button. */
+    val scanButton = Color(0xFFB5222D)
 }
 
 private fun industrialColors(palette: ColorPalette) = lightColorScheme(
@@ -283,6 +334,59 @@ private val AppFont: FontFamily = FontFamily(
         )
     },
 )
+
+/**
+ * Barlow Condensed (9 Nov redesign) for what a worker reads to check they have the right thing:
+ * item codes, document numbers, locations/bins and quantities. Condensed so a long code like
+ * BSP-PO-000161763 or BSR-11397-0 still fits big on one line of a portrait handheld, and its
+ * open, distinct figures (1/7, 0/O, 5/S) are what a misread costs. Two static files, not a
+ * variable font - res/font/barlow_condensed_semibold.ttf (600) and barlow_condensed_bold.ttf
+ * (700), SIL Open Font License (assets/licenses/BarlowCondensed-OFL.txt). Nunito Sans stays for
+ * everything else.
+ */
+val CodeFont: FontFamily = FontFamily(
+    androidx.compose.ui.text.font.Font(com.d365fo.mobileops.R.font.barlow_condensed_semibold, FontWeight.SemiBold),
+    androidx.compose.ui.text.font.Font(com.d365fo.mobileops.R.font.barlow_condensed_bold, FontWeight.Bold),
+)
+
+/**
+ * The [CodeFont] sizes from the redesign brief (§1.3), before [DisplayScale]. Not Material
+ * [Typography] roles - those are shared by every existing screen, and Phase 1 deliberately
+ * changes none of them; these are only read by the new flow components.
+ *
+ * Getters over a `mutableStateOf` scale, the same pattern as [WarehouseDimens.MinTouchTarget]:
+ * [D365MobileTheme] sets [scale] from the Settings text size, and every composable reading one
+ * of these styles recomposes with it.
+ */
+object WarehouseCodeType {
+    var scale by mutableStateOf(1f)
+        internal set
+
+    /** Item and location/bin code on the next-item card. */
+    val code: TextStyle
+        get() = TextStyle(
+            fontFamily = CodeFont, fontWeight = FontWeight.Bold,
+            fontSize = 42.sp * scale, lineHeight = 46.sp * scale,
+        )
+    /** The big quantity on the next-item card (brief: 66-72sp). */
+    val quantity: TextStyle
+        get() = TextStyle(
+            fontFamily = CodeFont, fontWeight = FontWeight.Bold,
+            fontSize = 68.sp * scale, lineHeight = 72.sp * scale,
+        )
+    /** Document numbers and smaller codes inside lists and headers. */
+    val codeSmall: TextStyle
+        get() = TextStyle(
+            fontFamily = CodeFont, fontWeight = FontWeight.SemiBold,
+            fontSize = 22.sp * scale, lineHeight = 26.sp * scale, letterSpacing = 0.3.sp,
+        )
+    /** Status band title (brief: 22-24sp, bold) - Nunito Sans, not [CodeFont]: it's a sentence. */
+    val bandTitle: TextStyle
+        get() = TextStyle(
+            fontFamily = AppFont, fontWeight = FontWeight.Bold,
+            fontSize = 23.sp * scale, lineHeight = 28.sp * scale,
+        )
+}
 
 /** Every style in [AppFont] - the roles [warehouseTypography] leaves at Material's defaults too. */
 private fun Typography.withFont(font: FontFamily) = Typography(
@@ -403,7 +507,7 @@ object WarehouseDimens {
 
 @Composable
 fun D365MobileTheme(
-    palette: ColorPalette = ColorPalette.MICROSOFT,
+    palette: ColorPalette = ColorPalette.INDUSTRIAL,
     scale: DisplayScale = DisplayScale.STANDARD,
     content: @Composable () -> Unit,
 ) {
@@ -421,6 +525,7 @@ fun D365MobileTheme(
         WarehouseStatusColors.accentGradientStart = palette.gradientStart
         WarehouseDimens.MinTouchTarget = BaseMinTouchTarget * scale.factor
         WarehouseDimens.StepperButton = BaseStepperButton * scale.factor
+        WarehouseCodeType.scale = scale.factor
     }
 
     MaterialTheme(
