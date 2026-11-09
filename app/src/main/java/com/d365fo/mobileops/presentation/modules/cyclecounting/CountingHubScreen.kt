@@ -17,7 +17,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Autorenew
-import androidx.compose.material.icons.filled.CenterFocusStrong
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.Insights
 import androidx.compose.material.icons.filled.Storefront
@@ -48,7 +47,8 @@ import com.d365fo.mobileops.presentation.common.theme.WarehouseStatusColors
 /**
  * Inventory count (user, 8 Nov): the kinds of count as sub-menus. Not every count starts as a
  * journal - Store count is a free count that becomes a journal only once the supervisor transfers
- * it in the Stock count control center. Spot, cycle and wall-to-wall each open their own journals.
+ * it in the Stock count control center. Cycle and wall-to-wall each open their own journals.
+ * There is no Spot count (user, 8 Nov): it is the same as Store count.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -97,16 +97,6 @@ fun CountingHubScreen(
                     text = "Count the store location by location - no journal needed. Your supervisor checks the counts in the Stock count control center, which makes the counting journal.",
                     badge = null,
                     onClick = onStoreCount,
-                )
-            }
-            item(key = "spot") {
-                CountKindCard(
-                    icon = Icons.Default.CenterFocusStrong,
-                    tint = Color(0xFF7C3AED),
-                    title = "Spot count",
-                    text = if (state.canCreateSpot) "Count one item or location now, or finish a spot count." else "Finish a spot count.",
-                    badge = badge(CountKind.SPOT),
-                    onClick = { onJournals(CountKind.SPOT) },
                 )
             }
             item(key = "cycle") {

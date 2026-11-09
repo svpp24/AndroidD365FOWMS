@@ -118,9 +118,6 @@ class CountingJournalListViewModel @Inject constructor(
             claimsEnabled = flags.countClaims,
             // Cosmetic gate: the supervisor service checks IsCycleCountSupervisor on every call.
             canReviewVariance = flags.countSupervisor && workerSession.session.value?.isCycleCountSupervisor == true,
-            // Cosmetic gate too: createSpotCount checks the permission server-side.
-            canCreateSpot = flags.countSpot &&
-                (workerSession.session.value?.isCycleCountSupervisor == true || flags.countSpotForWorkers),
         ),
     )
 
@@ -131,7 +128,6 @@ class CountingJournalListViewModel @Inject constructor(
         _loaded.update {
             it.copy(
                 canReviewVariance = caps.canReviewVariance,
-                canCreateSpot = caps.canCreateSpot,
                 // Same supervisor gate as variance review; getAccuracyReport checks it again.
                 canViewAccuracy = flags.countAccuracy && !caps.externalCounter &&
                     (profile?.isCycleCountSupervisor ?: (workerSession.session.value?.isCycleCountSupervisor == true)),
@@ -514,7 +510,6 @@ data class CountingJournalListState(
     val claimsEnabled: Boolean = false,
     /** Cycle-count supervisor with the supervisor feature on. */
     val canReviewVariance: Boolean = false,
-    val canCreateSpot: Boolean = false,
     val canViewAccuracy: Boolean = false,
     /** A third-party counter - sees only their team's journals (server-side). */
     val externalCounter: Boolean = false,

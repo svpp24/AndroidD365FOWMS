@@ -53,7 +53,7 @@ data class OpportunityTask(
     val warehouseId: String?,
 )
 
-/** A definite answer or a connection failure, for one-off requests (spot, discrepancy). */
+/** A definite answer or a connection failure, for one-off requests such as a discrepancy report. */
 sealed interface TaskResult<out T> {
     data class Ok<T>(val value: T) : TaskResult<T>
     data class Refused(val code: String?, val message: String) : TaskResult<Nothing>
@@ -98,9 +98,6 @@ interface CountTaskRepository {
 
     /** Lines not listed are PHYSICAL, own stock, counted normally. */
     suspend fun lineAttributes(journalId: String): NetworkResult<List<LineAttributes>>
-
-    /** Creates a spot count on the server; returns the new journal id. */
-    suspend fun createSpotCount(warehouseId: String, itemId: String?, locationId: String?): TaskResult<String>
 
     /** Null when the server has nothing to offer here - including when it can't be reached. */
     suspend fun opportunityCount(warehouseId: String, locationId: String, itemId: String?): OpportunityTask?

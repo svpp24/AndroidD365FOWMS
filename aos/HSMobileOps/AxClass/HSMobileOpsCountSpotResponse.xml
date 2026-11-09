@@ -4,7 +4,7 @@
 	<SourceCode>
 		<Declaration><![CDATA[
 /// <summary>
-/// createSpotCount's answer. ErrorCode: NOT_ALLOWED, INVALID_REQUEST, NOTHING_TO_COUNT, NOT_IMPLEMENTED.
+/// What createSpotJournal made, for reportDiscrepancy: the journal, or ErrorCode and Message.
 /// </summary>
 [DataContractAttribute]
 class HSMobileOpsCountSpotResponse

@@ -71,11 +71,12 @@ const val FREEZE_NONE = "NONE"
 /**
  * The Inventory count sub-menus a journal is listed under (user, 8 Nov). Store count is the fourth
  * and has no journal on the device: it becomes one only in the Stock count control center.
- * Triggered, opportunity, control group and recount journals are cycle counting.
+ * Triggered, opportunity, control group and recount journals are cycle counting. There is no Spot
+ * count sub-menu (user, 8 Nov: it is the same as Store count), so a spot journal still open from
+ * before is listed under Cycle count, marked Spot count.
  */
 enum class CountKind(val route: String) {
     CYCLE("cycle"),
-    SPOT("spot"),
     WALL_TO_WALL("w2w");
 
     companion object {
@@ -86,7 +87,6 @@ enum class CountKind(val route: String) {
 val CountingJournalSummary.kind: CountKind
     get() = when {
         isWallToWall -> CountKind.WALL_TO_WALL
-        originType == "SPOT" -> CountKind.SPOT
         else -> CountKind.CYCLE
     }
 

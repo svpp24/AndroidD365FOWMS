@@ -655,8 +655,8 @@ by it and never ranks origins itself), `ToleranceInfo` and `AbcClass` (display o
 defaults today (**TODO**). New `HSMobileOpsCountTaskSvc` operations, each validating its request
 and otherwise a **TODO** stub:
 
-- `createSpotCount` (warehouse + item and/or location) → `JournalId`. The server creates the
-  journal and lines; the app then fetches it in DIRECT mode. Returns `NOT_IMPLEMENTED`.
+- `createSpotCount` was removed (user, 8 Nov: a spot count is the same as Store count). SPOT
+  stays as an origin so a spot journal created before is still labelled.
 - `getOpportunityCount` (after a pick/putaway at a location) → `Eligible` + a one-line journal.
   Returns `Eligible = false` today, so the app shows nothing. The app asks at most once per
   warehouse/location/item per session.
@@ -665,7 +665,7 @@ and otherwise a **TODO** stub:
 
 Push for triggered counts: FCM needs a Firebase project and `google-services.json`, which this
 build doesn't have. Until then the app polls every 15 minutes in the background and notifies new
-TRIGGERED journals once. App flags: `FEATURE_COUNT_SPOT`, `FEATURE_COUNT_SPOT_WORKERS`,
+TRIGGERED journals once. App flags:
 `FEATURE_COUNT_OPPORTUNITY`, `FEATURE_COUNT_DISCREPANCY`, `FEATURE_COUNT_TRIGGERED_ALERTS`.
 
 **Location types, external counters, stock freeze.**
@@ -680,7 +680,7 @@ TRIGGERED journals once. App flags: `FEATURE_COUNT_SPOT`, `FEATURE_COUNT_SPOT_WO
   controls). New `getCounterProfile` (real) returns them; an external counter is never a
   supervisor (`getCounterProfile` and the supervisor service both refuse it). `listOpenJournals`
   now receives `UserId`; filtering an external counter's list to their team's journals is
-  **TODO**. The app hides supervisor screens and spot creation for external counters — cosmetic
+  **TODO**. The app hides supervisor screens for external counters — cosmetic
   only.
 - List rows carry `FreezeState` (NONE, LOCATION_FROZEN, SNAPSHOT_ONLY) and `SnapshotAtUtc`
   (`NONE` today — **TODO**); the app shows "Stock movements are blocked here" / "Count is

@@ -459,9 +459,6 @@ class LiveCountTaskServiceApi @Inject constructor(
         tag: com.d365fo.mobileops.data.remote.interceptor.IdempotentRead,
     ) = delegate.get().getFreezeStatus(body, tag)
 
-    override suspend fun createSpotCount(body: com.d365fo.mobileops.data.remote.dto.SpotCountServiceRequest) =
-        delegate.get().createSpotCount(body)
-
     override suspend fun getOpportunityCount(
         body: com.d365fo.mobileops.data.remote.dto.OpportunityServiceRequest,
         tag: com.d365fo.mobileops.data.remote.interceptor.IdempotentRead,

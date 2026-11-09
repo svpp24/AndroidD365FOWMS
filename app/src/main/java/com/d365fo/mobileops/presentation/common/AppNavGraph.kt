@@ -87,7 +87,6 @@ import com.d365fo.mobileops.presentation.modules.dataenquiry.PoOfTodayScreen
 import com.d365fo.mobileops.presentation.modules.cyclecounting.CountingCaptureScreen
 import com.d365fo.mobileops.presentation.modules.cyclecounting.CountingJournalListScreen
 import com.d365fo.mobileops.presentation.modules.cyclecounting.CountingScanScreen
-import com.d365fo.mobileops.presentation.modules.cyclecounting.spot.SpotCountScreen
 import com.d365fo.mobileops.presentation.modules.cyclecounting.supervisor.AccuracyReportScreen
 import com.d365fo.mobileops.presentation.modules.cyclecounting.supervisor.SupervisorVarianceScreen
 import com.d365fo.mobileops.presentation.modules.stepflow.OnHandEntryScreen
@@ -154,7 +153,7 @@ object Routes {
     /** Send feedback - from any screen's feedback button (with its screenshot) or Settings. */
     const val FEEDBACK = "feedback"
 
-    /** Inventory count: Store, Spot, Cycle and Wall-to-wall count as sub-menus. See CountingHubScreen. */
+    /** Inventory count: Store, Cycle and Wall-to-wall count as sub-menus. See CountingHubScreen. */
     const val COUNTING_HUB = "counting"
 
     /** Open counting journals for the worker's warehouse, of one kind or all. See CountingJournalListScreen. */
@@ -178,8 +177,6 @@ object Routes {
     const val COUNTING_DUAL_REVIEW = "counting/supervisor/dual/{journalId}"
     fun countingDualReview(journalId: String) = "counting/supervisor/dual/$journalId"
 
-    /** Create a spot count (server creates the journal). */
-    const val COUNTING_SPOT = "counting/spot"
 
     /** A free store count for the Stock count control center. */
     const val COUNTING_STORE = "counting/store"
@@ -507,7 +504,6 @@ fun AppNavGraph(
                         onReviewDualCount = { journalId ->
                             navController.navigate(Routes.countingDualReview(journalId))
                         },
-                        onNewSpotCount = { navController.navigate(Routes.COUNTING_SPOT) },
                         onStoreCount = { navController.navigate(Routes.COUNTING_STORE) },
                         onAccuracy = { navController.navigate(Routes.COUNTING_ACCURACY) },
                         onStartCounting = { journalId ->
@@ -553,13 +549,6 @@ fun AppNavGraph(
                 composable(Routes.COUNTING_STORE) {
                     com.d365fo.mobileops.presentation.modules.cyclecounting.store.StoreCountScreen(
                         onBack = { navController.popBackStack() },
-                    )
-                }
-
-                composable(Routes.COUNTING_SPOT) {
-                    SpotCountScreen(
-                        onBack = { navController.popBackStack() },
-                        onCreated = { navController.popBackStack() },
                     )
                 }
 

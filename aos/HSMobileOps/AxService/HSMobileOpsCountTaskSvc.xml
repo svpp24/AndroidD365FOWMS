@@ -34,10 +34,6 @@
 			<Method>submitExceptions</Method>
 		</AxServiceOperation>
 		<AxServiceOperation>
-			<Name>createSpotCount</Name>
-			<Method>createSpotCount</Method>
-		</AxServiceOperation>
-		<AxServiceOperation>
 			<Name>getOpportunityCount</Name>
 			<Method>getOpportunityCount</Method>
 		</AxServiceOperation>

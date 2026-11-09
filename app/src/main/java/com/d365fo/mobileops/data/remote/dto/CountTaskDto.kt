@@ -329,27 +329,6 @@ data class CountExceptionsServiceResponse(
 )
 
 @Serializable
-data class SpotCountServiceRequest(@SerialName("_request") val request: SpotCountRequestBody)
-
-@Serializable
-data class SpotCountRequestBody(
-    @SerialName("DataAreaId") val dataAreaId: String,
-    @SerialName("UserId") val userId: String,
-    @SerialName("WarehouseId") val warehouseId: String,
-    @SerialName("ItemNumber") val itemNumber: String? = null,
-    @SerialName("LocationId") val locationId: String? = null,
-)
-
-@Serializable
-data class SpotCountServiceResponse(
-    @SerialName("Success") val success: Boolean = false,
-    @SerialName("ErrorCode") val errorCode: String? = null,
-    @SerialName("Message") val message: String? = null,
-    @SerialName("JournalId") val journalId: String? = null,
-    @SerialName("JournalNameId") val journalNameId: String? = null,
-)
-
-@Serializable
 data class OpportunityServiceRequest(@SerialName("_request") val request: OpportunityRequestBody)
 
 @Serializable

@@ -65,8 +65,6 @@ data class TestFlags(
     override val countLocationFirst: Boolean = false,
     override val countExceptions: Boolean = false,
     override val countSupervisor: Boolean = false,
-    override val countSpot: Boolean = false,
-    override val countSpotForWorkers: Boolean = false,
     override val countOpportunity: Boolean = false,
     override val countDiscrepancy: Boolean = false,
     override val countTriggeredAlerts: Boolean = false,

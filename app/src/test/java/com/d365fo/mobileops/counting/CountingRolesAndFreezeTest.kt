@@ -9,10 +9,10 @@ import org.junit.jupiter.api.Test
 
 class CountingRolesAndFreezeTest {
 
-    private val everything = TestFlags(countSupervisor = true, countSpot = true, countSpotForWorkers = true)
+    private val everything = TestFlags(countSupervisor = true)
 
     @Test
-    fun `an external counter never gets supervisor screens or spot counts`() {
+    fun `an external counter never gets supervisor screens`() {
         val caps = countingCapabilities(
             everything,
             CounterProfile(isExternalCounter = true, counterTeam = "ACME", isCycleCountSupervisor = true),
@@ -20,7 +20,6 @@ class CountingRolesAndFreezeTest {
         )
         assertThat(caps.externalCounter).isTrue()
         assertThat(caps.canReviewVariance).isFalse()
-        assertThat(caps.canCreateSpot).isFalse()
     }
 
     @Test
@@ -31,18 +30,15 @@ class CountingRolesAndFreezeTest {
             sessionIsCycleCountSupervisor = true,
         )
         assertThat(caps.canReviewVariance).isFalse()
-        assertThat(caps.canCreateSpot).isTrue() // workers may create spot counts by flag
     }
 
     @Test
     fun `without a profile the sign-in supervisor flag applies`() {
-        val caps = countingCapabilities(TestFlags(countSupervisor = true, countSpot = true), null, sessionIsCycleCountSupervisor = true)
+        val caps = countingCapabilities(TestFlags(countSupervisor = true), null, sessionIsCycleCountSupervisor = true)
         assertThat(caps.canReviewVariance).isTrue()
-        assertThat(caps.canCreateSpot).isTrue()
 
-        val worker = countingCapabilities(TestFlags(countSupervisor = true, countSpot = true), null, sessionIsCycleCountSupervisor = false)
+        val worker = countingCapabilities(TestFlags(countSupervisor = true), null, sessionIsCycleCountSupervisor = false)
         assertThat(worker.canReviewVariance).isFalse()
-        assertThat(worker.canCreateSpot).isFalse()
     }
 
     @Test

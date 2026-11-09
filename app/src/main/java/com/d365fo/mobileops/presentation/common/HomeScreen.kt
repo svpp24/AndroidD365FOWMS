@@ -176,8 +176,8 @@ internal val MODULES = listOf(
     ),
     ModuleTile(
         title = "Inventory count",
-        summary = "Store, spot, cycle and wall-to-wall counts",
-        detail = "Store count needs no journal; spot, cycle and wall-to-wall count a journal.",
+        summary = "Store, cycle and wall-to-wall counts",
+        detail = "Store count needs no journal; cycle and wall-to-wall count a journal.",
         d365 = "InventJournalTable / InventJournalTrans - counts imported via DMF, posted in D365FO; store counts via the Stock count control center",
         icon = LineIcons.Count,
         route = Routes.COUNTING_HUB,

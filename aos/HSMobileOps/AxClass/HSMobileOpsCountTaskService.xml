@@ -1173,54 +1173,13 @@ class HSMobileOpsCountTaskService
 ]]></Source>
 			</Method>
 			<Method>
-				<Name>createSpotCount</Name>
-				<Source><![CDATA[
-
-    /// <summary>
-    /// An on-demand count of an item and/or a location. The server creates the counting journal
-    /// and its lines (a DIRECT-mode, SPOT-origin journal); the app then runs the normal flow.
-    /// </summary>
-    [Wrappable(false), Hookable(false)]
-    public HSMobileOpsCountSpotResponse createSpotCount(HSMobileOpsCountSpotRequest _request)
-    {
-        HSMobileOpsCountSpotResponse response = new HSMobileOpsCountSpotResponse();
-
-        response.parmSuccess(false);
-
-        if (!_request || !_request.parmDataAreaId() || !_request.parmUserId() || !_request.parmWarehouseId()
-            || !CompanyInfo::findDataArea(_request.parmDataAreaId()).RecId)
-        {
-            response.parmErrorCode('INVALID_REQUEST');
-            return response;
-        }
-        if (!_request.parmItemNumber() && !_request.parmLocationId())
-        {
-            response.parmErrorCode('NOTHING_TO_COUNT');
-            return response;
-        }
-
-        changecompany (_request.parmDataAreaId())
-        {
-            try
-            {
-                HSMobileOpsCountTaskService::createSpotJournal(response, _request.parmUserId(), _request.parmWarehouseId(),
-                    _request.parmItemNumber(), _request.parmLocationId(), 'Spot count');
-            }
-            catch (Exception::Error)
-            {
-                response.parmErrorCode('FAILED');
-                response.parmMessage(infolog.text(infologLine()));
-            }
-        }
-        return response;
-    }
-]]></Source>
-			</Method>
-			<Method>
 				<Name>createSpotJournal</Name>
 				<Source><![CDATA[
 
     /// <summary>
+    /// Used by reportDiscrepancy. There is no on-demand spot count any more (user, 8 Nov: it is
+    /// the same as Store count).
+    ///
     /// A counting journal for one item, one location, or one item in one location, in a
     /// warehouse: a line per on-hand dimension there, with D365FO's on-hand quantity. An item
     /// named at a location where D365FO has none of it still gets its line (on-hand 0), so stock

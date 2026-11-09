@@ -82,7 +82,6 @@ fun CountingJournalListScreen(
     onStartCounting: (String) -> Unit,
     onReviewVariance: (String) -> Unit = {},
     onReviewDualCount: (String) -> Unit = {},
-    onNewSpotCount: () -> Unit = {},
     /** A free count of the whole store, reviewed by the supervisor (Stock count control center). */
     onStoreCount: () -> Unit = {},
     onAccuracy: () -> Unit = {},
@@ -185,7 +184,6 @@ fun CountingJournalListScreen(
                     Text(
                         when (kind) {
                             com.d365fo.mobileops.domain.model.CountKind.CYCLE -> "Cycle count"
-                            com.d365fo.mobileops.domain.model.CountKind.SPOT -> "Spot count"
                             com.d365fo.mobileops.domain.model.CountKind.WALL_TO_WALL -> "Wall-to-wall count"
                             null -> "Inventory count"
                         },
@@ -195,13 +193,6 @@ fun CountingJournalListScreen(
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                    }
-                },
-                actions = {
-                    if (state.canCreateSpot && (kind == null || kind == com.d365fo.mobileops.domain.model.CountKind.SPOT)) {
-                        IconButton(onClick = onNewSpotCount) {
-                            Icon(Icons.Default.Add, contentDescription = "New spot count")
-                        }
                     }
                 },
                 // Store count and Count accuracy in the ⋮ menu: four icons beside the title broke
@@ -241,8 +232,7 @@ fun CountingJournalListScreen(
         }
         val blindCountNotice by viewModel.blindCountNotice.collectAsStateWithLifecycle()
         // 0 Cycle (or "To count" in a sub-menu), 1 Recount, 2 Wall-to-wall, 3 Done. A sub-menu
-        // lists its own kind only: cycle has To count / Recount / Done, spot and wall-to-wall
-        // To count / Done.
+        // lists its own kind only: cycle has To count / Recount / Done, wall-to-wall To count / Done.
         val tabs = when (kind) {
             null -> listOf(0, 1, 2, 3)
             com.d365fo.mobileops.domain.model.CountKind.CYCLE -> listOf(0, 1, 3)
@@ -331,8 +321,6 @@ fun CountingJournalListScreen(
                             tab == 3 -> "No finished counts yet."
                             tab == 1 -> "Nothing to recount."
                             tab == 2 || kind == com.d365fo.mobileops.domain.model.CountKind.WALL_TO_WALL -> "No wall-to-wall count in progress."
-                            kind == com.d365fo.mobileops.domain.model.CountKind.SPOT ->
-                                if (state.canCreateSpot) "No open spot counts. Tap + to start one." else "No open spot counts."
                             else -> state.warehouseId?.let { "No open counting journals in $it." } ?: "No open counting journals."
                         },
                         style = MaterialTheme.typography.bodyLarge,

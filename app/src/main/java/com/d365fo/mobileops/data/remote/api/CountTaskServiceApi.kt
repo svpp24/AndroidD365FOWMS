@@ -46,11 +46,6 @@ interface CountTaskServiceApi {
     @POST("HSMobileOpsServiceGroup/HSMobileOpsCountTaskSvc/submitCounts")
     suspend fun submitCounts(@Body body: DirectSubmitServiceRequest): Response<DirectSubmitServiceResponse>
 
-    @POST("HSMobileOpsServiceGroup/HSMobileOpsCountTaskSvc/createSpotCount")
-    suspend fun createSpotCount(
-        @Body body: com.d365fo.mobileops.data.remote.dto.SpotCountServiceRequest,
-    ): Response<com.d365fo.mobileops.data.remote.dto.SpotCountServiceResponse>
-
     @POST("HSMobileOpsServiceGroup/HSMobileOpsCountTaskSvc/getOpportunityCount")
     suspend fun getOpportunityCount(
         @Body body: com.d365fo.mobileops.data.remote.dto.OpportunityServiceRequest,

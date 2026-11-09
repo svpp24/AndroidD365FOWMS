@@ -58,12 +58,6 @@ class FakeCountTaskRepository : CountTaskRepository {
     var attributes: List<com.d365fo.mobileops.domain.counting.LineAttributes> = emptyList()
     override suspend fun lineAttributes(journalId: String) = NetworkResult.Success(attributes)
 
-    var spotAnswer: com.d365fo.mobileops.domain.counting.TaskResult<String> =
-        com.d365fo.mobileops.domain.counting.TaskResult.Ok("SPOT-1")
-    val spotCalls = mutableListOf<Triple<String, String?, String?>>()
-    override suspend fun createSpotCount(warehouseId: String, itemId: String?, locationId: String?) =
-        spotAnswer.also { spotCalls += Triple(warehouseId, itemId, locationId) }
-
     var opportunity: com.d365fo.mobileops.domain.counting.OpportunityTask? = null
     var opportunityCalls = 0
     override suspend fun opportunityCount(warehouseId: String, locationId: String, itemId: String?) =

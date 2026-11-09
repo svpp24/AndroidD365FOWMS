@@ -32,11 +32,10 @@ class CounterProfiles @Inject constructor(private val remote: CountTaskRepositor
 data class CountingCapabilities(
     val externalCounter: Boolean,
     val canReviewVariance: Boolean,
-    val canCreateSpot: Boolean,
 )
 
 /**
- * An external counter never gets supervisor screens or spot creation, whatever the session
+ * An external counter never gets supervisor screens, whatever the session
  * says. Without a profile (feature off, or the server unreachable) the sign-in flags apply.
  */
 fun countingCapabilities(flags: FeatureFlags, profile: CounterProfile?, sessionIsCycleCountSupervisor: Boolean): CountingCapabilities {
@@ -45,7 +44,6 @@ fun countingCapabilities(flags: FeatureFlags, profile: CounterProfile?, sessionI
     return CountingCapabilities(
         externalCounter = external,
         canReviewVariance = flags.countSupervisor && supervisor,
-        canCreateSpot = flags.countSpot && !external && (supervisor || flags.countSpotForWorkers),
     )
 }
 

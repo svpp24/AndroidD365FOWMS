@@ -145,26 +145,6 @@ class LiveCountTaskRepository @Inject constructor(
         }
     }
 
-    override suspend fun createSpotCount(warehouseId: String, itemId: String?, locationId: String?): TaskResult<String> {
-        val result = errorMapper.safeCall {
-            api.createSpotCount(
-                com.d365fo.mobileops.data.remote.dto.SpotCountServiceRequest(
-                    com.d365fo.mobileops.data.remote.dto.SpotCountRequestBody(
-                        dataAreaId = company(),
-                        userId = userId(),
-                        warehouseId = warehouseId,
-                        itemNumber = itemId?.trim()?.takeIf { it.isNotEmpty() },
-                        locationId = locationId?.trim()?.takeIf { it.isNotEmpty() },
-                    ),
-                ),
-            )
-        }
-        return result.toTaskResult { body ->
-            if (body.success && !body.journalId.isNullOrBlank()) TaskResult.Ok(body.journalId)
-            else TaskResult.Refused(body.errorCode, body.message?.takeIf { it.isNotBlank() } ?: taskMessage(body.errorCode))
-        }
-    }
-
     override suspend fun opportunityCount(warehouseId: String, locationId: String, itemId: String?): OpportunityTask? {
         val result = errorMapper.safeCall {
             api.getOpportunityCount(
