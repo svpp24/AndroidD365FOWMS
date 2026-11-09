@@ -210,34 +210,6 @@ object Routes {
     const val INQUIRY_PO_LINES_ENTRY = "enquiry/po-lines/entry"
 }
 
-/**
- * The four destinations always reachable at a tap, bottom-anchored the way every mainstream
- * Android app places primary navigation - Gmail, Maps, Play Store. Deliberately not every
- * route in [Routes]: a bottom tab is for a *section* you switch between, not a *workflow* you
- * start and finish. Receiving and the two transfer directions stay one tap away from Home
- * instead, because a bottom bar competing for thumb space with a quantity keypad mid-capture,
- * or inviting a tab-switch away from a half-scanned pallet, is worse than not having one there
- * at all.
- */
-private data class BottomTab(
-    val route: String,
-    val label: String,
-    val icon: ImageVector,
-)
-
-// On-hand used the Warehouse glyph originally - swapped for Inventory2 (still Icons.Filled,
-// same family as Home/Assignment/Settings below) because Warehouse's own silhouette is
-// noticeably heavier/blockier than the other three, reading as a different icon style even
-// though it technically wasn't one.
-private val BOTTOM_TABS = listOf(
-    // Home / Services / Activity / More, and a round Scan button (opens On-hand) - 20 Oct restyle.
-    BottomTab(Routes.HOME, "Home", LineIcons.Home),
-    // Enquiry (30 Oct, was Modules): the look-ups; the tasks are on Home.
-    BottomTab(Routes.SERVICES, "Enquiry", LineIcons.SearchThin),
-    BottomTab(Routes.FAILED_SYNC, "Activity", LineIcons.ActivityThin),
-    BottomTab(Routes.SETTINGS, "Settings", LineIcons.More),
-)
-
 /** Home, when a switched-off module was the only screen on the stack. */
 private fun navigateToTabSafely(navController: NavHostController, route: String) {
     runCatching { navController.navigate(route) { launchSingleTop = true } }
@@ -313,26 +285,6 @@ fun AppNavGraph(
         if (syncStatus.fullyOnline && warehouseId != null) offlineReady.onlineAt(warehouseId)
     }
 
-    // The one correct way to reach a bottom-tab destination, from anywhere - a bare
-    // navController.navigate(route) pushes a second, option-less back-stack entry for a route
-    // the tab bar already manages with popUpTo/saveState. The tab bar's own
-    // popUpTo(startDestination){saveState=true} + restoreState=true then has an entry to unwind
-    // that was never pushed under those same rules, and tapping Home from it can silently go
-    // nowhere - confirmed live once, back when a second entry point (the Home top bar's
-    // failure-count icon, since removed) bypassed this.
-    fun navigateToTab(route: String) {
-        navController.navigate(route) {
-            // Standard bottom-nav wiring: switching tabs never stacks a second copy of one,
-            // backing out of a tab returns to Home rather than walking back through every tab
-            // ever visited, and each tab keeps its own scroll position/state across switches.
-            popUpTo(navController.graph.findStartDestination().id) {
-                saveState = true
-            }
-            launchSingleTop = true
-            restoreState = true
-        }
-    }
-
     // The top bar's feedback button: remember which screen and what it looked like, then open
     // the feedback screen - see FeedbackButton / FeedbackOrigin.
     val feedbackOrigin: com.d365fo.mobileops.presentation.common.FeedbackOriginViewModel = hiltViewModel()
@@ -350,22 +302,10 @@ fun AppNavGraph(
         com.d365fo.mobileops.presentation.common.components.LocalFeedbackLauncher provides launchFeedback,
     ) {
     Box(modifier = Modifier.fillMaxSize()) {
-        Scaffold(
-            bottomBar = {
-                Column {
-                    // Hidden on the workflow screens, not just unhighlighted - see the class doc on
-                    // BottomTab for why a step-flow screen is not a tab destination at all.
-                    if (currentRoute?.hierarchy?.any { it.route in BOTTOM_TABS.map(BottomTab::route) } == true) {
-                        AppBottomBar(
-                            currentRoute = currentRoute.route,
-                            failedCount = syncStatus.failedCount,
-                            onTabSelected = ::navigateToTab,
-                            onScan = { navController.navigate(Routes.ON_HAND) },
-                        )
-                    }
-                }
-            },
-        ) { innerPadding ->
+        // No bottom bar and no scan button (redesign brief sections 6 and 11): Home is the root,
+        // everything else has a back arrow.
+        Scaffold { innerPadding ->
+
             NavHost(
                 navController = navController,
                 startDestination = Routes.HOME,
@@ -378,7 +318,10 @@ fun AppNavGraph(
                         onModuleSelected = { navController.navigate(it) },
                         onSignOut = onSignOut,
                         onChangeWarehouse = { navController.navigate(Routes.CHANGE_WAREHOUSE) },
-                        onOpenTab = ::navigateToTab,
+                        failedCount = syncStatus.failedCount,
+                        online = syncStatus.fullyOnline,
+                        onSettings = { navController.navigate(Routes.SETTINGS) },
+                        onScanOpen = { open -> navController.navigate(open.route) { launchSingleTop = true } },
                     )
                 }
 
@@ -386,6 +329,7 @@ fun AppNavGraph(
                     val homeEntry = remember(it) { runCatching { navController.getBackStackEntry(Routes.HOME) }.getOrNull() }
                     ServicesScreen(
                         onModuleSelected = { route -> navController.navigate(route) },
+                        onBack = { navController.popBackStack() },
                         accessViewModel = if (homeEntry != null) hiltViewModel(homeEntry) else hiltViewModel(),
                     )
                 }
@@ -691,113 +635,6 @@ fun AppNavGraph(
 
 
 
-
-/**
- * Hand-built rather than Material3's `NavigationBar` - that composable's own container only ever
- * takes a *minimum* height (80dp, via `defaultMinSize`), not a settable one, so there is no
- * reliable way to shrink it from outside. [WarehouseDimens.BottomBarHeight] gets this bar down to
- * a real gloved-fingertip touch target and nothing more, giving the screen above it back the
- * space Material3's default spends on padding no warehouse screen here needs.
- *
- * White bar with a soft top shadow, matching the white top bar ([AppTopBar]); the selected tab
- * gets a round accent-filled icon (the reference layout's round Home button, generalised to
- * whichever tab is current) and an accent label, the rest sit in muted grey.
- */
-@Composable
-private fun AppBottomBar(
-    currentRoute: String?,
-    failedCount: Int,
-    onTabSelected: (String) -> Unit,
-    onScan: () -> Unit,
-) {
-  Box(modifier = Modifier.fillMaxWidth()) {
-    Surface(
-        color = Color.White,
-        shadowElevation = 8.dp,
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(WarehouseDimens.BottomBarHeight),
-    ) {
-        Row(modifier = Modifier.fillMaxWidth().fillMaxHeight().padding(end = 76.dp)) {
-            BOTTOM_TABS.forEach { tab ->
-                val selected = currentRoute == tab.route
-                val tint = if (selected) WarehouseStatusColors.accent else WarehouseStatusColors.text3
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center,
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxHeight()
-                        .then(
-                            when (tab.route) {
-                                Routes.FAILED_SYNC -> Modifier.tourTarget("tab_activity")
-                                else -> Modifier
-                            },
-                        )
-                        .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = ripple(),
-                            onClick = { onTabSelected(tab.route) },
-                        ),
-                ) {
-                    // The 20 Oct restyle: no filled circle - the active tab is the navy icon and a
-                    // bolder label, the rest muted.
-                    val iconTint = tint
-                    Box(
-                        contentAlignment = Alignment.Center,
-                        modifier = Modifier.size(30.dp),
-                    ) {
-                        // The one badge worth putting on a tab icon: failed postings are the
-                        // one thing on this bar that means "something needs you", the same
-                        // reason a real Android app puts a badge on a bottom tab rather than
-                        // only in a menu three taps away.
-                        if (tab.route == Routes.FAILED_SYNC && failedCount > 0) {
-                            BadgedBox(badge = { Badge { Text("$failedCount") } }) {
-                                Icon(
-                                    tab.icon,
-                                    contentDescription = tab.label,
-                                    tint = iconTint,
-                                    modifier = Modifier.size(24.dp),
-                                )
-                            }
-                        } else {
-                            Icon(
-                                tab.icon,
-                                contentDescription = tab.label,
-                                tint = iconTint,
-                                modifier = Modifier.size(24.dp),
-                            )
-                        }
-                    }
-                    Text(
-                        text = tab.label,
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = if (selected) androidx.compose.ui.text.font.FontWeight.Bold else androidx.compose.ui.text.font.FontWeight.Medium,
-                        color = tint,
-                    )
-                }
-            }
-        }
-    }
-    // Scan: straight to On-hand - scan any item to see its stock. Round and raised over the bar's
-    // right end, like the mock's floating button.
-    androidx.compose.material3.FloatingActionButton(
-        onClick = onScan,
-        // The logo's red, in a rounded square (21 Oct) - a round teal button was the reference app's.
-        shape = androidx.compose.foundation.shape.RoundedCornerShape(18.dp),
-        containerColor = Color(0xFFB5222D),
-        contentColor = Color.White,
-        modifier = Modifier
-            .align(Alignment.TopEnd)
-            .padding(end = 12.dp)
-            .offset(y = (-14).dp)
-            .size(60.dp)
-            .tourTarget("tab_onhand"),
-    ) {
-        Icon(Icons.Outlined.QrCodeScanner, contentDescription = "Scan an item", modifier = Modifier.size(28.dp))
-    }
-  }
-}
 
 /** How long the connection must stay down before the offline dialog shows. */
 private const val OFFLINE_DIALOG_GRACE_MS = 2_000L

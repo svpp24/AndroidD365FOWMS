@@ -1,55 +1,50 @@
 package com.d365fo.mobileops.presentation.common
 
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.d365fo.mobileops.domain.model.WarehouseWorkflow
-import com.d365fo.mobileops.presentation.common.components.AppTopBar
 import com.d365fo.mobileops.presentation.common.components.LineIcons
-import com.d365fo.mobileops.presentation.common.components.ModuleCard
-import com.d365fo.mobileops.presentation.common.components.ModuleColor
-import com.d365fo.mobileops.presentation.common.theme.WarehouseDimens
-
+import com.d365fo.mobileops.presentation.common.focus.FocusListRow
+import com.d365fo.mobileops.presentation.common.focus.FocusScreen
 /**
- * Home's main menus grouped (user, 9 Nov): purchasing, transfers and counting, one card each. A
- * group with one module the worker may use opens that module straight away; with more it opens
- * [ModuleGroupScreen], the group's modules as cards.
+ * Home's rows that open a menu (redesign brief sections 6 and 9): Receive (purchase orders,
+ * transfers), Ship, Count and Create (purchase order, transfer order, return to vendor). A row
+ * with one module the worker may use opens it straight away; with more, [ModuleGroupScreen].
  */
 internal enum class ModuleGroup(
     val title: String,
     val icon: ImageVector,
-    val color: ModuleColor,
-    val workflows: List<WarehouseWorkflow>,
+    /** Each module and what the menu calls it. */
+    val entries: List<Pair<WarehouseWorkflow, String>>,
 ) {
-    PURCHASE(
-        "Purchase", LineIcons.Receive, ModuleColor.Purple,
-        listOf(WarehouseWorkflow.PO_RECEIVING, WarehouseWorkflow.PO_CREATE, WarehouseWorkflow.PURCHASE_RETURN),
+    RECEIVE(
+        "Receive", LineIcons.Receive,
+        listOf(WarehouseWorkflow.PO_RECEIVING to "Purchase orders", WarehouseWorkflow.TRANSFER_RECEIVE to "Transfers"),
     ),
-    TRANSFERS(
-        "Transfers", LineIcons.Swap, ModuleColor.Sienna,
-        listOf(WarehouseWorkflow.TRANSFER_SHIP, WarehouseWorkflow.TRANSFER_RECEIVE, WarehouseWorkflow.TO_CREATE),
+    SHIP("Ship", LineIcons.Ship, listOf(WarehouseWorkflow.TRANSFER_SHIP to "Transfers")),
+    COUNT("Count", LineIcons.Count, listOf(WarehouseWorkflow.INVENTORY_COUNT to "Count")),
+    CREATE(
+        "Create", LineIcons.Create,
+        listOf(
+            WarehouseWorkflow.PO_CREATE to "Purchase order",
+            WarehouseWorkflow.TO_CREATE to "Transfer order",
+            WarehouseWorkflow.PURCHASE_RETURN to "Return to vendor",
+        ),
     ),
-    COUNT("Inventory count", LineIcons.Count, ModuleColor.Green, listOf(WarehouseWorkflow.INVENTORY_COUNT)),
     ;
 
     /** This group's modules among [visible], in the group's own order. */
     fun modules(visible: List<ModuleTile>): List<ModuleTile> =
-        workflows.mapNotNull { w -> visible.firstOrNull { it.workflow == w } }
+        entries.mapNotNull { (w, _) -> visible.firstOrNull { it.workflow == w } }
+
+    fun label(module: ModuleTile): String = entries.firstOrNull { it.first == module.workflow }?.second ?: module.title
 
     companion object {
         const val ROUTE_PREFIX = "group/"
@@ -57,61 +52,36 @@ internal enum class ModuleGroup(
     }
 }
 
-/** Today's counts per module ("3 due today", "10 to ship") - shared by Home and the group screen. */
-internal fun todaysCounts(figures: HomeDashboardViewModel.Figures): Map<WarehouseWorkflow, String> = buildMap {
-    figures.posDueToday?.let { put(WarehouseWorkflow.PO_RECEIVING, "$it due today") }
-    figures.transfersToShip?.let { put(WarehouseWorkflow.TRANSFER_SHIP, "$it to ship") }
-    figures.countsInProgress?.let { put(WarehouseWorkflow.INVENTORY_COUNT, "$it open") }
-}
-
-/** One group on Home: its card, with its modules' counts as tags (or their names). */
-@Composable
-internal fun ModuleGroupCard(
-    group: ModuleGroup,
-    modules: List<ModuleTile>,
-    counts: Map<WarehouseWorkflow, String>,
-    onOpen: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    ModuleCard(
-        icon = group.icon,
-        color = group.color,
-        title = if (modules.size == 1 && group != ModuleGroup.COUNT) modules[0].title else group.title,
-        tags = emptyList(),
-        onClick = onOpen,
-        modifier = modifier,
-    )
-}
-
-/** A group's modules as cards - opened from its card on Home. */
+/** A group's menu: one row per module, with its count where Home has one. */
 @Composable
 fun ModuleGroupScreen(
     groupId: String,
     onBack: () -> Unit,
     onModuleSelected: (String) -> Unit,
     accessViewModel: HomeAccessViewModel = hiltViewModel(),
+    dashboardViewModel: HomeDashboardViewModel = hiltViewModel(),
 ) {
-    val group = ModuleGroup.entries.firstOrNull { it.name == groupId } ?: ModuleGroup.PURCHASE
+    val group = ModuleGroup.entries.firstOrNull { it.name == groupId } ?: ModuleGroup.RECEIVE
     val blocked by accessViewModel.blockedWorkflows.collectAsStateWithLifecycle()
     val menu by accessViewModel.menu.collectAsStateWithLifecycle()
+    val figures by dashboardViewModel.figures.collectAsStateWithLifecycle()
     val modules = group.modules(visibleModules(menu, blocked))
-    Scaffold(
-        topBar = {
-            AppTopBar(
-                title = { Text(group.title) },
-                expandedHeight = WarehouseDimens.TopBarHeight,
-                navigationIcon = {
-                    IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back") }
-                },
-            )
-        },
-    ) { padding ->
-        LazyColumn(
-            modifier = Modifier.fillMaxSize().padding(padding),
-            contentPadding = PaddingValues(horizontal = WarehouseDimens.ScreenPadding, vertical = 12.dp),
-        ) {
-            item {
-                ModuleListCard(modules) { module -> module.route?.let(onModuleSelected) }
+    FocusScreen(title = group.title, onBack = onBack) {
+        Column(Modifier.verticalScroll(rememberScrollState())) {
+            modules.forEach { module ->
+                val count = when (module.workflow) {
+                    WarehouseWorkflow.PO_RECEIVING -> figures.posDueToday
+                    WarehouseWorkflow.TRANSFER_RECEIVE -> figures.transfersToReceive
+                    WarehouseWorkflow.TRANSFER_SHIP -> figures.transfersToShip
+                    else -> null
+                }
+                FocusListRow(
+                    title = group.label(module),
+                    icon = module.icon,
+                    count = count?.toString(),
+                    chevron = true,
+                    onClick = { module.route?.let(onModuleSelected) },
+                )
             }
         }
     }

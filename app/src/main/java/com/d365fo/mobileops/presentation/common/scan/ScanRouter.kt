@@ -78,12 +78,24 @@ class ScanRouter @Inject constructor(
         return handle
     }
 
+    /** A scan being handed on to a screen that isn't on the router - not routed a second time. */
+    @Volatile private var passThrough: RawScan? = null
+
+    /** The next time [raw] (this very object) comes through, leave it to the screen's own collector. */
+    fun passThrough(raw: RawScan) {
+        passThrough = raw
+    }
+
     /** Queue a scan from a source that doesn't go through [HidScannerBridge]. Never blocks. */
     fun submit(raw: RawScan) {
         queue.trySend(raw)
     }
 
     private suspend fun process(raw: RawScan) {
+        if (raw === passThrough) {
+            passThrough = null
+            return
+        }
         val target = attached.value ?: awaitHandOver(raw) ?: run {
             Timber.d("scan left to an unrouted screen: %d chars", raw.value.length)
             return

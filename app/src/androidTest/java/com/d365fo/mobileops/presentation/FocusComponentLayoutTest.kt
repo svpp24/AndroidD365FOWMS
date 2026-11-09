@@ -63,6 +63,8 @@ class FocusComponentLayoutTest {
         Triple("Scanned", true) { FocusScannedSample() },
         Triple("QuantityPad", true) { FocusQuantityPadSample() },
         Triple("EndCount", true) { FocusEndCountSample() },
+        Triple("Home", true) { com.d365fo.mobileops.presentation.common.FocusHomeSample() },
+        Triple("HomeBand", true) { com.d365fo.mobileops.presentation.common.FocusHomeSample(band = true) },
     )
 
     @Test

@@ -39,6 +39,8 @@ class HomeDashboardViewModel @Inject constructor(
         val countsInProgress: Int? = null,
         val posDueToday: Int? = null,
         val transfersToShip: Int? = null,
+        /** Open transfers coming in to this warehouse - part of Home's Receive count. */
+        val transfersToReceive: Int? = null,
     )
 
     private val _figures = MutableStateFlow(Figures())
@@ -71,8 +73,8 @@ class HomeDashboardViewModel @Inject constructor(
             if (due != null) _figures.update { it.copy(posDueToday = due) }
         }
         viewModelScope.launch {
-            val toShip = (transfers.openTransferOrders(wh) as? NetworkResult.Success)?.data?.count { it.outbound }
-            if (toShip != null) _figures.update { it.copy(transfersToShip = toShip) }
+            val open = (transfers.openTransferOrders(wh) as? NetworkResult.Success)?.data
+            if (open != null) _figures.update { it.copy(transfersToShip = open.count { t -> t.outbound }, transfersToReceive = open.count { t -> !t.outbound }) }
         }
     }
 }

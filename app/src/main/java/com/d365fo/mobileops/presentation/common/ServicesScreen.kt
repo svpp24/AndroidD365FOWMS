@@ -21,6 +21,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -85,40 +86,51 @@ internal fun modulesIn(area: ModuleArea, modules: List<ModuleTile>): List<Module
     modules.filter { areaOf(it.workflow) == area }
 
 /**
- * The Enquiry tab (30 Oct, was "Modules"): the look-ups - locations, POs, transfers, serials.
- * The tasks themselves are on Home.
+ * Enquiry (redesign brief section 9): the look-ups as rows - Location inquiry, Today's POs and
+ * Transfer orders with their counts, PO lines, Picked serials. Scanning works here too: the
+ * look-up screens take the scan.
  */
 @Composable
 fun ServicesScreen(
     onModuleSelected: (String) -> Unit,
+    onBack: () -> Unit = {},
     accessViewModel: HomeAccessViewModel = hiltViewModel(),
+    dashboardViewModel: HomeDashboardViewModel = hiltViewModel(),
 ) {
     val blocked by accessViewModel.blockedWorkflows.collectAsStateWithLifecycle()
     val menu by accessViewModel.menu.collectAsStateWithLifecycle()
+    val figures by dashboardViewModel.figures.collectAsStateWithLifecycle()
     LaunchedEffect(Unit) { accessViewModel.refresh() }
 
     val enquiries = remember(menu, blocked) { modulesIn(ModuleArea.ENQUIRY, visibleModules(menu, blocked)) }
 
-    Scaffold(
-        // A tab's own name in the bar (Harbour) - the greeting is Home's.
-        topBar = { AppTopBar(title = { Text("Enquiry") }, expandedHeight = WarehouseDimens.TopBarHeight) },
-    ) { padding ->
-        LazyColumn(
-            modifier = Modifier.fillMaxSize().padding(padding),
-            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 14.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            item(key = "list") {
-                if (enquiries.isEmpty()) {
-                    Text("No enquiries on your menu", style = MaterialTheme.typography.bodyMedium, color = WarehouseStatusColors.text3)
-                } else {
-                    ModuleListCard(enquiries, onOpen = { it.route?.let(onModuleSelected) })
+    com.d365fo.mobileops.presentation.common.focus.FocusScreen(title = "Enquiry", onBack = onBack) {
+        Column(Modifier.verticalScroll(androidx.compose.foundation.rememberScrollState())) {
+            if (enquiries.isEmpty()) {
+                Text(
+                    "No enquiries on your menu",
+                    style = com.d365fo.mobileops.presentation.common.theme.FocusType.rowDetail,
+                    color = com.d365fo.mobileops.presentation.common.theme.FocusColors.muted,
+                    modifier = Modifier.padding(20.dp),
+                )
+            }
+            enquiries.forEach { module ->
+                val count = when (module.workflow) {
+                    WarehouseWorkflow.PO_OF_TODAY -> figures.posDueToday
+                    WarehouseWorkflow.TRANSFER_ORDERS -> figures.transfersToShip?.let { s -> figures.transfersToReceive?.let { r -> s + r } }
+                    else -> null
                 }
+                com.d365fo.mobileops.presentation.common.focus.FocusListRow(
+                    title = if (module.workflow == WarehouseWorkflow.PO_OF_TODAY) "Today's POs" else module.title,
+                    icon = module.icon,
+                    count = count?.toString(),
+                    chevron = true,
+                    onClick = { module.route?.let(onModuleSelected) },
+                )
             }
         }
     }
 }
-
 /**
  * A white card of modules, one row each: badge, title, one line, and a chevron - or today's count
  * for the module ([counts], e.g. "9 to ship") as a tonal marker.

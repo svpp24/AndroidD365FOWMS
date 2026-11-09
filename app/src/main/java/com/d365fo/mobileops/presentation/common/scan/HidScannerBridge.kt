@@ -102,6 +102,17 @@ class HidScannerBridge @Inject constructor() {
         publish(RawScan(value = value, source = ScanSource.CAMERA))
     }
 
+    /** How many collectors are listening - a screen that just opened shows up here once it collects. */
+    val listeners: kotlinx.coroutines.flow.StateFlow<Int> get() = _scans.subscriptionCount
+
+    /**
+     * Publishes [scan] again, unchanged - Home hands the scan that opened a process to that
+     * process's screen once it is listening (redesign brief section 6, scanning on Home).
+     */
+    fun forward(scan: RawScan) {
+        publish(scan)
+    }
+
     /** A code typed in the scan pill: Enter is treated exactly like a scan (redesign brief section 4). */
     fun submitTypedScan(value: String) {
         if (value.isBlank()) return

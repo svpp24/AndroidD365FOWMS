@@ -103,7 +103,7 @@ internal fun FocusRowSamples() {
         FocusListRow("BSR-11397-0", state = RowState.Open, subtitle = "Panadol Extra 24s", count = "0/5", titleIsCode = true)
         FocusListRow("BSR-11397-0", state = RowState.Warn, subtitle = "No stock", count = "0/1", titleIsCode = true)
         FocusListRow("BSP-TO-000000043", icon = Icons.Filled.LocalShipping, subtitle = "AAC → ABB · 2 lines", count = "Ship", titleIsCode = true, chevron = true, onClick = {})
-        Box(Modifier.padding(FocusDimens.side)) { HomeOnHandPanel(onPillTap = {}, icon = Icons.Filled.Inventory2) }
+        Box(Modifier.padding(FocusDimens.side)) { HomeOnHandPanel(icon = Icons.Filled.Inventory2) }
         HomeRow(icon = Icons.Filled.LocalShipping, title = "Receive", count = "4", onClick = {})
         HomeRow(icon = Icons.Filled.Settings, title = "Activity", count = "1", countColor = FocusColors.badIcon, onClick = {})
         HomeRow(icon = Icons.Filled.Search, title = "Enquiry", iconColor = FocusColors.muted, onClick = {})

@@ -303,7 +303,7 @@ fun FocusMenu(open: Boolean, onDismiss: () -> Unit, items: List<FocusMenuItem>) 
  * the white scan pill "Scan or type item".
  */
 @Composable
-fun HomeOnHandPanel(onPillTap: () -> Unit, modifier: Modifier = Modifier, icon: ImageVector) {
+fun HomeOnHandPanel(modifier: Modifier = Modifier, icon: ImageVector, onSubmit: ((String) -> Unit)? = null) {
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -318,7 +318,8 @@ fun HomeOnHandPanel(onPillTap: () -> Unit, modifier: Modifier = Modifier, icon: 
                 Text("How many, and where?", style = FocusType.panelSubtitle, color = FocusColors.navyText)
             }
         }
-        ScanPill(onTap = onPillTap, label = "Scan or type item", onPanel = true, modifier = Modifier.padding(top = 16.dp))
+        // Typing an item here is a scan: Home routes it to On-hand like a trigger scan.
+        ScanPillField(label = "Scan or type item", onPanel = true, onSubmit = onSubmit, modifier = Modifier.padding(top = 16.dp))
     }
 }
 

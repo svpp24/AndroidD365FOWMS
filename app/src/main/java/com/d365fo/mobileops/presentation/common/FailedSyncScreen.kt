@@ -276,10 +276,15 @@ fun FailedSyncScreen(
 
     Scaffold(
         topBar = {
-            // A bottom tab: its own name in the bar, no back arrow (Harbour, 9 Nov).
+            // Reached from Home's Activity row (Focus design): back arrow to Home.
             TopAppBar(
                 title = { Text("Activity") },
                 expandedHeight = WarehouseDimens.TopBarHeight,
+                navigationIcon = {
+                    androidx.compose.material3.IconButton(onClick = onBack) {
+                        androidx.compose.material3.Icon(androidx.compose.material.icons.Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                },
             )
         },
     ) { padding ->

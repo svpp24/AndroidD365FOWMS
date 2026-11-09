@@ -52,6 +52,20 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material3.Icon
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.ui.draw.clip
+import com.d365fo.mobileops.presentation.common.focus.BandKind
+import com.d365fo.mobileops.presentation.common.focus.BandState
+import com.d365fo.mobileops.presentation.common.focus.FocusButton
+import com.d365fo.mobileops.presentation.common.focus.FocusDimens
+import com.d365fo.mobileops.presentation.common.focus.FocusMenu
+import com.d365fo.mobileops.presentation.common.focus.FocusMenuItem
+import com.d365fo.mobileops.presentation.common.focus.HamburgerButton
+import com.d365fo.mobileops.presentation.common.focus.ResultBand
+import com.d365fo.mobileops.presentation.common.theme.FocusColors
+import com.d365fo.mobileops.presentation.common.theme.FocusShapes
+import com.d365fo.mobileops.presentation.common.theme.FocusType
 
 /**
  * Worker sign-in.
@@ -105,169 +119,177 @@ fun WorkerLoginScreen(
         }
     }
 
-    // Scrollable, not just centered - when the keyboard opens (an explicit tap on a field;
-    // see the hide() above for why it is not open by default) it shrinks the space this
-    // Column has to work with. Centered-but-fixed content that no longer fits its viewport
-    // overflows equally off both ends rather than scrolling, which clipped the title off the
-    // top and the "Connection settings" button down to a sliver of its own border - caught
-    // live on device. verticalScroll is what SettingsScreen already does for the same reason.
-    Column(
+    // Focus design (brief section 6): a hamburger with Connection settings; the logo, name and
+    // "Version x · Online" centred; the two 60dp fields and the orange Sign in at the bottom.
+    // Scrollable, so the keyboard opening never clips the logo or the button.
+    var menuOpen by remember { mutableStateOf(false) }
+    var showOffline by remember { mutableStateOf(false) }
+    // Only once "offline" has lasted a few seconds: the network and D365FO checks at start
+    // and on resume can report a blip, which flashed this notice for a second (feedback).
+    LaunchedEffect(offline) {
+        if (offline) {
+            kotlinx.coroutines.delay(3_000)
+            showOffline = true
+        } else {
+            showOffline = false
+        }
+    }
+    androidx.compose.foundation.layout.BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(24.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterVertically),
-        horizontalAlignment = Alignment.CenterHorizontally,
+            .background(FocusColors.page)
+            .imePadding(),
     ) {
-        // At the top, not tucked between the button and "Connection settings" - a worker
-        // scanning down the screen after a failed attempt should see why before they see
-        // anything else, not after scrolling past fields they already filled in correctly.
-        state.error?.let { message ->
-            ErrorBanner(message = message)
-        }
-        if (state.error == null) {
-            signOutNotice?.let { message -> ErrorBanner(message = message) }
-        }
-
-        // Same artwork as the launcher icon, but its own drawable (res/drawable-nodpi/ic_app_logo.png)
-        // rather than reusing ic_launcher_foreground directly - this one is laid out at full
-        // rectangular size on a plain background, not recentred/cropped into an adaptive icon's
-        // safe zone. Sits after the error card, not before it - the error staying the first thing
-        // a worker sees on a failed attempt is the whole reason it's placed above everything else,
-        // see this screen's own class doc.
-        Image(
-            painter = painterResource(id = R.drawable.ic_app_logo),
-            contentDescription = null,
-            modifier = Modifier.heightIn(max = 104.dp),
-        )
-
-        // Ownership/trademark notice, right under the mark it names - the one screen every
-        // worker sees on every device, signed in or not, so it doesn't depend on anyone
-        // finding it under Settings.
-        Text(
-            text = stringResource(R.string.copyright_notice),
-            style = MaterialTheme.typography.labelSmall,
-            color = WarehouseStatusColors.text3,
-        )
-        Text(
-            text = com.d365fo.mobileops.util.AppVersion.short,
-            style = MaterialTheme.typography.labelSmall,
-            color = WarehouseStatusColors.text3,
-        )
-
-        Text(
-            text = "Mobile Operations",
-            style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.ExtraBold,
-        )
-
-        // Only once "offline" has lasted a few seconds: the network and D365FO checks at start
-        // and on resume can report a blip, which flashed this notice for a second (feedback).
-        var showOffline by remember { mutableStateOf(false) }
-        LaunchedEffect(offline) {
-            if (offline) {
-                kotlinx.coroutines.delay(3_000)
-                showOffline = true
-            } else {
-                showOffline = false
-            }
-        }
-        if (showOffline) OfflineSignInNotice()
-
-        // The two fields in one white card (Harbour).
         Column(
-            verticalArrangement = Arrangement.spacedBy(10.dp),
             modifier = Modifier
                 .fillMaxWidth()
-                .background(androidx.compose.ui.graphics.Color.White, RoundedCornerShape(12.dp))
-                .padding(12.dp),
+                .verticalScroll(rememberScrollState())
+                .heightIn(min = maxHeight),
+            horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-        OutlinedTextField(
-            value = state.userName,
-            onValueChange = viewModel::onUserNameChange,
-            label = { Text("User name") },
-            singleLine = true,
-            enabled = !state.busy,
-            readOnly = !typing,
-            interactionSource = userNameInteraction,
-            keyboardOptions = KeyboardOptions(
-                autoCorrectEnabled = false,
-                imeAction = ImeAction.Next,
-            ),
-            keyboardActions = KeyboardActions(
-                onNext = { runCatching { passwordFocus.requestFocus() } },
-            ),
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(min = 64.dp)
-                .focusRequester(userNameFocus),
-        )
-
-        OutlinedTextField(
-            value = state.password,
-            // A PIN is digits only (HSMobileOpsPassword::policyFailure), typed on the number pad.
-            onValueChange = { value -> viewModel.onPasswordChange(value.filter { it.isDigit() }) },
-            label = { Text("PIN") },
-            singleLine = true,
-            enabled = !state.busy,
-            visualTransformation = PasswordVisualTransformation(),
-            keyboardOptions = KeyboardOptions(
-                keyboardType = KeyboardType.NumberPassword,
-                autoCorrectEnabled = false,
-                imeAction = ImeAction.Done,
-            ),
-            keyboardActions = KeyboardActions(onDone = { viewModel.signIn() }),
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(min = 64.dp)
-                .focusRequester(passwordFocus),
-        )
-        }
-
-        // Settings beside Sign in, as the flow screens' docks (Harbour).
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-            com.d365fo.mobileops.presentation.common.components.DockOutlinedButton(
-                onClick = onOpenSettings,
-                icon = androidx.compose.material.icons.Icons.Filled.Settings,
-                text = "Settings",
-                modifier = Modifier.weight(0.4f),
-            )
-            com.d365fo.mobileops.presentation.common.components.GradientButton(
-                onClick = viewModel::signIn,
-                enabled = !state.busy && state.userName.isNotBlank() && state.password.isNotBlank(),
-                modifier = Modifier.weight(0.6f),
+            Row(
+                horizontalArrangement = Arrangement.End,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 4.dp, end = 8.dp),
             ) {
-                if (state.busy) {
-                    CircularProgressIndicator(modifier = Modifier.heightIn(max = 24.dp), color = androidx.compose.ui.graphics.Color.White)
-                } else {
-                    Text("Sign in")
-                    androidx.compose.material3.Icon(androidx.compose.material.icons.Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null)
-                }
+                HamburgerButton(open = menuOpen, onClick = { menuOpen = !menuOpen })
+            }
+            FocusMenu(
+                open = menuOpen,
+                onDismiss = { menuOpen = false },
+                items = listOf(FocusMenuItem(Icons.Filled.Settings, "Connection settings") { menuOpen = false; onOpenSettings() }),
+            )
+
+            // Why the last attempt failed comes first, before anything else on the screen.
+            val problem = state.error ?: signOutNotice
+            problem?.let { ResultBand(BandState(BandKind.Bad, it), modifier = Modifier.padding(bottom = 8.dp)) }
+            if (showOffline) {
+                ResultBand(
+                    BandState(BandKind.Warn, "Offline", "Signed in here in the last ${OfflineSignIn.VALID_DAYS} days? You can still sign in."),
+                    modifier = Modifier.padding(bottom = 8.dp),
+                )
+            }
+
+            androidx.compose.foundation.layout.Spacer(Modifier.weight(1f))
+            // The launcher artwork laid out at full size (res/drawable-nodpi/ic_app_logo.png).
+            Image(
+                painter = painterResource(id = R.drawable.ic_app_logo),
+                contentDescription = null,
+                modifier = Modifier
+                    .padding(horizontal = 24.dp)
+                    .width(120.dp),
+            )
+            Text(
+                text = "Mobile Operations",
+                style = FocusType.panelTitle,
+                color = FocusColors.ink,
+                modifier = Modifier.padding(top = 12.dp),
+            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                modifier = Modifier.padding(top = 4.dp),
+            ) {
+                Text(com.d365fo.mobileops.util.AppVersion.short + " ·", style = FocusType.rowDetail, color = FocusColors.muted)
+                androidx.compose.foundation.layout.Box(
+                    Modifier
+                        .size(10.dp)
+                        .clip(androidx.compose.foundation.shape.CircleShape)
+                        .background(if (offline) FocusColors.caption else FocusColors.okIcon),
+                )
+                Text(
+                    if (offline) "Offline" else "Online",
+                    style = FocusType.rowDetail,
+                    color = if (offline) FocusColors.muted else FocusColors.okText,
+                )
+            }
+            // Ownership/trademark notice, on the one screen every worker sees.
+            Text(
+                text = stringResource(R.string.copyright_notice),
+                style = FocusType.holdHint,
+                color = FocusColors.caption,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                modifier = Modifier.padding(top = 4.dp, start = 24.dp, end = 24.dp),
+            )
+            androidx.compose.foundation.layout.Spacer(Modifier.weight(1f))
+
+            Column(
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = FocusDimens.side)
+                    .padding(top = 24.dp, bottom = 20.dp),
+            ) {
+                OutlinedTextField(
+                    value = state.userName,
+                    onValueChange = viewModel::onUserNameChange,
+                    label = { Text("User") },
+                    singleLine = true,
+                    enabled = !state.busy,
+                    readOnly = !typing,
+                    interactionSource = userNameInteraction,
+                    shape = FocusShapes.button,
+                    colors = focusFieldColors(),
+                    textStyle = FocusType.fieldValue,
+                    keyboardOptions = KeyboardOptions(
+                        autoCorrectEnabled = false,
+                        imeAction = ImeAction.Next,
+                    ),
+                    keyboardActions = KeyboardActions(
+                        onNext = { runCatching { passwordFocus.requestFocus() } },
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 60.dp)
+                        .focusRequester(userNameFocus),
+                )
+                OutlinedTextField(
+                    value = state.password,
+                    // A PIN is digits only (HSMobileOpsPassword::policyFailure), typed on the number pad.
+                    onValueChange = { value -> viewModel.onPasswordChange(value.filter { it.isDigit() }) },
+                    label = { Text("PIN") },
+                    singleLine = true,
+                    enabled = !state.busy,
+                    visualTransformation = PasswordVisualTransformation(),
+                    shape = FocusShapes.button,
+                    colors = focusFieldColors(),
+                    textStyle = FocusType.fieldValue,
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.NumberPassword,
+                        autoCorrectEnabled = false,
+                        imeAction = ImeAction.Done,
+                    ),
+                    keyboardActions = KeyboardActions(onDone = { viewModel.signIn() }),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 60.dp)
+                        .focusRequester(passwordFocus),
+                )
+                FocusButton(
+                    text = if (state.busy) "Signing in" else "Sign in",
+                    onClick = viewModel::signIn,
+                    primary = true,
+                    enabled = !state.busy && state.userName.isNotBlank() && state.password.isNotBlank(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 4.dp),
+                )
             }
         }
     }
 }
 
-/** What still works while D365FO can't be reached, so a worker isn't left guessing. */
+/** The Focus field: white, a divider-grey border, orange when typing in it. */
 @Composable
-private fun OfflineSignInNotice() {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(WarehouseStatusColors.amberDim, RoundedCornerShape(WarehouseDimens.CardCorner))
-            .padding(horizontal = 16.dp, vertical = 12.dp),
-    ) {
-        Icon(
-            Icons.Default.CloudOff,
-            contentDescription = null,
-            tint = WarehouseStatusColors.amber,
-            modifier = Modifier.size(24.dp),
-        )
-        Text(
-            text = "Offline. Signed in here in the last ${OfflineSignIn.VALID_DAYS} days? You can still sign in.",
-            style = MaterialTheme.typography.bodyMedium,
-        )
-    }
-}
+private fun focusFieldColors() = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
+    focusedContainerColor = FocusColors.surface,
+    unfocusedContainerColor = FocusColors.surface,
+    disabledContainerColor = FocusColors.surface,
+    focusedBorderColor = FocusColors.action,
+    unfocusedBorderColor = FocusColors.iconMuted,
+    focusedLabelColor = FocusColors.action,
+    unfocusedLabelColor = FocusColors.caption,
+    focusedTextColor = FocusColors.ink,
+    unfocusedTextColor = FocusColors.ink,
+)

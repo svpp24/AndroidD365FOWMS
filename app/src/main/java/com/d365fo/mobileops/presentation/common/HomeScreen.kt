@@ -262,8 +262,13 @@ fun HomeScreen(
     onSignOut: (() -> Unit)? = null,
     /** Opens the Change warehouse screen - from the warehouse line under the title. */
     onChangeWarehouse: () -> Unit = {},
-    /** Opens a bottom tab (Services from More, Activity from its widget). */
-    onOpenTab: (String) -> Unit = onModuleSelected,
+    /** Failed sends - Activity's red count, hidden when 0. */
+    failedCount: Int = 0,
+    online: Boolean = true,
+    onSettings: () -> Unit = {},
+    /** A scan on Home opened a process: navigate there and hand it the scan. */
+    onScanOpen: (HomeScanViewModel.Open) -> Unit = { onModuleSelected(it.route) },
+    dashboardViewModel: HomeDashboardViewModel = hiltViewModel(),
     unfinishedViewModel: UnfinishedWorkViewModel = hiltViewModel(),
     accessViewModel: HomeAccessViewModel = hiltViewModel(),
 ) {
@@ -273,8 +278,10 @@ fun HomeScreen(
     val blockedWorkflows by accessViewModel.blockedWorkflows.collectAsStateWithLifecycle()
     val handheldMenu by accessViewModel.menu.collectAsStateWithLifecycle()
     // Each time Home shows: pick up Menu access changed in D365FO since the last look.
+    val figures by dashboardViewModel.figures.collectAsStateWithLifecycle()
     androidx.compose.runtime.LaunchedEffect(Unit) {
         accessViewModel.refresh()
+        dashboardViewModel.refresh()
     }
     val usage = rememberModuleUsage(warehouseId)
     infoFor?.let { module ->
@@ -306,85 +313,19 @@ fun HomeScreen(
         )
     }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                // The warehouse code on the right of the bar, at a glance; its full name is the
-                // first card under the bar (WarehouseHeader), where it has room to wrap.
-                // "Hello <name>" and the warehouse code (tap: change warehouse) - 20 Oct restyle.
-                title = { Box(modifier = Modifier.tourTarget("warehouse")) { HomeGreeting(onWarehouse = onChangeWarehouse) } },
-                // On the far right of the bar, not beside the title - still visible at a glance
-                // on the screen an operator actually looks at, not buried in Settings, but out
-                // of the title's way rather than crowding it on the left. See
-                // WorkerSessionRepository for where it comes from.
-                // Sign out in the ⋮ menu with Send feedback (feedback, 14 Oct) - still confirmed.
-                onSignOut = onSignOut?.let { { confirmSignOut = true } },
-                expandedHeight = WarehouseDimens.TopBarHeight,
-            )
-        },
-    ) { padding ->
-        val side = Modifier.padding(horizontal = WarehouseDimens.ScreenPadding)
-        // No counts on the menus (user, 9 Nov) - and no D365FO calls to fetch them when Home shows.
-        val counts = emptyMap<com.d365fo.mobileops.domain.model.WarehouseWorkflow, String>()
-        // Opens at the top: something scrolled it down on sign-in (seen 20 Oct, twice) - held at
-        // the top until the worker scrolls it themself.
-        val listState = androidx.compose.foundation.lazy.rememberLazyListState()
-        var touched by remember { mutableStateOf(false) }
-        androidx.compose.runtime.LaunchedEffect(listState.isScrollInProgress) { if (listState.isScrollInProgress) touched = true }
-        androidx.compose.runtime.LaunchedEffect(unfinished.size) { if (!touched) listState.scrollToItem(0) }
-        LazyColumn(
-            state = listState,
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding),
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 20.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            item(key = "hero", contentType = "hero") {
-                HomeHero(
-                    onSearch = { onModuleSelected(Routes.SEARCH) },
-                )
-            }
-            // Work saved in D365FO from another device or an earlier install of this app.
-            item(key = "restore", contentType = "restore") {
-                RestoreWorkCard(modifier = side)
-            }
-
-            // "Continue where you left off" moved to the Activity tab (9 Nov).
-
-            // The tasks by area, with today's counts; look-ups on the Enquiry tab (30 Oct).
-            val visible = visibleModules(handheldMenu, blockedWorkflows)
-            // Store layout (Harbour, 9 Nov): one card per module, inbound then outbound then
-            // counting, no area headings.
-            // Grouped (user, 9 Nov): Purchase, Transfers, Inventory count - a group of one opens
-            // its module straight away.
-            val groups = ModuleGroup.entries.map { it to it.modules(visible) }.filter { it.second.isNotEmpty() }
-            if (groups.isNotEmpty()) {
-                item(key = "modules") {
-                    Column(
-                        modifier = side.tourTarget("tiles"),
-                        verticalArrangement = Arrangement.spacedBy(9.dp),
-                    ) {
-                        groups.forEach { (group, modules) ->
-                            ModuleGroupCard(group, modules, counts, onOpen = {
-                                if (!unfinishedViewModel.justScanned()) {
-                                    if (modules.size == 1) {
-                                        modules[0].route?.let { route ->
-                                            usage.record(modules[0].title)
-                                            onModuleSelected(route)
-                                        }
-                                    } else {
-                                        onModuleSelected(ModuleGroup.route(group))
-                                    }
-                                }
-                            })
-                        }
-                    }
-                }
-            }
-            // Tips and Tell us removed (9 Nov).
-        }
-    }
+    FocusHome(
+        warehouseId = warehouseId,
+        failedCount = failedCount,
+        online = online,
+        modules = visibleModules(handheldMenu, blockedWorkflows),
+        figures = figures,
+        onOpen = { route -> if (!unfinishedViewModel.justScanned()) onModuleSelected(route) },
+        onRecord = usage::record,
+        onSettings = onSettings,
+        onSignOut = onSignOut?.let { { confirmSignOut = true } },
+        onChangeWarehouse = onChangeWarehouse,
+        onScanOpen = onScanOpen,
+    )
 }
 
 /**

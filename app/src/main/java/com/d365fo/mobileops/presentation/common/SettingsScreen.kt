@@ -149,7 +149,8 @@ fun SettingsScreen(
     var openSection by remember { mutableStateOf<SettingsMenuItem?>(null) }
     var confirmSignOut by remember { mutableStateOf(false) }
     // Signed in, the top level is the More tab (20 Oct restyle): the greeting bar, no back arrow.
-    val isTab = onSignOut != null && openSection == null
+    // Reached from Home's menu (Focus design), never a tab: always a back arrow.
+    val isTab = false
 
     if (confirmSignOut) {
         AlertDialog(

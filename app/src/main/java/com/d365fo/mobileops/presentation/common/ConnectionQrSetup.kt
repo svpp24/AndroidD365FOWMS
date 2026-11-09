@@ -174,9 +174,12 @@ fun ConnectionQrSetup(
     }
 
     Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        ConfirmButton(onClick = viewModel::startScan, modifier = Modifier.fillMaxWidth()) {
-            Text(if (state is ConnectionQrState.Applying) "Setting up…" else "Scan connection QR")
-        }
+        com.d365fo.mobileops.presentation.common.focus.FocusButton(
+            text = if (state is ConnectionQrState.Applying) "Setting up…" else "Scan connection QR",
+            onClick = viewModel::startScan,
+            primary = true,
+            modifier = Modifier.fillMaxWidth(),
+        )
         when (val s = state) {
             is ConnectionQrState.Done -> com.d365fo.mobileops.presentation.common.components.SuccessBanner(s.message, viewModel::dismiss)
             is ConnectionQrState.Failed -> com.d365fo.mobileops.presentation.common.components.ErrorBanner(s.message, onDismiss = viewModel::dismiss)

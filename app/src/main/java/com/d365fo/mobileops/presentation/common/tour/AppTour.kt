@@ -78,8 +78,8 @@ val NavigationTour = listOf(
     ),
     TourStep(
         target = "tiles",
-        title = "Today",
-        text = "Your work at a glance - tap one to open it."
+        title = "Your work",
+        text = "Receive, ship, count, create - with what is open today."
     ),
     TourStep(
         target = "connection",
@@ -89,17 +89,17 @@ val NavigationTour = listOf(
     TourStep(
         target = "tab_activity",
         title = "Activity",
-        text = "What's waiting or refused.",
+        text = "Sends that need you show here in red.",
     ),
     TourStep(
         target = "tab_onhand",
-        title = "Scan",
-        text = "Scan an item to see its stock.",
+        title = "On-hand",
+        text = "How many, and where - for any item.",
     ),
     TourStep(
         target = "signout",
         title = "End of shift",
-        text = "Sign out and Send feedback are here.",
+        text = "Settings and Sign out are in this menu.",
     ),
 )
 

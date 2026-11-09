@@ -14,6 +14,24 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import com.d365fo.mobileops.presentation.common.focus.BandKind
+import com.d365fo.mobileops.presentation.common.focus.BandState
+import com.d365fo.mobileops.presentation.common.focus.FocusDimens
+import com.d365fo.mobileops.presentation.common.focus.FocusMenu
+import com.d365fo.mobileops.presentation.common.focus.FocusMenuItem
+import com.d365fo.mobileops.presentation.common.focus.HamburgerButton
+import com.d365fo.mobileops.presentation.common.focus.ResultBand
+import com.d365fo.mobileops.presentation.common.theme.FocusColors
+import com.d365fo.mobileops.presentation.common.theme.FocusType
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -52,78 +70,64 @@ fun NotConfiguredScreen(
         return
     }
 
+    // Focus design: the sign-in screen's layout - hamburger with Connection settings, the logo
+    // and name, a band saying what is wrong, then the QR setup.
+    var menuOpen by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(24.dp),
-        verticalArrangement = Arrangement.Center,
+            .background(FocusColors.page)
+            .verticalScroll(rememberScrollState()),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        // The same logo and name as the sign-in screen (9 Nov) - not the long store-listing name.
+        Row(
+            horizontalArrangement = Arrangement.End,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 4.dp, end = 8.dp),
+        ) {
+            HamburgerButton(open = menuOpen, onClick = { menuOpen = !menuOpen })
+        }
+        FocusMenu(
+            open = menuOpen,
+            onDismiss = { menuOpen = false },
+            items = listOf(FocusMenuItem(Icons.Filled.Settings, "Connection settings") { menuOpen = false; onOpenSettings() }),
+        )
+        // The same logo and name as the sign-in screen.
         androidx.compose.foundation.Image(
             painter = androidx.compose.ui.res.painterResource(id = R.drawable.ic_app_logo),
             contentDescription = null,
-            modifier = Modifier.heightIn(max = 96.dp),
+            modifier = Modifier
+                .padding(top = 24.dp)
+                .width(120.dp),
         )
         Text(
             text = "Mobile Operations",
-            style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.ExtraBold,
-            modifier = Modifier.padding(top = 12.dp),
+            style = FocusType.panelTitle,
+            color = FocusColors.ink,
+            modifier = Modifier.padding(top = 12.dp, bottom = 20.dp),
         )
-
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 24.dp),
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceVariant,
+        ResultBand(
+            BandState(
+                BandKind.Warn,
+                when (state) {
+                    is SessionState.NotConfigured -> "This device is not configured yet"
+                    is SessionState.SignedOut -> state.reason ?: "This device cannot reach D365FO"
+                    else -> "Setting up"
+                },
+                tenant.host.takeIf { tenant.resourceUrl.isNotBlank() },
             ),
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                Text(
-                    text = when (state) {
-                        is SessionState.NotConfigured -> "This device is not configured yet"
-                        is SessionState.SignedOut ->
-                            state.reason ?: "This device cannot reach D365FO"
-                        else -> "Setting up"
-                    },
-                    style = MaterialTheme.typography.titleMedium,
-                )
-
-                if (tenant.resourceUrl.isNotBlank()) {
-                    Text(
-                        text = tenant.host,
-                        style = MaterialTheme.typography.bodySmall,
-                        modifier = Modifier.padding(top = 8.dp),
-                    )
-                }
-
-                Text(
-                    text = "Scan the connection QR code from your administrator.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.padding(top = 12.dp),
-                )
-            }
-        }
-
+        )
+        Text(
+            text = "Scan the connection QR code from your administrator.",
+            style = FocusType.bandDetail,
+            color = FocusColors.muted,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            modifier = Modifier.padding(horizontal = FocusDimens.side, vertical = 16.dp),
+        )
         com.d365fo.mobileops.presentation.common.ConnectionQrSetup(
             onConnected = onConnected,
-            modifier = Modifier.padding(top = 24.dp),
+            modifier = Modifier.padding(horizontal = FocusDimens.side).padding(bottom = 20.dp),
         )
-
-        com.d365fo.mobileops.presentation.common.components.SquareOutlinedButton(
-            onClick = onOpenSettings,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 12.dp),
-        ) {
-            Text("Connection settings")
-        }
     }
 }
