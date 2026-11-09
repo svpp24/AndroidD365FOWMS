@@ -14,6 +14,14 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Store
+import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.Inventory2
+import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.Checklist
+import androidx.compose.material.icons.filled.Check
+import com.d365fo.mobileops.presentation.common.components.bleed
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -662,12 +670,12 @@ fun StoreCountScreen(onBack: () -> Unit, viewModel: StoreCountViewModel = hiltVi
     ) { padding ->
         val draft = state.draft
         Column(
-            modifier = Modifier.fillMaxSize().padding(padding).padding(WarehouseDimens.ScreenPadding),
+            modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = WarehouseDimens.ScreenPadding),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             // Ended: say so and stay until Done - closing at once took the message with it (13 Oct).
             if (state.ended) {
-                Text("Count ended", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+                Text("Count ended", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 16.dp))
                 state.message?.let { Text(it, style = MaterialTheme.typography.bodyLarge) }
                 Button(onClick = onBack, modifier = Modifier.fillMaxWidth().heightIn(min = WarehouseDimens.MinTouchTarget)) { Text("Done") }
                 return@Column
@@ -676,18 +684,22 @@ fun StoreCountScreen(onBack: () -> Unit, viewModel: StoreCountViewModel = hiltVi
                 Text(
                     "Count ${state.warehouseId ?: "the store"}, location by location.",
                     style = MaterialTheme.typography.bodyLarge,
+                    modifier = Modifier.padding(top = 16.dp),
                 )
                 com.d365fo.mobileops.presentation.modules.cyclecounting.ItemMasterOnDevice()
                 state.error?.let { ErrorBanner(message = it) }
-                Button(
+                com.d365fo.mobileops.presentation.common.components.GradientButton(
                     onClick = viewModel::start,
                     enabled = !state.busy,
-                    modifier = Modifier.fillMaxWidth().heightIn(min = WarehouseDimens.MinTouchTarget),
-                ) { Text(if (state.busy) "Starting…" else "Start store count") }
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = null)
+                    Text(if (state.busy) "Starting…" else "New store count")
+                }
                 return@Column
             }
 
-            // Location > bin > items, the same trail as PO receiving (user, 8 Nov).
+            // Location > bin > items as tabs under the bar (Harbour).
             com.d365fo.mobileops.presentation.common.components.StepTrail(
                 names = listOfNotNull("Location", "Bin".takeIf { state.binsRequired }, "Items"),
                 current = when {
@@ -695,25 +707,22 @@ fun StoreCountScreen(onBack: () -> Unit, viewModel: StoreCountViewModel = hiltVi
                     state.needsBin -> 1
                     else -> if (state.binsRequired) 2 else 1
                 },
-                modifier = Modifier.fillMaxWidth(),
-            )
-            StorePlaceCard(
-                state = state,
-                masterId = draft.masterId,
-                onBackToLocation = viewModel::changeLocation,
-                onBackToBin = viewModel::changeBin,
-                onCancel = viewModel::cancelChange,
             )
             com.d365fo.mobileops.presentation.common.components.PromptHeroCard(
                 prompt = when {
-                    state.needsLocation -> "Scan a location"
+                    state.needsLocation -> "Choose a location"
                     state.needsBin -> "Scan a bin"
                     else -> "Scan item"
                 },
                 hint = when {
                     state.needsLocation -> "Stock, damaged, claim, return... - where you count now"
-                    state.needsBin -> "A bin in ${state.locationId}"
                     else -> null
+                },
+                pills = buildList {
+                    state.warehouseId?.let { add(Icons.Default.Store to it) }
+                    state.locationId.takeIf { it.isNotBlank() && !state.needsLocation }?.let { add(Icons.Default.LocationOn to it) }
+                    state.binId.takeIf { it.isNotBlank() && state.binsRequired && !state.needsBin && !state.needsLocation }?.let { add(Icons.Default.Inventory2 to it) }
+                    draft.masterId.takeIf { it.isNotBlank() }?.let { add(Icons.Default.Description to it) }
                 },
             ) {
                 // The same scan field as every other scan screen (feedback, 13 Oct: "where is the
@@ -722,6 +731,12 @@ fun StoreCountScreen(onBack: () -> Unit, viewModel: StoreCountViewModel = hiltVi
                     onType = { typing = true },
                     onCamera = { showCamera = true },
                     enabled = !state.busy,
+                )
+                StorePlaceControls(
+                    state = state,
+                    onBackToLocation = viewModel::changeLocation,
+                    onBackToBin = viewModel::changeBin,
+                    onCancel = viewModel::cancelChange,
                 )
             }
             state.error?.let { ErrorBanner(message = it) }
@@ -734,6 +749,18 @@ fun StoreCountScreen(onBack: () -> Unit, viewModel: StoreCountViewModel = hiltVi
             }
             state.message?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = WarehouseStatusColors.text3) }
 
+            if (draft.lines.isNotEmpty()) {
+                com.d365fo.mobileops.presentation.common.components.ListHeader(
+                    icon = Icons.Default.Checklist,
+                    title = "Counted",
+                    count = draft.lines.size,
+                    trailing = when {
+                        state.needsLocation -> null
+                        state.binsRequired && state.binId.isNotBlank() -> "${state.inBin} in this bin"
+                        else -> "${state.atLocation} here"
+                    },
+                )
+            }
             // The newest line is added on top; a list kept scrolled to the line that was first
             // before hid it (test, 13 Oct) - show it.
             val listState = rememberLazyListState()
@@ -741,49 +768,54 @@ fun StoreCountScreen(onBack: () -> Unit, viewModel: StoreCountViewModel = hiltVi
             LaunchedEffect(newest) { if (newest != null) listState.animateScrollToItem(0) }
             LazyColumn(state = listState, modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 items(draft.lines, key = { it.clientLineId }) { line ->
-                    // A white card per line, like the rest of the 20 Oct restyle.
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(androidx.compose.ui.graphics.Color.White, androidx.compose.foundation.shape.RoundedCornerShape(10.dp))
-                            .padding(horizontal = 12.dp, vertical = 10.dp),
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text("${line.itemId} · ${qtyText(line.quantity)} ${line.unitId}", fontWeight = FontWeight.SemiBold)
-                            Text(
+                    com.d365fo.mobileops.presentation.common.components.ListCard {
+                        com.d365fo.mobileops.presentation.common.components.LineRow(
+                            title = line.itemId,
+                            description = line.itemName,
+                            lines = listOfNotNull(
                                 listOfNotNull(
-                                    line.itemName.takeIf { it.isNotBlank() },
                                     OrderVariant(line.configId, line.sizeId, line.colorId, line.styleId).takeIf { v -> v != OrderVariant() }?.label,
                                     line.batchId.takeIf { it.isNotBlank() }?.let { "Batch $it" },
                                     line.serialId.takeIf { it.isNotBlank() }?.let { "Serial $it" },
-                                    "At ${line.place}",
-                                    if (line.sent) "With the supervisor" else "On this device",
-                                ).joinToString(" · "),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = if (line.sent) WarehouseStatusColors.text3 else WarehouseStatusColors.amber,
-                            )
-                        }
-                        if (!line.sent) {
-                            IconButton(onClick = { viewModel.remove(line) }) { Icon(Icons.Default.Delete, contentDescription = "Remove") }
-                        }
+                                ).joinToString(" · ").takeIf { it.isNotBlank() },
+                                "At ${line.place} · " + if (line.sent) "With the supervisor" else "On this device",
+                            ),
+                            lead = {
+                                com.d365fo.mobileops.presentation.common.components.LeadDot(
+                                    if (line.sent) com.d365fo.mobileops.presentation.common.components.Lead.Done else com.d365fo.mobileops.presentation.common.components.Lead.Warn,
+                                    icon = Icons.Default.Check,
+                                )
+                            },
+                            trailing = {
+                                Row(verticalAlignment = Alignment.Top) {
+                                    com.d365fo.mobileops.presentation.common.components.QtyTrail(qtyText(line.quantity), line.unitId)
+                                    if (!line.sent) {
+                                        IconButton(onClick = { viewModel.remove(line) }) { Icon(Icons.Default.Delete, contentDescription = "Remove", tint = WarehouseStatusColors.text3) }
+                                    }
+                                }
+                            },
+                        )
                     }
                 }
             }
-            // Change location / bin where Send was (user, 8 Nov): lines go by themselves.
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                if (!state.needsLocation) OutlinedButton(
-                    onClick = { changePlace = true },
-                    enabled = !state.busy,
-                    modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget),
-                ) {
-                    Text(com.d365fo.mobileops.presentation.modules.cyclecounting.changePlaceLabel(state.binsRequired, canChangeLocation = true))
+            // Change location / bin where Send was (user, 8 Nov): lines go by themselves. End
+            // count is a hold (Harbour) - the lines go to the supervisor and can't be added to.
+            com.d365fo.mobileops.presentation.common.components.FlowDock(modifier = Modifier.bleed(WarehouseDimens.ScreenPadding)) {
+                if (!state.needsLocation) {
+                    com.d365fo.mobileops.presentation.common.components.DockOutlinedButton(
+                        onClick = { changePlace = true },
+                        enabled = !state.busy,
+                        icon = if (state.binsRequired) Icons.Default.Inventory2 else Icons.Default.LocationOn,
+                        text = com.d365fo.mobileops.presentation.modules.cyclecounting.changePlaceLabel(state.binsRequired, canChangeLocation = true),
+                        modifier = Modifier.weight(0.42f),
+                    )
                 }
-                Button(
-                    onClick = { confirmEnd = true },
+                com.d365fo.mobileops.presentation.common.components.HoldButton(
+                    label = "Hold to end count",
+                    onConfirm = { viewModel.send(end = true) },
                     enabled = !state.busy && draft.lines.isNotEmpty(),
-                    modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget),
-                ) { Text("End count") }
+                    modifier = Modifier.weight(0.58f),
+                )
             }
         }
     }
@@ -823,65 +855,39 @@ private fun qtyText(qty: Double): String = java.math.BigDecimal.valueOf(qty).str
  * what is being left, and Cancel back to it.
  */
 @Composable
-private fun StorePlaceCard(
+private fun StorePlaceControls(
     state: StoreCountState,
-    masterId: String,
     onBackToLocation: () -> Unit,
     onBackToBin: () -> Unit,
     onCancel: () -> Unit,
 ) {
-    val place = listOfNotNull(
-        state.locationId.ifBlank { "Choose a location" },
-        when {
-            !state.binsRequired || state.needsLocation -> null
-            else -> state.binId.ifBlank { "Scan a bin" }
-        },
-    ).joinToString("  \u203A  ")
-    val counted = when {
-        state.needsLocation -> null
-        state.binsRequired && state.binId.isNotBlank() -> "${state.inBin} in this bin · ${state.atLocation} in ${state.locationId}"
-        else -> "${state.atLocation} counted here"
-    }
-    androidx.compose.material3.Card(modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    // Where the counter is shows as pills above; here only the way back a step, and while
+    // changing, what is being left with Cancel back to it.
+    state.back?.let { back ->
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
             Text(
-                text = place,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-                color = WarehouseStatusColors.accent,
-            )
-            Text(
-                text = listOfNotNull(counted, masterId.ifBlank { "not sent yet" }).joinToString(" · "),
-                style = MaterialTheme.typography.bodySmall,
+                text = "Changing from " + listOf(back.locationId, back.binId).filter { it.isNotBlank() }.joinToString(" › "),
+                style = MaterialTheme.typography.bodyMedium,
                 color = WarehouseStatusColors.text3,
+                modifier = Modifier.weight(1f),
             )
-            state.back?.let { back ->
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        text = "Changing from " + listOf(back.locationId, back.binId).filter { it.isNotBlank() }.joinToString(" \u203A "),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = WarehouseStatusColors.text3,
-                        modifier = Modifier.weight(1f),
-                    )
-                    CancelOutlinedButton(onClick = onCancel, modifier = Modifier.heightIn(min = WarehouseDimens.MinTouchTarget)) { Text("Cancel") }
-                }
-            }
-            when {
-                state.needsLocation -> Unit
-                state.needsBin -> com.d365fo.mobileops.presentation.modules.cyclecounting.StepBackButton(
-                    "Back to location", onBackToLocation, enabled = !state.busy,
-                )
-                state.binsRequired -> com.d365fo.mobileops.presentation.modules.cyclecounting.StepBackButton(
-                    "Back to bin", onBackToBin, enabled = !state.busy,
-                )
-                else -> com.d365fo.mobileops.presentation.modules.cyclecounting.StepBackButton(
-                    "Back to location", onBackToLocation, enabled = !state.busy,
-                )
-            }
+            CancelOutlinedButton(onClick = onCancel, modifier = Modifier.heightIn(min = WarehouseDimens.MinTouchTarget)) { Text("Cancel") }
         }
+    }
+    when {
+        state.needsLocation -> Unit
+        state.needsBin -> com.d365fo.mobileops.presentation.modules.cyclecounting.StepBackButton(
+            "Back to location", onBackToLocation, enabled = !state.busy,
+        )
+        state.binsRequired -> com.d365fo.mobileops.presentation.modules.cyclecounting.StepBackButton(
+            "Back to bin", onBackToBin, enabled = !state.busy,
+        )
+        else -> com.d365fo.mobileops.presentation.modules.cyclecounting.StepBackButton(
+            "Back to location", onBackToLocation, enabled = !state.busy,
+        )
     }
 }

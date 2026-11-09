@@ -13,6 +13,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.filled.RadioButtonUnchecked
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Inventory2
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -42,46 +44,54 @@ internal fun CountingLineRow(line: CountLine, onClick: (() -> Unit)? = null) {
     val shape = MaterialTheme.shapes.medium
     // The "where" text only changes with the line itself, not on every recomposition.
     val where = remember(line) { lineWhere(line) }
+    // Harbour row: a round status marker, the item in the accent, its name, where, and the
+    // counted quantity on the right.
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(MaterialTheme.colorScheme.surfaceContainerHighest, shape)
+            .background(androidx.compose.ui.graphics.Color.White, shape)
             .then(if (onClick != null) Modifier.clip(shape).clickable(onClick = onClick) else Modifier)
-            .padding(horizontal = 10.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.Top,
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        val (icon, tint) = when {
-            line.countedQuantity != null -> Icons.Default.CheckCircle to WarehouseStatusColors.green
-            line.verifyOnly && line.confirmedAt != null -> Icons.Default.CheckCircle to WarehouseStatusColors.green
-            line.markedCounted -> Icons.Default.Flag to WarehouseStatusColors.amber
-            else -> Icons.Default.RadioButtonUnchecked to WarehouseStatusColors.text3
+        val (icon, bg, tint) = when {
+            line.countedQuantity != null -> Triple(Icons.Default.Check, WarehouseStatusColors.greenDim, WarehouseStatusColors.green)
+            line.verifyOnly && line.confirmedAt != null -> Triple(Icons.Default.Check, WarehouseStatusColors.greenDim, WarehouseStatusColors.green)
+            line.markedCounted -> Triple(Icons.Default.Flag, WarehouseStatusColors.amberDim, WarehouseStatusColors.amber)
+            else -> Triple(Icons.Default.Inventory2, WarehouseStatusColors.surface2, WarehouseStatusColors.text3)
         }
-        Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(22.dp))
+        androidx.compose.foundation.layout.Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier.size(30.dp).background(bg, androidx.compose.foundation.shape.CircleShape),
+        ) {
+            Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(17.dp))
+        }
 
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = line.itemId,
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.SemiBold,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.ExtraBold,
+                color = WarehouseStatusColors.accent,
             )
             // The export has no item name; this is the name resolved from D365FO, and is
             // skipped while it's still just the item number again.
             line.itemName.takeIf { it.isNotBlank() && !it.equals(line.itemId, ignoreCase = true) }?.let {
-                Text(text = it, style = MaterialTheme.typography.bodySmall)
+                Text(text = it, style = MaterialTheme.typography.bodyMedium, color = WarehouseStatusColors.text2)
             }
             if (where.isNotEmpty()) {
-                Text(text = where, style = MaterialTheme.typography.labelSmall, color = WarehouseStatusColors.text3)
+                Text(text = where, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Normal, color = WarehouseStatusColors.text3)
             }
         }
 
         Text(
             text = line.countedQuantity ?: if (line.verifyOnly && line.confirmedAt != null) "Verified" else "-",
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.SemiBold,
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.ExtraBold,
             maxLines = 1,
             softWrap = false,
-            color = if (line.isCounted) WarehouseStatusColors.green else WarehouseStatusColors.text3,
+            color = if (line.isCounted) WarehouseStatusColors.accent else WarehouseStatusColors.text3,
         )
     }
 }

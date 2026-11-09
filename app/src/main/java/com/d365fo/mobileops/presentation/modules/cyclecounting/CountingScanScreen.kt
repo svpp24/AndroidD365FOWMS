@@ -31,6 +31,9 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.Inventory2
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -195,10 +198,8 @@ fun CountingScanScreen(
                 com.d365fo.mobileops.presentation.common.components.StepTrail(
                     names = steps,
                     current = current,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = WarehouseDimens.ScreenPadding)
-                        .padding(top = 8.dp),
+                    // Edge to edge under the bar (Harbour).
+                    bleed = 0.dp,
                 )
             }
             Column(
@@ -306,9 +307,15 @@ fun CountingScanScreen(
                     },
                     hint = when {
                         state.byLocation && state.selectedLocation == null -> "Or choose one above"
-                        needsBin -> state.selectedLocation?.let { "A bin in $it - or type it and press Enter" } ?: "Or type it and press Enter"
+                        needsBin -> "Or type it and press Enter"
                         else -> null
                     },
+                    // The journal and where the counter is, as pills (Harbour).
+                    pills = listOfNotNull(
+                        (Icons.Default.Description to viewModel.journalId).takeIf { !state.showProgress },
+                        state.selectedLocation?.let { Icons.Default.LocationOn to it },
+                        state.currentBin?.let { Icons.Default.Inventory2 to it },
+                    ),
                 ) {
                     OutlinedTextField(
                         value = state.query,

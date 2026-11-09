@@ -2,6 +2,13 @@ package com.d365fo.mobileops.presentation.modules.cyclecounting
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.size
+import androidx.compose.ui.draw.clip
+import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
@@ -59,22 +66,55 @@ fun ItemMasterOnDevice(modifier: Modifier = Modifier, viewModel: ItemMasterViewM
     val c = counts ?: return
     val n = NumberFormat.getIntegerInstance()
     val missing = c.items == 0
-    Text(
-        text = if (missing) {
-            "The item master is not on this device yet - counting offline can't look items up. Sync masters in Settings."
-        } else {
-            listOfNotNull(
-                "On this device: ${n.format(c.items)} items",
-                "${n.format(c.barcodes)} barcodes",
-                c.syncedAt?.let { "synced ${Formatters.shortDate(it)} ${Formatters.clockTime(it)}" },
-            ).joinToString(" · ")
-        },
-        style = MaterialTheme.typography.bodySmall,
-        fontWeight = if (missing) FontWeight.SemiBold else FontWeight.Normal,
-        color = if (missing) WarehouseStatusColors.amber else WarehouseStatusColors.text3,
+    // Harbour: a white card with a coloured edge - green "Data up to date", amber when missing.
+    val edge = if (missing) WarehouseStatusColors.amber else WarehouseStatusColors.green
+    androidx.compose.foundation.layout.Row(
         modifier = modifier
             .fillMaxWidth()
-            .background(if (missing) WarehouseStatusColors.amberDim else Color.Transparent, RoundedCornerShape(10.dp))
-            .padding(horizontal = if (missing) 12.dp else 0.dp, vertical = if (missing) 8.dp else 0.dp),
-    )
+            .clip(RoundedCornerShape(12.dp))
+            .background(Color.White)
+            .height(androidx.compose.foundation.layout.IntrinsicSize.Min),
+    ) {
+        androidx.compose.foundation.layout.Box(
+            Modifier.width(4.dp).fillMaxHeight().background(edge),
+        )
+        androidx.compose.foundation.layout.Column(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(2.dp),
+        ) {
+            androidx.compose.foundation.layout.Row(
+                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(5.dp),
+            ) {
+                androidx.compose.material3.Icon(
+                    if (missing) androidx.compose.material.icons.Icons.Filled.Warning else androidx.compose.material.icons.Icons.Filled.CheckCircle,
+                    contentDescription = null,
+                    tint = edge,
+                    modifier = Modifier.size(18.dp),
+                )
+                Text(
+                    if (missing) "Item master not on this device" else "Data up to date",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = edge,
+                )
+            }
+            Text(
+                text = if (missing) {
+                    "Counting offline can't look items up. Sync masters in Settings."
+                } else {
+                    "${n.format(c.items)} items · ${n.format(c.barcodes)} barcodes"
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = WarehouseStatusColors.text3,
+            )
+            if (!missing) c.syncedAt?.let {
+                Text(
+                    "Synced ${Formatters.shortDate(it)} ${Formatters.clockTime(it)}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = WarehouseStatusColors.text3,
+                )
+            }
+        }
+    }
 }

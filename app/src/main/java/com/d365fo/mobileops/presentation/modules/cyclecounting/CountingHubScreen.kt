@@ -89,89 +89,46 @@ fun CountingHubScreen(
         ) {
             // How much of the item master is on the device - counting offline looks items up there.
             item(key = "master") { ItemMasterOnDevice() }
+            // The kinds of count as Harbour module cards, each with its tag.
             item(key = "store") {
-                CountKindCard(
+                com.d365fo.mobileops.presentation.common.components.ModuleCard(
                     icon = Icons.Default.Storefront,
-                    tint = Color(0xFF15803D),
+                    color = com.d365fo.mobileops.presentation.common.components.ModuleColor.Green,
                     title = "Store count",
-                    text = "Count the store location by location - no journal needed. Your supervisor checks the counts in the Stock count control center, which makes the counting journal.",
-                    badge = null,
+                    tags = listOf("No journal needed"),
                     onClick = onStoreCount,
                 )
             }
             item(key = "cycle") {
-                CountKindCard(
+                com.d365fo.mobileops.presentation.common.components.ModuleCard(
                     icon = Icons.Default.Autorenew,
-                    tint = Color(0xFF2E6FD8),
+                    color = com.d365fo.mobileops.presentation.common.components.ModuleColor.Blue,
                     title = "Cycle count",
-                    text = "The counting journals D365FO plans for this store, triggered counts and recounts.",
-                    badge = listOfNotNull(badge(CountKind.CYCLE), "$recounts to recount".takeIf { known && recounts > 0 })
-                        .joinToString(" · ").ifEmpty { null },
+                    tags = listOfNotNull(badge(CountKind.CYCLE), "$recounts to recount".takeIf { known && recounts > 0 })
+                        .ifEmpty { listOf(if (known) "None open" else "Journals") },
                     onClick = { onJournals(CountKind.CYCLE) },
                 )
             }
             item(key = "w2w") {
-                CountKindCard(
+                com.d365fo.mobileops.presentation.common.components.ModuleCard(
                     icon = Icons.Default.GridView,
-                    tint = Color(0xFFC1501E),
+                    color = com.d365fo.mobileops.presentation.common.components.ModuleColor.Sienna,
                     title = "Wall-to-wall count",
-                    text = "Count everything in the store while it is frozen, one location at a time.",
-                    badge = badge(CountKind.WALL_TO_WALL),
+                    tags = listOf(badge(CountKind.WALL_TO_WALL) ?: if (known) "None running" else "Journals"),
                     onClick = { onJournals(CountKind.WALL_TO_WALL) },
                 )
             }
             if (state.canViewAccuracy) {
                 item(key = "accuracy") {
-                    CountKindCard(
+                    com.d365fo.mobileops.presentation.common.components.ModuleCard(
                         icon = Icons.Default.Insights,
-                        tint = WarehouseStatusColors.accent,
+                        color = com.d365fo.mobileops.presentation.common.components.ModuleColor.Petrol,
                         title = "Count accuracy",
-                        text = "Accuracy by location, item, class or counter.",
-                        badge = null,
+                        tags = listOf("Supervisor"),
                         onClick = onAccuracy,
                     )
                 }
             }
         }
-    }
-}
-
-@Composable
-private fun CountKindCard(
-    icon: ImageVector,
-    tint: Color,
-    title: String,
-    text: String,
-    badge: String?,
-    onClick: () -> Unit,
-) {
-    Row(
-        verticalAlignment = Alignment.Top,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(10.dp))
-            .background(Color.White)
-            .clickable(role = Role.Button, onClick = onClick)
-            .padding(14.dp),
-    ) {
-        Box(
-            contentAlignment = Alignment.Center,
-            modifier = Modifier.size(40.dp).background(tint, RoundedCornerShape(8.dp)),
-        ) {
-            Icon(icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(22.dp))
-        }
-        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-            Text(text, style = MaterialTheme.typography.bodyMedium, color = WarehouseStatusColors.text3)
-            badge?.let {
-                Text(it, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, color = tint)
-            }
-        }
-        Icon(
-            Icons.AutoMirrored.Filled.KeyboardArrowRight,
-            contentDescription = null,
-            modifier = Modifier.padding(top = 8.dp),
-        )
     }
 }
