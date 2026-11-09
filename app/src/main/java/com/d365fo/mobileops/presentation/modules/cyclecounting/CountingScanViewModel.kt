@@ -26,6 +26,15 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.distinctUntilChanged
+import com.d365fo.mobileops.presentation.common.components.StatusKind
+import com.d365fo.mobileops.presentation.common.scan.BinRef
+import com.d365fo.mobileops.presentation.common.scan.RejectReason
+import com.d365fo.mobileops.presentation.common.scan.ScanContext
+import com.d365fo.mobileops.presentation.common.scan.ScanIdentity
+import com.d365fo.mobileops.presentation.common.scan.ScanKind
+import com.d365fo.mobileops.presentation.common.scan.ScanRoute
+import com.d365fo.mobileops.presentation.common.scan.ScanRouter
 import java.math.BigDecimal
 import javax.inject.Inject
 
@@ -39,6 +48,11 @@ data class ScanMessage(
     val unexpectedItemId: String? = null,
     /** Shows Undo: the scan just added to a count (see [CountingScanViewModel.undoLastScan]). */
     val undoable: Boolean = false,
+    /** The cycle-count flow's band (redesign phase 6): a short title and a line; [text] when null. */
+    val title: String? = null,
+    val line: String? = null,
+    /** Not wrong, but not what this step needs - a Warn band rather than a Bad one. */
+    val warn: Boolean = false,
 )
 
 /** The quantity popup: which line, and what to start the box at. */
@@ -93,6 +107,7 @@ class CountingScanViewModel @Inject constructor(
     private val itemUnits: com.d365fo.mobileops.data.repository.ItemUnitRepository,
     private val binRepository: com.d365fo.mobileops.data.counting.CountBinRepository,
     private val countSubmissions: com.d365fo.mobileops.data.counting.CountSubmissions,
+    private val scanRouter: com.d365fo.mobileops.presentation.common.scan.ScanRouter,
 ) : ViewModel() {
 
     val journalId: String = checkNotNull(savedStateHandle["journalId"])
@@ -109,6 +124,9 @@ class CountingScanViewModel @Inject constructor(
     /** The store's bins with the location each is in. */
     private var binRows: Map<String, com.d365fo.mobileops.data.local.entity.CountBinEntity> = emptyMap()
     private val _currentBin = MutableStateFlow<String?>(null)
+
+    /** The store's bins with their locations, for the cycle-count flow's walking order. */
+    private val _binRefs = MutableStateFlow<List<BinRef>>(emptyList())
     private val _addBinPrompt = MutableStateFlow<String?>(null)
 
     /** Where Change location / Change bin started, so Cancel can go back to it (user, 8 Nov). */
@@ -187,6 +205,7 @@ class CountingScanViewModel @Inject constructor(
         val atLocation = location?.let { loc -> b.lines.filter { it.locationId.equals(loc, ignoreCase = true) } }
         val scope = (atLocation ?: b.lines).filter { o.ui.typeFilter == null || it.locationType == o.ui.typeFilter }
         CountingScanState(
+            loaded = b.journal != null,
             journalDescription = b.journal?.description ?: journalId,
             originType = b.journal?.originType ?: com.d365fo.mobileops.domain.model.ORIGIN_SCHEDULED,
             totalLines = b.lines.size,
@@ -237,14 +256,362 @@ class CountingScanViewModel @Inject constructor(
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), CountingScanState())
 
     init {
-        viewModelScope.launch { scannerBridge.scans.collect { onScanned(it.value) } }
         viewModelScope.launch {
             val store = journalDao.getJournal(journalId)?.journal?.warehouseId?.takeIf { it.isNotBlank() }
                 ?: return@launch
             launch { binRepository.refresh(store) }
             binRepository.observe(store).collect { rows ->
                 binRows = rows.associateBy { it.binId }
+                _binRefs.value = rows.map { com.d365fo.mobileops.presentation.common.scan.BinRef(it.binId, it.locationId) }
                 _bins.value = rows.map { it.binId }
+            }
+        }
+    }
+
+    // -- Cycle-count flow (redesign phase 6) ------------------------------------------------------
+
+    /** The line the last scan counted - the card shows it, F4 opens it. */
+    private val _lastCountedId = MutableStateFlow<String?>(null)
+
+    /** The flow screen is on top: misses add nothing, bins settle by a second scan. */
+    private var flowMode = false
+    private var missVariant: com.d365fo.mobileops.domain.model.ProductVariant? = null
+
+    /** The last +1's write - the next scan waits for it, so two quick scans are two. */
+    private var lastWrite: Job? = null
+
+    /** The last settled stop, for Undo. */
+    private var lastSettle: SettledStop? = null
+
+    private var scanHandle: ScanRouter.Handle? = null
+
+    /**
+     * Scans reach this journal through [ScanRouter] while one of its screens is on top. [flow] is
+     * the redesigned cycle-count screen; the legacy screen (wall-to-wall, one-line checks) gets
+     * every scan as it always did.
+     */
+    fun scannerOnScreen(visible: Boolean, flow: Boolean) {
+        if (visible) {
+            flowMode = flow
+            scanHandle?.close()
+            scanHandle = if (flow) {
+                scanRouter.attach({ cycleCountContext() }, ::onFlowRoute)
+            } else {
+                scanRouter.attach(
+                    ScanContext.Flow(accepts = ScanKind.entries.toSet(), acceptUnknown = true),
+                ) { route -> onScanned(route.identity.raw.value) }
+            }
+        } else {
+            scanHandle?.close()
+            scanHandle = null
+        }
+    }
+
+    override fun onCleared() {
+        scanHandle?.close()
+        super.onCleared()
+    }
+
+    /** See [HidScannerBridge.justScanned]. */
+    fun justScanned(): Boolean = scannerBridge.justScanned()
+
+    /** Typed in (⋮ Type it in): the same path as a scan. */
+    fun onTyped(value: String) {
+        if (value.isNotBlank()) {
+            scanRouter.submit(com.d365fo.mobileops.domain.model.RawScan(value.trim(), com.d365fo.mobileops.domain.model.ScanSource.MANUAL_ENTRY))
+        }
+    }
+
+    private fun cycleCountContext() = ScanContext.Flow(
+        accepts = setOf(ScanKind.ITEM, ScanKind.BIN, ScanKind.LOCATION),
+        // A serial, or an item barcode the device doesn't have yet, still goes to the journal's lines.
+        acceptUnknown = true,
+        expecting = "Scan a bin label or an item",
+    )
+
+    /** Where the flow is: the walking order, what is settled, where the worker is now. */
+    val flow: StateFlow<CycleFlowInfo> = combine(
+        countingDao.observeCountLines(journalId),
+        _binRefs,
+        _currentBin,
+        state.map { it.selectedLocation to it.byLocation }.distinctUntilChanged(),
+        _lastCountedId,
+    ) { lines, bins, bin, place, lastId -> FlowInputs(lines, bins, bin, place.first, place.second, lastId) }
+        .map { i ->
+            val lineBins = countingDao.getLineBins(journalId)
+            val mode = when {
+                i.bins.isNotEmpty() -> StopMode.BIN
+                i.byLocation -> StopMode.LOCATION
+                else -> StopMode.WHOLE
+            }
+            val last = i.lines.firstOrNull { it.journalLineId == i.lastId }
+            cycleFlowInfo(
+                lines = i.lines,
+                lineBins = lineBins,
+                bins = i.bins,
+                mode = mode,
+                location = i.location,
+                bin = i.bin,
+                lastCounted = last,
+                lastCountedQuantity = last?.let { l ->
+                    if (i.bin != null) {
+                        lineBins.firstOrNull { it.journalLineId == l.journalLineId && it.binId.equals(i.bin, ignoreCase = true) }?.quantity
+                    } else {
+                        l.countedQuantity
+                    }
+                },
+            )
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), CycleFlowInfo())
+
+    private data class FlowInputs(
+        val lines: List<CountLine>,
+        val bins: List<BinRef>,
+        val bin: String?,
+        val location: String?,
+        val byLocation: Boolean,
+        val lastId: String?,
+    )
+
+    private fun popupOpen(): Boolean {
+        val ui = _ui.value
+        return _prompt.value != null || _choiceIds.value != null || ui.emptyPrompt != null || ui.unexpected != null ||
+            ui.variantChoice != null || ui.verifyLineId != null || _addBinPrompt.value != null
+    }
+
+    private fun note(kind: StatusKind, title: String, line: String? = null, undoable: Boolean = false) {
+        val bad = kind == StatusKind.Bad
+        val warn = kind == StatusKind.Warn
+        when {
+            bad -> scanFeedback.error()
+            warn -> scanFeedback.warning()
+            else -> scanFeedback.success()
+        }
+        _message.value = ScanMessage(
+            listOfNotNull(title, line).joinToString(" - "),
+            isError = bad || warn,
+            undoable = undoable,
+            title = title,
+            line = line,
+            warn = warn,
+        )
+    }
+
+    private suspend fun onFlowRoute(route: ScanRoute) {
+        lastWrite?.join()
+        val identity = route.identity
+        val raw = identity.raw.value.trim()
+        if (popupOpen()) {
+            scanFeedback.warning()
+            return
+        }
+        if (state.value.locked) return note(StatusKind.Warn, "Submitted", "Reopen it on the list to change")
+        when (route) {
+            is ScanRoute.Reject -> {
+                val expected = route.reason == RejectReason.NOT_EXPECTED
+                note(
+                    if (expected) StatusKind.Warn else StatusKind.Bad,
+                    route.title,
+                    route.line + if (expected) "" else " - nothing was added",
+                )
+            }
+            is ScanRoute.Leave -> note(
+                StatusKind.Warn,
+                if (identity.kind == ScanKind.COUNT_JOURNAL) "That's another journal" else "That's another document",
+                "Finish this count, then open it",
+            )
+            is ScanRoute.Accept, is ScanRoute.SwitchDocument -> when (identity) {
+                is ScanIdentity.Bin -> if (_bins.value.isNotEmpty()) scanBin(identity.bin) else handleScan(raw, typed = false)
+                is ScanIdentity.Location -> scanLocation(identity.locationId, raw)
+                else -> handleScan(raw, typed = false)
+            }
+            else -> Unit
+        }
+        lastWrite?.join()
+    }
+
+    /** A bin label: the current one again settles it; another settles the current one and moves there. */
+    private suspend fun scanBin(ref: BinRef) {
+        val bin = com.d365fo.mobileops.data.counting.normalizeBin(ref.binId)
+        val lines = countingDao.getCountLines(journalId)
+        val current = state.value
+        val lineLocations = lines.mapNotNull { it.locationId?.takeIf { l -> l.isNotBlank() } }.distinctBy { it.uppercase() }
+        val location = ref.locationId?.takeIf { it.isNotBlank() }
+            ?.let { loc -> lineLocations.firstOrNull { it.equals(loc, ignoreCase = true) } ?: loc }
+            ?: current.selectedLocation ?: lineLocations.singleOrNull()
+        val stop = CountStop.of(location, bin)
+        val info = flow.value
+        if (info.stops.isNotEmpty() && stop !in info.stops) {
+            return note(
+                StatusKind.Warn,
+                "$bin isn't on this count",
+                listOfNotNull(ref.locationId?.let { "It is in $it" }, info.nextAfter(info.current)?.let { "Go to ${it.label}" })
+                    .joinToString(" · ").ifBlank { null },
+            )
+        }
+        val here = _currentBin.value
+        if (here != null && here.equals(bin, ignoreCase = true) &&
+            (location == null || location.equals(current.selectedLocation, ignoreCase = true))
+        ) {
+            // The same label twice: this bin is done - an empty one at 0.
+            val settled = settle(stop)
+            _currentBin.value = null
+            _lastCountedId.value = null
+            val next = info.copy(settled = info.settled + stop).nextAfter(stop)
+            return note(
+                StatusKind.Ok,
+                "$bin done",
+                listOfNotNull(settled.describe(), next?.let { "Go to ${it.label}" } ?: "Every bin is counted").joinToString(" · "),
+                undoable = settled.written.isNotEmpty(),
+            )
+        }
+        val left = here?.let { settle(CountStop.of(current.selectedLocation, it)) }
+        if (location != null && !location.equals(current.selectedLocation, ignoreCase = true)) {
+            _ui.update { it.copy(selectedLocation = location) }
+        }
+        _currentBin.value = bin
+        _back.value = null
+        _lastCountedId.value = null
+        _query.value = ""
+        note(
+            StatusKind.Info,
+            "Counting $bin",
+            listOfNotNull(location, "Scan each item", left?.let { "${it.stop.label} done" }).joinToString(" · "),
+            undoable = left?.written?.isNotEmpty() == true,
+        )
+        _refocus.update { it + 1 }
+    }
+
+    /** A location label: with bins, it narrows to that location's bins; without, it works like a bin. */
+    private suspend fun scanLocation(locationId: String, raw: String) {
+        val current = state.value
+        if (!current.byLocation && _bins.value.isEmpty()) return handleScan(raw, typed = false)
+        val lines = countingDao.getCountLines(journalId)
+        val info = flow.value
+        val location = lines.firstOrNull { it.locationId.equals(locationId, ignoreCase = true) }?.locationId
+            ?: return note(StatusKind.Warn, "$locationId isn't on this count", info.nextAfter(info.current)?.let { "Go to ${it.label}" })
+        val here = current.selectedLocation
+        if (_bins.value.isNotEmpty()) {
+            val left = _currentBin.value?.let { settle(CountStop.of(here, it)) }
+            _currentBin.value = null
+            _lastCountedId.value = null
+            _ui.update { it.copy(selectedLocation = location) }
+            return note(
+                StatusKind.Info,
+                "Counting $location",
+                listOfNotNull("Scan a bin label", left?.let { "${it.stop.label} done" }).joinToString(" · "),
+                undoable = left?.written?.isNotEmpty() == true,
+            )
+        }
+        if (here != null && here.equals(location, ignoreCase = true)) {
+            val stop = CountStop.of(location, null)
+            val settled = settle(stop)
+            _ui.update { it.copy(selectedLocation = null) }
+            _lastCountedId.value = null
+            val next = info.copy(settled = info.settled + stop).nextAfter(stop)
+            return note(
+                StatusKind.Ok,
+                "$location done",
+                listOfNotNull(settled.describe(), next?.let { "Go to ${it.label}" } ?: "Every location is counted").joinToString(" · "),
+                undoable = settled.written.isNotEmpty(),
+            )
+        }
+        val left = here?.let { settle(CountStop.of(it, null)) }
+        _ui.update { it.copy(selectedLocation = location) }
+        _lastCountedId.value = null
+        note(
+            StatusKind.Info,
+            "Counting $location",
+            listOfNotNull("Scan each item", left?.let { "${it.stop.label} done" }).joinToString(" · "),
+            undoable = left?.written?.isNotEmpty() == true,
+        )
+    }
+
+    /** What settling wrote: each line that had nothing counted in the stop, set to 0 there. */
+    private data class SettledStop(val stop: CountStop, val written: List<String>, val counted: Int) {
+        fun describe(): String = when {
+            counted == 0 -> "Empty - counted 0"
+            else -> "${if (counted == 1) "1 item" else "$counted items"} counted" + if (written.isNotEmpty()) ", ${written.size} at 0" else ""
+        }
+    }
+
+    /**
+     * Settles a stop: every line there with nothing counted in it gets 0 there - a bin's own row,
+     * or the line's count where there are no bins. Nothing already counted changes.
+     */
+    private suspend fun settle(stop: CountStop): SettledStop = kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) {
+        val by = workerSession.session.value?.userName
+        val at = System.currentTimeMillis()
+        val lines = countingDao.getCountLines(journalId).filter { stop.covers(it) }
+        val written = if (stop.binId != null) {
+            val inBin = countingDao.getLineBins(journalId).filter { it.binId.equals(stop.binId, ignoreCase = true) }.map { it.journalLineId }.toSet()
+            lines.filter { it.journalLineId !in inBin }.onEach { recordInBin(it, stop.binId, "0", by, at) }
+        } else {
+            lines.filter { !it.isCounted }.onEach { countingDao.recordCount(it.journalLineId, "0", by, at) }
+        }
+        SettledStop(stop, written.map { it.journalLineId }, counted = lines.size - written.size).also {
+            if (it.written.isNotEmpty()) {
+                lastSettle = it
+                lastScan = null
+            }
+        }
+    }
+
+    private suspend fun undoSettle(settled: SettledStop) {
+        val by = workerSession.session.value?.userName
+        val at = System.currentTimeMillis()
+        kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) {
+            settled.written.forEach { id ->
+                val bin = settled.stop.binId
+                if (bin != null) {
+                    countingDao.deleteLineBin(id, bin)
+                    val total = com.d365fo.mobileops.data.counting.lineTotalOfBins(countingDao.lineBinQuantities(id))
+                    countingDao.recordCount(id, total, by, at)
+                } else {
+                    countingDao.recordCount(id, null, by, at)
+                }
+            }
+        }
+    }
+
+    val canUndo: Boolean get() = lastSettle != null || lastScan != null
+
+    /** Undo (F3): the last settled bin, or the last +1. */
+    fun undo() {
+        val settled = lastSettle ?: return undoLastScan()
+        lastSettle = null
+        viewModelScope.launch {
+            undoSettle(settled)
+            _message.value = ScanMessage("Undone", isError = false, title = "Undone", line = "${settled.stop.label} is open again")
+        }
+    }
+
+    /** Keypad (F4): the last counted line's popup - its count here, to change. */
+    fun keypadOnLast(): Boolean {
+        val line = flow.value.lastCounted ?: return false
+        openLine(line)
+        return true
+    }
+
+    /** The band's "Record as found": a wrong item put on the journal as not on it, at the worker's word. */
+    fun recordMissAsFound() {
+        val itemId = _message.value?.unexpectedItemId ?: return
+        val variant = missVariant
+        missVariant = null
+        viewModelScope.launch {
+            addNotOnJournal(itemId, variant)
+            if (_message.value?.unexpectedItemId == itemId) {
+                _message.value = ScanMessage("$itemId recorded", isError = false, title = "$itemId recorded", line = "As found here - not on this journal")
+            }
+        }
+    }
+
+    /** Hold to end count: the journal goes through CountSubmissions, as from the list. */
+    fun endCount() {
+        viewModelScope.launch {
+            when (val result = countSubmissions.endCount(journalId)) {
+                com.d365fo.mobileops.data.counting.EndCountResult.Queued -> _leave.trySend(Unit)
+                is com.d365fo.mobileops.data.counting.EndCountResult.Refused -> note(StatusKind.Bad, "Can't end the count", result.message)
             }
         }
     }
@@ -314,7 +681,7 @@ class CountingScanViewModel @Inject constructor(
                     itemDao.resolveBarcode(value) != null || itemDao.getItem(value) != null
                 _query.value = ""
                 if (isItem) {
-                    _message.value = ScanMessage("Scan a bin first.", isError = true)
+                    _message.value = ScanMessage("Scan a bin first.", isError = true, warn = true, title = "Scan the bin label first", line = "Then scan items")
                     scanFeedback.warning()
                 } else if (workerSession.session.value?.isCycleCountSupervisor == true) {
                     _addBinPrompt.value = bin
@@ -492,8 +859,9 @@ class CountingScanViewModel @Inject constructor(
     }
 
     private fun addScanned(line: CountLine, perScan: BigDecimal) {
+        lastSettle = null
         // ATOMIC + NonCancellable around the writes - see ReceivingFlowViewModel.persist.
-        viewModelScope.launch(start = kotlinx.coroutines.CoroutineStart.ATOMIC) {
+        lastWrite = viewModelScope.launch(start = kotlinx.coroutines.CoroutineStart.ATOMIC) {
             val before = line.countedQuantity
             val bin = _currentBin.value
             val by = workerSession.session.value?.userName
@@ -524,7 +892,20 @@ class CountingScanViewModel @Inject constructor(
                 line.serialId?.takeIf { it.isNotBlank() }?.let { "Serial $it" },
             )
                 .joinToString(" \u00B7 ")
-            _message.value = ScanMessage("$what: $text", isError = false, undoable = true)
+            _lastCountedId.value = line.journalLineId
+            val inBin = if (bin != null) countingDao.lineBinQuantity(line.journalLineId, bin) ?: text else text
+            _message.value = ScanMessage(
+                "$what: $text",
+                isError = false,
+                undoable = true,
+                title = "+${perScan.stripTrailingZeros().toPlainString()} ${line.itemId}",
+                line = "$inBin counted" + (bin?.let { " in $it" } ?: line.locationId?.takeIf { l -> l.isNotBlank() }?.let { " at $it" }.orEmpty()) +
+                    listOfNotNull(
+                        line.variant.label.takeIf { it.isNotBlank() },
+                        line.batchId?.takeIf { it.isNotBlank() }?.let { "Batch $it" },
+                        line.serialId?.takeIf { it.isNotBlank() }?.let { "Serial $it" },
+                    ).joinToString("") { " \u00B7 $it" },
+            )
             _refocus.update { it + 1 }
         }
     }
@@ -592,7 +973,7 @@ class CountingScanViewModel @Inject constructor(
                 }
             }
             countingDao.recordCount(undo.journalLineId, undo.before, workerSession.session.value?.userName, System.currentTimeMillis())
-            _message.value = ScanMessage("Last scan undone.", isError = false)
+            _message.value = ScanMessage("Last scan undone.", isError = false, title = "Undone", line = "The last scan is taken back")
             _refocus.update { it + 1 }
         }
     }
@@ -998,6 +1379,20 @@ class CountingScanViewModel @Inject constructor(
     ) {
         // An item scanned or typed that is not on the journal is added to the list as such - no
         // form (user, 14 Oct); it used to be an error with a button to a form.
+        if (flowMode) {
+            // The flow (redesign phase 6): a wrong item adds nothing - a Bad band, with the
+            // choice to record it as found offered on the band.
+            missVariant = unexpectedVariant
+            _message.value = ScanMessage(
+                message,
+                isError = true,
+                unexpectedItemId = unexpectedItemId.takeIf { flags.countExceptions && !state.value.locked },
+                title = if (unexpectedItemId != null) "Wrong item" else "Not recognised",
+                line = if (message.contains("nothing", ignoreCase = true)) message else "$message - nothing was added",
+            )
+            scanFeedback.error()
+            return
+        }
         if (unexpectedItemId != null && flags.countExceptions && !state.value.locked) {
             if (!typed) scanFeedback.warning()
             viewModelScope.launch { addNotOnJournal(unexpectedItemId, unexpectedVariant) }
@@ -1029,6 +1424,8 @@ class CountingScanViewModel @Inject constructor(
 }
 
 data class CountingScanState(
+    /** The journal is read from the device - until then [layout] is only the default. */
+    val loaded: Boolean = false,
     val journalDescription: String = "",
     val originType: String = com.d365fo.mobileops.domain.model.ORIGIN_SCHEDULED,
     val layout: com.d365fo.mobileops.domain.model.CountingLayout = com.d365fo.mobileops.domain.model.CountingLayout.STANDARD,
