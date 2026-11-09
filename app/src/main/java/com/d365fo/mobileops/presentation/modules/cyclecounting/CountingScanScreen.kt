@@ -32,6 +32,7 @@ import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.Checklist
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Inventory2
 import androidx.compose.material3.AlertDialog
@@ -218,67 +219,9 @@ fun CountingScanScreen(
                     .padding(horizontal = WarehouseDimens.ScreenPadding, vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                // One header row (feedback, 14 Oct): the progress as a ring with the percentage
-                // inside, the journal and its count beside it, Count by location on the right -
-                // three rows before, so the scan card sits higher.
-                if (state.showProgress) Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(Color.White, MaterialTheme.shapes.medium)
-                        .padding(horizontal = 12.dp, vertical = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    com.d365fo.mobileops.presentation.common.components.CountProgressRing(
-                        progress = if (state.totalLines > 0) state.counted.toFloat() / state.totalLines else 0f,
-                        percent = state.percent,
-                    )
-                    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Text(
-                            text = viewModel.journalId,
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold,
-                            color = WarehouseStatusColors.accent,
-                        )
-                        Text(
-                            text = "${state.counted} of ${state.totalLines} counted",
-                            style = MaterialTheme.typography.bodyMedium,
-                        )
-                        if (state.exceptions.isNotEmpty()) {
-                            Text(
-                                text = "${state.exceptions.size} not on this journal",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = WarehouseStatusColors.amber,
-                            )
-                        }
-                    }
-                    // Before the scan card (feedback 3c03d94e): it decides what the card asks for -
-                    // an item, or a location first.
-                    if (state.showLocationSwitch) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Switch(
-                                checked = state.byLocation,
-                                onCheckedChange = viewModel::setByLocation,
-                                enabled = !state.locked,
-                            )
-                            Text("By location", style = MaterialTheme.typography.labelSmall, color = WarehouseStatusColors.text3)
-                        }
-                    }
-                }
-
-                // Where the counter is - location and bin - in one card above the scan card, with
-                // Change location / Change bin side by side (user, 8 Nov: the header was cluttered).
-                if (state.byLocation || state.binsRequired) {
-                    PlaceCard(
-                        state = state,
-                        onEmpty = viewModel::requestLocationEmpty,
-                        onPick = viewModel::pickLocation,
-                    )
-                }
-
-                // The shared scan card, first under the top bar - the same place as every other
-                // scan screen. It sat below the progress, filters, "Count by location" and the
-                // location bar, so it moved whenever one of those appeared (feedback, 10 Oct).
+                // The scan card first (user, 9 Nov); what it is counting - the journal, location,
+                // bin and how far along - as labelled chips in the card under it. No progress
+                // card or hints: the chips say it.
                 state.addBinPrompt?.let { bin ->
                     androidx.compose.material3.AlertDialog(
                         onDismissRequest = viewModel::cancelAddBin,
@@ -310,16 +253,12 @@ fun CountingScanScreen(
                         needsBin -> "Scan a bin"
                         else -> "Scan item"
                     },
-                    hint = when {
-                        state.byLocation && state.selectedLocation == null -> "Or choose one above"
-                        needsBin -> "Or type it and press Enter"
-                        else -> null
-                    },
-                    // The journal and where the counter is, as pills (Harbour).
                     pills = listOfNotNull(
-                        (Icons.Default.Description to viewModel.journalId).takeIf { !state.showProgress },
-                        state.selectedLocation?.let { Icons.Default.LocationOn to it },
-                        state.currentBin?.let { Icons.Default.Inventory2 to it },
+                        Icons.Default.Description to "Journal ${viewModel.journalId}",
+                        state.selectedLocation?.let { Icons.Default.LocationOn to "Location $it" },
+                        state.currentBin?.let { Icons.Default.Inventory2 to "Bin $it" },
+                        (Icons.Default.Checklist to "${state.counted} of ${state.totalLines} counted").takeIf { state.showProgress },
+                        (Icons.Default.AddCircle to "${state.exceptions.size} not on journal").takeIf { state.exceptions.isNotEmpty() },
                     ),
                 ) {
                     OutlinedTextField(
@@ -350,6 +289,34 @@ fun CountingScanScreen(
                     com.d365fo.mobileops.presentation.common.components.HeroCameraButton(onClick = { showCamera = true }, enabled = !state.locked)
                 }
 
+                // Count by location, where the journal allows it - a quiet switch row.
+                if (state.showProgress && state.showLocationSwitch) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            "Count by location",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = WarehouseStatusColors.text2,
+                            modifier = Modifier.weight(1f),
+                        )
+                        Switch(
+                            checked = state.byLocation,
+                            onCheckedChange = viewModel::setByLocation,
+                            enabled = !state.locked,
+                        )
+                    }
+                }
+
+                // A wall-to-wall location's "is empty".
+                if (state.byLocation || state.binsRequired) {
+                    PlaceCard(
+                        state = state,
+                        onEmpty = viewModel::requestLocationEmpty,
+                        onPick = viewModel::pickLocation,
+                    )
+                }
 
                 state.freezeBanner?.let {
                     Text(text = it, style = MaterialTheme.typography.bodySmall, color = WarehouseStatusColors.amber)

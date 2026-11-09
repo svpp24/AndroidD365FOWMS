@@ -773,10 +773,10 @@ fun StoreCountScreen(onBack: () -> Unit, viewModel: StoreCountViewModel = hiltVi
                     else -> "Scan item"
                 },
                 pills = buildList {
-                    state.warehouseId?.let { add(Icons.Default.Store to it) }
-                    state.locationId.takeIf { it.isNotBlank() && !state.needsLocation }?.let { add(Icons.Default.LocationOn to it) }
-                    state.binId.takeIf { it.isNotBlank() && state.binsRequired && !state.needsBin && !state.needsLocation }?.let { add(Icons.Default.Inventory2 to it) }
-                    draft.masterId.takeIf { it.isNotBlank() }?.let { add(Icons.Default.Description to it) }
+                    // Labelled chips (user, 9 Nov): what each value is, not just the value.
+                    draft.masterId.takeIf { it.isNotBlank() }?.let { add(Icons.Default.Description to "Count $it") }
+                    state.locationId.takeIf { it.isNotBlank() && !state.needsLocation }?.let { add(Icons.Default.LocationOn to "Location $it") }
+                    state.binId.takeIf { it.isNotBlank() && state.binsRequired && !state.needsBin && !state.needsLocation }?.let { add(Icons.Default.Inventory2 to "Bin $it") }
                 },
             ) {
                 // The same scan field as every other scan screen (feedback, 13 Oct: "where is the
