@@ -80,6 +80,10 @@ class FocusComponentLayoutTest {
         Triple("CyclePad", true) { com.d365fo.mobileops.presentation.modules.cyclecounting.CycleCountFocusSample(2) },
         Triple("CycleNotOnJournal", true) { com.d365fo.mobileops.presentation.modules.cyclecounting.CycleCountFocusSample(3) },
         Triple("CycleLocation", true) { com.d365fo.mobileops.presentation.modules.cyclecounting.CycleCountFocusSample(4) },
+        Triple("PoAdding", true) { com.d365fo.mobileops.presentation.modules.ordercreate.OrderCreateFocusSample(0) },
+        Triple("PoLines", true) { com.d365fo.mobileops.presentation.modules.ordercreate.OrderCreateFocusSample(1) },
+        Triple("PoSaved", true) { com.d365fo.mobileops.presentation.modules.ordercreate.OrderCreateFocusSample(2) },
+        Triple("ReturnNoReason", true) { com.d365fo.mobileops.presentation.modules.ordercreate.OrderCreateFocusSample(3) },
     )
 
     @Test

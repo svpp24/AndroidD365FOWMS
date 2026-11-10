@@ -2,255 +2,268 @@ package com.d365fo.mobileops.presentation.modules.ordercreate
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Description
-import androidx.compose.material.icons.filled.Store
-import androidx.compose.material.icons.filled.Warehouse
 import androidx.compose.material.icons.automirrored.filled.ListAlt
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Row
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.EditNote
+import androidx.compose.material.icons.filled.PhotoCamera
+import androidx.compose.material.icons.filled.Store
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import com.d365fo.mobileops.presentation.common.components.SquareTextButton as TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.d365fo.mobileops.presentation.common.components.AppCard
-import com.d365fo.mobileops.presentation.common.components.ErrorBanner
-import com.d365fo.mobileops.presentation.common.components.PromptHeroCard
-import com.d365fo.mobileops.presentation.common.components.SquareButton
-import com.d365fo.mobileops.presentation.common.components.SquareOutlinedButton
+import com.d365fo.mobileops.presentation.common.focus.BandKind
+import com.d365fo.mobileops.presentation.common.focus.BandState
+import com.d365fo.mobileops.presentation.common.focus.FocusButton
+import com.d365fo.mobileops.presentation.common.focus.FocusCenter
+import com.d365fo.mobileops.presentation.common.focus.FocusListRow
+import com.d365fo.mobileops.presentation.common.focus.FocusScreen
+import com.d365fo.mobileops.presentation.common.focus.HoldToConfirmButton
+import com.d365fo.mobileops.presentation.common.focus.ScanPillField
 import com.d365fo.mobileops.presentation.common.scan.CameraScannerSheet
+import com.d365fo.mobileops.presentation.common.theme.FocusColors
+import com.d365fo.mobileops.presentation.common.theme.FocusType
 import com.d365fo.mobileops.presentation.common.theme.WarehouseDimens
-import com.d365fo.mobileops.presentation.common.theme.WarehouseStatusColors
-import com.d365fo.mobileops.presentation.common.components.AppTopBar as TopAppBar
+import com.d365fo.mobileops.presentation.modules.stepflow.bandOf
 
-/** Purchase return - see [ReturnCreateViewModel]. */
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+/**
+ * Purchase return - see [ReturnCreateViewModel] - in the Focus design, on the existing steps:
+ * the vendor (picked, or taken from the original PO scanned), the return reason and action,
+ * items (stock and quantity asked as before), then Hold to post return - posting can't be undone.
+ */
 @Composable
 fun ReturnCreateScreen(onBack: () -> Unit, viewModel: ReturnCreateViewModel = hiltViewModel()) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val online by viewModel.online.collectAsStateWithLifecycle()
     val orders by viewModel.orders.collectAsStateWithLifecycle()
     var showCamera by remember { mutableStateOf(false) }
-    var typing by remember { mutableStateOf(false) }
+    var showLines by rememberSaveable { mutableStateOf(false) }
+    var showReason by rememberSaveable { mutableStateOf(false) }
     var confirmDiscard by remember { mutableStateOf(false) }
-    var confirmSend by remember { mutableStateOf(false) }
     val draft = state.draft
+    val lastAdded = rememberLastAdded(draft.lines)
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("Return to vendor") },
-                expandedHeight = WarehouseDimens.TopBarHeight,
-                navigationIcon = {
-                    IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back") }
-                },
-            )
-        },
-    ) { padding ->
-        Column(modifier = Modifier.fillMaxSize().padding(padding)) {
-        LazyColumn(
-            modifier = Modifier.fillMaxWidth().weight(1f),
-            // contentPadding, not padding: the step tabs run edge to edge (Harbour).
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = WarehouseDimens.ScreenPadding),
-            verticalArrangement = Arrangement.spacedBy(WarehouseDimens.ItemSpacing),
+    ReturnDialogs(state, viewModel)
+    if (confirmDiscard) {
+        DiscardDialog(what = "return", lines = draft.lines.size, onKeep = { confirmDiscard = false }, onDiscard = { confirmDiscard = false; viewModel.discard() })
+    }
+    if (showCamera) {
+        CameraScannerSheet(onDecoded = { viewModel.onCameraDecoded(it); showCamera = false }, onDismiss = { showCamera = false })
+    }
+
+    if (showLines && draft.vendorAccount.isNotBlank() && draft.lines.isNotEmpty()) {
+        OrderLinesScreen(
+            title = "Return lines",
+            lines = draft.lines,
+            showPrice = false,
+            currency = "",
+            footer = orderSize(draft.lines),
+            onLine = { viewModel.editLine(it) },
+            onClose = { showLines = false },
+        )
+        return
+    }
+
+    if (draft.vendorAccount.isBlank()) {
+        // -- Step 1: the vendor - picked, or taken from the original PO scanned ---------------
+        val submitted = state.submittedId?.let { id -> orders.firstOrNull { it.id == id } }
+        FocusScreen(
+            title = "Return to vendor",
+            onBack = onBack,
+            band = state.error?.let { bandOf(BandKind.Bad, it) }
+                ?: submitted?.let { BandState(BandKind.Ok, "Return saved", it.documentNumber ?: it.title) }
+                ?: BandState(BandKind.Info, "New return", "From ${draft.warehouseId}".takeIf { draft.warehouseId.isNotBlank() }),
+            scanPill = { ScanPillField(enabled = !state.busy) },
+            actions = if (submitted == null) null else { {
+                FocusButton("Start another return", onClick = viewModel::dismissResult, modifier = Modifier.weight(1f))
+            } },
         ) {
-            item(key = "tabs") {
-                Column {
-                    com.d365fo.mobileops.presentation.common.components.StepTrail(
-                        names = listOf("Vendor", "Reason", "Items", "Post"),
-                        current = when {
-                            draft.vendorAccount.isBlank() -> 0
-                            draft.lines.isEmpty() && (draft.reasonCode.isBlank() || draft.actionCode.isBlank()) -> 1
-                            else -> 2
-                        },
-                    )
-                    androidx.compose.foundation.layout.Box(Modifier.fillMaxWidth().height(4.dp)) { if (state.busy) LinearProgressIndicator(modifier = Modifier.fillMaxWidth()) }
-                }
-            }
-            // Scan card first, above the saved return and the history: it stays in one place.
-            if (draft.vendorAccount.isBlank()) {
-                item {
-                    PromptHeroCard(prompt = "Scan the original PO") {
-                        OrderScanField(onType = { typing = true }, onCamera = { showCamera = true }, enabled = !state.busy)
-                    }
-                }
-            }
-            // Below the scan card on a step that has one - see the item after it in step 2.
-            if (draft.vendorAccount.isBlank()) state.error?.let { message -> item { ErrorBanner(message = message, onDismiss = viewModel::dismissError) } }
-
-            state.submittedId?.let { id ->
-                val order = orders.firstOrNull { it.id == id }
-                if (order != null) {
-                    item { com.d365fo.mobileops.presentation.common.components.ListHeader(Icons.Default.Check, "Return saved") }
-                    item { CreatedOrderCard(order) }
-                    item { SquareOutlinedButton(onClick = viewModel::dismissResult, modifier = Modifier.fillMaxWidth()) { Text("Start another return") } }
-                }
-            }
-
-            if (draft.vendorAccount.isBlank()) {
-                // -- Step 1: vendor - picked, or taken from the original PO ---------------------
-                // Keyed so the field keeps focus when the cards above go away as typing starts.
+            BusyLine(state.busy)
+            LazyColumn(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                // Keyed so the field keeps focus when the rows above go away as typing starts.
                 item(key = "vendor-search") {
-                    com.d365fo.mobileops.presentation.common.components.PromptHeroCard(prompt = "Choose vendor") {
-                        TapToTypeField(state.vendorQuery, viewModel::onVendorQuery, "Vendor name or account")
-                    }
+                    TapToTypeField(
+                        state.vendorQuery, viewModel::onVendorQuery, "Type to search vendor",
+                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+                    )
                 }
-                if (orders.isNotEmpty() && state.submittedId == null && state.vendorQuery.isBlank()) {
-                    item { com.d365fo.mobileops.presentation.common.components.ListHeader(Icons.Default.Description, "Your returns", orders.size.coerceAtMost(3), trailing = "Newest") }
+                if (submitted != null) {
+                    item(key = "submitted") { CreatedOrderCard(submitted) }
+                } else if (orders.isNotEmpty() && state.vendorQuery.isBlank()) {
+                    item(key = "orders-caption") { ListCaption("Your returns", "Newest") }
                     items(orders.take(3), key = { it.id }) { order -> CreatedOrderCard(order) }
                 }
-                item {
-                    com.d365fo.mobileops.presentation.common.components.ListHeader(
-                        icon = Icons.Default.Store,
-                        title = "Vendors",
-                        count = state.vendorCount.takeIf { it > 0 },
-                        trailing = if (state.vendorCount == 0) (if (online) "Getting vendors..." else "No vendors yet - connect once.") else null,
+                item(key = "vendor-caption") {
+                    ListCaption(
+                        "Vendors" + (if (state.vendorCount > 0) " · ${state.vendorCount}" else ""),
+                        trailing = if (state.vendorCount == 0) (if (online) "Getting vendors…" else "No vendors yet - connect once") else null,
                     )
                 }
                 items(state.vendors, key = { it.accountNum }) { vendor ->
-                    com.d365fo.mobileops.presentation.common.components.ListCard {
-                        com.d365fo.mobileops.presentation.common.components.LineRow(
-                            title = vendor.name,
-                            lines = listOf(vendor.accountNum),
-                            lead = {
-                                com.d365fo.mobileops.presentation.common.components.LeadDot(
-                                    com.d365fo.mobileops.presentation.common.components.Lead.Accent,
-                                    text = vendor.accountNum.takeLast(3),
-                                )
-                            },
-                            trailing = { com.d365fo.mobileops.presentation.common.components.RowChevron() },
-                            onClick = { viewModel.pickVendor(vendor) },
-                        )
-                    }
+                    FocusListRow(
+                        title = vendor.name,
+                        subtitle = vendor.accountNum,
+                        icon = Icons.Default.Store,
+                        chevron = true,
+                        onClick = { viewModel.pickVendor(vendor) },
+                    )
                 }
-            } else {
-                // -- Step 2: reason, RMA and lines ------------------------------------------------
-                // Scan card first: it stays in one place however the cards below change (feedback, 10 Oct).
-                item {
-                    PromptHeroCard(
-                        prompt = "Scan item",
-                        pills = listOfNotNull(
-                            Icons.Default.Store to "Vendor " + draft.vendorName.ifBlank { draft.vendorAccount },
-                            Icons.Default.Warehouse to "From ${draft.warehouseId}",
-                            draft.rmaNumber.takeIf { it.isNotBlank() }?.let { Icons.Default.Description to "RMA $it" },
-                        ),
-                    ) {
-                        OrderScanField(onType = { typing = true }, onCamera = { showCamera = true }, enabled = !state.busy)
-                        Row(modifier = Modifier.fillMaxWidth()) {
-                            TextButton(onClick = { viewModel.editRma(true) }) {
-                                Text(if (draft.rmaNumber.isBlank()) "Add vendor RMA" else "Change RMA")
-                            }
-                            if (draft.lines.isEmpty()) TextButton(onClick = viewModel::changeVendor) { Text("Change vendor") }
-                        }
-                    }
-                }
-                state.error?.let { message -> item { ErrorBanner(message = message, onDismiss = viewModel::dismissError) } }
-                if (state.reasons.isNotEmpty() || state.actions.isNotEmpty()) {
-                    item {
-                        // Reason and action in one white card (Harbour) - dropdowns, as D365FO's
-                        // own setup can be any length.
-                        Column(
-                            verticalArrangement = Arrangement.spacedBy(6.dp),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .background(androidx.compose.ui.graphics.Color.White, androidx.compose.foundation.shape.RoundedCornerShape(12.dp))
-                                .padding(12.dp),
-                        ) {
-                            if (state.reasons.isNotEmpty()) {
-                                Text("Return reason", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, color = WarehouseStatusColors.text3)
-                                com.d365fo.mobileops.presentation.common.components.DropdownField(
-                                    options = state.reasons.map { com.d365fo.mobileops.presentation.common.components.DropdownOption(it.code, it.label) },
-                                    selectedId = draft.reasonCode,
-                                    placeholder = "Choose a reason",
-                                    onPick = viewModel::pickReason,
-                                )
-                            }
-                            if (state.actions.isNotEmpty()) {
-                                Text("Return action", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, color = WarehouseStatusColors.text3, modifier = Modifier.padding(top = 4.dp))
-                                com.d365fo.mobileops.presentation.common.components.DropdownField(
-                                    options = state.actions.map { com.d365fo.mobileops.presentation.common.components.DropdownOption(it.code, it.label) },
-                                    selectedId = draft.actionCode,
-                                    placeholder = "Choose an action",
-                                    onPick = viewModel::pickAction,
-                                )
-                            }
-                        }
-                    }
-                }
-                if (state.reasons.isEmpty() && !online) {
-                    item {
-                        Text(
-                            "Reasons load when online.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = WarehouseStatusColors.text3,
-                        )
-                    }
-                }
-                if (draft.lines.isNotEmpty()) {
-                    item {
-                        com.d365fo.mobileops.presentation.common.components.ListHeader(
-                            icon = Icons.AutoMirrored.Filled.ListAlt,
-                            title = "Return lines",
-                            count = draft.lines.size,
-                        )
-                    }
-                }
-                items(draft.lines, key = { it.id }) { line ->
-                    OrderLineCard(line, showPrice = false, currency = "") { viewModel.editLine(line) }
-                }
-                if (draft.lines.isNotEmpty()) {
-                    state.missing?.let { item { Text(it, style = MaterialTheme.typography.bodyMedium, color = WarehouseStatusColors.amber) } }
-                }
-                item { androidx.compose.foundation.layout.Spacer(Modifier.height(8.dp)) }
             }
         }
-        // The dock (Harbour): Discard beside a hold to return and post - posting can't be undone,
-        // so a hold rather than a tap and a question.
-        if (draft.vendorAccount.isNotBlank()) {
-            com.d365fo.mobileops.presentation.common.components.FlowDock {
-                com.d365fo.mobileops.presentation.common.components.DockOutlinedButton(
-                    onClick = { confirmDiscard = true },
-                    text = "Discard",
-                    color = WarehouseStatusColors.red,
-                    modifier = Modifier.weight(0.38f),
-                )
-                com.d365fo.mobileops.presentation.common.components.HoldButton(
-                    label = "Hold to post",
-                    onConfirm = viewModel::create,
-                    enabled = !state.busy && draft.lines.isNotEmpty() && state.missing == null,
-                    modifier = Modifier.weight(0.62f),
-                )
-            }
-        }
-        }
+        return
     }
 
+    // -- Step 2: reason and action, then lines -------------------------------------------------
+    val hasReasons = state.reasons.isNotEmpty() || state.actions.isNotEmpty()
+    val reasonUnset = (state.reasons.isNotEmpty() && draft.reasonCode.isBlank()) || (state.actions.isNotEmpty() && draft.actionCode.isBlank())
+    // The reason step: until a reason and action are chosen, or when changed from the menu.
+    val choosingReason = hasReasons && (showReason || (draft.lines.isEmpty() && reasonUnset))
+    val reasonLabel = state.reasons.firstOrNull { it.code == draft.reasonCode }?.label
+    FocusScreen(
+        title = "Return to vendor",
+        onBack = onBack,
+        counter = draft.lines.size.takeIf { it > 0 }?.let { linesText(it) },
+        band = returnBand(state, lastAdded, reasonLabel, online),
+        remaining = orderSize(draft.lines),
+        // Scans work on the reason step too (any order): an item scanned there is added.
+        scanPill = { ScanPillField(enabled = !state.busy) },
+        topBarTrailing = {
+            OrderToolsMenu(
+                listOfNotNull(
+                    OrderMenuItem("Camera scan", Icons.Default.PhotoCamera, { showCamera = true }, enabled = !state.busy),
+                    OrderMenuItem("Change reason", Icons.Default.EditNote, { showReason = true }).takeIf { hasReasons && !choosingReason },
+                    OrderMenuItem(if (draft.rmaNumber.isBlank()) "Add vendor RMA" else "Change RMA", Icons.Default.Description, { viewModel.editRma(true) }),
+                    OrderMenuItem("Change vendor", Icons.Default.Store, viewModel::changeVendor).takeIf { draft.lines.isEmpty() },
+                    OrderMenuItem("Discard return", Icons.Default.Delete, { confirmDiscard = true }),
+                ),
+            )
+        },
+        actions = {
+            if (choosingReason) {
+                FocusButton(
+                    "Done",
+                    onClick = { showReason = false },
+                    primary = true,
+                    enabled = !reasonUnset,
+                    modifier = Modifier.weight(1f),
+                )
+            } else {
+                if (draft.lines.isNotEmpty()) {
+                    FocusButton("Lines", onClick = { showLines = true }, icon = Icons.AutoMirrored.Filled.ListAlt, modifier = Modifier.weight(1f))
+                }
+                HoldToConfirmButton(
+                    "Hold to post return",
+                    onConfirm = viewModel::create,
+                    enabled = !state.busy && draft.lines.isNotEmpty() && state.missing == null,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+        },
+    ) {
+        BusyLine(state.busy)
+        when {
+            choosingReason -> ReasonChoice(state, viewModel)
+            lastAdded != null -> LastAddedCenter(lastAdded, onTap = { viewModel.editLine(lastAdded) })
+            else -> FocusCenter(
+                caption = "New return",
+                code = draft.vendorAccount,
+                description = draft.vendorName.takeIf { it.isNotBlank() },
+                unitLine = listOfNotNull(
+                    "From ${draft.warehouseId}",
+                    reasonLabel,
+                    draft.rmaNumber.takeIf { it.isNotBlank() }?.let { "RMA $it" },
+                ).joinToString(" · "),
+            )
+        }
+    }
+}
+
+/**
+ * What went wrong, else what still stops the post (said as what is missing, not as an
+ * instruction), else what the last scan added, else the return itself.
+ */
+internal fun returnBand(
+    state: ReturnCreateState,
+    lastAdded: com.d365fo.mobileops.data.repository.DraftLine?,
+    reasonLabel: String?,
+    online: Boolean,
+): BandState {
+    val draft = state.draft
+    state.error?.let { return bandOf(BandKind.Bad, it) }
+    if (draft.lines.isNotEmpty()) {
+        when {
+            state.reasons.isNotEmpty() && draft.reasonCode.isBlank() -> return BandState(BandKind.Warn, "No return reason", "nothing posted")
+            state.actions.isNotEmpty() && draft.actionCode.isBlank() -> return BandState(BandKind.Warn, "No return action", "nothing posted")
+        }
+    }
+    lastAdded?.let {
+        return BandState(
+            BandKind.Ok,
+            "Added",
+            listOfNotNull(
+                "${it.itemId} · ${com.d365fo.mobileops.domain.order.qtyText(it.qty)} ${it.unitId}".trim(),
+                it.locationId.takeIf { l -> l.isNotBlank() }?.let { l -> "From $l" },
+            ).joinToString(" · "),
+        )
+    }
+    return BandState(
+        BandKind.Info,
+        "New return · ${draft.vendorName.ifBlank { draft.vendorAccount }}",
+        reasonLabel?.let { "Reason: $it" } ?: "Reasons load when online".takeIf { state.reasons.isEmpty() && !online },
+    )
+}
+
+/** The return reason and action: D365FO's own setup, any length - dropdowns, as before. */
+@Composable
+private fun ColumnScope.ReasonChoice(state: ReturnCreateState, viewModel: ReturnCreateViewModel) {
+    Column(
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+        modifier = Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 16.dp),
+    ) {
+        if (state.reasons.isNotEmpty()) {
+            Text("RETURN REASON", style = FocusType.caption, color = FocusColors.caption)
+            com.d365fo.mobileops.presentation.common.components.DropdownField(
+                options = state.reasons.map { com.d365fo.mobileops.presentation.common.components.DropdownOption(it.code, it.label) },
+                selectedId = state.draft.reasonCode,
+                placeholder = "Reason",
+                onPick = viewModel::pickReason,
+            )
+        }
+        if (state.actions.isNotEmpty()) {
+            Text("RETURN ACTION", style = FocusType.caption, color = FocusColors.caption, modifier = Modifier.padding(top = 12.dp))
+            com.d365fo.mobileops.presentation.common.components.DropdownField(
+                options = state.actions.map { com.d365fo.mobileops.presentation.common.components.DropdownOption(it.code, it.label) },
+                selectedId = state.draft.actionCode,
+                placeholder = "Action",
+                onPick = viewModel::pickAction,
+            )
+        }
+    }
+}
+
+/** The variant, stock, quantity and RMA steps - unchanged, with the same checks as before. */
+@Composable
+private fun ReturnDialogs(state: ReturnCreateState, viewModel: ReturnCreateViewModel) {
+    val draft = state.draft
     state.choosingVariant?.let { item ->
         VariantPickerDialog(item = item, onPick = viewModel::pickVariant, onDismiss = viewModel::cancelPending)
     }
@@ -312,47 +325,5 @@ fun ReturnCreateScreen(onBack: () -> Unit, viewModel: ReturnCreateViewModel = hi
                 )
             },
         )
-    }
-    if (typing) {
-        CodeEntryDialog(
-            title = if (draft.vendorAccount.isBlank()) "Original PO" else "Item",
-            label = if (draft.vendorAccount.isBlank()) "Purchase order number" else "Item number or barcode",
-            onSubmit = { typing = false; viewModel.onCode(it) },
-            onDismiss = { typing = false },
-        )
-    }
-    if (confirmSend) {
-        AlertDialog(
-            onDismissRequest = { confirmSend = false },
-            title = { Text("Return and post?") },
-            text = {
-                Text(
-                    "${linesText(draft.lines.size)} back to ${draft.vendorName.ifBlank { draft.vendorAccount }}. Stock leaves ${draft.warehouseId}." +
-                        if (online) "" else " Offline - posted when back.",
-                )
-            },
-            confirmButton = {
-                com.d365fo.mobileops.presentation.common.components.DialogButtonRow(
-                    dismiss = { com.d365fo.mobileops.presentation.common.components.CancelOutlinedButton(onClick = { confirmSend = false }, modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget)) { Text("Not yet") } },
-                    confirm = { com.d365fo.mobileops.presentation.common.components.ConfirmButton(onClick = { confirmSend = false; viewModel.create() }, modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget)) { Text("Return and post") } },
-                )
-            },
-        )
-    }
-    if (confirmDiscard) {
-        AlertDialog(
-            onDismissRequest = { confirmDiscard = false },
-            title = { Text("Discard this return?") },
-            text = { Text("${linesText(draft.lines.size)} removed. Nothing was sent.") },
-            confirmButton = {
-                com.d365fo.mobileops.presentation.common.components.DialogButtonRow(
-                    dismiss = { com.d365fo.mobileops.presentation.common.components.CancelOutlinedButton(onClick = { confirmDiscard = false }, modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget)) { Text("Keep") } },
-                    confirm = { com.d365fo.mobileops.presentation.common.components.CancelButton(onClick = { confirmDiscard = false; viewModel.discard() }, modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget)) { Text("Discard") } },
-                )
-            },
-        )
-    }
-    if (showCamera) {
-        CameraScannerSheet(onDecoded = { viewModel.onCameraDecoded(it); showCamera = false }, onDismiss = { showCamera = false })
     }
 }

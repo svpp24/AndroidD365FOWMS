@@ -173,6 +173,11 @@ fun ColumnScope.FocusCenter(
                     Text(unit, style = FocusType.unitLine, color = FocusColors.caption, textAlign = TextAlign.Center)
                 }
             }
+        } else {
+            // No number: the unit line still says what the job is ("To AAC · Delivery ...").
+            unitLine?.takeIf { it.isNotBlank() }?.let {
+                Text(it, style = FocusType.unitLine, color = FocusColors.caption, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 8.dp))
+            }
         }
     }
     }

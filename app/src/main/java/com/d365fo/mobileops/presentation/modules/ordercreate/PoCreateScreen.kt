@@ -1,61 +1,47 @@
 package com.d365fo.mobileops.presentation.modules.ordercreate
 
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Keyboard
-import androidx.compose.material.icons.filled.PhotoCamera
-import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Description
-import androidx.compose.material.icons.filled.Store
-import androidx.compose.material.icons.filled.Warehouse
-import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.automirrored.filled.ListAlt
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.PhotoCamera
+import androidx.compose.material.icons.filled.Store
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import com.d365fo.mobileops.presentation.common.components.SquareTextButton as TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.d365fo.mobileops.domain.order.amountText
-import com.d365fo.mobileops.domain.order.qtyText
-import com.d365fo.mobileops.presentation.common.components.AppCard
-import com.d365fo.mobileops.presentation.common.components.ErrorBanner
-import com.d365fo.mobileops.presentation.common.components.PromptHeroCard
-import com.d365fo.mobileops.presentation.common.components.SquareButton
-import com.d365fo.mobileops.presentation.common.components.SquareOutlinedButton
+import com.d365fo.mobileops.presentation.common.focus.BandKind
+import com.d365fo.mobileops.presentation.common.focus.BandState
+import com.d365fo.mobileops.presentation.common.focus.FocusButton
+import com.d365fo.mobileops.presentation.common.focus.FocusCenter
+import com.d365fo.mobileops.presentation.common.focus.FocusListRow
+import com.d365fo.mobileops.presentation.common.focus.FocusScreen
+import com.d365fo.mobileops.presentation.common.focus.HoldToConfirmButton
+import com.d365fo.mobileops.presentation.common.focus.ScanPillField
 import com.d365fo.mobileops.presentation.common.scan.CameraScannerSheet
 import com.d365fo.mobileops.presentation.common.theme.WarehouseDimens
-import com.d365fo.mobileops.presentation.common.theme.WarehouseStatusColors
+import com.d365fo.mobileops.presentation.modules.stepflow.bandOf
 import com.d365fo.mobileops.util.Formatters
-import com.d365fo.mobileops.presentation.common.components.AppTopBar as TopAppBar
 
-/** PO creation - see [PoCreateViewModel]. */
-@OptIn(ExperimentalMaterial3Api::class)
+/**
+ * PO creation - see [PoCreateViewModel] - in the Focus design (brief sections 6 and 9), on the
+ * existing steps: choose the vendor, then scan items (each asks its quantity, with the item's
+ * order rules), then hold to create. The band says what the last scan did, the centre shows the
+ * last line added, and the order's lines open on demand.
+ */
 @Composable
 fun PoCreateScreen(
     onBack: () -> Unit,
@@ -76,158 +62,149 @@ fun PoCreateScreen(
             order.message?.startsWith("Created; not confirmed") == true
         ) "Confirm it now" else null
     var showCamera by remember { mutableStateOf(false) }
-    var typing by remember { mutableStateOf(false) }
+    var showLines by rememberSaveable { mutableStateOf(false) }
     var confirmDiscard by remember { mutableStateOf(false) }
     val draft = state.draft
+    val lastAdded = rememberLastAdded(draft.lines)
+    val busy = state.busy || state.pricing || state.refreshingVendors
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("Create PO") },
-                expandedHeight = WarehouseDimens.TopBarHeight,
-                navigationIcon = {
-                    IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back") }
-                },
-            )
-        },
-    ) { padding ->
-        Column(modifier = Modifier.fillMaxSize().padding(padding)) {
-        LazyColumn(
-            modifier = Modifier.fillMaxWidth().weight(1f),
-            // contentPadding, not padding: the step tabs run edge to edge (Harbour).
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = WarehouseDimens.ScreenPadding, vertical = 0.dp),
-            verticalArrangement = Arrangement.spacedBy(WarehouseDimens.ItemSpacing),
+    PoDialogs(state, viewModel, online)
+    if (confirmDiscard) {
+        DiscardDialog(what = "order", lines = draft.lines.size, onKeep = { confirmDiscard = false }, onDiscard = { confirmDiscard = false; viewModel.discard() })
+    }
+    if (showCamera) {
+        CameraScannerSheet(onDecoded = { viewModel.onCameraDecoded(it); showCamera = false }, onDismiss = { showCamera = false })
+    }
+    val priced = draft.lines.isNotEmpty() && draft.lines.all { it.lineAmount != null }
+    val total = if (priced) "Total ${amountText(draft.lines.sumOf { it.lineAmount ?: 0.0 })} ${draft.currencyCode}".trim() else null
+
+    if (showLines && draft.vendorAccount.isNotBlank() && draft.lines.isNotEmpty()) {
+        OrderLinesScreen(
+            title = "PO lines",
+            lines = draft.lines,
+            showPrice = true,
+            currency = draft.currencyCode,
+            footer = total ?: "Priced by D365FO",
+            onLine = { viewModel.editLine(it) },
+            onClose = { showLines = false },
+        )
+        return
+    }
+
+    if (draft.vendorAccount.isBlank()) {
+        // -- Step 1: vendor, with the order just saved and the latest made here --------------
+        val submitted = state.submittedId?.let { id -> orders.firstOrNull { it.id == id } }
+        FocusScreen(
+            title = "Create PO",
+            onBack = onBack,
+            band = state.error?.let { bandOf(BandKind.Bad, it) }
+                ?: submitted?.let { BandState(BandKind.Ok, "Order saved", it.documentNumber ?: it.title) },
+            actions = if (submitted == null) null else { {
+                FocusButton("Start another order", onClick = viewModel::dismissResult, modifier = Modifier.weight(1f))
+            } },
         ) {
-            item(key = "tabs") {
-                Column {
-                    com.d365fo.mobileops.presentation.common.components.StepTrail(
-                        names = listOf("Vendor", "Items", "Create"),
-                        current = if (draft.vendorAccount.isBlank()) 0 else 1,
-                    )
-                    androidx.compose.foundation.layout.Box(Modifier.fillMaxWidth().height(4.dp)) {
-                        if (state.busy || state.pricing || state.refreshingVendors) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-                    }
-                }
-            }
-            // Below the scan card on a step that has one - see the item after it in step 2.
-            if (draft.vendorAccount.isBlank()) state.error?.let { message -> item { ErrorBanner(message = message, onDismiss = viewModel::dismissError) } }
-
-            state.submittedId?.let { id ->
-                val order = orders.firstOrNull { it.id == id }
-                if (order != null) {
-                    item { com.d365fo.mobileops.presentation.common.components.ListHeader(Icons.Default.Check, "Order saved") }
-                    item { CreatedOrderCard(order, actionLabel = confirmLabel(order), onAction = { order.documentNumber?.let(onConfirm) }) }
-                    item { SquareOutlinedButton(onClick = viewModel::dismissResult, modifier = Modifier.fillMaxWidth()) { Text("Start another order") } }
-                }
-            }
-
-            if (draft.vendorAccount.isBlank()) {
-                // -- Step 1: vendor ------------------------------------------------------------
-                // Keyed: the cards above disappear with the first letter typed, and an unkeyed
+            BusyLine(busy)
+            LazyColumn(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                // Keyed: the rows above disappear with the first letter typed, and an unkeyed
                 // field would be recomposed at a new index - losing focus and the next letters.
                 item(key = "vendor-search") {
-                    com.d365fo.mobileops.presentation.common.components.PromptHeroCard(prompt = "Choose vendor") {
-                        TapToTypeField(state.vendorQuery, viewModel::onVendorQuery, "Vendor name or account")
-                    }
+                    TapToTypeField(
+                        state.vendorQuery, viewModel::onVendorQuery, "Type to search vendor",
+                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+                    )
                 }
-                // The latest orders made here, after the search field (they hide while searching).
-                if (orders.isNotEmpty() && state.submittedId == null && state.vendorQuery.isBlank()) {
-                    item { com.d365fo.mobileops.presentation.common.components.ListHeader(Icons.Default.Description, "Your orders", orders.size.coerceAtMost(3), trailing = "Newest") }
+                if (submitted != null) {
+                    item(key = "submitted") {
+                        CreatedOrderCard(submitted, actionLabel = confirmLabel(submitted), onAction = { submitted.documentNumber?.let(onConfirm) })
+                    }
+                } else if (orders.isNotEmpty() && state.vendorQuery.isBlank()) {
+                    // The latest orders made here (they hide while searching).
+                    item(key = "orders-caption") { ListCaption("Your orders", "Newest") }
                     items(orders.take(3), key = { it.id }) { order ->
                         CreatedOrderCard(order, actionLabel = confirmLabel(order), onAction = { order.documentNumber?.let(onConfirm) })
                     }
                 }
-                item(key = "vendor-count") {
-                    com.d365fo.mobileops.presentation.common.components.ListHeader(
-                        icon = Icons.Default.Store,
-                        title = "Vendors",
-                        count = state.vendorCount.takeIf { it > 0 },
-                        trailing = if (state.vendorCount == 0) {
-                            if (online) "Getting vendors..." else "No vendors yet - connect once."
-                        } else if (online) {
-                            "Refresh" + (state.vendorsSavedAt?.let { " · ${Formatters.clockTime(it)}" } ?: "")
-                        } else {
-                            state.vendorsSavedAt?.let { "Updated ${Formatters.clockTime(it)}" }
+                item(key = "vendor-caption") {
+                    ListCaption(
+                        "Vendors" + (if (state.vendorCount > 0) " · ${state.vendorCount}" else ""),
+                        trailing = when {
+                            state.vendorCount == 0 -> if (online) "Getting vendors…" else "No vendors yet - connect once"
+                            online -> "Refresh" + (state.vendorsSavedAt?.let { " · ${Formatters.clockTime(it)}" } ?: "")
+                            else -> state.vendorsSavedAt?.let { "Updated ${Formatters.clockTime(it)}" }
                         },
                         onTrailing = if (online && state.vendorCount > 0) ({ viewModel.refreshVendors(true) }) else null,
                     )
                 }
                 items(state.vendors, key = { it.accountNum }) { vendor ->
-                    com.d365fo.mobileops.presentation.common.components.ListCard {
-                        com.d365fo.mobileops.presentation.common.components.LineRow(
-                            title = vendor.name,
-                            lines = listOf(listOf(vendor.accountNum, vendor.currencyCode, vendor.paymentTerms).filter { it.isNotBlank() }.joinToString(" · ")),
-                            lead = {
-                                com.d365fo.mobileops.presentation.common.components.LeadDot(
-                                    com.d365fo.mobileops.presentation.common.components.Lead.Accent,
-                                    text = vendor.accountNum.takeLast(3),
-                                )
-                            },
-                            trailing = { com.d365fo.mobileops.presentation.common.components.RowChevron() },
-                            onClick = { viewModel.pickVendor(vendor) },
-                        )
-                    }
+                    FocusListRow(
+                        title = vendor.name,
+                        subtitle = listOf(vendor.accountNum, vendor.currencyCode, vendor.paymentTerms).filter { it.isNotBlank() }.joinToString(" · "),
+                        icon = Icons.Default.Store,
+                        chevron = true,
+                        onClick = { viewModel.pickVendor(vendor) },
+                    )
                 }
-            } else {
-                // -- Step 2: lines -------------------------------------------------------------
-                // Scan card first: it stays in one place however the cards below change (feedback, 10 Oct).
-                item {
-                    PromptHeroCard(
-                        prompt = "Scan item",
-                        pills = listOf(
-                            Icons.Default.Store to "Vendor " + draft.vendorName.ifBlank { draft.vendorAccount },
-                            Icons.Default.Warehouse to "To ${draft.warehouseId}",
-                            Icons.Default.CalendarMonth to "Delivery ${draft.deliveryDate}",
-                        ),
-                    ) {
-                        OrderScanField(onType = { typing = true }, onCamera = { showCamera = true }, enabled = !state.busy)
-                        if (draft.lines.isEmpty()) {
-                            TextButton(onClick = viewModel::changeVendor) { Text("Change vendor") }
-                        }
-                    }
-                }
-                state.error?.let { message -> item { ErrorBanner(message = message, onDismiss = viewModel::dismissError) } }
-                if (draft.lines.isNotEmpty()) {
-                    item {
-                        val priced = draft.lines.all { it.lineAmount != null }
-                        com.d365fo.mobileops.presentation.common.components.ListHeader(
-                            icon = Icons.AutoMirrored.Filled.ListAlt,
-                            title = "Order lines",
-                            count = draft.lines.size,
-                            trailing = if (priced) {
-                                "Total ${amountText(draft.lines.sumOf { it.lineAmount ?: 0.0 })} ${draft.currencyCode}".trim()
-                            } else {
-                                "Priced by D365FO"
-                            },
-                        )
-                    }
-                }
-                items(draft.lines, key = { it.id }) { line ->
-                    OrderLineCard(line, showPrice = true, currency = draft.currencyCode) { viewModel.editLine(line) }
-                }
-                item { androidx.compose.foundation.layout.Spacer(Modifier.height(8.dp)) }
             }
         }
-        // The dock (Harbour): Discard beside a hold to create and confirm.
-        if (draft.vendorAccount.isNotBlank()) {
-            com.d365fo.mobileops.presentation.common.components.FlowDock {
-                com.d365fo.mobileops.presentation.common.components.DockOutlinedButton(
-                    onClick = { confirmDiscard = true },
-                    text = "Discard",
-                    color = WarehouseStatusColors.red,
-                    modifier = Modifier.weight(0.38f),
-                )
-                com.d365fo.mobileops.presentation.common.components.HoldButton(
-                    label = "Hold to create",
-                    onConfirm = viewModel::create,
-                    enabled = !state.busy && draft.lines.isNotEmpty(),
-                    modifier = Modifier.weight(0.62f),
-                )
-            }
-        }
-        }
+        return
     }
 
+    // -- Step 2: lines ---------------------------------------------------------------------
+    FocusScreen(
+        title = "Create PO",
+        onBack = onBack,
+        counter = draft.lines.size.takeIf { it > 0 }?.let { linesText(it) },
+        band = poBand(state, lastAdded),
+        remaining = orderSize(draft.lines, total),
+        scanPill = { ScanPillField(enabled = !state.busy) },
+        topBarTrailing = {
+            OrderToolsMenu(
+                listOfNotNull(
+                    OrderMenuItem("Camera scan", Icons.Default.PhotoCamera, { showCamera = true }, enabled = !state.busy),
+                    OrderMenuItem("Change vendor", Icons.Default.Store, viewModel::changeVendor).takeIf { draft.lines.isEmpty() },
+                    OrderMenuItem("Discard order", Icons.Default.Delete, { confirmDiscard = true }),
+                ),
+            )
+        },
+        actions = {
+            if (draft.lines.isNotEmpty()) {
+                FocusButton("Lines", onClick = { showLines = true }, icon = Icons.AutoMirrored.Filled.ListAlt, modifier = Modifier.weight(1f))
+            }
+            HoldToConfirmButton(
+                "Hold to create",
+                onConfirm = viewModel::create,
+                enabled = !state.busy && draft.lines.isNotEmpty(),
+                modifier = Modifier.weight(1f),
+            )
+        },
+    ) {
+        BusyLine(busy)
+        if (lastAdded == null) {
+            FocusCenter(
+                caption = "New order",
+                code = draft.vendorAccount,
+                description = draft.vendorName.takeIf { it.isNotBlank() },
+                unitLine = "To ${draft.warehouseId} · Delivery ${draft.deliveryDate}",
+            )
+        } else {
+            LastAddedCenter(lastAdded, onTap = { viewModel.editLine(lastAdded) })
+        }
+    }
+}
+
+/** The band on the lines step: what went wrong, else what the last scan added, else the order. */
+internal fun poBand(state: PoCreateState, lastAdded: com.d365fo.mobileops.data.repository.DraftLine?): BandState {
+    val draft = state.draft
+    return state.error?.let { bandOf(BandKind.Bad, it) }
+        ?: lastAdded?.let {
+            BandState(BandKind.Ok, "Added", "${it.itemId} · ${com.d365fo.mobileops.domain.order.qtyText(it.qty)} ${it.unitId}".trim())
+        }
+        ?: BandState(BandKind.Info, "New order · ${draft.vendorName.ifBlank { draft.vendorAccount }}", "To ${draft.warehouseId}")
+}
+
+/** The quantity, price and variant steps - unchanged: the item's order rules are checked as before. */
+@Composable
+private fun PoDialogs(state: PoCreateState, viewModel: PoCreateViewModel, online: Boolean) {
     state.choosingVariant?.let { item ->
         VariantPickerDialog(item = item, onPick = viewModel::pickVariant, onDismiss = viewModel::cancelPending)
     }
@@ -268,28 +245,20 @@ fun PoCreateScreen(
             onDismiss = { viewModel.editPrice(null) },
         )
     }
-    if (typing) {
-        CodeEntryDialog(
-            title = "Item",
-            label = "Item number or barcode",
-            onSubmit = { typing = false; viewModel.onCode(it) },
-            onDismiss = { typing = false },
-        )
-    }
-    if (confirmDiscard) {
-        AlertDialog(
-            onDismissRequest = { confirmDiscard = false },
-            title = { Text("Discard this order?") },
-            text = { Text("${linesText(draft.lines.size)} removed. Nothing was sent.") },
-            confirmButton = {
-                com.d365fo.mobileops.presentation.common.components.DialogButtonRow(
-                    dismiss = { com.d365fo.mobileops.presentation.common.components.CancelOutlinedButton(onClick = { confirmDiscard = false }, modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget)) { Text("Keep") } },
-                    confirm = { com.d365fo.mobileops.presentation.common.components.CancelButton(onClick = { confirmDiscard = false; viewModel.discard() }, modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget)) { Text("Discard") } },
-                )
-            },
-        )
-    }
-    if (showCamera) {
-        CameraScannerSheet(onDecoded = { viewModel.onCameraDecoded(it); showCamera = false }, onDismiss = { showCamera = false })
-    }
+}
+
+/** "Discard this order?" - kept from before: it drops lines that were never sent. */
+@Composable
+internal fun DiscardDialog(what: String, lines: Int, onKeep: () -> Unit, onDiscard: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onKeep,
+        title = { Text("Discard this $what?") },
+        text = { Text("${linesText(lines)} removed. Nothing was sent.") },
+        confirmButton = {
+            com.d365fo.mobileops.presentation.common.components.DialogButtonRow(
+                dismiss = { com.d365fo.mobileops.presentation.common.components.CancelOutlinedButton(onClick = onKeep, modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget)) { Text("Keep") } },
+                confirm = { com.d365fo.mobileops.presentation.common.components.CancelButton(onClick = onDiscard, modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget)) { Text("Discard") } },
+            )
+        },
+    )
 }

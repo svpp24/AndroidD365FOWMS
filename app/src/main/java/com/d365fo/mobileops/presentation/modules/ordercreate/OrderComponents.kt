@@ -60,63 +60,42 @@ import com.d365fo.mobileops.presentation.common.components.StatusChip
 import com.d365fo.mobileops.presentation.common.theme.WarehouseStatusColors
 import com.d365fo.mobileops.util.Formatters
 
-/** One line of an order being built - a Harbour row. [showPrice]: purchase orders only. */
+/**
+ * One line of an order being built, as a Focus list row: the item in the code font, what it is
+ * and where it comes from underneath, the quantity on the right. [showPrice]: purchase orders.
+ */
 @Composable
 fun OrderLineCard(line: DraftLine, showPrice: Boolean, currency: String, onClick: () -> Unit) {
-    val dims = listOf(
-        line.variant.label,
-        line.locationId.takeIf { it.isNotBlank() }?.let { "Location $it" },
-        line.batchId.takeIf { it.isNotBlank() }?.let { "Batch $it" },
-        line.serialId.takeIf { it.isNotBlank() }?.let { "Serial $it" },
-    ).filter { !it.isNullOrBlank() }.joinToString(" · ")
-    com.d365fo.mobileops.presentation.common.components.ListCard {
-        com.d365fo.mobileops.presentation.common.components.LineRow(
-            title = line.itemId,
-            description = line.itemName,
-            lines = listOfNotNull(
-                dims.takeIf { it.isNotBlank() },
-                line.available?.let { "${qtyText(it)} available " + if (line.locationId.isNotBlank()) "at the location" else "at From" },
-            ),
-            lead = {
-                com.d365fo.mobileops.presentation.common.components.LeadDot(
-                    com.d365fo.mobileops.presentation.common.components.Lead.Done,
-                    icon = androidx.compose.material.icons.Icons.Filled.Check,
-                )
-            },
-            trailing = {
-                com.d365fo.mobileops.presentation.common.components.QtyTrail(qtyText(line.qty), line.unitId)
-            },
-            onClick = onClick,
-            below = {
-                // Allowed for an item that may go negative - but said, not left for the reader to
-                // compare two numbers (50 ordered with 3 there showed only "3 available at From").
-                line.available?.let {
-                    if (line.qty > it) {
-                        Text("More than on hand", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
-                    }
-                }
-                if (showPrice) {
-                    if (line.price != null) {
-                        Text(
-                            buildString {
-                                append("${amountText(line.price)} $currency".trim())
-                                line.discPct?.takeIf { it > 0 }?.let { append(" · ${qtyText(it)}% off") }
-                                line.lineAmount?.let { append(" · line ${amountText(it)}") }
-                            },
-                            style = MaterialTheme.typography.bodyMedium,
-                        )
-                        Text(
-                            if (line.priceOverride) "Price entered here" else line.priceSource ?: "D365FO price",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = WarehouseStatusColors.text3,
-                        )
-                    } else {
-                        Text("Priced by D365FO when the order is sent", style = MaterialTheme.typography.bodySmall, color = WarehouseStatusColors.amber)
-                    }
-                }
-            },
-        )
+    // Allowed for an item that may go negative - but said, not left for the reader to compare
+    // two numbers (50 ordered with 3 there showed only "3 available at From").
+    val over = line.available?.let { line.qty > it } == true
+    val price = when {
+        !showPrice -> null
+        line.price != null -> buildString {
+            append("${amountText(line.price)} $currency".trim())
+            line.discPct?.takeIf { it > 0 }?.let { append(" · ${qtyText(it)}% off") }
+            line.lineAmount?.let { append(" · line ${amountText(it)}") }
+            append(" · " + if (line.priceOverride) "Price entered here" else line.priceSource ?: "D365FO price")
+        }
+        else -> "Priced by D365FO when the order is sent"
     }
+    com.d365fo.mobileops.presentation.common.focus.FocusListRow(
+        title = line.itemId,
+        titleIsCode = true,
+        state = if (over) com.d365fo.mobileops.presentation.common.focus.RowState.Warn else com.d365fo.mobileops.presentation.common.focus.RowState.Done,
+        subtitle = listOfNotNull(
+            line.itemName.takeIf { it.isNotBlank() && !it.equals(line.itemId, ignoreCase = true) },
+            line.variant.label.takeIf { it.isNotBlank() },
+            line.locationId.takeIf { it.isNotBlank() }?.let { "Location $it" },
+            line.batchId.takeIf { it.isNotBlank() }?.let { "Batch $it" },
+            line.serialId.takeIf { it.isNotBlank() }?.let { "Serial $it" },
+            line.available?.let { "${qtyText(it)} available " + if (line.locationId.isNotBlank()) "at the location" else "at From" },
+            "More than on hand".takeIf { over },
+            price,
+        ).joinToString(" · "),
+        count = "${qtyText(line.qty)} ${line.unitId}".trim(),
+        onClick = onClick,
+    )
 }
 
 /** An order made on this device and where it stands in D365FO - a Harbour row with its status tag. */
@@ -150,52 +129,49 @@ fun CreatedOrderCard(
             (if (online) "Sending" else "Waiting") to com.d365fo.mobileops.presentation.common.components.Lead.Warn
         else -> "Refused" to com.d365fo.mobileops.presentation.common.components.Lead.Bad
     }
-    val icon = when (kind) {
-        com.d365fo.mobileops.presentation.common.components.Lead.Done -> androidx.compose.material.icons.Icons.Filled.Check
-        com.d365fo.mobileops.presentation.common.components.Lead.Bad -> androidx.compose.material.icons.Icons.Filled.Warning
-        else -> androidx.compose.material.icons.Icons.Filled.Schedule
+    // A Focus list row: the document in the code font, its status as a word on the right (icon
+    // plus word, never colour alone), what it is and where it stands underneath.
+    val below = when (order.status) {
+        // Online it is already on its way - creating and confirming takes D365FO up to a minute or
+        // two - so "as soon as it can be reached" read as if it were offline.
+        CreatedOrderStatus.WAITING -> if (online) "Sent - takes a minute or two." else "Saved - sent when online."
+        CreatedOrderStatus.FAILED -> order.message ?: "D365FO refused the order."
+        CreatedOrderStatus.CREATED -> order.message
     }
-    com.d365fo.mobileops.presentation.common.components.ListCard {
-        com.d365fo.mobileops.presentation.common.components.LineRow(
+    androidx.compose.foundation.layout.Column {
+        com.d365fo.mobileops.presentation.common.focus.FocusListRow(
             title = order.documentNumber ?: "Not created yet",
-            status = { com.d365fo.mobileops.presentation.common.components.StatusTag(tag, kind) },
-            description = order.title,
-            lines = listOf(
+            titleIsCode = order.documentNumber != null,
+            state = when (kind) {
+                com.d365fo.mobileops.presentation.common.components.Lead.Done -> com.d365fo.mobileops.presentation.common.focus.RowState.Done
+                else -> com.d365fo.mobileops.presentation.common.focus.RowState.Warn
+            },
+            icon = Icons.Filled.Warning.takeIf { kind == com.d365fo.mobileops.presentation.common.components.Lead.Bad }
+                ?: Icons.Filled.Schedule.takeIf { kind == com.d365fo.mobileops.presentation.common.components.Lead.Warn },
+            subtitle = listOfNotNull(
+                order.title.takeIf { it.isNotBlank() },
                 buildString {
-                    append("${order.lineCount} " + if (order.lineCount == 1) "line" else "lines")
+                    append(linesText(order.lineCount))
                     order.total?.let { append(" · ${amountText(it)} ${order.currencyCode.orEmpty()}".trimEnd()) }
                     append(" · ${Formatters.clockTime(order.createdAt)}")
                 },
-            ),
-            lead = { com.d365fo.mobileops.presentation.common.components.LeadDot(kind, icon = icon) },
-            onClick = onClick,
-            below = {
-                when (order.status) {
-                    // Online it is already on its way - creating and confirming takes D365FO up to
-                    // a minute or two - so "as soon as it can be reached" read as if it were offline.
-                    CreatedOrderStatus.WAITING -> Text(
-                        if (online) "Sent - takes a minute or two." else "Saved - sent when online.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = WarehouseStatusColors.text3,
-                    )
-                    CreatedOrderStatus.FAILED -> Text(
-                        order.message ?: "D365FO refused the order.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = WarehouseStatusColors.red,
-                    )
-                    CreatedOrderStatus.CREATED -> order.message?.let {
-                        Text(
-                            it,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = if (unfinished != null) WarehouseStatusColors.amber else WarehouseStatusColors.text3,
-                        )
-                    }
-                }
-                if (order.status == CreatedOrderStatus.CREATED && actionLabel != null && onAction != null) {
-                    com.d365fo.mobileops.presentation.common.components.SquareTextButton(onClick = onAction) { Text(actionLabel) }
-                }
+                below?.takeIf { it.isNotBlank() },
+            ).joinToString("\n"),
+            count = tag,
+            countColor = when (kind) {
+                com.d365fo.mobileops.presentation.common.components.Lead.Done -> com.d365fo.mobileops.presentation.common.theme.FocusColors.okText
+                com.d365fo.mobileops.presentation.common.components.Lead.Bad -> com.d365fo.mobileops.presentation.common.theme.FocusColors.badText
+                else -> com.d365fo.mobileops.presentation.common.theme.FocusColors.warnText
             },
+            onClick = onClick,
         )
+        if (order.status == CreatedOrderStatus.CREATED && actionLabel != null && onAction != null) {
+            com.d365fo.mobileops.presentation.common.focus.FocusButton(
+                actionLabel,
+                onClick = onAction,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp),
+            )
+        }
     }
 }
 
@@ -413,12 +389,18 @@ fun TapToTypeField(value: String, onValueChange: (String) -> Unit, placeholder: 
             Icon(
                 com.d365fo.mobileops.presentation.common.components.LineIcons.SearchThin,
                 contentDescription = null,
-                tint = com.d365fo.mobileops.presentation.common.theme.WarehouseStatusColors.text3,
+                tint = com.d365fo.mobileops.presentation.common.theme.FocusColors.muted,
             )
         },
-        shape = com.d365fo.mobileops.presentation.common.components.HeroFieldShape,
-        colors = com.d365fo.mobileops.presentation.common.components.heroFieldColors(),
-        modifier = modifier.fillMaxWidth(),
+        // The Focus pill: grey until typing, then white with the orange focus border.
+        shape = com.d365fo.mobileops.presentation.common.theme.FocusShapes.pill,
+        colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
+            unfocusedContainerColor = com.d365fo.mobileops.presentation.common.theme.FocusColors.divider,
+            focusedContainerColor = com.d365fo.mobileops.presentation.common.theme.FocusColors.surface,
+            unfocusedBorderColor = Color.Transparent,
+            focusedBorderColor = com.d365fo.mobileops.presentation.common.theme.FocusColors.action,
+        ),
+        modifier = modifier.fillMaxWidth().heightIn(min = 60.dp),
     )
 }
 
