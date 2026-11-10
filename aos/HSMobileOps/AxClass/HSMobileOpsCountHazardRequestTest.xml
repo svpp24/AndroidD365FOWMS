@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsCountHazardRequestTest</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Test helper: sends a hazard count request through HSMobileOpsCountRequestService.createHazardCount,
+/// the same code the outside system reaches over REST, and shows the response. For dev and test
+/// environments: run it with ?mi=SysClassRunner&amp;cls=HSMobileOpsCountHazardRequestTest.
+/// </summary>
+class HSMobileOpsCountHazardRequestTest
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>main</Name>
+				<Source><![CDATA[
+    public static void main(Args _args)
+    {
+        Dialog                      dialog = new Dialog("Hazard count request (test)");
+        DialogField                 fReference;
+        DialogField                 fWarehouse;
+        DialogField                 fItems;
+        DialogField                 fLocation;
+        HSMobileOpsCountReqRequest  request = new HSMobileOpsCountReqRequest();
+        HSMobileOpsCountReqResponse response;
+        Newtonsoft.Json.Linq.JArray  items = new Newtonsoft.Json.Linq.JArray();
+        Newtonsoft.Json.Linq.JObject entry;
+        List                        ids;
+        ListEnumerator              id;
+        str                         itemId;
+
+        fReference = dialog.addFieldValue(extendedTypeStr(Name), 'TEST-HZ-' + int2Str(timeNow()), "Reference");
+        fWarehouse = dialog.addFieldValue(extendedTypeStr(InventLocationId), 'AAC', "Warehouse");
+        fItems     = dialog.addFieldValue(extendedTypeStr(Description), 'BSR-10063-0', "Items (comma separated)");
+        fLocation  = dialog.addFieldValue(extendedTypeStr(WMSLocationId), '', "Location (optional)");
+        if (!dialog.run())
+        {
+            return;
+        }
+
+        ids = strSplit(fItems.value(), ',');
+        id  = ids.getEnumerator();
+        while (id.moveNext())
+        {
+            itemId = strLTrim(strRTrim(id.current()));
+            if (itemId)
+            {
+                entry = new Newtonsoft.Json.Linq.JObject();
+                entry.Add('ItemId', Newtonsoft.Json.Linq.JToken::FromObject(itemId));
+                if (fLocation.value())
+                {
+                    entry.Add('LocationId', Newtonsoft.Json.Linq.JToken::FromObject(fLocation.value()));
+                }
+                items.Add(entry);
+            }
+        }
+
+        request.parmDataAreaId(curExt());
+        request.parmReference(fReference.value());
+        request.parmWarehouseId(fWarehouse.value());
+        request.parmDueUtc(DateTimeUtil::toStr(DateTimeUtil::addHours(DateTimeUtil::utcNow(), 2)) + 'Z');
+        request.parmItemsJson(items.ToString());
+
+        response = new HSMobileOpsCountRequestService().createHazardCount(request);
+        if (response.parmSuccess())
+        {
+            info(strFmt("%1 Count %2, status %3, existing %4.", response.parmMessage(), response.parmMasterId(), response.parmStatus(), response.parmExisting()));
+        }
+        else
+        {
+            warning(strFmt("%1: %2", response.parmErrorCode(), response.parmMessage()));
+        }
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>
