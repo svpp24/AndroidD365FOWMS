@@ -175,6 +175,8 @@ data class StoreCountState(
     val back: StoreCountPlace? = null,
     /** The counting menu's location, where a count starts. */
     val startLocation: String? = null,
+    /** A hazard or blind count's items read before this device started counting. */
+    val preview: List<com.d365fo.mobileops.data.counting.RequestedItem> = emptyList(),
     val pending: PendingCount? = null,
     val busy: Boolean = false,
     val message: String? = null,
@@ -202,7 +204,7 @@ data class StoreCountState(
     /** Lines counted in this location, and in this bin. */
     val atLocation: Int get() = draft?.lines?.count { it.locationId.equals(locationId, ignoreCase = true) } ?: 0
     val inBin: Int get() = draft?.lines?.count { it.locationId.equals(locationId, ignoreCase = true) && it.binId.equals(binId, ignoreCase = true) } ?: 0
-    val requested: List<com.d365fo.mobileops.data.counting.RequestedItem> get() = draft?.requested.orEmpty()
+    val requested: List<com.d365fo.mobileops.data.counting.RequestedItem> get() = draft?.requested?.takeIf { it.isNotEmpty() } ?: preview
     /** Requested rows with at least one line counted on this device. */
     val requestedDone: Int get() = requested.count { r ->
         draft?.lines.orEmpty().any { r.matches(it.itemId, it.locationId, it.configId, it.sizeId, it.colorId, it.styleId) }
@@ -324,6 +326,7 @@ class StoreCountViewModel @Inject constructor(
     /** Reads what the hazard or blind count asks for into the draft (once counting has started). */
     private suspend fun refreshRequested() {
         val rows = (countRequests.items(masterId) as? NetworkResult.Success)?.data ?: return
+        _state.update { it.copy(preview = rows) }
         _state.value.draft?.let { saveDraft(it.copy(requested = rows)) } ?: run { pendingRequested = rows }
     }
 
@@ -704,6 +707,7 @@ fun StoreCountScreen(onBack: () -> Unit, viewModel: StoreCountViewModel = hiltVi
     val state by viewModel.state.collectAsStateWithLifecycle()
     var showCamera by remember { mutableStateOf(false) }
     var showList by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
+    var showItems by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
     var menuOpen by remember { mutableStateOf(false) }
     val draft = state.draft
     val counting = draft?.counting == true && !state.ended
@@ -732,12 +736,19 @@ fun StoreCountScreen(onBack: () -> Unit, viewModel: StoreCountViewModel = hiltVi
         return
     }
 
+    if (showItems && state.requested.isNotEmpty()) {
+        androidx.activity.compose.BackHandler { showItems = false }
+        RequestedItemsList(state = state, onClose = { showItems = false })
+        return
+    }
+
     val padOpen = pending != null && !pending.needsVariant && !pending.needsBatch && !pending.needsSerial
     FocusScreen(
         title = state.title,
         onBack = onBack,
         counter = when {
-            counting && state.requested.isNotEmpty() && state.needsLocation -> "${state.requestedDone}/${state.requested.size}"
+            // A hazard or blind count's progress stays in view on every step (user, 10 Nov).
+            counting && state.requested.isNotEmpty() -> "${state.requestedDone}/${state.requested.size}"
             !counting || state.needsLocation -> null
             state.binId.isNotBlank() -> state.binId
             else -> state.locationId
@@ -792,6 +803,7 @@ fun StoreCountScreen(onBack: () -> Unit, viewModel: StoreCountViewModel = hiltVi
             onUndo = viewModel::cancelPending,
             onCancelChange = viewModel::cancelChange,
             onList = { showList = true },
+            onItems = { showItems = true },
             onEnd = { viewModel.send(end = true) },
         ),
         overlay = if (padOpen) { {
@@ -862,13 +874,20 @@ private fun storeCountActions(
     onUndo: () -> Unit,
     onCancelChange: () -> Unit,
     onList: () -> Unit,
+    onItems: () -> Unit,
     onEnd: () -> Unit,
 ): (@Composable androidx.compose.foundation.layout.RowScope.() -> Unit) {
     val pending = state.pending
+    val hasItems = state.requested.isNotEmpty()
     return {
         when {
             state.ended -> FocusButton("Done", onClick = onDone, primary = true, modifier = Modifier.weight(1f))
-            !counting -> FocusButton(
+            !counting -> {
+                // A hazard or blind count: its items can be read before starting (user, 10 Nov).
+                if (hasItems) {
+                    FocusButton("Items", onClick = onItems, icon = Icons.AutoMirrored.Filled.ListAlt, enabled = !state.busy, modifier = Modifier.weight(1f))
+                }
+                FocusButton(
                 if (state.busy) "Starting…" else "New count",
                 onClick = onStart,
                 primary = true,
@@ -876,6 +895,7 @@ private fun storeCountActions(
                 enabled = !state.busy,
                 modifier = Modifier.weight(1f),
             )
+            }
             state.countClosed -> FocusButton(
                 "Move ${state.unsent} line(s) to a new count",
                 onClick = onMove,
@@ -889,6 +909,8 @@ private fun storeCountActions(
             state.needsLocation || state.needsBin -> {
                 if (state.back != null) {
                     FocusButton("Cancel", onClick = onCancelChange, enabled = !state.busy, modifier = Modifier.weight(1f))
+                } else if (hasItems) {
+                    FocusButton("Items", onClick = onItems, icon = Icons.AutoMirrored.Filled.ListAlt, enabled = !state.busy, modifier = Modifier.weight(1f))
                 }
                 FocusButton(
                     if (state.needsLocation) "Locations" else "Bins",
@@ -899,9 +921,9 @@ private fun storeCountActions(
                 )
             }
             else -> {
-                if (state.draft?.lines?.isNotEmpty() == true) {
+                if (hasItems || state.draft?.lines?.isNotEmpty() == true) {
                     FocusButton(
-                        "Lines", onClick = onList, icon = Icons.AutoMirrored.Filled.ListAlt,
+                        if (hasItems) "Items" else "Lines", onClick = onList, icon = Icons.AutoMirrored.Filled.ListAlt,
                         enabled = !state.busy, modifier = Modifier.weight(1f),
                     )
                 }
@@ -1054,19 +1076,7 @@ private fun StoreCountList(
                             )
                         }
                         items(draft.requested.size, key = { "requested-$it" }) { index ->
-                            val r = draft.requested[index]
-                            val done = draft.lines.any { r.matches(it.itemId, it.locationId, it.configId, it.sizeId, it.colorId, it.styleId) }
-                            FocusListRow(
-                                title = r.itemId.ifBlank { "Everything at ${r.locationId}" },
-                                titleIsCode = r.itemId.isNotBlank(),
-                                state = if (done) RowState.Done else RowState.Open,
-                                subtitle = listOfNotNull(
-                                    r.itemName.takeIf { it.isNotBlank() && !it.equals(r.itemId, ignoreCase = true) },
-                                    listOf(r.configId, r.sizeId, r.colorId, r.styleId).filter { it.isNotBlank() }.joinToString(" / ").ifBlank { null },
-                                    r.locationId.takeIf { it.isNotBlank() && r.itemId.isNotBlank() }?.let { "at $it" },
-                                ).joinToString(" · ").ifBlank { null },
-                                count = if (done) "Counted" else null,
-                            )
+                            RequestedRow(draft.requested[index], draft.lines)
                         }
                         item(key = "lines-caption") {
                             com.d365fo.mobileops.presentation.common.focus.FocusCaption(
@@ -1142,9 +1152,43 @@ internal fun StoreCountFocusSample(kind: Int) {
         band = storeCountBand(state),
         remaining = state.draft?.let { sentLine(it) },
         scanPill = if (counting) { { com.d365fo.mobileops.presentation.common.focus.ScanPill(onTap = {}) } } else null,
-        actions = storeCountActions(state, counting, {}, {}, {}, {}, {}, {}, {}),
+        actions = storeCountActions(state, counting, {}, {}, {}, {}, {}, {}, {}, {}),
         overlay = if (kind == 3) { { QuantityPadSheet(initial = "", onSet = {}, onDismiss = {}, allowDecimal = true) } } else null,
     ) {
         StoreCountCenter(state, counting)
+    }
+}
+
+/** One item a hazard or blind count asks for, ticked once this device has counted it. */
+@Composable
+private fun RequestedRow(r: com.d365fo.mobileops.data.counting.RequestedItem, lines: List<StoreCountLine>) {
+    val done = lines.any { r.matches(it.itemId, it.locationId, it.configId, it.sizeId, it.colorId, it.styleId) }
+    FocusListRow(
+        title = r.itemId.ifBlank { "Everything at ${r.locationId}" },
+        titleIsCode = r.itemId.isNotBlank(),
+        state = if (done) RowState.Done else RowState.Open,
+        subtitle = listOfNotNull(
+            r.itemName.takeIf { it.isNotBlank() && !it.equals(r.itemId, ignoreCase = true) },
+            listOf(r.configId, r.sizeId, r.colorId, r.styleId).filter { it.isNotBlank() }.joinToString(" / ").ifBlank { null },
+            r.locationId.takeIf { it.isNotBlank() && r.itemId.isNotBlank() }?.let { "at $it" },
+        ).joinToString(" · ").ifBlank { null },
+        count = if (done) "Counted" else null,
+    )
+}
+
+/** The items a hazard or blind count asks for - from the start screen and the location and bin steps (user, 10 Nov). */
+@Composable
+private fun RequestedItemsList(state: StoreCountState, onClose: () -> Unit) {
+    val lines = state.draft?.lines.orEmpty()
+    FocusScreen(
+        title = "Items to count",
+        onBack = onClose,
+        counter = "${state.requestedDone}/${state.requested.size}",
+    ) {
+        androidx.compose.foundation.lazy.LazyColumn(modifier = Modifier.weight(1f).fillMaxWidth()) {
+            items(state.requested.size, key = { "requested-$it" }) { index ->
+                RequestedRow(state.requested[index], lines)
+            }
+        }
     }
 }

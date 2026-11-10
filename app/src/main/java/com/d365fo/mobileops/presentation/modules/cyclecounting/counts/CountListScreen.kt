@@ -50,7 +50,9 @@ data class CountListState(
     val counts: List<CountSummary> = emptyList(),
     val error: String? = null,
 ) {
+    /** Soonest due first (user, 10 Nov); counts without a due time after them. */
     val open: List<CountSummary> get() = counts.filter { it.open }
+        .sortedWith(compareBy({ it.dueUtc.isBlank() }, { it.dueUtc }, { it.masterId }))
     val finished: List<CountSummary> get() = counts.filterNot { it.open }
 }
 
@@ -174,7 +176,8 @@ fun CountListScreen(
 }
 
 private fun summaryLine(c: CountSummary): String = listOfNotNull(
-    c.description.takeIf { it.isNotBlank() },
+    // Only a description the requester wrote: the default one just repeats the reference.
+    c.description.takeIf { it.isNotBlank() && (c.reference.isBlank() || !it.contains(c.reference, ignoreCase = true)) },
     c.reference.takeIf { it.isNotBlank() }?.let { "Ref $it" },
     c.dueUtc.takeIf { it.isNotBlank() }?.let { "Due ${dueText(it)}" },
     c.itemCount.takeIf { it > 0 }?.let { if (it == 1) "1 item" else "$it items" },
