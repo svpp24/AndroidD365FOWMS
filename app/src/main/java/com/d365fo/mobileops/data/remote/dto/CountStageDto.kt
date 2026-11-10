@@ -21,6 +21,8 @@ data class CountStageRequestBody(
     @SerialName("LinesJson") val linesJson: String = "",
     /** The counter ends their count with this call. */
     @SerialName("EndCount") val endCount: Boolean = false,
+    /** openStage: join this hazard or blind count instead of the store's wall to wall count. */
+    @SerialName("MasterId") val masterId: String = "",
 )
 
 /** One counted line. [quantity] is in the item's inventory unit; [clientLineId] keys resends. */
@@ -55,4 +57,8 @@ data class CountStageServiceResponse(
     /** Items in the stock count counted more than once and not yet decided by the supervisor. */
     @SerialName("Duplicates") val duplicates: Int = 0,
     @SerialName("StageJournalCounts") val stageJournalCounts: Boolean = false,
+    /** WallToWall, Hazard or Blind. */
+    @SerialName("MasterType") val masterType: String? = null,
+    /** Lines left out: not on the hazard or blind count's list. */
+    @SerialName("Rejected") val rejected: Int = 0,
 )

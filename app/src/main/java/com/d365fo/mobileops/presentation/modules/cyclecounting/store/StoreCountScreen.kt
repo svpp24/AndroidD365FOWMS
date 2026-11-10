@@ -121,6 +121,10 @@ data class StoreCountLine(
     val binId: String = "",
 )
 
+/** The requested items D365FO lists for a hazard or blind count; kept on the device for offline counting. */
+private fun List<com.d365fo.mobileops.data.counting.RequestedItem>.allows(itemId: String, location: String, variant: OrderVariant? = null): Boolean =
+    isEmpty() || any { it.matches(itemId, location, variant?.configId, variant?.sizeId, variant?.colorId, variant?.styleId) }
+
 /** The store count on this device: the stock count and staging journal, and the lines counted. */
 @Serializable
 data class StoreCountDraft(
@@ -134,6 +138,8 @@ data class StoreCountDraft(
      * should work offline).
      */
     val started: Boolean = false,
+    /** A hazard or blind count: what it asks for (empty = everything). */
+    val requested: List<com.d365fo.mobileops.data.counting.RequestedItem> = emptyList(),
 ) {
     val counting: Boolean get() = started || stageId.isNotBlank()
 }
@@ -154,6 +160,10 @@ data class PendingCount(
 data class StoreCountPlace(val locationId: String, val binId: String)
 
 data class StoreCountState(
+    /** Wall to wall count, Hazard count or Blind count (user, 10 Nov). */
+    val title: String = com.d365fo.mobileops.data.counting.CountType.WALL_TO_WALL.label,
+    /** The hazard or blind count being counted; blank for the store's wall to wall count. */
+    val countId: String = "",
     val warehouseId: String? = null,
     val draft: StoreCountDraft? = null,
     val locationId: String = "",
@@ -192,6 +202,11 @@ data class StoreCountState(
     /** Lines counted in this location, and in this bin. */
     val atLocation: Int get() = draft?.lines?.count { it.locationId.equals(locationId, ignoreCase = true) } ?: 0
     val inBin: Int get() = draft?.lines?.count { it.locationId.equals(locationId, ignoreCase = true) && it.binId.equals(binId, ignoreCase = true) } ?: 0
+    val requested: List<com.d365fo.mobileops.data.counting.RequestedItem> get() = draft?.requested.orEmpty()
+    /** Requested rows with at least one line counted on this device. */
+    val requestedDone: Int get() = requested.count { r ->
+        draft?.lines.orEmpty().any { r.matches(it.itemId, it.locationId, it.configId, it.sizeId, it.colorId, it.styleId) }
+    }
 }
 
 /**
@@ -213,12 +228,23 @@ class StoreCountViewModel @Inject constructor(
     private val locationDao: com.d365fo.mobileops.data.local.dao.LocationDao,
     private val binRepository: com.d365fo.mobileops.data.counting.CountBinRepository,
     private val menuRepository: com.d365fo.mobileops.data.repository.HandheldMenuRepository,
+    private val countRequests: com.d365fo.mobileops.data.counting.CountRequestRepository,
+    savedStateHandle: androidx.lifecycle.SavedStateHandle,
 ) : ViewModel() {
 
     private val json = Json { ignoreUnknownKeys = true }
     private val user = workerSession.session.value?.userName.orEmpty()
     private val warehouse = workerSession.session.value?.selected?.warehouseId
-    private val draftKey = "store_count_draft::${warehouse.orEmpty().uppercase()}::${user.uppercase()}"
+
+    /** A hazard or blind count chosen from its list; blank = the store's wall to wall count. */
+    private val masterId: String = savedStateHandle.get<String>("masterId").orEmpty()
+    private val countType = com.d365fo.mobileops.data.counting.CountType.fromSymbol(savedStateHandle.get<String>("type"))
+        ?: com.d365fo.mobileops.data.counting.CountType.WALL_TO_WALL
+    private val draftKey = if (masterId.isBlank()) {
+        "store_count_draft::${warehouse.orEmpty().uppercase()}::${user.uppercase()}"
+    } else {
+        "count_draft::${masterId.uppercase()}::${user.uppercase()}"
+    }
 
     /** Where a count starts: the counting menu's location (user, 8 Nov). */
     private val startLocation = menuRepository.menu.value?.countStartLocation
@@ -226,6 +252,8 @@ class StoreCountViewModel @Inject constructor(
     private val _state = MutableStateFlow(
         loadDraft().let { draft ->
             StoreCountState(
+                title = countType.label,
+                countId = masterId,
                 warehouseId = warehouse,
                 draft = draft,
                 startLocation = startLocation,
@@ -250,6 +278,8 @@ class StoreCountViewModel @Inject constructor(
 
     init {
         viewModelScope.launch { scannerBridge.scans.collect { onScan(it.value) } }
+        // A hazard or blind count's list, kept with the draft so counting works offline.
+        if (masterId.isNotBlank()) viewModelScope.launch { refreshRequested() }
         warehouse?.let { wh ->
             viewModelScope.launch { binRepository.refresh(wh) }
             viewModelScope.launch {
@@ -288,6 +318,15 @@ class StoreCountViewModel @Inject constructor(
         }
     }
 
+    /** Reads what the hazard or blind count asks for into the draft (once counting has started). */
+    private suspend fun refreshRequested() {
+        val rows = (countRequests.items(masterId) as? NetworkResult.Success)?.data ?: return
+        _state.value.draft?.let { saveDraft(it.copy(requested = rows)) } ?: run { pendingRequested = rows }
+    }
+
+    /** The list read before counting started; it goes into the draft when the count opens. */
+    private var pendingRequested: List<com.d365fo.mobileops.data.counting.RequestedItem> = emptyList()
+
     private fun loadDraft(): StoreCountDraft? = runCatching {
         secureStore.getString(draftKey)?.let { json.decodeFromString(StoreCountDraft.serializer(), it) }
     }.getOrNull()
@@ -308,10 +347,11 @@ class StoreCountViewModel @Inject constructor(
         if (!online) return startOffline(wh)
         _state.update { it.copy(busy = true, error = null) }
         viewModelScope.launch {
-            when (val opened = staging.open(wh)) {
+            when (val opened = staging.open(wh, masterId = masterId)) {
                 is NetworkResult.Success -> {
-                    val current = _state.value.draft ?: StoreCountDraft(warehouseId = wh)
+                    val current = _state.value.draft ?: StoreCountDraft(warehouseId = wh, requested = pendingRequested)
                     saveDraft(current.copy(masterId = opened.data.masterId, stageId = opened.data.stageId, started = true))
+                    if (masterId.isNotBlank() && _state.value.requested.isEmpty()) refreshRequested()
                     _state.update {
                         val location = it.locationId.ifBlank { startLocation.orEmpty() }
                         it.copy(
@@ -330,7 +370,7 @@ class StoreCountViewModel @Inject constructor(
     }
 
     private fun startOffline(wh: String) {
-        val current = _state.value.draft ?: StoreCountDraft(warehouseId = wh)
+        val current = _state.value.draft ?: StoreCountDraft(warehouseId = wh, requested = pendingRequested)
         saveDraft(current.copy(started = true))
         waitingForConnection = true
         _state.update {
@@ -470,6 +510,12 @@ class StoreCountViewModel @Inject constructor(
                 is NetworkResult.Success -> {
                     val item = found.data
                     val variant = item.scannedVariant ?: if (!item.hasProductDimensions) OrderVariant() else item.variants.singleOrNull()
+                    val s = _state.value
+                    if (!s.requested.allows(item.itemId, s.locationId)) {
+                        return@launch _state.update {
+                            it.copy(busy = false, message = null, error = "${item.itemId} is not on this count's list here - count only the items asked for.")
+                        }
+                    }
                     _state.update { it.copy(busy = false, pending = PendingCount(item = item, variant = variant)) }
                 }
                 is NetworkResult.Error -> _state.update { it.copy(busy = false, error = found.failure.message) }
@@ -490,6 +536,9 @@ class StoreCountViewModel @Inject constructor(
         val draft = s.draft ?: return
         val qty = text.toDoubleOrNull() ?: return
         val variant = pending.variant ?: OrderVariant()
+        if (!s.requested.allows(pending.item.itemId, s.locationId, variant.takeIf { pending.item.hasProductDimensions })) {
+            return _state.update { it.copy(pending = null, error = "${pending.item.itemId} ${variant.label} is not on this count's list - not counted.") }
+        }
         val line = StoreCountLine(
             clientLineId = UUID.randomUUID().toString(),
             itemId = pending.item.itemId,
@@ -539,7 +588,7 @@ class StoreCountViewModel @Inject constructor(
         viewModelScope.launch {
             // Started offline: the stock count is opened now, with this first Send.
             val draft = if (started.stageId.isNotBlank()) started else {
-                when (val opened = staging.open(started.warehouseId)) {
+                when (val opened = staging.open(started.warehouseId, masterId = masterId)) {
                     is NetworkResult.Success -> started.copy(masterId = opened.data.masterId, stageId = opened.data.stageId)
                         .also { saveDraft(it) }
                     is NetworkResult.Error -> {
@@ -571,7 +620,8 @@ class StoreCountViewModel @Inject constructor(
                     val sentIds = unsent.map { it.clientLineId }.toSet()
                     val updated = draft.copy(lines = draft.lines.map { if (it.clientLineId in sentIds) it.copy(sent = true) else it })
                     // The whole stock count's figure, every counter's lines - not just these (test, 8 Nov).
-                    val dupNote = if (result.data.duplicates > 0) " ${result.data.duplicates} item(s) in ${draft.masterId} were counted more than once - your supervisor decides." else ""
+                    val dupNote = (if (result.data.duplicates > 0) " ${result.data.duplicates} item(s) in ${draft.masterId} were counted more than once - your supervisor decides." else "") +
+                        (if (result.data.rejected > 0) " ${result.data.rejected} line(s) not on the count's list were left out." else "")
                     if (end) {
                         saveDraft(null)
                         _state.update { it.copy(busy = false, ended = true, message = "Ended - ${draft.lines.size} line(s) sent.$dupNote") }
@@ -614,6 +664,11 @@ class StoreCountViewModel @Inject constructor(
      */
     fun moveToNewCount() {
         val draft = _state.value.draft ?: return
+        // A hazard or blind count has no "next" count: once it is closed, it is over here.
+        if (masterId.isNotBlank()) {
+            saveDraft(null)
+            return _state.update { it.copy(countClosed = false, ended = true, error = null, message = "$masterId is closed - lines not sent were not added.") }
+        }
         saveDraft(draft.copy(masterId = "", stageId = "", lines = draft.lines.filterNot { it.sent }))
         _state.update { it.copy(countClosed = false, error = null, message = null) }
         start()
@@ -680,9 +735,10 @@ fun StoreCountScreen(onBack: () -> Unit, viewModel: StoreCountViewModel = hiltVi
 
     val padOpen = pending != null && !pending.needsVariant && !pending.needsBatch && !pending.needsSerial
     FocusScreen(
-        title = "Store count",
+        title = state.title,
         onBack = onBack,
         counter = when {
+            counting && state.requested.isNotEmpty() && state.needsLocation -> "${state.requestedDone}/${state.requested.size}"
             !counting || state.needsLocation -> null
             state.binId.isNotBlank() -> state.binId
             else -> state.locationId
@@ -867,11 +923,11 @@ private fun androidx.compose.foundation.layout.ColumnScope.StoreCountCenter(stat
     val draft = state.draft
     val pending = state.pending
     when {
-        state.ended -> FocusCenter(caption = "Store count", code = "Ended", description = state.warehouseId)
+        state.ended -> FocusCenter(caption = state.title, code = "Ended", description = state.countId.ifBlank { state.warehouseId })
         !counting || draft == null -> FocusCenter(
-            caption = "Store count",
-            code = state.warehouseId ?: "–",
-            description = "No count open",
+            caption = state.title,
+            code = state.countId.ifBlank { state.warehouseId ?: "–" },
+            description = if (state.countId.isBlank()) "No count open" else "Not started on this device",
         )
         pending != null && !pending.needsVariant -> FocusCenter(
             caption = when {
@@ -989,7 +1045,38 @@ private fun StoreCountList(
                         )
                     }
                 }
-                else -> items(draft.lines, key = { it.clientLineId }) { line ->
+                else -> {
+                    // A hazard or blind count: what it asks for, ticked off as it is counted.
+                    if (draft.requested.isNotEmpty()) {
+                        item(key = "requested-caption") {
+                            com.d365fo.mobileops.presentation.common.focus.FocusCaption(
+                                "To count · ${state.requestedDone} of ${draft.requested.size} done",
+                                modifier = Modifier.padding(start = 16.dp, top = 12.dp, bottom = 4.dp),
+                            )
+                        }
+                        items(draft.requested.size, key = { "requested-$it" }) { index ->
+                            val r = draft.requested[index]
+                            val done = draft.lines.any { r.matches(it.itemId, it.locationId, it.configId, it.sizeId, it.colorId, it.styleId) }
+                            FocusListRow(
+                                title = r.itemId.ifBlank { "Everything at ${r.locationId}" },
+                                titleIsCode = r.itemId.isNotBlank(),
+                                state = if (done) RowState.Done else RowState.Open,
+                                subtitle = listOfNotNull(
+                                    r.itemName.takeIf { it.isNotBlank() && !it.equals(r.itemId, ignoreCase = true) },
+                                    listOf(r.configId, r.sizeId, r.colorId, r.styleId).filter { it.isNotBlank() }.joinToString(" / ").ifBlank { null },
+                                    r.locationId.takeIf { it.isNotBlank() && r.itemId.isNotBlank() }?.let { "at $it" },
+                                ).joinToString(" · ").ifBlank { null },
+                                count = if (done) "Counted" else null,
+                            )
+                        }
+                        item(key = "lines-caption") {
+                            com.d365fo.mobileops.presentation.common.focus.FocusCaption(
+                                "Counted lines",
+                                modifier = Modifier.padding(start = 16.dp, top = 12.dp, bottom = 4.dp),
+                            )
+                        }
+                    }
+                    items(draft.lines, key = { it.clientLineId }) { line ->
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         FocusListRow(
                             title = line.itemId,
@@ -1011,6 +1098,7 @@ private fun StoreCountList(
                                 Icon(Icons.Default.Delete, contentDescription = "Remove", tint = FocusColors.badIcon)
                             }
                         }
+                    }
                     }
                 }
             }

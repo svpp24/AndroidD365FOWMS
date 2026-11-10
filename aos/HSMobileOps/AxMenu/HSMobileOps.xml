@@ -90,6 +90,11 @@
 				</AxMenuElement>
 				<AxMenuElement xmlns=""
 					i:type="AxMenuElementMenuItem">
+					<Name>HSMobileOpsCountTypeSetup</Name>
+					<MenuItemName>HSMobileOpsCountTypeSetup</MenuItemName>
+				</AxMenuElement>
+				<AxMenuElement xmlns=""
+					i:type="AxMenuElementMenuItem">
 					<Name>HSMobileOpsModuleSwitch</Name>
 					<MenuItemName>HSMobileOpsModuleSwitch</MenuItemName>
 				</AxMenuElement>

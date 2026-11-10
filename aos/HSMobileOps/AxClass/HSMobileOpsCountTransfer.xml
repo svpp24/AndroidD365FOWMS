@@ -4,7 +4,7 @@
 	<SourceCode>
 		<Declaration><![CDATA[
 /// <summary>
-/// Stock count control center: Transfer to counting journal. Runs in batch (HSMobileOpsCountTransferBatch).
+/// Stock count control center: Create journal (was Transfer to counting journal). Runs in batch (HSMobileOpsCountTransferBatch).
 /// </summary>
 class HSMobileOpsCountTransfer
 {
@@ -27,8 +27,8 @@ class HSMobileOpsCountTransfer
             where stage.MasterRecId == master.RecId
                && stage.Status      == HSMobileOpsCountStageStatus::Counting;
         if (stage.RecId
-         && Box::yesNo(strFmt('%1 counter(s) have not ended their count yet. Transfer what has been counted so far?', stage.RecId),
-                DialogButton::No, 'Transfer to counting journal') != DialogButton::Yes)
+         && Box::yesNo(strFmt('%1 counter(s) have not ended their count yet. Create the journal from what has been counted so far?', stage.RecId),
+                DialogButton::No, 'Create journal') != DialogButton::Yes)
         {
             return;
         }

@@ -191,6 +191,37 @@ public class HSMobileOpsCountStageLine extends common
 			<Label>Bin</Label>
 			<StringSize>20</StringSize>
 		</AxTableField>
+	<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>StockKey</Name>
+			<AllowEdit>No</AllowEdit>
+			<HelpText>Item, product dimensions, batch, serial and location - the stock the on-hand belongs to.</HelpText>
+			<Label>Stock key</Label>
+			<StringSize>250</StringSize>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldReal">
+			<Name>OnHandQty</Name>
+			<AllowEdit>No</AllowEdit>
+			<ExtendedDataType>InventQty</ExtendedDataType>
+			<HelpText>D365FO's on-hand of this item and location when the count arrived.</HelpText>
+			<Label>On-hand</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldReal">
+			<Name>VarianceQty</Name>
+			<AllowEdit>No</AllowEdit>
+			<ExtendedDataType>InventQty</ExtendedDataType>
+			<HelpText>Everything counted of this item and location (kept counts only) minus the on-hand.</HelpText>
+			<Label>Variance</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldUtcDateTime">
+			<Name>OnHandUtc</Name>
+			<AllowEdit>No</AllowEdit>
+			<HelpText>When the on-hand was read.</HelpText>
+			<Label>On-hand at</Label>
+		</AxTableField>
 	</Fields>
 	<FullTextIndexes />
 	<Indexes>
@@ -203,6 +234,18 @@ public class HSMobileOpsCountStageLine extends common
 				</AxTableIndexField>
 				<AxTableIndexField>
 					<DataField>ClientLineId</DataField>
+				</AxTableIndexField>
+			</Fields>
+		</AxTableIndex>
+		<AxTableIndex>
+			<Name>MasterStockIdx</Name>
+			<AllowDuplicates>Yes</AllowDuplicates>
+			<Fields>
+				<AxTableIndexField>
+					<DataField>MasterRecId</DataField>
+				</AxTableIndexField>
+				<AxTableIndexField>
+					<DataField>StockKey</DataField>
 				</AxTableIndexField>
 			</Fields>
 		</AxTableIndex>

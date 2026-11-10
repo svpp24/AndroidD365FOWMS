@@ -19,6 +19,8 @@ class HSMobileOpsCountStageResponse
     int         accepted;
     int         duplicates;
     boolean     stageJournalCounts;
+    str         masterType;
+    int         rejected;
 }
 ]]></Declaration>
 		<Methods>
@@ -115,6 +117,30 @@ class HSMobileOpsCountStageResponse
     {
         stageJournalCounts = _value;
         return stageJournalCounts;
+    }
+]]></Source>
+			</Method>
+		<Method>
+				<Name>parmMasterType</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('MasterType')]
+    public str parmMasterType(str _value = masterType)
+    {
+        masterType = _value;
+        return masterType;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmRejected</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Rejected')]
+    public int parmRejected(int _value = rejected)
+    {
+        rejected = _value;
+        return rejected;
     }
 ]]></Source>
 			</Method>

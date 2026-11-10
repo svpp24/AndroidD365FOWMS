@@ -49,3 +49,24 @@ stores, newest first; header with status and figures; tabs *Counted lines* (dupl
 only filter, Keep / Add together / Reject) and *Counters*; action pane *Transfer to counting journal*, *Check
 for duplicates*, *Cancel count*. Setup > **Stock count stores**. Privilege
 `HSMobileOpsCountControlCenterMaintain` (in HSMobileOpsAdministrator).
+
+## Three count types (10 Nov 2026)
+
+The user's decision: the handheld offers only **Hazard**, **Wall to wall** and **Blind** counts, and none starts
+with a journal.
+
+- `HSMobileOpsCountMaster.MasterType` (`HSMobileOpsCountMasterType`). Existing store counts are Wall to wall.
+  `openMaster` only joins wall to wall counts; a hazard or blind count is joined by `openStage` with `MasterId`
+  (no stock count supervisor needed).
+- **Hazard**: `HSMobileOpsCountRequestSvc.createHazardCount` (outside system, role `HSMobileOpsCountIntegration`):
+  Reference, WarehouseId, DueUtc, ItemsJson. The same Reference returns the existing count; unknown items reject the
+  request. `cancelHazardCount`, `getHazardCountStatus` (status plus results once the journal exists).
+- **Blind**: control center > *New blind count*, then items or locations on *Requested items*
+  (`HSMobileOpsCountItem`). Handhelds list it once it has rows.
+- `submitLines` takes only lines a hazard or blind count asks for (`isRequested`), and records **on-hand** and
+  **variance** per stock (`StockKey`: item, dimensions, batch, serial, location) on every line as it arrives
+  (`updateVariance`). Duplicate decisions recompute the variance (`refreshVariances`).
+- *Transfer* is now **Create journal**; **Count type setup** has Auto-post per type (`autoPost` after the batch
+  creates the journal; the outcome goes to `JournalPosted` / `PostMessage`).
+- Handheld: `listCounts`, `getCountItems`, `getCountResults`. App: Count menu = the three types
+  (`CountListScreen`), counting reuses the store count screen with `masterId`, results in `CountResultsScreen`.

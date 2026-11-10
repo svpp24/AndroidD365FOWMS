@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxMenuItemAction xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsCountNewBlind</Name>
+	<Label>New blind count</Label>
+	<HelpText>Start a blind count in a warehouse, then add the items or locations to count.</HelpText>
+	<Object>HSMobileOpsCountNewBlind</Object>
+	<ObjectType>Class</ObjectType>
+</AxMenuItemAction>

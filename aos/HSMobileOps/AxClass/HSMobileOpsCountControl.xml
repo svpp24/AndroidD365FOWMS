@@ -31,6 +31,7 @@ class HSMobileOpsCountControl
         select forUpdate firstonly master
             where master.InventLocationId == _store
                && master.SourceJournalId  == _sourceJournalId
+               && master.MasterType       == HSMobileOpsCountMasterType::WallToWall
                && master.Status           == HSMobileOpsCountMasterStatus::Open;
         if (master.RecId)
         {
@@ -45,8 +46,38 @@ class HSMobileOpsCountControl
             ? subStr(strFmt('Count of journal %1', _sourceJournalId), 1, 60)
             : subStr(strFmt('Store count %1', _store), 1, 60);
         master.Status           = HSMobileOpsCountMasterStatus::Open;
+        master.MasterType       = HSMobileOpsCountMasterType::WallToWall;
         master.CreatedByUser    = _userName;
         master.StartedUtc       = now;
+        master.insert();
+        return master;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>newMaster</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// A new hazard or blind count (or wall to wall) for a warehouse. No journal until the
+    /// supervisor's Create journal. Called inside changecompany and a transaction.
+    /// </summary>
+    public static HSMobileOpsCountMaster newMaster(HSMobileOpsCountMasterType _type, InventLocationId _store, str _description,
+        str _userName, str _reference = '', utcdatetime _dueUtc = utcDateTimeNull())
+    {
+        HSMobileOpsCountMaster master;
+
+        master.clear();
+        master.MasterId         = HSMobileOpsCountControl::nextMasterId(_store);
+        master.MasterType       = _type;
+        master.InventLocationId = _store;
+        master.InventSiteId     = InventLocation::find(_store).InventSiteId;
+        master.Description      = subStr(_description, 1, 60);
+        master.ExternalRef      = _reference;
+        master.DueUtc           = _dueUtc;
+        master.Status           = HSMobileOpsCountMasterStatus::Open;
+        master.CreatedByUser    = _userName;
+        master.StartedUtc       = DateTimeUtil::utcNow();
         master.insert();
         return master;
     }
@@ -229,6 +260,14 @@ class HSMobileOpsCountControl
 
         ttsbegin;
         master = HSMobileOpsCountControl::masterOf(_masterRecId);
+        // Lines staged before on-hand was recorded (10 Nov) get their stock key now.
+        while select forUpdate line
+            where line.MasterRecId == _masterRecId
+               && line.StockKey    == ''
+        {
+            line.StockKey = HSMobileOpsCountControl::stockKey(line);
+            line.update();
+        }
         if (_reapplySource && master.SourceJournalId)
         {
             while select forUpdate line
@@ -326,6 +365,7 @@ class HSMobileOpsCountControl
             master.update();
         }
         ttscommit;
+        HSMobileOpsCountControl::refreshVariances(_masterRecId);
     }
 ]]></Source>
 			</Method>
@@ -492,7 +532,7 @@ class HSMobileOpsCountControl
             journalTableData = JournalTableData::newTable(journalTable);
             journalTable.JournalId = journalTableData.nextJournalId();
             journalTableData.initFromJournalName(journalName);
-            journalTable.Description = subStr(strFmt('Stock count %1', master.MasterId), 1, 60);
+            journalTable.Description = subStr(strFmt('%1 count %2', enum2Str(master.MasterType), master.MasterId), 1, 60);
             journalTable.insert();
         }
 
@@ -625,6 +665,201 @@ class HSMobileOpsCountControl
         journalTrans.Counted      = _qty;
         journalTrans.Qty          = _qty - journalTrans.InventOnHand;
         journalTrans.insert();
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>onHand</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// D365FO's physical on-hand of the line's stock in the warehouse: its item, and each of
+    /// product dimensions, batch, serial and location the line names (a blank one is all of them).
+    /// </summary>
+    public static InventQty onHand(HSMobileOpsCountStageLine _line, InventLocationId _store)
+    {
+        InventSum inventSum;
+        InventDim inventDim;
+
+        select sum(PhysicalInvent) from inventSum
+            where inventSum.ItemId == _line.ItemId
+               && inventSum.Closed == NoYes::No
+            exists join inventDim
+                where inventDim.inventDimId      == inventSum.InventDimId
+                   && inventDim.InventLocationId == _store
+                   && (_line.WMSLocationId  == '' || inventDim.wMSLocationId  == _line.WMSLocationId)
+                   && (_line.ConfigId       == '' || inventDim.configId       == _line.ConfigId)
+                   && (_line.InventSizeId   == '' || inventDim.InventSizeId   == _line.InventSizeId)
+                   && (_line.InventColorId  == '' || inventDim.InventColorId  == _line.InventColorId)
+                   && (_line.InventStyleId  == '' || inventDim.InventStyleId  == _line.InventStyleId)
+                   && (_line.InventBatchId  == '' || inventDim.inventBatchId  == _line.InventBatchId)
+                   && (_line.InventSerialId == '' || inventDim.inventSerialId == _line.InventSerialId);
+        return inventSum.PhysicalInvent;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>updateVariance</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The on-hand and variance of one stock (all its lines, every counter and bin): on-hand read
+    /// now when _readOnHand, else the one recorded; variance = the kept counts added up - on-hand.
+    /// </summary>
+    public static void updateVariance(RefRecId _masterRecId, str _stockKey, boolean _readOnHand, InventLocationId _store)
+    {
+        HSMobileOpsCountStageLine line;
+        HSMobileOpsCountStageLine total;
+        HSMobileOpsCountStageLine sample;
+        InventQty                 onHand;
+        InventQty                 counted;
+        utcdatetime               now = DateTimeUtil::utcNow();
+
+        select firstonly sample
+            where sample.MasterRecId == _masterRecId
+               && sample.StockKey    == _stockKey;
+        if (!sample.RecId)
+        {
+            return;
+        }
+        onHand = _readOnHand ? HSMobileOpsCountControl::onHand(sample, _store) : sample.OnHandQty;
+        select sum(Qty) from total
+            where total.MasterRecId == _masterRecId
+               && total.StockKey    == _stockKey
+               && total.Included    == NoYes::Yes;
+        counted = total.Qty;
+
+        ttsbegin;
+        if (_readOnHand)
+        {
+            update_recordset line
+                setting OnHandQty = onHand, VarianceQty = counted - onHand, OnHandUtc = now
+                where line.MasterRecId == _masterRecId
+                   && line.StockKey    == _stockKey;
+        }
+        else
+        {
+            update_recordset line
+                setting VarianceQty = counted - onHand
+                where line.MasterRecId == _masterRecId
+                   && line.StockKey    == _stockKey;
+        }
+        ttscommit;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>refreshVariances</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// After duplicate decisions: the variance of every stock counted more than once (what is
+    /// kept changed), and the on-hand of lines that have none yet. Single counts are kept current
+    /// as they arrive (HSMobileOpsCountStageService::submitLines).
+    /// </summary>
+    public static void refreshVariances(RefRecId _masterRecId)
+    {
+        HSMobileOpsCountStageLine line;
+        HSMobileOpsCountStageLine missing;
+        HSMobileOpsCountMaster    master = HSMobileOpsCountControl::masterOf(_masterRecId);
+        Set                       keys = new Set(Types::String);
+        SetEnumerator             key;
+
+        while select StockKey from line
+            group by StockKey
+            where line.MasterRecId == _masterRecId
+               && (line.IsDuplicate == NoYes::Yes || line.OnHandUtc == utcDateTimeNull())
+        {
+            keys.add(line.StockKey);
+        }
+        key = keys.getEnumerator();
+        while (key.moveNext())
+        {
+            select firstonly RecId from missing
+                where missing.MasterRecId == _masterRecId
+                   && missing.StockKey    == key.current()
+                   && missing.OnHandUtc   == utcDateTimeNull();
+            HSMobileOpsCountControl::updateVariance(_masterRecId, key.current(), missing.RecId != 0, master.InventLocationId);
+        }
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>isRequested</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Whether a hazard or blind count asks for this line: an item row matching its item and
+    /// product dimensions, a location row matching its location, or both. A wall to wall count,
+    /// and one with no rows, asks for everything.
+    /// </summary>
+    public static boolean isRequested(HSMobileOpsCountMaster _master, HSMobileOpsCountStageLine _line)
+    {
+        HSMobileOpsCountItem item;
+
+        if (_master.MasterType == HSMobileOpsCountMasterType::WallToWall || !_master.RequestedItemCount)
+        {
+            return true;
+        }
+        select firstonly RecId from item
+            where item.MasterRecId == _master.RecId
+               && (item.ItemId        == '' || item.ItemId        == _line.ItemId)
+               && (item.ConfigId      == '' || item.ConfigId      == _line.ConfigId)
+               && (item.InventSizeId  == '' || item.InventSizeId  == _line.InventSizeId)
+               && (item.InventColorId == '' || item.InventColorId == _line.InventColorId)
+               && (item.InventStyleId == '' || item.InventStyleId == _line.InventStyleId)
+               && (item.WMSLocationId == '' || item.WMSLocationId == _line.WMSLocationId);
+        return item.RecId != 0;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>autoPost</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// After Create journal: posts the journal when Count type setup says Auto-post for this
+    /// count's type, and records the outcome on the count. A failure leaves the journal for the
+    /// back office, with the reason.
+    /// </summary>
+    public static void autoPost(RefRecId _masterRecId)
+    {
+        HSMobileOpsCountMaster master = HSMobileOpsCountControl::masterOf(_masterRecId);
+        InventJournalTable     journalTable;
+        JournalCheckPost       checkPost;
+        int                    infologFrom = infologLine();
+        boolean                posted;
+        str                    message;
+
+        if (master.Status != HSMobileOpsCountMasterStatus::Transferred || !master.TransferredJournalId
+         || !HSMobileOpsCountTypeSetup::find(master.MasterType).AutoPost)
+        {
+            return;
+        }
+        journalTable = InventJournalTable::find(master.TransferredJournalId);
+        if (!journalTable.RecId || journalTable.Posted)
+        {
+            return;
+        }
+        try
+        {
+            checkPost = InventJournalCheckPost::newPostJournal(journalTable);
+            checkPost.parmThrowCheckFailed(true);
+            checkPost.runOperation();
+            posted  = InventJournalTable::find(master.TransferredJournalId).Posted == NoYes::Yes;
+            message = posted ? strFmt('%1 posted automatically.', master.TransferredJournalId)
+                             : strFmt('%1 was not posted - post it in D365FO.', master.TransferredJournalId);
+        }
+        catch (Exception::Error)
+        {
+            message = strFmt('Auto-post failed: %1', infologLine() > infologFrom ? infolog.text(infologLine()) : 'D365FO gave no reason');
+        }
+        ttsbegin;
+        master = HSMobileOpsCountControl::masterOf(_masterRecId, true);
+        master.JournalPosted = posted ? NoYes::Yes : NoYes::No;
+        master.PostMessage   = subStr(message, 1, 250);
+        master.update();
+        ttscommit;
     }
 ]]></Source>
 			</Method>

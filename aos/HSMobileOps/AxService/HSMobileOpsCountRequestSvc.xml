@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxService xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsCountRequestSvc</Name>
+	<Class>HSMobileOpsCountRequestService</Class>
+	<ExternalName>CountRequestService</ExternalName>
+	<Namespace>http://schemas.hs.com/mobileops</Namespace>
+	<ServiceOperations>
+		<AxServiceOperation>
+			<Name>createHazardCount</Name>
+			<Method>createHazardCount</Method>
+		</AxServiceOperation>
+		<AxServiceOperation>
+			<Name>cancelHazardCount</Name>
+			<Method>cancelHazardCount</Method>
+		</AxServiceOperation>
+		<AxServiceOperation>
+			<Name>getHazardCountStatus</Name>
+			<Method>getHazardCountStatus</Method>
+		</AxServiceOperation>
+		<AxServiceOperation>
+			<Name>listCounts</Name>
+			<Method>listCounts</Method>
+		</AxServiceOperation>
+		<AxServiceOperation>
+			<Name>getCountItems</Name>
+			<Method>getCountItems</Method>
+		</AxServiceOperation>
+		<AxServiceOperation>
+			<Name>getCountResults</Name>
+			<Method>getCountResults</Method>
+		</AxServiceOperation>
+	</ServiceOperations>
+</AxService>

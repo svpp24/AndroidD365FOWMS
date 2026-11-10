@@ -1,0 +1,137 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsCountReqRequest</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// HSMobileOpsCountRequestSvc's request. Outside system (createHazardCount, cancelHazardCount,
+/// getHazardCountStatus): DataAreaId, Reference, WarehouseId, DueUtc (ISO 8601, UTC), Description and
+/// ItemsJson [{ItemId, ConfigId, SizeId, ColorId, StyleId, LocationId}]. Handheld (listCounts,
+/// getCountItems, getCountResults): DataAreaId, UserName, DeviceId, WarehouseId, MasterId.
+/// </summary>
+[DataContractAttribute]
+class HSMobileOpsCountReqRequest
+{
+    str dataAreaId;
+    str userName;
+    str deviceId;
+    str warehouseId;
+    str reference;
+    str dueUtc;
+    str description;
+    str itemsJson;
+    str masterId;
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmDataAreaId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('DataAreaId')]
+    public str parmDataAreaId(str _value = dataAreaId)
+    {
+        dataAreaId = _value;
+        return dataAreaId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmUserName</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('UserName')]
+    public str parmUserName(str _value = userName)
+    {
+        userName = _value;
+        return userName;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmDeviceId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('DeviceId')]
+    public str parmDeviceId(str _value = deviceId)
+    {
+        deviceId = _value;
+        return deviceId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmWarehouseId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('WarehouseId')]
+    public str parmWarehouseId(str _value = warehouseId)
+    {
+        warehouseId = _value;
+        return warehouseId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmReference</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Reference')]
+    public str parmReference(str _value = reference)
+    {
+        reference = _value;
+        return reference;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmDueUtc</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('DueUtc')]
+    public str parmDueUtc(str _value = dueUtc)
+    {
+        dueUtc = _value;
+        return dueUtc;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmDescription</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Description')]
+    public str parmDescription(str _value = description)
+    {
+        description = _value;
+        return description;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmItemsJson</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ItemsJson')]
+    public str parmItemsJson(str _value = itemsJson)
+    {
+        itemsJson = _value;
+        return itemsJson;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmMasterId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('MasterId')]
+    public str parmMasterId(str _value = masterId)
+    {
+        masterId = _value;
+        return masterId;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

@@ -181,6 +181,19 @@ object Routes {
     /** A free store count for the Stock count control center. */
     const val COUNTING_STORE = "counting/store"
 
+    /** The store count screen for any kind of count: a hazard or blind count by its id, or wall to wall. */
+    const val COUNTING_STORE_ROUTE = "counting/store?masterId={masterId}&type={type}"
+    fun countingStore(masterId: String?, type: com.d365fo.mobileops.data.counting.CountType) =
+        "counting/store?masterId=${masterId.orEmpty()}&type=${type.symbol}"
+
+    /** The open and finished counts of one kind (Hazard, Wall to wall, Blind). See CountListScreen. */
+    const val COUNTING_LIST = "counting/list/{type}"
+    fun countingList(type: com.d365fo.mobileops.data.counting.CountType) = "counting/list/${type.route}"
+
+    /** A finished count's counted, on-hand and variance. See CountResultsScreen. */
+    const val COUNTING_RESULTS = "counting/results/{masterId}"
+    fun countingResults(masterId: String) = "counting/results/$masterId"
+
     /** Supervisor only: count accuracy by location / item / class / counter. */
     const val COUNTING_ACCURACY = "counting/supervisor/accuracy"
 
@@ -443,6 +456,27 @@ fun AppNavGraph(
                         onStoreCount = { navController.navigate(Routes.COUNTING_STORE) },
                         onJournals = { kind -> navController.navigate(Routes.countingJournals(kind)) },
                         onAccuracy = { navController.navigate(Routes.COUNTING_ACCURACY) },
+                        onCountType = { type -> navController.navigate(Routes.countingList(type)) },
+                    )
+                }
+
+                composable(
+                    Routes.COUNTING_LIST,
+                    arguments = listOf(navArgument("type") { type = NavType.StringType }),
+                ) {
+                    com.d365fo.mobileops.presentation.modules.cyclecounting.counts.CountListScreen(
+                        onBack = { navController.popBackStack() },
+                        onCount = { masterId, type -> navController.navigate(Routes.countingStore(masterId, type)) },
+                        onResults = { masterId -> navController.navigate(Routes.countingResults(masterId)) },
+                    )
+                }
+
+                composable(
+                    Routes.COUNTING_RESULTS,
+                    arguments = listOf(navArgument("masterId") { type = NavType.StringType }),
+                ) {
+                    com.d365fo.mobileops.presentation.modules.cyclecounting.counts.CountResultsScreen(
+                        onBack = { navController.popBackStack() },
                     )
                 }
 
@@ -504,7 +538,13 @@ fun AppNavGraph(
                     AccuracyReportScreen(onBack = { navController.popBackStack() })
                 }
 
-                composable(Routes.COUNTING_STORE) {
+                composable(
+                    Routes.COUNTING_STORE_ROUTE,
+                    arguments = listOf(
+                        navArgument("masterId") { type = NavType.StringType; nullable = true; defaultValue = null },
+                        navArgument("type") { type = NavType.StringType; nullable = true; defaultValue = null },
+                    ),
+                ) {
                     com.d365fo.mobileops.presentation.modules.cyclecounting.store.StoreCountScreen(
                         onBack = { navController.popBackStack() },
                     )

@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxTable xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsCountTypeSetup</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Per company and count type: whether the counting journal the supervisor creates in the control
+/// center is posted straight away (Auto-post) or left for the back office.
+/// </summary>
+public class HSMobileOpsCountTypeSetup extends common
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>find</Name>
+				<Source><![CDATA[
+
+    public static HSMobileOpsCountTypeSetup find(HSMobileOpsCountMasterType _type)
+    {
+        HSMobileOpsCountTypeSetup setup;
+
+        select firstonly setup where setup.MasterType == _type;
+        return setup;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>ensureSeeded</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// One row per count type, Auto-post off, so the form always shows all three.
+    /// </summary>
+    public static void ensureSeeded()
+    {
+        HSMobileOpsCountTypeSetup setup;
+        container                 types = [HSMobileOpsCountMasterType::WallToWall, HSMobileOpsCountMasterType::Hazard, HSMobileOpsCountMasterType::Blind];
+        int                       i;
+
+        ttsbegin;
+        for (i = 1; i <= conLen(types); i++)
+        {
+            if (!HSMobileOpsCountTypeSetup::find(conPeek(types, i)).RecId)
+            {
+                setup.clear();
+                setup.MasterType = conPeek(types, i);
+                setup.AutoPost   = NoYes::No;
+                setup.insert();
+            }
+        }
+        ttscommit;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+	<Label>Count type setup</Label>
+	<TitleField1>MasterType</TitleField1>
+	<TitleField2>AutoPost</TitleField2>
+	<CacheLookup>NotInTTS</CacheLookup>
+	<ClusteredIndex>TypeIdx</ClusteredIndex>
+	<PrimaryIndex>TypeIdx</PrimaryIndex>
+	<Fields>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldEnum">
+			<Name>MasterType</Name>
+			<AllowEdit>No</AllowEdit>
+			<HelpText>Wall to wall, Hazard or Blind.</HelpText>
+			<Label>Count type</Label>
+			<Mandatory>Yes</Mandatory>
+			<EnumType>HSMobileOpsCountMasterType</EnumType>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldEnum">
+			<Name>AutoPost</Name>
+			<HelpText>Post the counting journal as soon as Create journal has made it. Off: the back office posts it.</HelpText>
+			<Label>Auto-post</Label>
+			<EnumType>NoYes</EnumType>
+		</AxTableField>
+	</Fields>
+	<FullTextIndexes />
+	<Indexes>
+		<AxTableIndex>
+			<Name>TypeIdx</Name>
+			<AllowDuplicates>No</AllowDuplicates>
+			<Fields>
+				<AxTableIndexField>
+					<DataField>MasterType</DataField>
+				</AxTableIndexField>
+			</Fields>
+		</AxTableIndex>
+	</Indexes>
+	<Mappings />
+	<Relations />
+	<StateMachines />
+</AxTable>

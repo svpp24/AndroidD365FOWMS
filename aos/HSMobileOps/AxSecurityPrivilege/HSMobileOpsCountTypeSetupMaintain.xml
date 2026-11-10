@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxSecurityPrivilege xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsCountTypeSetupMaintain</Name>
+	<Description>Decide per count type whether counting journals are posted as soon as they are created.</Description>
+	<Label>Maintain count type setup</Label>
+	<DirectAccessPermissions />
+	<EntryPoints>
+		<AxSecurityEntryPointReference>
+			<Name>HSMobileOpsCountTypeSetup</Name>
+			<Grant>
+				<Read>Allow</Read>
+				<Update>Allow</Update>
+				<Create>Allow</Create>
+			</Grant>
+			<ObjectName>HSMobileOpsCountTypeSetup</ObjectName>
+			<ObjectType>MenuItemDisplay</ObjectType>
+			<Forms />
+		</AxSecurityEntryPointReference>
+	</EntryPoints>
+	<FormControlOverrides />
+</AxSecurityPrivilege>

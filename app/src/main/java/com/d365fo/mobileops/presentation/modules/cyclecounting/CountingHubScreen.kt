@@ -15,6 +15,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material.icons.filled.ReportProblem
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Autorenew
@@ -60,31 +62,35 @@ fun CountingHubScreen(
     onStoreCount: () -> Unit,
     onJournals: (CountKind) -> Unit,
     onAccuracy: () -> Unit,
-    viewModel: CountingHubViewModel = hiltViewModel(),
+    onCountType: (com.d365fo.mobileops.data.counting.CountType) -> Unit = {},
 ) {
-    val canViewAccuracy by viewModel.canViewAccuracy.collectAsStateWithLifecycle()
 
     // The Count menu in the Focus design (brief section 9): one row per kind of count.
     com.d365fo.mobileops.presentation.common.focus.FocusScreen(title = "Count", onBack = onBack) {
         androidx.compose.foundation.layout.Column(
             Modifier.weight(1f).verticalScroll(androidx.compose.foundation.rememberScrollState()),
         ) {
+            // Three kinds of count only (user, 10 Nov 2026): none starts with a journal - counts go to
+            // the control center and the supervisor creates the journal. Cycle count, the journal
+            // wall-to-wall count and Count accuracy are no longer on this menu.
             com.d365fo.mobileops.presentation.common.focus.FocusListRow(
-                title = "Store count", icon = Icons.Default.Storefront, chevron = true, onClick = onStoreCount,
+                title = com.d365fo.mobileops.data.counting.CountType.HAZARD.label,
+                subtitle = "Items an outside system asked to be counted",
+                icon = Icons.Default.ReportProblem, chevron = true,
+                onClick = { onCountType(com.d365fo.mobileops.data.counting.CountType.HAZARD) },
             )
             com.d365fo.mobileops.presentation.common.focus.FocusListRow(
-                title = "Cycle count", icon = Icons.Default.Autorenew, chevron = true,
-                onClick = { onJournals(CountKind.CYCLE) },
+                title = com.d365fo.mobileops.data.counting.CountType.WALL_TO_WALL.label,
+                subtitle = "The whole warehouse, location by location",
+                icon = Icons.Default.GridView, chevron = true,
+                onClick = { onCountType(com.d365fo.mobileops.data.counting.CountType.WALL_TO_WALL) },
             )
             com.d365fo.mobileops.presentation.common.focus.FocusListRow(
-                title = "Wall-to-wall count", icon = Icons.Default.GridView, chevron = true,
-                onClick = { onJournals(CountKind.WALL_TO_WALL) },
+                title = com.d365fo.mobileops.data.counting.CountType.BLIND.label,
+                subtitle = "Items or locations your supervisor picked",
+                icon = Icons.Default.VisibilityOff, chevron = true,
+                onClick = { onCountType(com.d365fo.mobileops.data.counting.CountType.BLIND) },
             )
-            if (canViewAccuracy) {
-                com.d365fo.mobileops.presentation.common.focus.FocusListRow(
-                    title = "Count accuracy", icon = Icons.Default.Insights, chevron = true, onClick = onAccuracy,
-                )
-            }
         }
     }
 }

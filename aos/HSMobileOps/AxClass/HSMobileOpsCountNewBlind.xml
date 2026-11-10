@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsCountNewBlind</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Stock count control center: New blind count. A supervisor picks the warehouse; the items or
+/// locations to count are then added on the Requested items tab. No journal until Create journal.
+/// </summary>
+class HSMobileOpsCountNewBlind
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>main</Name>
+				<Source><![CDATA[
+    public static void main(Args _args)
+    {
+        Dialog                 dialog = new Dialog('New blind count');
+        DialogField            warehouseField = dialog.addField(extendedTypeStr(InventLocationId), 'Warehouse');
+        DialogField            descriptionField = dialog.addField(extendedTypeStr(Description), 'Description');
+        HSMobileOpsCountMaster master;
+        InventLocationId       warehouse;
+
+        if (!dialog.run())
+        {
+            return;
+        }
+        warehouse = warehouseField.value();
+        if (!InventLocation::find(warehouse).RecId)
+        {
+            throw error(strFmt('Warehouse %1 does not exist.', warehouse));
+        }
+        ttsbegin;
+        master = HSMobileOpsCountControl::newMaster(HSMobileOpsCountMasterType::Blind, warehouse,
+            descriptionField.value() ? descriptionField.value() : strFmt('Blind count %1', warehouse), curUserId());
+        ttscommit;
+        info(strFmt('%1 created. Add the items or locations to count on the Requested items tab - the handhelds in %2 see it once it has some.',
+            master.MasterId, warehouse));
+        if (_args && _args.caller() is FormRun)
+        {
+            FormRun callerForm = _args.caller() as FormRun;
+            int     i;
+            for (i = 1; i <= callerForm.dataSourceCount(); i++)
+            {
+                callerForm.dataSource(i).research(true);
+            }
+        }
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

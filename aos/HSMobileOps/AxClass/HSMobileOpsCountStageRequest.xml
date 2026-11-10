@@ -7,7 +7,8 @@
 /// HSMobileOpsCountStageSvc's request. openStage: WarehouseId and, for a count against a counting journal, SourceJournalId.
 /// submitLines: StageId, SubmissionId, LinesJson (an array of {ClientLineId, ItemId, ConfigId, SizeId, ColorId,
 /// StyleId, BatchId, SerialId, LocationId, Quantity (inventory unit), UnitId, CountedAtUtc, SourceLineNum}) and
-/// EndCount when the counter ends their count. getStageMode: WarehouseId.
+/// EndCount when the counter ends their count. getStageMode: WarehouseId. MasterId (openStage): join that
+/// hazard or blind count instead of the store's wall to wall count.
 /// </summary>
 [DataContractAttribute]
 class HSMobileOpsCountStageRequest
@@ -21,6 +22,7 @@ class HSMobileOpsCountStageRequest
     str         submissionId;
     str         linesJson;
     boolean     endCount;
+    str         masterId;
 }
 ]]></Declaration>
 		<Methods>
@@ -129,6 +131,18 @@ class HSMobileOpsCountStageRequest
     {
         endCount = _value;
         return endCount;
+    }
+]]></Source>
+			</Method>
+		<Method>
+				<Name>parmMasterId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('MasterId')]
+    public str parmMasterId(str _value = masterId)
+    {
+        masterId = _value;
+        return masterId;
     }
 ]]></Source>
 			</Method>

@@ -40,6 +40,10 @@ class HSMobileOpsCountStageService
         }
         changecompany (_request.parmDataAreaId())
         {
+            if (_request.parmMasterId())
+            {
+                return HSMobileOpsCountStageService::openRequested(_request, response);
+            }
             if (!InventLocation::find(_request.parmWarehouseId()).RecId)
             {
                 response.parmErrorCode('INVALID_REQUEST');
@@ -102,6 +106,7 @@ class HSMobileOpsCountStageService
             response.parmMasterId(master.MasterId);
             response.parmStageId(int642Str(stage.RecId));
             response.parmDuplicates(master.DuplicateCount);
+            response.parmMasterType(enum2Symbol(enumNum(HSMobileOpsCountMasterType), master.MasterType));
         }
         return response;
     }
@@ -129,7 +134,12 @@ class HSMobileOpsCountStageService
         Newtonsoft.Json.Linq.JObject  jLine;
         int                           i;
         int                           accepted;
+        int                           rejected;
         str                           clientLineId;
+        Set                           touched = new Set(Types::String);
+        SetEnumerator                 stockKey;
+        boolean                       restricted;
+
 
         if (response.parmErrorCode())
         {
@@ -168,6 +178,7 @@ class HSMobileOpsCountStageService
                 jArray = parsedObj;
             }
 
+            restricted = master.MasterType != HSMobileOpsCountMasterType::WallToWall && master.RequestedItemCount > 0;
             ttsbegin;
             for (i = 0; jArray != null && i < jArray.get_Count(); i++)
             {
@@ -210,6 +221,13 @@ class HSMobileOpsCountStageService
                 line.DuplicateKey   = HSMobileOpsCountControl::duplicateKey(line);
                 // A journal line's own item and dimensions win over the device's copy.
                 HSMobileOpsCountControl::applySourceLine(line, master.SourceJournalId);
+                line.StockKey       = HSMobileOpsCountControl::stockKey(line);
+                // A hazard or blind count takes only what it asks for.
+                if (restricted && !HSMobileOpsCountControl::isRequested(master, line))
+                {
+                    rejected++;
+                    continue;
+                }
                 if (line.RecId)
                 {
                     line.update();
@@ -218,7 +236,14 @@ class HSMobileOpsCountStageService
                 {
                     line.insert();
                 }
+                touched.add(line.StockKey);
                 accepted++;
+            }
+            // On-hand when the count arrives, and the variance of everything counted of that stock.
+            stockKey = touched.getEnumerator();
+            while (stockKey.moveNext())
+            {
+                HSMobileOpsCountControl::updateVariance(stage.MasterRecId, stockKey.current(), true, master.InventLocationId);
             }
             if (_request.parmEndCount())
             {
@@ -238,10 +263,65 @@ class HSMobileOpsCountStageService
             response.parmMasterId(master.MasterId);
             response.parmStageId(_request.parmStageId());
             response.parmAccepted(accepted);
+            response.parmRejected(rejected);
             response.parmDuplicates(master.DuplicateCount);
-            response.parmMessage(strFmt('%1 line(s) staged in %2 for the supervisor', accepted, master.MasterId));
+            response.parmMasterType(enum2Symbol(enumNum(HSMobileOpsCountMasterType), master.MasterType));
+            response.parmMessage(rejected
+                ? strFmt("%1 line(s) staged in %2 for the supervisor; %3 not on the count's list were left out", accepted, master.MasterId, rejected)
+                : strFmt('%1 line(s) staged in %2 for the supervisor', accepted, master.MasterId));
         }
         return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>openRequested</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// openStage with a MasterId: joins that hazard or blind count. Allowed without a stock count
+    /// supervisor (user, 10 Nov). Called inside changecompany.
+    /// </summary>
+    private static HSMobileOpsCountStageResponse openRequested(HSMobileOpsCountStageRequest _request, HSMobileOpsCountStageResponse _response)
+    {
+        HSMobileOpsCountMaster master = HSMobileOpsCountMaster::find(_request.parmMasterId());
+        HSMobileOpsCountStage  stage;
+
+        if (!master.RecId)
+        {
+            _response.parmErrorCode('COUNT_NOT_FOUND');
+            _response.parmMessage(strFmt('%1 is not in D365FO.', _request.parmMasterId()));
+            return _response;
+        }
+        if (master.Status != HSMobileOpsCountMasterStatus::Open)
+        {
+            _response.parmErrorCode(master.Status == HSMobileOpsCountMasterStatus::Cancelled ? 'COUNT_CANCELLED' : 'COUNT_TRANSFERRED');
+            _response.parmMessage(strFmt('%1 is %2 - it can no longer be counted.', master.MasterId, master.Status));
+            return _response;
+        }
+        if (_request.parmWarehouseId() && master.InventLocationId != _request.parmWarehouseId())
+        {
+            _response.parmErrorCode('WRONG_WAREHOUSE');
+            _response.parmMessage(strFmt('%1 is a count of %2, not %3.', master.MasterId, master.InventLocationId, _request.parmWarehouseId()));
+            return _response;
+        }
+        if (master.MasterType == HSMobileOpsCountMasterType::Blind && !master.RequestedItemCount)
+        {
+            _response.parmErrorCode('NO_ITEMS');
+            _response.parmMessage(strFmt('The supervisor has not added anything to count to %1 yet.', master.MasterId));
+            return _response;
+        }
+        ttsbegin;
+        stage = HSMobileOpsCountControl::openStage(master, _request.parmUserName(), _request.parmDeviceId());
+        ttscommit;
+        HSMobileOpsCountControl::refresh(master.RecId, false);
+        master = HSMobileOpsCountControl::masterOf(master.RecId);
+        _response.parmSuccess(true);
+        _response.parmMasterId(master.MasterId);
+        _response.parmStageId(int642Str(stage.RecId));
+        _response.parmDuplicates(master.DuplicateCount);
+        _response.parmMasterType(enum2Symbol(enumNum(HSMobileOpsCountMasterType), master.MasterType));
+        return _response;
     }
 ]]></Source>
 			</Method>

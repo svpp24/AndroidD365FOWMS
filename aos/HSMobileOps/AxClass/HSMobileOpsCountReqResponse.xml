@@ -1,0 +1,149 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsCountReqResponse</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// HSMobileOpsCountRequestSvc's answer. Status: Open, Counting, CreatingJournal, JournalCreated, Posted or
+/// Cancelled. PayloadJson: the counts (listCounts), the requested items (getCountItems) or the results
+/// [{ItemId, ItemName, ConfigId, SizeId, ColorId, StyleId, BatchId, SerialId, LocationId, Counted, OnHand, Variance}].
+/// </summary>
+[DataContractAttribute]
+class HSMobileOpsCountReqResponse
+{
+    boolean success;
+    str errorCode;
+    str message;
+    str masterId;
+    str reference;
+    str status;
+    str journalId;
+    boolean posted;
+    boolean existing;
+    str payloadJson;
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmSuccess</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Success')]
+    public boolean parmSuccess(boolean _value = success)
+    {
+        success = _value;
+        return success;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmErrorCode</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('ErrorCode')]
+    public str parmErrorCode(str _value = errorCode)
+    {
+        errorCode = _value;
+        return errorCode;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmMessage</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Message')]
+    public str parmMessage(str _value = message)
+    {
+        message = _value;
+        return message;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmMasterId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('MasterId')]
+    public str parmMasterId(str _value = masterId)
+    {
+        masterId = _value;
+        return masterId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmReference</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Reference')]
+    public str parmReference(str _value = reference)
+    {
+        reference = _value;
+        return reference;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmStatus</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Status')]
+    public str parmStatus(str _value = status)
+    {
+        status = _value;
+        return status;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmJournalId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('JournalId')]
+    public str parmJournalId(str _value = journalId)
+    {
+        journalId = _value;
+        return journalId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmPosted</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Posted')]
+    public boolean parmPosted(boolean _value = posted)
+    {
+        posted = _value;
+        return posted;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmExisting</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Existing')]
+    public boolean parmExisting(boolean _value = existing)
+    {
+        existing = _value;
+        return existing;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmPayloadJson</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('PayloadJson')]
+    public str parmPayloadJson(str _value = payloadJson)
+    {
+        payloadJson = _value;
+        return payloadJson;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

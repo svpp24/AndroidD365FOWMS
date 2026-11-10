@@ -24,7 +24,7 @@ import javax.inject.Singleton
 data class StageHandle(val masterId: String, val stageId: String)
 
 /** What D365FO said about staged lines: the stock count, lines taken, undecided duplicates. */
-data class StagedCount(val masterId: String, val accepted: Int, val duplicates: Int)
+data class StagedCount(val masterId: String, val accepted: Int, val duplicates: Int, val rejected: Int = 0)
 
 /**
  * The Stock count control center from the handheld (decision, 11 Oct: counts are staged per
@@ -59,6 +59,7 @@ class CountStagingRepository @Inject constructor(
         linesJson: String = "",
         endCount: Boolean = false,
         user: String = userName(),
+        masterId: String = "",
     ) = CountStageServiceRequest(
         CountStageRequestBody(
             dataAreaId = company(),
@@ -70,6 +71,7 @@ class CountStagingRepository @Inject constructor(
             submissionId = submissionId,
             linesJson = linesJson,
             endCount = endCount,
+            masterId = masterId,
         ),
     )
 
@@ -92,9 +94,14 @@ class CountStagingRepository @Inject constructor(
         }
     }
 
-    /** Starts or rejoins this counter's staging journal in the store's open stock count. */
-    suspend fun open(warehouseId: String, sourceJournalId: String? = null, user: String = userName()): NetworkResult<StageHandle> =
-        errorMapper.safeCall { api.openStage(body(warehouseId = warehouseId, sourceJournalId = sourceJournalId.orEmpty(), user = user)) }
+    /**
+     * Starts or rejoins this counter's staging journal: in the store's open wall to wall count, or
+     * with [masterId] in that hazard or blind count.
+     */
+    suspend fun open(warehouseId: String, sourceJournalId: String? = null, user: String = userName(), masterId: String = ""): NetworkResult<StageHandle> =
+        errorMapper.safeCall {
+            api.openStage(body(warehouseId = warehouseId, sourceJournalId = sourceJournalId.orEmpty(), user = user, masterId = masterId))
+        }
             .answer { StageHandle(it.masterId.orEmpty(), it.stageId.orEmpty()) }
 
     /** Stages [lines] (a resend replaces a line by its client id); [endCount] submits the counter's journal. */
@@ -110,7 +117,7 @@ class CountStagingRepository @Inject constructor(
                 body(stageId = stageId, submissionId = submissionId, linesJson = rowsJson(CountStageLineDto.serializer(), lines),
                     endCount = endCount, user = user),
             )
-        }.answer { StagedCount(it.masterId.orEmpty(), it.accepted, it.duplicates) }
+        }.answer { StagedCount(it.masterId.orEmpty(), it.accepted, it.duplicates, it.rejected) }
 
     /**
      * End count for a counting journal at a store that reviews journal counts: the counted lines
@@ -223,6 +230,9 @@ class CountStagingRepository @Inject constructor(
         "JOURNAL_POSTED" -> "This journal has already been posted in D365FO."
         "JOURNAL_NOT_FOUND" -> "Journal closed."
         "RETRY" -> "Started elsewhere at the same time - try again."
+        "NO_ITEMS" -> "The supervisor has not added anything to count yet."
+        "WRONG_WAREHOUSE" -> "This count is for another warehouse."
+        "COUNT_NOT_FOUND" -> "This count is not in D365FO any more."
         else -> code ?: "D365FO refused the count."
     }
 }

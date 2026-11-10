@@ -23,6 +23,9 @@
 			<Name>HSMobileOpsCountControlCenterMaintain</Name>
 		</AxSecurityPrivilegeReference>
 		<AxSecurityPrivilegeReference>
+			<Name>HSMobileOpsCountTypeSetupMaintain</Name>
+		</AxSecurityPrivilegeReference>
+		<AxSecurityPrivilegeReference>
 			<Name>HSMobileOpsFeedbackMaintain</Name>
 		</AxSecurityPrivilegeReference>
 		<AxSecurityPrivilegeReference>

@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxForm xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns="Microsoft.Dynamics.AX.Metadata.V6">
+	<Name>HSMobileOpsCountTypeSetup</Name>
+	<SourceCode>
+		<Methods xmlns="">
+			<Method>
+				<Name>classDeclaration</Name>
+				<Source><![CDATA[
+/// <summary>
+/// Count type setup: per count type, whether the journal the supervisor creates is posted at once.
+/// </summary>
+[Form]
+public class HSMobileOpsCountTypeSetup extends FormRun
+{
+}
+]]></Source>
+			</Method>
+			<Method>
+				<Name>init</Name>
+				<Source><![CDATA[
+    public void init()
+    {
+        HSMobileOpsCountTypeSetup::ensureSeeded();
+        super();
+    }
+]]></Source>
+			</Method>
+		</Methods>
+		<DataSources xmlns="" />
+		<DataControls xmlns="" />
+		<Members xmlns="" />
+	</SourceCode>
+	<DataSources>
+		<AxFormDataSource xmlns="">
+			<Name>HSMobileOpsCountTypeSetup</Name>
+			<Table>HSMobileOpsCountTypeSetup</Table>
+			<Fields />
+			<ReferencedDataSources />
+			<AllowCreate>No</AllowCreate>
+			<AllowDelete>No</AllowDelete>
+			<InsertIfEmpty>No</InsertIfEmpty>
+			<DataSourceLinks />
+			<DerivedDataSources />
+		</AxFormDataSource>
+	</DataSources>
+	<Design>
+		<Caption xmlns="">Count type setup</Caption>
+		<DataSource xmlns="">HSMobileOpsCountTypeSetup</DataSource>
+		<ShowNewButton xmlns="">No</ShowNewButton>
+		<UseCaptionFromMenuItem xmlns="">Yes</UseCaptionFromMenuItem>
+		<ViewEditMode xmlns="">Edit</ViewEditMode>
+		<Controls xmlns="">
+			<AxFormControl xmlns=""
+				i:type="AxFormGridControl">
+				<Name>Grid</Name>
+				<Type>Grid</Type>
+				<FormControlExtension
+					i:nil="true" />
+				<Controls>
+					<AxFormControl xmlns=""
+						i:type="AxFormComboBoxControl">
+						<Name>HSMobileOpsCountTypeSetup_MasterType</Name>
+						<AllowEdit>No</AllowEdit>
+						<Type>ComboBox</Type>
+						<FormControlExtension
+							i:nil="true" />
+						<DataField>MasterType</DataField>
+						<DataSource>HSMobileOpsCountTypeSetup</DataSource>
+						<Items />
+					</AxFormControl>
+								<AxFormControl xmlns=""
+									i:type="AxFormCheckBoxControl">
+									<Name>HSMobileOpsCountTypeSetup_AutoPost</Name>
+									<Type>CheckBox</Type>
+									<FormControlExtension
+										i:nil="true" />
+									<DataField>AutoPost</DataField>
+									<DataSource>HSMobileOpsCountTypeSetup</DataSource>
+								</AxFormControl>
+				</Controls>
+				<DataSource>HSMobileOpsCountTypeSetup</DataSource>
+			</AxFormControl>
+		</Controls>
+	</Design>
+	<Parts />
+</AxForm>

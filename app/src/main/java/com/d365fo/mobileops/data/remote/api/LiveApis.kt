@@ -601,3 +601,30 @@ class LiveCountStageServiceApi @Inject constructor(
         tag: com.d365fo.mobileops.data.remote.interceptor.IdempotentRead,
     ) = delegate.get().getStageMode(body, tag)
 }
+
+/** `HSMobileOpsCountRequestSvc` - the warehouse's counts, a count's items and results (see CountRequestRepository). */
+@Singleton
+class LiveCountRequestServiceApi @Inject constructor(
+    factory: D365RetrofitFactory,
+    settings: ConnectionSettings,
+) : CountRequestServiceApi {
+
+    private val delegate = RebuildingApi(factory, CountRequestServiceApi::class.java) {
+        settings.tenant.value.servicesRoot
+    }
+
+    override suspend fun listCounts(
+        body: com.d365fo.mobileops.data.remote.dto.CountRequestServiceRequest,
+        tag: com.d365fo.mobileops.data.remote.interceptor.IdempotentRead,
+    ) = delegate.get().listCounts(body, tag)
+
+    override suspend fun getCountItems(
+        body: com.d365fo.mobileops.data.remote.dto.CountRequestServiceRequest,
+        tag: com.d365fo.mobileops.data.remote.interceptor.IdempotentRead,
+    ) = delegate.get().getCountItems(body, tag)
+
+    override suspend fun getCountResults(
+        body: com.d365fo.mobileops.data.remote.dto.CountRequestServiceRequest,
+        tag: com.d365fo.mobileops.data.remote.interceptor.IdempotentRead,
+    ) = delegate.get().getCountResults(body, tag)
+}

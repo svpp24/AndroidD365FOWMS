@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <AxMenuItemAction xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
 	<Name>HSMobileOpsCountTransfer</Name>
-	<Label>Transfer to counting journal</Label>
-	<HelpText>Move the reviewed counts into a D365FO counting journal.</HelpText>
+	<Label>Create journal</Label>
+	<HelpText>Create the counting journal from the reviewed counts. Auto-post in Count type setup decides whether it posts at once.</HelpText>
 	<Object>HSMobileOpsCountTransfer</Object>
 	<ObjectType>Class</ObjectType>
 </AxMenuItemAction>

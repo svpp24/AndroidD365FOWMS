@@ -52,6 +52,52 @@ public class HSMobileOpsCountMaster extends common
 			<StringSize>30</StringSize>
 		</AxTableField>
 		<AxTableField xmlns=""
+			i:type="AxTableFieldEnum">
+			<Name>MasterType</Name>
+			<AllowEdit>No</AllowEdit>
+			<HelpText>Wall to wall, Hazard or Blind.</HelpText>
+			<Label>Count type</Label>
+			<EnumType>HSMobileOpsCountMasterType</EnumType>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>ExternalRef</Name>
+			<AllowEdit>No</AllowEdit>
+			<HelpText>The outside system's reference for a hazard count.</HelpText>
+			<Label>Reference</Label>
+			<StringSize>50</StringSize>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldUtcDateTime">
+			<Name>DueUtc</Name>
+			<AllowEdit>No</AllowEdit>
+			<HelpText>When the hazard count has to be done.</HelpText>
+			<Label>Due</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldInt">
+			<Name>RequestedItemCount</Name>
+			<AllowEdit>No</AllowEdit>
+			<HelpText>How many items or locations a hazard or blind count asks for. 0 for wall to wall.</HelpText>
+			<Label>Requested items</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldEnum">
+			<Name>JournalPosted</Name>
+			<AllowEdit>No</AllowEdit>
+			<HelpText>Whether the counting journal was posted automatically (Count type setup, Auto-post).</HelpText>
+			<Label>Journal posted</Label>
+			<EnumType>NoYes</EnumType>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>PostMessage</Name>
+			<AllowEdit>No</AllowEdit>
+			<HelpText>What happened when the journal was posted automatically.</HelpText>
+			<Label>Posting</Label>
+			<StringSize>250</StringSize>
+		</AxTableField>
+		<AxTableField xmlns=""
 			i:type="AxTableFieldString">
 			<Name>InventSiteId</Name>
 			<AllowEdit>No</AllowEdit>
@@ -167,6 +213,18 @@ public class HSMobileOpsCountMaster extends common
 			<Fields>
 				<AxTableIndexField>
 					<DataField>MasterId</DataField>
+				</AxTableIndexField>
+			</Fields>
+		</AxTableIndex>
+		<AxTableIndex>
+			<Name>TypeRefIdx</Name>
+			<AllowDuplicates>Yes</AllowDuplicates>
+			<Fields>
+				<AxTableIndexField>
+					<DataField>MasterType</DataField>
+				</AxTableIndexField>
+				<AxTableIndexField>
+					<DataField>ExternalRef</DataField>
 				</AxTableIndexField>
 			</Fields>
 		</AxTableIndex>

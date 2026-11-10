@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxSecurityRole xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsCountIntegration</Name>
+	<Description>The outside system's D365FO user (Microsoft Entra ID applications): may create, cancel and read hazard counts, nothing else.</Description>
+	<Label>Mobile operations hazard count integration</Label>
+	<DirectAccessPermissions />
+	<Duties />
+	<Privileges>
+		<AxSecurityPrivilegeReference>
+			<Name>HSMobileOpsCountRequestApi</Name>
+		</AxSecurityPrivilegeReference>
+	</Privileges>
+	<SubRoles />
+</AxSecurityRole>

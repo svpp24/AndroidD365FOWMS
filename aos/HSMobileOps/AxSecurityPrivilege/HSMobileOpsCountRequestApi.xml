@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxSecurityPrivilege xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsCountRequestApi</Name>
+	<Description>For the outside system that asks for hazard counts: create, cancel and read hazard counts through HSMobileOpsCountRequestSvc.</Description>
+	<Label>Request hazard counts (integration)</Label>
+	<DirectAccessPermissions />
+	<EntryPoints>
+		<AxSecurityEntryPointReference>
+			<Name>createHazardCount</Name>
+			<Grant>
+				<Invoke>Allow</Invoke>
+			</Grant>
+			<ObjectChildName>createHazardCount</ObjectChildName>
+			<ObjectName>HSMobileOpsCountRequestSvc</ObjectName>
+			<ObjectType>ServiceOperation</ObjectType>
+			<Forms />
+		</AxSecurityEntryPointReference>
+		<AxSecurityEntryPointReference>
+			<Name>cancelHazardCount</Name>
+			<Grant>
+				<Invoke>Allow</Invoke>
+			</Grant>
+			<ObjectChildName>cancelHazardCount</ObjectChildName>
+			<ObjectName>HSMobileOpsCountRequestSvc</ObjectName>
+			<ObjectType>ServiceOperation</ObjectType>
+			<Forms />
+		</AxSecurityEntryPointReference>
+		<AxSecurityEntryPointReference>
+			<Name>getHazardCountStatus</Name>
+			<Grant>
+				<Invoke>Allow</Invoke>
+			</Grant>
+			<ObjectChildName>getHazardCountStatus</ObjectChildName>
+			<ObjectName>HSMobileOpsCountRequestSvc</ObjectName>
+			<ObjectType>ServiceOperation</ObjectType>
+			<Forms />
+		</AxSecurityEntryPointReference>
+	</EntryPoints>
+	<FormControlOverrides />
+</AxSecurityPrivilege>

@@ -62,4 +62,10 @@ abstract class ApiModule {
     abstract fun bindCountStageServiceApi(
         live: com.d365fo.mobileops.data.remote.api.LiveCountStageServiceApi,
     ): com.d365fo.mobileops.data.remote.api.CountStageServiceApi
+
+    @Binds
+    @Singleton
+    abstract fun bindCountRequestServiceApi(
+        live: com.d365fo.mobileops.data.remote.api.LiveCountRequestServiceApi,
+    ): com.d365fo.mobileops.data.remote.api.CountRequestServiceApi
 }

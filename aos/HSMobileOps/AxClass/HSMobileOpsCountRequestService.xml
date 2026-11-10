@@ -1,0 +1,637 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsCountRequestService</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// HSMobileOpsCountRequestSvc (10 Nov 2026). Three count types live in the Stock count control
+/// center - Wall to wall, Hazard, Blind - and none starts with a journal: counts are staged per
+/// counter (HSMobileOpsCountStageSvc), on-hand and variance are recorded as they arrive, and the
+/// supervisor decides duplicates and creates the journal.
+///
+/// Outside system: createHazardCount, cancelHazardCount, getHazardCountStatus (privilege
+/// HSMobileOpsCountRequestApi). Handheld: listCounts, getCountItems, getCountResults.
+/// </summary>
+class HSMobileOpsCountRequestService
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>createHazardCount</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The outside system asks for a hazard count: warehouse, due time, items. Opens one control
+    /// center count of type Hazard with its requested items - no journal. The same Reference again
+    /// returns the count already made (Existing), unless that one was cancelled.
+    /// </summary>
+    [Wrappable(false), Hookable(false)]
+    public HSMobileOpsCountReqResponse createHazardCount(HSMobileOpsCountReqRequest _request)
+    {
+        HSMobileOpsCountReqResponse  response = new HSMobileOpsCountReqResponse();
+        HSMobileOpsCountMaster       master;
+        HSMobileOpsCountItem         item;
+        System.Object                parsedObj;
+        Newtonsoft.Json.Linq.JArray  jArray;
+        Newtonsoft.Json.Linq.JObject jItem;
+        List                         rows = new List(Types::Container);
+        ListEnumerator               row;
+        container                    values;
+        utcdatetime                  due;
+        str                          reference = _request ? strLTrim(strRTrim(_request.parmReference())) : '';
+        str                          unknown;
+        str                          itemId;
+        str                          locationId;
+        int                          unknownCount;
+        int                          i;
+
+        response.parmSuccess(false);
+        if (!_request || !reference || !_request.parmWarehouseId() || !_request.parmItemsJson()
+            || !_request.parmDataAreaId() || !CompanyInfo::findDataArea(_request.parmDataAreaId()).RecId)
+        {
+            response.parmErrorCode('INVALID_REQUEST');
+            response.parmMessage('DataAreaId, Reference, WarehouseId and ItemsJson are required.');
+            return response;
+        }
+        if (strLen(reference) > 50)
+        {
+            response.parmErrorCode('INVALID_REQUEST');
+            response.parmMessage('Reference is longer than 50 characters.');
+            return response;
+        }
+        due = HSMobileOpsCountRequestService::parseUtc(_request.parmDueUtc());
+        if (_request.parmDueUtc() && due == utcDateTimeNull())
+        {
+            response.parmErrorCode('INVALID_REQUEST');
+            response.parmMessage('DueUtc must be a UTC date and time like 2026-11-10T14:00:00Z.');
+            return response;
+        }
+        response.parmReference(reference);
+        changecompany (_request.parmDataAreaId())
+        {
+            if (!InventLocation::find(_request.parmWarehouseId()).RecId)
+            {
+                response.parmErrorCode('INVALID_REQUEST');
+                response.parmMessage(strFmt('Warehouse %1 does not exist in %2.', _request.parmWarehouseId(), _request.parmDataAreaId()));
+                return response;
+            }
+            master = HSMobileOpsCountRequestService::findHazard(reference);
+            if (master.RecId && master.Status != HSMobileOpsCountMasterStatus::Cancelled)
+            {
+                HSMobileOpsCountRequestService::describe(master, response);
+                response.parmExisting(true);
+                response.parmSuccess(true);
+                response.parmMessage(strFmt('Reference %1 already has hazard count %2.', reference, master.MasterId));
+                return response;
+            }
+            try
+            {
+                parsedObj = Newtonsoft.Json.Linq.JArray::Parse(_request.parmItemsJson());
+            }
+            catch (Exception::CLRError)
+            {
+                response.parmErrorCode('INVALID_REQUEST');
+                response.parmMessage('ItemsJson is not a JSON array.');
+                return response;
+            }
+            jArray = parsedObj;
+            for (i = 0; jArray != null && i < jArray.get_Count(); i++)
+            {
+                jItem = jArray.get_Item(i);
+                if (jItem == null)
+                {
+                    continue;
+                }
+                itemId     = HSMobileOpsCountRequestService::jsonStr(jItem, 'ItemId');
+                locationId = HSMobileOpsCountRequestService::jsonStr(jItem, 'LocationId');
+                if (!itemId || !InventTable::exist(itemId)
+                    || (locationId && !WMSLocation::find(locationId, _request.parmWarehouseId()).RecId))
+                {
+                    unknownCount++;
+                    if (unknownCount <= 10)
+                    {
+                        unknown += (unknown ? ', ' : '') + (itemId ? itemId : '(no ItemId)') + (locationId ? ' at ' + locationId : '');
+                    }
+                    continue;
+                }
+                rows.addEnd([itemId, HSMobileOpsCountRequestService::jsonStr(jItem, 'ConfigId'),
+                    HSMobileOpsCountRequestService::jsonStr(jItem, 'SizeId'), HSMobileOpsCountRequestService::jsonStr(jItem, 'ColorId'),
+                    HSMobileOpsCountRequestService::jsonStr(jItem, 'StyleId'), locationId]);
+            }
+            if (unknownCount)
+            {
+                response.parmErrorCode('UNKNOWN_ITEMS');
+                response.parmMessage(strFmt('%1 item(s) are not in D365FO (or their location is not in %2): %3. Nothing was created.',
+                    unknownCount, _request.parmWarehouseId(), unknown));
+                return response;
+            }
+            if (!rows.elements())
+            {
+                response.parmErrorCode('INVALID_REQUEST');
+                response.parmMessage('ItemsJson has no items.');
+                return response;
+            }
+
+            ttsbegin;
+            master = HSMobileOpsCountControl::newMaster(HSMobileOpsCountMasterType::Hazard, _request.parmWarehouseId(),
+                _request.parmDescription() ? _request.parmDescription() : strFmt('Hazard count %1', reference), curUserId(), reference, due);
+            row = rows.getEnumerator();
+            while (row.moveNext())
+            {
+                values = row.current();
+                item.clear();
+                item.MasterRecId   = master.RecId;
+                item.ItemId        = conPeek(values, 1);
+                item.ConfigId      = conPeek(values, 2);
+                item.InventSizeId  = conPeek(values, 3);
+                item.InventColorId = conPeek(values, 4);
+                item.InventStyleId = conPeek(values, 5);
+                item.WMSLocationId = conPeek(values, 6);
+                item.insert();
+            }
+            ttscommit;
+            master = HSMobileOpsCountControl::masterOf(master.RecId);
+            HSMobileOpsCountRequestService::describe(master, response);
+            response.parmSuccess(true);
+            response.parmMessage(strFmt('Hazard count %1 created with %2 item(s).', master.MasterId, master.RequestedItemCount));
+        }
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>cancelHazardCount</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The outside system withdraws a hazard count. Only while no journal has been created.
+    /// </summary>
+    [Wrappable(false), Hookable(false)]
+    public HSMobileOpsCountReqResponse cancelHazardCount(HSMobileOpsCountReqRequest _request)
+    {
+        HSMobileOpsCountReqResponse response = HSMobileOpsCountRequestService::validateCompany(_request);
+        HSMobileOpsCountMaster      master;
+
+        if (response.parmErrorCode())
+        {
+            return response;
+        }
+        changecompany (_request.parmDataAreaId())
+        {
+            master = HSMobileOpsCountRequestService::findHazard(_request.parmReference());
+            if (!master.RecId)
+            {
+                response.parmErrorCode('NOT_FOUND');
+                response.parmMessage(strFmt('No hazard count has reference %1.', _request.parmReference()));
+                return response;
+            }
+            if (master.Status == HSMobileOpsCountMasterStatus::Open)
+            {
+                HSMobileOpsCountControl::cancel(master.RecId);
+                master = HSMobileOpsCountControl::masterOf(master.RecId);
+            }
+            HSMobileOpsCountRequestService::describe(master, response);
+            if (master.Status != HSMobileOpsCountMasterStatus::Cancelled)
+            {
+                response.parmErrorCode('CANNOT_CANCEL');
+                response.parmMessage(strFmt('%1 already has a counting journal - it can no longer be cancelled.', master.MasterId));
+                return response;
+            }
+            response.parmSuccess(true);
+        }
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>getHazardCountStatus</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Where a hazard count is, and once its journal exists, what was counted against the on-hand.
+    /// </summary>
+    [Wrappable(false), Hookable(false)]
+    public HSMobileOpsCountReqResponse getHazardCountStatus(HSMobileOpsCountReqRequest _request)
+    {
+        HSMobileOpsCountReqResponse response = HSMobileOpsCountRequestService::validateCompany(_request);
+        HSMobileOpsCountMaster      master;
+
+        if (response.parmErrorCode())
+        {
+            return response;
+        }
+        changecompany (_request.parmDataAreaId())
+        {
+            master = HSMobileOpsCountRequestService::findHazard(_request.parmReference());
+            if (!master.RecId)
+            {
+                response.parmErrorCode('NOT_FOUND');
+                response.parmMessage(strFmt('No hazard count has reference %1.', _request.parmReference()));
+                return response;
+            }
+            HSMobileOpsCountRequestService::describe(master, response);
+            response.parmPayloadJson(HSMobileOpsCountRequestService::resultsJson(master));
+            response.parmSuccess(true);
+        }
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>listCounts</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The handheld's Count menu: the warehouse's open counts of every type, and those whose
+    /// journal was created in the last 7 days (their results). Newest first.
+    /// </summary>
+    [Wrappable(false), Hookable(false)]
+    public HSMobileOpsCountReqResponse listCounts(HSMobileOpsCountReqRequest _request)
+    {
+        HSMobileOpsCountReqResponse  response = HSMobileOpsCountRequestService::validateUser(_request);
+        HSMobileOpsCountMaster       master;
+        HSMobileOpsCountStage        stage;
+        Newtonsoft.Json.Linq.JArray  counts = new Newtonsoft.Json.Linq.JArray();
+        Newtonsoft.Json.Linq.JObject entry;
+        utcdatetime                  since = DateTimeUtil::addDays(DateTimeUtil::utcNow(), -7);
+
+        if (response.parmErrorCode())
+        {
+            return response;
+        }
+        changecompany (_request.parmDataAreaId())
+        {
+            while select master
+                order by StartedUtc desc
+                where master.InventLocationId == _request.parmWarehouseId()
+                   && master.Status          != HSMobileOpsCountMasterStatus::Cancelled
+            {
+                if (master.Status == HSMobileOpsCountMasterStatus::Transferred && master.TransferredUtc < since)
+                {
+                    continue;
+                }
+                if (master.MasterType == HSMobileOpsCountMasterType::Blind && !master.RequestedItemCount)
+                {
+                    continue;
+                }
+                select firstonly RecId, Status from stage
+                    where stage.MasterRecId == master.RecId
+                       && stage.UserName    == _request.parmUserName();
+                entry = new Newtonsoft.Json.Linq.JObject();
+                HSMobileOpsCountRequestService::put(entry, 'MasterId', master.MasterId);
+                HSMobileOpsCountRequestService::put(entry, 'Type', enum2Symbol(enumNum(HSMobileOpsCountMasterType), master.MasterType));
+                HSMobileOpsCountRequestService::put(entry, 'Reference', master.ExternalRef);
+                HSMobileOpsCountRequestService::put(entry, 'Description', master.Description);
+                HSMobileOpsCountRequestService::put(entry, 'DueUtc', HSMobileOpsCountRequestService::isoUtc(master.DueUtc));
+                HSMobileOpsCountRequestService::put(entry, 'StartedUtc', HSMobileOpsCountRequestService::isoUtc(master.StartedUtc));
+                HSMobileOpsCountRequestService::put(entry, 'Status', HSMobileOpsCountRequestService::statusOf(master));
+                HSMobileOpsCountRequestService::put(entry, 'JournalId', master.TransferredJournalId);
+                HSMobileOpsCountRequestService::put(entry, 'ItemCount', int2Str(master.RequestedItemCount));
+                HSMobileOpsCountRequestService::put(entry, 'CounterCount', int2Str(master.CounterCount));
+                HSMobileOpsCountRequestService::put(entry, 'LineCount', int2Str(master.LineCount));
+                HSMobileOpsCountRequestService::put(entry, 'MyStatus', stage.RecId ? enum2Symbol(enumNum(HSMobileOpsCountStageStatus), stage.Status) : '');
+                counts.Add(entry);
+            }
+        }
+        response.parmPayloadJson(counts.ToString());
+        response.parmSuccess(true);
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>getCountItems</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// What a hazard or blind count asks to be counted (empty for wall to wall).
+    /// </summary>
+    [Wrappable(false), Hookable(false)]
+    public HSMobileOpsCountReqResponse getCountItems(HSMobileOpsCountReqRequest _request)
+    {
+        HSMobileOpsCountReqResponse  response = HSMobileOpsCountRequestService::validateUser(_request);
+        HSMobileOpsCountMaster       master;
+        HSMobileOpsCountItem         item;
+        Newtonsoft.Json.Linq.JArray  items = new Newtonsoft.Json.Linq.JArray();
+        Newtonsoft.Json.Linq.JObject row;
+
+        if (response.parmErrorCode())
+        {
+            return response;
+        }
+        changecompany (_request.parmDataAreaId())
+        {
+            master = HSMobileOpsCountMaster::find(_request.parmMasterId());
+            if (!master.RecId)
+            {
+                response.parmErrorCode('COUNT_NOT_FOUND');
+                return response;
+            }
+            while select item order by LineNum where item.MasterRecId == master.RecId
+            {
+                row = new Newtonsoft.Json.Linq.JObject();
+                HSMobileOpsCountRequestService::put(row, 'LineNum', int2Str(item.LineNum));
+                HSMobileOpsCountRequestService::put(row, 'ItemId', item.ItemId);
+                HSMobileOpsCountRequestService::put(row, 'ItemName', item.ItemName);
+                HSMobileOpsCountRequestService::put(row, 'ConfigId', item.ConfigId);
+                HSMobileOpsCountRequestService::put(row, 'SizeId', item.InventSizeId);
+                HSMobileOpsCountRequestService::put(row, 'ColorId', item.InventColorId);
+                HSMobileOpsCountRequestService::put(row, 'StyleId', item.InventStyleId);
+                HSMobileOpsCountRequestService::put(row, 'LocationId', item.WMSLocationId);
+                items.Add(row);
+            }
+            HSMobileOpsCountRequestService::describe(master, response);
+        }
+        response.parmPayloadJson(items.ToString());
+        response.parmSuccess(true);
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>getCountResults</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Counted, on-hand and variance per journal line, once the supervisor has created the journal.
+    /// </summary>
+    [Wrappable(false), Hookable(false)]
+    public HSMobileOpsCountReqResponse getCountResults(HSMobileOpsCountReqRequest _request)
+    {
+        HSMobileOpsCountReqResponse response = HSMobileOpsCountRequestService::validateUser(_request);
+        HSMobileOpsCountMaster      master;
+
+        if (response.parmErrorCode())
+        {
+            return response;
+        }
+        changecompany (_request.parmDataAreaId())
+        {
+            master = HSMobileOpsCountMaster::find(_request.parmMasterId());
+            if (!master.RecId)
+            {
+                response.parmErrorCode('COUNT_NOT_FOUND');
+                return response;
+            }
+            HSMobileOpsCountRequestService::describe(master, response);
+            if (!master.TransferredJournalId)
+            {
+                response.parmErrorCode('NOT_READY');
+                response.parmMessage(strFmt('%1 has no journal yet - results show once the supervisor creates it.', master.MasterId));
+                return response;
+            }
+            response.parmPayloadJson(HSMobileOpsCountRequestService::resultsJson(master));
+        }
+        response.parmSuccess(true);
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>resultsJson</Name>
+				<Source><![CDATA[
+
+    private static str resultsJson(HSMobileOpsCountMaster _master)
+    {
+        InventJournalTrans           journalTrans;
+        InventDim                    inventDim;
+        Newtonsoft.Json.Linq.JArray  rows = new Newtonsoft.Json.Linq.JArray();
+        Newtonsoft.Json.Linq.JObject row;
+
+        if (_master.TransferredJournalId)
+        {
+            while select journalTrans
+                order by LineNum
+                where journalTrans.JournalId == _master.TransferredJournalId
+                join inventDim
+                    where inventDim.inventDimId == journalTrans.InventDimId
+            {
+                row = new Newtonsoft.Json.Linq.JObject();
+                HSMobileOpsCountRequestService::put(row, 'ItemId', journalTrans.ItemId);
+                HSMobileOpsCountRequestService::put(row, 'ItemName', InventTable::find(journalTrans.ItemId).defaultProductName());
+                HSMobileOpsCountRequestService::put(row, 'ConfigId', inventDim.configId);
+                HSMobileOpsCountRequestService::put(row, 'SizeId', inventDim.InventSizeId);
+                HSMobileOpsCountRequestService::put(row, 'ColorId', inventDim.InventColorId);
+                HSMobileOpsCountRequestService::put(row, 'StyleId', inventDim.InventStyleId);
+                HSMobileOpsCountRequestService::put(row, 'BatchId', inventDim.inventBatchId);
+                HSMobileOpsCountRequestService::put(row, 'SerialId', inventDim.inventSerialId);
+                HSMobileOpsCountRequestService::put(row, 'LocationId', inventDim.wMSLocationId);
+                HSMobileOpsCountRequestService::put(row, 'Counted', HSMobileOpsCountRequestService::num(journalTrans.Counted));
+                HSMobileOpsCountRequestService::put(row, 'OnHand', HSMobileOpsCountRequestService::num(journalTrans.InventOnHand));
+                HSMobileOpsCountRequestService::put(row, 'Variance', HSMobileOpsCountRequestService::num(journalTrans.Counted - journalTrans.InventOnHand));
+                rows.Add(row);
+            }
+        }
+        return rows.ToString();
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>describe</Name>
+				<Source><![CDATA[
+
+    private static void describe(HSMobileOpsCountMaster _master, HSMobileOpsCountReqResponse _response)
+    {
+        _response.parmMasterId(_master.MasterId);
+        _response.parmReference(_master.ExternalRef);
+        _response.parmStatus(HSMobileOpsCountRequestService::statusOf(_master));
+        _response.parmJournalId(_master.TransferredJournalId);
+        _response.parmPosted(HSMobileOpsCountRequestService::isPosted(_master));
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>statusOf</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Open (nobody counting yet), Counting, CreatingJournal, JournalCreated, Posted or Cancelled.
+    /// </summary>
+    private static str statusOf(HSMobileOpsCountMaster _master)
+    {
+        switch (_master.Status)
+        {
+            case HSMobileOpsCountMasterStatus::Cancelled:
+                return 'Cancelled';
+            case HSMobileOpsCountMasterStatus::Transferring:
+                return 'CreatingJournal';
+            case HSMobileOpsCountMasterStatus::Transferred:
+                return HSMobileOpsCountRequestService::isPosted(_master) ? 'Posted' : 'JournalCreated';
+        }
+        return _master.CounterCount ? 'Counting' : 'Open';
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>isPosted</Name>
+				<Source><![CDATA[
+
+    private static boolean isPosted(HSMobileOpsCountMaster _master)
+    {
+        return _master.TransferredJournalId && InventJournalTable::find(_master.TransferredJournalId).Posted == NoYes::Yes;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>findHazard</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The newest hazard count with this reference. Called inside changecompany.
+    /// </summary>
+    private static HSMobileOpsCountMaster findHazard(str _reference)
+    {
+        HSMobileOpsCountMaster master;
+
+        if (_reference)
+        {
+            select firstonly master
+                order by StartedUtc desc
+                where master.MasterType  == HSMobileOpsCountMasterType::Hazard
+                   && master.ExternalRef == _reference;
+        }
+        return master;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>validateCompany</Name>
+				<Source><![CDATA[
+
+    private static HSMobileOpsCountReqResponse validateCompany(HSMobileOpsCountReqRequest _request)
+    {
+        HSMobileOpsCountReqResponse response = new HSMobileOpsCountReqResponse();
+
+        response.parmSuccess(false);
+        if (!_request || !_request.parmDataAreaId() || !_request.parmReference()
+            || !CompanyInfo::findDataArea(_request.parmDataAreaId()).RecId)
+        {
+            response.parmErrorCode('INVALID_REQUEST');
+            response.parmMessage('DataAreaId and Reference are required.');
+        }
+        else
+        {
+            response.parmReference(_request.parmReference());
+        }
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>validateUser</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The handheld's calls: an active mobile user of the company, and a warehouse or count.
+    /// </summary>
+    private static HSMobileOpsCountReqResponse validateUser(HSMobileOpsCountReqRequest _request)
+    {
+        HSMobileOpsCountReqResponse response = new HSMobileOpsCountReqResponse();
+        HSMobileOpsUser             user;
+
+        response.parmSuccess(false);
+        if (!_request || !_request.parmDataAreaId() || !_request.parmUserName()
+            || (!_request.parmWarehouseId() && !_request.parmMasterId())
+            || !CompanyInfo::findDataArea(_request.parmDataAreaId()).RecId)
+        {
+            response.parmErrorCode('INVALID_REQUEST');
+            return response;
+        }
+        changecompany (_request.parmDataAreaId())
+        {
+            user = HSMobileOpsUser::find(_request.parmUserName());
+        }
+        if (!user.RecId || !user.IsActive)
+        {
+            response.parmErrorCode('NOT_ALLOWED');
+            response.parmMessage(strFmt('%1 is not an active mobile user', _request.parmUserName()));
+        }
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parseUtc</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// 2026-11-10T14:00:00Z (or without the Z, or with fractions) as a UTC date and time; empty
+    /// or unreadable gives the null value.
+    /// </summary>
+    private static utcdatetime parseUtc(str _value)
+    {
+        str         value = strLTrim(strRTrim(_value));
+        utcdatetime result = utcDateTimeNull();
+
+        if (strLen(value) < 19)
+        {
+            return result;
+        }
+        value = subStr(value, 1, 19);
+        try
+        {
+            result = DateTimeUtil::parse(value);
+        }
+        catch
+        {
+            result = utcDateTimeNull();
+        }
+        return result;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>isoUtc</Name>
+				<Source><![CDATA[
+
+    private static str isoUtc(utcdatetime _value)
+    {
+        return _value == utcDateTimeNull() ? '' : DateTimeUtil::toStr(_value) + 'Z';
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>num</Name>
+				<Source><![CDATA[
+
+    private static str num(real _value)
+    {
+        return num2Str(_value, 0, 6, DecimalSeparator::Dot, ThousandSeparator::None);
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>put</Name>
+				<Source><![CDATA[
+
+    private static void put(Newtonsoft.Json.Linq.JObject _obj, str _name, str _value)
+    {
+        _obj.Add(_name, new Newtonsoft.Json.Linq.JValue(_value));
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>jsonStr</Name>
+				<Source><![CDATA[
+
+    private static str jsonStr(Newtonsoft.Json.Linq.JObject _obj, str _property)
+    {
+        Newtonsoft.Json.Linq.JToken token;
+
+        if (_obj == null)
+        {
+            return '';
+        }
+        token = _obj.get_Item(_property);
+        if (token == null)
+        {
+            return '';
+        }
+        return strLTrim(strRTrim(token.ToString()));
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>
