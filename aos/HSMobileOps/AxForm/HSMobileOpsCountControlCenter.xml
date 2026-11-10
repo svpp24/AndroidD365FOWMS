@@ -620,6 +620,52 @@ public class HSMobileOpsCountControlCenter extends FormRun
 							i:nil="true" />
 						<Controls>
 							<AxFormControl xmlns=""
+								i:type="AxFormActionPaneControl">
+								<Name>ItemActions</Name>
+								<Type>ActionPane</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<Controls>
+									<AxFormControl xmlns=""
+										i:type="AxFormButtonGroupControl">
+										<Name>ItemButtons</Name>
+										<Type>ButtonGroup</Type>
+										<FormControlExtension
+											i:nil="true" />
+										<Controls>
+									<AxFormControl xmlns=""
+										i:type="AxFormCommandButtonControl">
+										<Name>ItemAddButton</Name>
+										<HelpText>Add an item, a location, or an item at a location to this blind count.</HelpText>
+										<Type>CommandButton</Type>
+										<FormControlExtension
+											i:nil="true" />
+										<ButtonDisplay>TextOnly</ButtonDisplay>
+										<Command>New</Command>
+										<Text>Add</Text>
+									</AxFormControl>
+									<AxFormControl xmlns=""
+										i:type="AxFormCommandButtonControl">
+										<Name>ItemRemoveButton</Name>
+										<HelpText>Remove the selected row from this blind count.</HelpText>
+										<Type>CommandButton</Type>
+										<FormControlExtension
+											i:nil="true" />
+										<ButtonDisplay>TextOnly</ButtonDisplay>
+										<Command>DeleteRecord</Command>
+										<Text>Remove</Text>
+									</AxFormControl>
+									</Controls>
+										<ArrangeMethod>Vertical</ArrangeMethod>
+										<DataSource>HSMobileOpsCountItem</DataSource>
+									</AxFormControl>
+								</Controls>
+								<AlignChild>No</AlignChild>
+								<AlignChildren>No</AlignChildren>
+								<ArrangeMethod>Vertical</ArrangeMethod>
+								<Style>Strip</Style>
+							</AxFormControl>
+							<AxFormControl xmlns=""
 								i:type="AxFormGridControl">
 								<Name>ItemGrid</Name>
 								<Type>Grid</Type>
