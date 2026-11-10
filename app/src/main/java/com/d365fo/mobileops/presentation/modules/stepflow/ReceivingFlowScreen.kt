@@ -1,5 +1,10 @@
 package com.d365fo.mobileops.presentation.modules.stepflow
 
+import com.d365fo.mobileops.presentation.common.focus.BandKind
+import com.d365fo.mobileops.presentation.common.focus.BandState
+import com.d365fo.mobileops.presentation.common.focus.FocusCenter
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.automirrored.filled.Undo
 import com.d365fo.mobileops.presentation.common.components.StepTrail
 import com.d365fo.mobileops.presentation.common.components.BarcodeFieldIcon
 import androidx.activity.compose.BackHandler
@@ -218,113 +223,114 @@ fun ReceivingFlowScreen(
 
     com.d365fo.mobileops.presentation.modules.cyclecounting.opportunity.OpportunityCountPrompt()
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                // The flow's name; the step tabs under the bar say which step (Harbour, 9 Nov).
-                title = { Text("PO receiving") },
-                expandedHeight = WarehouseDimens.TopBarHeight,
-                navigationIcon = {
-                    // Hidden, not just disabled, while a post is in flight or its summary is
-                    // showing - popping back or resetting mid-post would race postReceipt's own
-                    // coroutine finishing and overwriting whatever a reset just put in state.
-                    // PostStatus's own Done (and Retry) buttons are the only way out of that
-                    // state, on purpose.
-                    if (!state.posting && state.postOutcome == null) {
-                        IconButton(onClick = stepBack) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                        }
-                    }
-                },
-                // The scanned lines are reviewed from the dock's Review button (Harbour).
-                // Start over in the ⋮ menu rather than a ✕ of its own beside it ("clumsy",
-                // feedback 10 Oct).
-                menuItems = if (state.posting || state.postOutcome != null || state.capture.purchId == null) null else { close ->
+    // Focus design (brief sections 6 and 9), on the existing steps: the band says what the last
+    // scan did, the centre shows the order or the line in hand, the pill takes a typed code.
+    var showTodays by rememberSaveable { mutableStateOf(false) }
+    var menuOpen by remember { mutableStateOf(false) }
+    val inPost = state.posting || state.postOutcome != null
+    val scannedLines = state.captured.map { it.lineNumber }.distinct().size
+    val total = state.outstandingLineCount
+    // Camera, search and Start over: the flow's extra tools, in one menu on the top bar.
+    val toolsMenu: (@Composable androidx.compose.foundation.layout.RowScope.() -> Unit)? = if (inPost || state.showingCaptured) null else { {
+        Box {
+            IconButton(onClick = { menuOpen = true }, modifier = Modifier.size(48.dp)) {
+                Icon(Icons.Default.MoreVert, contentDescription = "More", tint = com.d365fo.mobileops.presentation.common.theme.FocusColors.ink)
+            }
+            androidx.compose.material3.DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                androidx.compose.material3.DropdownMenuItem(
+                    text = { Text("Camera scan") },
+                    leadingIcon = { Icon(Icons.Default.PhotoCamera, contentDescription = null) },
+                    enabled = !state.busy,
+                    onClick = { menuOpen = false; showCamera = true },
+                    modifier = Modifier.heightIn(min = 56.dp),
+                )
+                if (state.step == ReceivingStep.ITEM && state.linesInline && state.openLines.isNotEmpty()) {
+                    androidx.compose.material3.DropdownMenuItem(
+                        text = { Text("Search PO items") },
+                        leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                        onClick = { menuOpen = false; showItemSearch = true },
+                        modifier = Modifier.heightIn(min = 56.dp),
+                    )
+                }
+                if (state.capture.purchId != null) {
                     androidx.compose.material3.DropdownMenuItem(
                         text = { Text("Start over") },
                         leadingIcon = { Icon(Icons.Default.Close, contentDescription = null) },
                         onClick = {
-                            close()
+                            menuOpen = false
                             // Asks first when anything is scanned - see DiscardScannedDialog - and
                             // ignores the scanner's phantom tap (see stepBack).
                             if (!viewModel.justScanned()) {
                                 if (state.captured.isEmpty()) viewModel.reset() else confirmDiscard = true
                             }
                         },
+                        modifier = Modifier.heightIn(min = 56.dp),
                     )
-                },
-            )
+                }
+            }
+        }
+    } }
+    com.d365fo.mobileops.presentation.common.focus.FocusScreen(
+        title = if (state.showingCaptured) "PO lines" else "PO receiving",
+        // Hidden while a post is in flight or its summary shows - PostStatus's Done is the way out.
+        onBack = if (inPost) null else stepBack,
+        counter = if (state.order != null && total > 0) "$scannedLines / $total" else null,
+        progress = if (state.order != null && total > 0) scannedLines.toFloat() / total else null,
+        band = if (inPost || state.showingCaptured) null else receivingBand(state),
+        remaining = if (!inPost && !state.showingCaptured && state.step == ReceivingStep.ITEM && state.captured.isNotEmpty() && total > 0) {
+            (total - scannedLines).coerceAtLeast(0).let { "$it ${if (it == 1) "line" else "lines"} left" }
+        } else {
+            null
         },
-    ) { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .padding(horizontal = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            StepProgress(state)
-
-            // The scan card stays in one place on every step (feedback, 10 Oct): it used to sit
-            // below this summary, which grows from one row to five as the steps fill it in, so
-            // the card moved down the screen each step. With the card showing, the summary is
-            // drawn below it (StepPrompt's context); elsewhere it stays on top.
-            val prompting = !(state.posting || state.postOutcome != null) && !state.showingCaptured && state.lineChoices.isEmpty()
-            if (!prompting) state.capture.purchId?.let { CaptureSummary(state) }
-
-            // weight(1f) so StepPrompt has the screen's actual remaining height to work with -
-            // it pins its scan field near the top and its buttons to the true bottom of the
-            // screen, not the bottom of however tall its own content happens to be.
-            Box(modifier = Modifier.weight(1f)) {
-                when {
-                    state.posting || state.postOutcome != null -> PostStatus(
-                        state = state,
-                        onDone = viewModel::dismissPostOutcome,
-                        onRetry = viewModel::retryPost,
-                    )
-
-                    state.showingCaptured -> CapturedLines(
-                        captured = state.captured,
-                        busy = state.busy,
-                        onRemove = viewModel::removeCaptured,
-                        onAdjustQuantity = viewModel::adjustCapturedQuantity,
-                        onClose = { viewModel.showCaptured(false) },
-                        onPost = viewModel::postReceipt,
-                    )
-
-                    state.lineChoices.isNotEmpty() ->
-                        LineChoice(state.lineChoices, viewModel::chooseLine)
-
-                    else -> Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        StepPrompt(
-                            state = state,
-                            onSubmit = viewModel::onManualEntry,
-                            onTypeManually = { if (state.step == ReceivingStep.QUANTITY) showQuantity = true else onManualEntryRequested() },
-                            onOpenCamera = { showCamera = true },
-                            onSkip = viewModel::skipStep,
-                            onSearchItem = { showItemSearch = true },
-                            onPostSoFar = viewModel::postReceipt,
-                            onShowCaptured = { viewModel.showCaptured(true) },
-                            onSelectUnit = viewModel::selectEntryUnit,
-                            belowField = {
-                                // Inside the prompt's scrolling top group: placed after the prompt,
-                                // it sat below the prompt's full-height layout, off the screen.
-                                if (state.step == ReceivingStep.PURCHASE_ORDER && state.todaysOrders.isNotEmpty()) {
-                                    TodaysOrders(state.todaysOrders, enabled = !state.busy, onPick = viewModel::pickTodaysOrder)
-                                }
-                            },
+        scanPill = if (inPost || state.showingCaptured || state.lineChoices.isNotEmpty()) null else {
+            { com.d365fo.mobileops.presentation.common.focus.ScanPillField(enabled = !state.busy) }
+        },
+        topBarTrailing = toolsMenu,
+        actions = receivingActions(
+            state = state,
+            showTodays = showTodays,
+            onToggleTodays = { showTodays = !showTodays },
+            onLines = { viewModel.showCaptured(true) },
+            onPost = viewModel::postReceipt,
+            onUndo = stepBack,
+            onSkip = viewModel::skipStep,
+        ),
+    ) {
+        if (state.busy) {
+            LinearProgressIndicator(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp))
+        }
+        when {
+            inPost -> Box(Modifier.weight(1f).padding(horizontal = 16.dp)) {
+                PostStatus(state = state, onDone = viewModel::dismissPostOutcome, onRetry = viewModel::retryPost)
+            }
+            state.showingCaptured -> Box(Modifier.weight(1f).padding(horizontal = 16.dp)) {
+                CapturedLines(
+                    captured = state.captured,
+                    busy = state.busy,
+                    onRemove = viewModel::removeCaptured,
+                    onAdjustQuantity = viewModel::adjustCapturedQuantity,
+                    onClose = { viewModel.showCaptured(false) },
+                    onPost = viewModel::postReceipt,
+                )
+            }
+            state.lineChoices.isNotEmpty() -> Box(Modifier.weight(1f).padding(horizontal = 16.dp)) {
+                LineChoice(state.lineChoices, viewModel::chooseLine)
+            }
+            state.step == ReceivingStep.PURCHASE_ORDER && showTodays && state.todaysOrders.isNotEmpty() ->
+                Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
+                    state.todaysOrders.forEach { order ->
+                        com.d365fo.mobileops.presentation.common.focus.FocusListRow(
+                            title = order.purchId,
+                            subtitle = order.vendorAccount,
+                            titleIsCode = true,
+                            chevron = true,
+                            onClick = { if (!state.busy) { showTodays = false; viewModel.pickTodaysOrder(order.purchId) } },
                         )
                     }
                 }
-            }
-
-            state.error?.let { message ->
-                ErrorPanel(message, viewModel::dismissError)
-            }
+            else -> ReceivingCenter(state, onQuantityTap = { showQuantity = true })
         }
     }
-    com.d365fo.mobileops.presentation.common.components.QuickNotice(state.lineNotice, viewModel::clearLineNotice)
-
     if (showCamera) {
         CameraScannerSheet(
             onDecoded = {
@@ -1101,6 +1107,161 @@ private fun Field(label: String, value: String?) {
     }
 }
 
+/** The result band: the error, else what the last action did, else where the flow stands. */
+private fun receivingBand(state: ReceivingFlowState): BandState? {
+    state.error?.let { return bandOf(BandKind.Bad, it) }
+    state.lineNotice?.let { return bandOf(if (it.hint) BandKind.Warn else BandKind.Ok, it.text) }
+    return when {
+        state.step == ReceivingStep.PURCHASE_ORDER -> BandState(BandKind.Info, "Ready", "No PO open")
+        state.step == ReceivingStep.ITEM && state.captured.isEmpty() && state.order != null -> state.order.let { o ->
+            BandState(
+                BandKind.Info,
+                "PO found",
+                listOfNotNull(o.purchId, (o.vendorName.takeIf { it.isNotBlank() } ?: o.vendorAccount).takeIf { it.isNotBlank() }).joinToString(" · "),
+            )
+        }
+        else -> null
+    }
+}
+
+/**
+ * A message as a band: "HSN010 is not on BSP-PO-1 - nothing was added" reads as the title and,
+ * after the dash, the detail line.
+ */
+internal fun bandOf(kind: BandKind, message: String): BandState {
+    val parts = message.split(" - ", limit = 2)
+    return BandState(kind, parts[0].trim(), parts.getOrNull(1)?.trim())
+}
+
+/** The bottom buttons for where the flow stands - two at most, the safe one left. */
+private fun receivingActions(
+    state: ReceivingFlowState,
+    showTodays: Boolean,
+    onToggleTodays: () -> Unit,
+    onLines: () -> Unit,
+    onPost: () -> Unit,
+    onUndo: () -> Unit,
+    onSkip: () -> Unit,
+): (@Composable androidx.compose.foundation.layout.RowScope.() -> Unit)? {
+    if (state.posting || state.postOutcome != null || state.showingCaptured || state.lineChoices.isNotEmpty()) return null
+    val step = state.step
+    return when {
+        step == ReceivingStep.PURCHASE_ORDER -> if (state.todaysOrders.isEmpty()) null else {
+            {
+                com.d365fo.mobileops.presentation.common.focus.FocusButton(
+                    if (showTodays) "Close list" else "Today's POs",
+                    onClick = onToggleTodays,
+                    icon = Icons.Default.CalendarMonth,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+        }
+        step == ReceivingStep.ITEM -> if (state.captured.isEmpty()) null else {
+            {
+                com.d365fo.mobileops.presentation.common.focus.FocusButton(
+                    "Lines", onClick = onLines, icon = Icons.AutoMirrored.Filled.ListAlt,
+                    enabled = !state.busy, modifier = Modifier.weight(1f),
+                )
+                com.d365fo.mobileops.presentation.common.focus.HoldToConfirmButton(
+                    "Hold to post", onConfirm = onPost, enabled = !state.busy, modifier = Modifier.weight(1f),
+                )
+            }
+        }
+        // Mid-line: Undo steps back one; Skip only where D365FO doesn't need the value.
+        else -> {
+            {
+                com.d365fo.mobileops.presentation.common.focus.FocusButton(
+                    "Undo", onClick = onUndo, icon = Icons.AutoMirrored.Filled.Undo,
+                    enabled = !state.busy, modifier = Modifier.weight(1f),
+                )
+                if (com.d365fo.mobileops.domain.model.canSkipStep(step, state.capture)) {
+                    com.d365fo.mobileops.presentation.common.focus.FocusButton(
+                        "Skip", onClick = onSkip, primary = true, enabled = !state.busy, modifier = Modifier.weight(1f),
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * The centre: today's POs on the order step, the order's size before the first line, the last
+ * line received after it, and the item in hand with what is being asked (a caption only, never
+ * "Scan ...") on the line's own steps.
+ */
+@Composable
+private fun androidx.compose.foundation.layout.ColumnScope.ReceivingCenter(state: ReceivingFlowState, onQuantityTap: () -> Unit) {
+    val c = state.capture
+    when (state.step) {
+        ReceivingStep.PURCHASE_ORDER -> FocusCenter(
+            caption = "Purchase orders today",
+            code = state.todaysOrders.size.toString(),
+        )
+        ReceivingStep.ITEM -> {
+            val last = state.captured.lastOrNull()
+            if (last == null) {
+                val units = state.openLines.takeIf { state.linesInline && it.isNotEmpty() }
+                    ?.fold(BigDecimal.ZERO) { sum, l -> sum + l.outstandingQuantity }
+                FocusCenter(
+                    caption = "To receive",
+                    code = when (state.outstandingLineCount) {
+                        0 -> "Nothing left"
+                        1 -> "1 line"
+                        else -> "${state.outstandingLineCount} lines"
+                    },
+                    description = units?.takeIf { state.outstandingLineCount > 0 }?.let { "${plain(it)} units" },
+                )
+            } else {
+                FocusCenter(
+                    caption = "Last scanned",
+                    code = last.itemId,
+                    description = listOf(last.itemName, last.variantLabel).filter { it.isNotBlank() }.joinToString(" · "),
+                    quantity = plain(last.quantity),
+                    unitLine = listOfNotNull(
+                        last.unitSymbol.takeIf { it.isNotBlank() },
+                        last.batchId?.takeIf { it.isNotBlank() }?.let { "Batch $it" },
+                        last.locationId?.takeIf { it.isNotBlank() },
+                    ).joinToString(" · "),
+                )
+            }
+        }
+        else -> {
+            val item = c.item
+            val line = c.line
+            FocusCenter(
+                caption = when (state.step) {
+                    ReceivingStep.QUANTITY -> "Quantity"
+                    ReceivingStep.LOCATION -> "Location"
+                    ReceivingStep.BATCH -> "Batch"
+                    ReceivingStep.BATCH_EXPIRY_DATE -> "New batch · expiry"
+                    ReceivingStep.SERIAL -> "Serial"
+                    ReceivingStep.PACKING_SLIP -> "Delivery note"
+                    else -> titleFor(state.step)
+                },
+                code = item?.itemNumber ?: line?.itemId.orEmpty(),
+                description = listOfNotNull(
+                    item?.productName?.takeIf { it.isNotBlank() && !it.equals(item.itemNumber, ignoreCase = true) },
+                    line?.variant?.label?.takeIf { it.isNotBlank() },
+                ).joinToString(" · ").takeIf { it.isNotBlank() },
+                quantity = c.quantity?.let { plain(it) } ?: "–".takeIf { state.step == ReceivingStep.QUANTITY },
+                unitLine = when (state.step) {
+                    // How much is left on the line - a figure, not an instruction.
+                    ReceivingStep.QUANTITY -> line?.let { l ->
+                        val left = state.suggestedQuantity ?: l.outstandingQuantity
+                        "${l.purchaseUnit} · ${plain(left)} left of ${plain(l.orderedQuantity)}"
+                    }
+                    ReceivingStep.SERIAL -> listOfNotNull(c.unitSymbol, "${c.serialsOutstanding} serial${if (c.serialsOutstanding == 1) "" else "s"} left").joinToString(" · ")
+                    else -> listOfNotNull(
+                        c.unitSymbol,
+                        c.batchId?.let { "Batch $it" },
+                        c.locationId,
+                    ).joinToString(" · ")
+                },
+                onQuantityTap = if (state.step == ReceivingStep.QUANTITY && !state.busy) onQuantityTap else null,
+            )
+        }
+    }
+}
 private fun titleFor(step: ReceivingStep): String = when (step) {
     ReceivingStep.PURCHASE_ORDER -> "Receive"
     ReceivingStep.PACKING_SLIP -> "Delivery note"
@@ -1286,3 +1447,56 @@ private fun TodaysOrders(
 }
 
 private const val MAX_TODAYS_ORDERS = 6
+
+/**
+ * PO receiving's Focus states with sample data, for the layout test: 0 ready, 1 PO found,
+ * 2 last scanned, 3 a batch step, 4 an error.
+ */
+@Composable
+internal fun ReceivingFocusSample(kind: Int) {
+    val order = com.d365fo.mobileops.domain.model.PurchaseOrder(
+        purchId = "BSP-PO-000161763", vendorAccount = "V-000123", vendorName = "Gulf Pharma Distribution LLC",
+        status = com.d365fo.mobileops.domain.model.OrderStatus.BACKORDER, siteId = "1", warehouseId = "AAC",
+        deliveryDate = null, approved = true,
+        tolerance = com.d365fo.mobileops.domain.model.DeliveryTolerance(null, null), lines = emptyList(),
+    )
+    val received = CapturedLine(1.0, "HSN002", "Handset charger 20W", BigDecimal.ONE, "Each", batchId = "E0927")
+    val state = when (kind) {
+        0 -> ReceivingFlowState(todaysOrders = emptyList())
+        1 -> ReceivingFlowState(step = ReceivingStep.ITEM, order = order, outstandingLineCount = 2, capture = com.d365fo.mobileops.domain.model.ReceivingCapture(purchId = order.purchId))
+        2 -> ReceivingFlowState(
+            step = ReceivingStep.ITEM, order = order, outstandingLineCount = 2, captured = listOf(received),
+            capture = com.d365fo.mobileops.domain.model.ReceivingCapture(purchId = order.purchId),
+            lineNotice = com.d365fo.mobileops.presentation.common.components.QuickNoticeMessage(1, "Received 1 × HSN002"),
+        )
+        3 -> ReceivingFlowState(
+            step = ReceivingStep.BATCH, order = order, outstandingLineCount = 2,
+            capture = com.d365fo.mobileops.domain.model.ReceivingCapture(
+                purchId = order.purchId, quantity = BigDecimal("12"), unitSymbol = "Pack",
+                item = com.d365fo.mobileops.domain.model.ItemDimensions("BSR-11397-0", "Panadol Extra 24s", "Pack", true, false, false),
+            ),
+        )
+        else -> ReceivingFlowState(
+            step = ReceivingStep.ITEM, order = order, outstandingLineCount = 2, captured = listOf(received),
+            capture = com.d365fo.mobileops.domain.model.ReceivingCapture(purchId = order.purchId),
+            error = "HSN010 is not on BSP-PO-000161763 - nothing was added",
+        )
+    }
+    val total = state.outstandingLineCount
+    val scanned = state.captured.map { it.lineNumber }.distinct().size
+    com.d365fo.mobileops.presentation.common.focus.FocusScreen(
+        title = "PO receiving",
+        onBack = {},
+        counter = if (state.order != null && total > 0) "$scanned / $total" else null,
+        progress = if (state.order != null && total > 0) scanned.toFloat() / total else null,
+        band = receivingBand(state),
+        remaining = if (state.step == ReceivingStep.ITEM && state.captured.isNotEmpty()) "${total - scanned} line left" else null,
+        scanPill = { com.d365fo.mobileops.presentation.common.focus.ScanPill(onTap = {}) },
+        topBarTrailing = {
+            IconButton(onClick = {}, modifier = Modifier.size(48.dp)) { Icon(Icons.Default.MoreVert, contentDescription = "More") }
+        },
+        actions = receivingActions(state, false, {}, {}, {}, {}, {}),
+    ) {
+        ReceivingCenter(state, onQuantityTap = {})
+    }
+}

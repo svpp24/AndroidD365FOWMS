@@ -65,6 +65,11 @@ class FocusComponentLayoutTest {
         Triple("EndCount", true) { FocusEndCountSample() },
         Triple("Home", true) { com.d365fo.mobileops.presentation.common.FocusHomeSample() },
         Triple("HomeBand", true) { com.d365fo.mobileops.presentation.common.FocusHomeSample(band = true) },
+        Triple("PoReady", true) { com.d365fo.mobileops.presentation.modules.stepflow.ReceivingFocusSample(0) },
+        Triple("PoFound", true) { com.d365fo.mobileops.presentation.modules.stepflow.ReceivingFocusSample(1) },
+        Triple("PoScanned", true) { com.d365fo.mobileops.presentation.modules.stepflow.ReceivingFocusSample(2) },
+        Triple("PoBatch", true) { com.d365fo.mobileops.presentation.modules.stepflow.ReceivingFocusSample(3) },
+        Triple("PoError", true) { com.d365fo.mobileops.presentation.modules.stepflow.ReceivingFocusSample(4) },
     )
 
     @Test
@@ -110,7 +115,7 @@ class FocusComponentLayoutTest {
                             ?: node.config.getOrNull(SemanticsProperties.Text)?.joinToString { it.text }
                             ?: node.config.getOrNull(SemanticsActions.OnClick)?.label
                             ?: "?"
-                        val minimum = if (what in setOf("Back", "Menu", "Close menu", "Open menu")) 48f else 56f
+                        val minimum = if (what in setOf("Back", "Menu", "Close menu", "Open menu", "More")) 48f else 56f
                         if (heightDp + 0.5f < minimum) problems += "$label: \"$what\" is ${"%.1f".format(heightDp)}dp tall (min ${minimum.toInt()}dp)"
                     }
                 capture(File(shots, "${name}_${if (large) "130" else "100"}.png"))

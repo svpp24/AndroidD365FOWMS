@@ -118,6 +118,11 @@ fun ColumnScope.FocusCenter(
             .weight(1f)
             .fillMaxWidth(),
     ) {
+    // Little room (a long band at the largest text size): smaller code and number, so the number
+    // is still seen whole rather than scrolled half out of view.
+    val compact = maxHeight < 300.dp
+    val codeStyle = if (compact) FocusType.code.copy(fontSize = FocusType.code.fontSize * 0.7f, lineHeight = FocusType.code.fontSize * 0.7f) else FocusType.code
+    val quantityStyle = if (compact) FocusType.bigQuantity.copy(fontSize = FocusType.bigQuantity.fontSize * 0.6f, lineHeight = FocusType.bigQuantity.fontSize * 0.6f) else FocusType.bigQuantity
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
@@ -130,7 +135,7 @@ fun ColumnScope.FocusCenter(
         FocusCaption(caption)
         Text(
             code.breakAfterHyphens(),
-            style = FocusType.code,
+            style = codeStyle,
             color = FocusColors.ink,
             textAlign = TextAlign.Center,
             modifier = Modifier.padding(top = 8.dp),
@@ -161,7 +166,7 @@ fun ColumnScope.FocusCenter(
                     .heightIn(min = 56.dp)
                     .padding(horizontal = 16.dp),
             ) {
-                Text(quantity, style = FocusType.bigQuantity, color = quantityColor, textAlign = TextAlign.Center)
+                Text(quantity, style = quantityStyle, color = quantityColor, textAlign = TextAlign.Center)
                 val unit = listOfNotNull(unitLine?.takeIf { it.isNotBlank() }, "tap to change".takeIf { tap != null })
                     .joinToString(" · ")
                 if (unit.isNotEmpty()) {

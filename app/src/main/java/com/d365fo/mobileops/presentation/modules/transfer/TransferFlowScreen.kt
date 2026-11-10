@@ -1,5 +1,11 @@
 package com.d365fo.mobileops.presentation.modules.transfer
 
+import com.d365fo.mobileops.presentation.common.focus.BandKind
+import com.d365fo.mobileops.presentation.common.focus.BandState
+import com.d365fo.mobileops.presentation.common.focus.FocusCenter
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.foundation.layout.size
+import androidx.compose.material.icons.automirrored.filled.Undo
 import com.d365fo.mobileops.presentation.common.components.StepTrail
 import com.d365fo.mobileops.presentation.common.components.BarcodeFieldIcon
 import androidx.activity.compose.BackHandler
@@ -25,6 +31,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ReportProblem
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.Remove
@@ -207,120 +214,108 @@ fun TransferFlowScreen(
         com.d365fo.mobileops.presentation.modules.cyclecounting.opportunity.DiscrepancyViewModel,
     >()
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(if (mode == TransferMode.SHIP) "Ship transfer" else "Receive transfer") },
-                expandedHeight = WarehouseDimens.TopBarHeight,
-                navigationIcon = {
-                    IconButton(onClick = stepBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                    }
-                },
-                actions = {
-                    // Once an order is open, Report and Start over go in the overflow menu: with
-                    // the list, connection and feedback icons the bar was crowded (feedback
-                    // 994bf988). Before that, Report keeps its labelled button.
-                    val orderOpen = state.capture.transferId != null
-                    if (mode == TransferMode.SHIP) {
-                        com.d365fo.mobileops.presentation.modules.cyclecounting.opportunity.ReportDiscrepancyAction(
-                            locationId = state.capture.locationId ?: state.capture.line?.locationId,
-                            itemId = state.capture.line?.itemId,
-                            showTrigger = !orderOpen,
-                            viewModel = discrepancy,
-                        )
-                    }
-                    // The scanned lines are reviewed from the dock (Harbour).
-                },
-                // Report and Start over in the screen's one ⋮ menu, above Send feedback - a
-                // second ⋮ of its own sat beside it ("controls merged", feedback 10 Oct).
-                menuItems = if (state.capture.transferId == null) null else { close ->
-                    if (mode == TransferMode.SHIP && discrepancy.enabled) {
-                        androidx.compose.material3.DropdownMenuItem(
-                            text = { Text("Report discrepancy") },
-                            leadingIcon = { Icon(Icons.Default.ReportProblem, contentDescription = null) },
-                            onClick = { close(); discrepancy.open(state.capture.locationId ?: state.capture.line?.locationId, state.capture.line?.itemId) },
-                        )
-                    }
+    // The discrepancy dialog lives with its action; the trigger is in the tools menu now.
+    if (mode == TransferMode.SHIP) {
+        com.d365fo.mobileops.presentation.modules.cyclecounting.opportunity.ReportDiscrepancyAction(
+            locationId = state.capture.locationId ?: state.capture.line?.locationId,
+            itemId = state.capture.line?.itemId,
+            showTrigger = false,
+            viewModel = discrepancy,
+        )
+    }
+    // Focus design on the existing steps - see ReceivingFlowScreen.
+    var menuOpen by remember { mutableStateOf(false) }
+    val total = state.order?.outstandingLineCount ?: 0
+    val left = state.outstandingLineCount
+    val done = if (left != null) (total - left).coerceAtLeast(0) else 0
+    val toolsMenu: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit = {
+        Box {
+            IconButton(onClick = { menuOpen = true }, modifier = Modifier.size(48.dp)) {
+                Icon(Icons.Default.MoreVert, contentDescription = "More", tint = com.d365fo.mobileops.presentation.common.theme.FocusColors.ink)
+            }
+            androidx.compose.material3.DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                androidx.compose.material3.DropdownMenuItem(
+                    text = { Text("Camera scan") },
+                    leadingIcon = { Icon(Icons.Default.PhotoCamera, contentDescription = null) },
+                    enabled = !state.busy,
+                    onClick = { menuOpen = false; showCamera = true },
+                    modifier = Modifier.heightIn(min = 56.dp),
+                )
+                if (state.step == TransferStep.ITEM && state.openLines.isNotEmpty()) {
+                    androidx.compose.material3.DropdownMenuItem(
+                        text = { Text("Search items") },
+                        leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                        onClick = { menuOpen = false; showItemSearch = true },
+                        modifier = Modifier.heightIn(min = 56.dp),
+                    )
+                }
+                if (mode == TransferMode.SHIP && discrepancy.enabled) {
+                    androidx.compose.material3.DropdownMenuItem(
+                        text = { Text("Report discrepancy") },
+                        leadingIcon = { Icon(Icons.Default.ReportProblem, contentDescription = null) },
+                        onClick = { menuOpen = false; discrepancy.open(state.capture.locationId ?: state.capture.line?.locationId, state.capture.line?.itemId) },
+                        modifier = Modifier.heightIn(min = 56.dp),
+                    )
+                }
+                if (state.capture.transferId != null) {
                     androidx.compose.material3.DropdownMenuItem(
                         text = { Text("Start over") },
                         leadingIcon = { Icon(Icons.Default.Close, contentDescription = null) },
                         onClick = {
-                            close()
-                            // Asks first when anything is scanned - see DiscardScannedDialog - and
-                            // ignores the scanner's phantom tap (see stepBack).
+                            menuOpen = false
+                            // Asks first when anything is scanned, and ignores the scanner's phantom tap.
                             if (!viewModel.justScanned()) {
                                 if (state.captured.isEmpty()) viewModel.reset() else confirmDiscard = true
                             }
                         },
-                    )
-                },
-            )
-        },
-    ) { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .padding(horizontal = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            StepProgress(state)
-
-            // The scan card stays in one place on every step (feedback, 10 Oct): it used to sit
-            // below this summary, which grows from one row to five as the steps fill it in, so
-            // the card moved down the screen each step. With the card showing, the summary is
-            // drawn below it (StepPrompt's context); elsewhere it stays on top.
-            val prompting = !state.showingCaptured && state.lineChoices.isEmpty()
-            if (!prompting) state.capture.transferId?.let { CaptureSummary(state) }
-
-            // weight(1f) so StepPrompt has the screen's actual remaining height to work with -
-            // see the identical note on PO receiving's own copy of this Box.
-            Box(modifier = Modifier.weight(1f)) {
-                when {
-                    state.showingCaptured -> CapturedLines(
-                        captured = state.captured,
-                        busy = state.busy,
-                        onRemove = viewModel::removeCaptured,
-                        onAdjustQuantity = viewModel::adjustCapturedQuantity,
-                        onClose = { viewModel.showCaptured(false) },
-                        onPost = viewModel::postTransfer,
-                        shipping = mode == TransferMode.SHIP,
-                    )
-
-                    state.lineChoices.isNotEmpty() ->
-                        LineChoice(state.lineChoices, viewModel::chooseLine)
-
-                    else -> StepPrompt(
-                        state = state,
-                        onSubmit = viewModel::onManualEntry,
-                        onTypeManually = { if (state.step == TransferStep.QUANTITY) showQuantity = true else onManualEntryRequested() },
-                        onOpenCamera = { showCamera = true },
-                            onSkip = viewModel::skipStep,
-                        onSearchItem = { showItemSearch = true },
-                        onSelectUnit = viewModel::selectEntryUnit,
-                        onReviewScanned = { viewModel.showCaptured(true) },
-                        onPost = viewModel::postTransfer,
+                        modifier = Modifier.heightIn(min = 56.dp),
                     )
                 }
-            }
-
-            state.postNotice?.let { notice ->
-                when (notice.kind) {
-                    PostNoticeKind.SENT ->
-                        com.d365fo.mobileops.presentation.common.components.SuccessBanner(notice.message, viewModel::dismissPostNotice)
-                    PostNoticeKind.QUEUED ->
-                        com.d365fo.mobileops.presentation.common.components.WarningBanner(notice.message, viewModel::dismissPostNotice)
-                    PostNoticeKind.REFUSED -> ErrorPanel(notice.message, viewModel::dismissPostNotice)
-                }
-            }
-            state.error?.let { message ->
-                ErrorPanel(message, viewModel::dismissError)
             }
         }
     }
-    com.d365fo.mobileops.presentation.common.components.QuickNotice(state.lineNotice, viewModel::clearLineNotice)
-
+    com.d365fo.mobileops.presentation.common.focus.FocusScreen(
+        title = when {
+            state.showingCaptured -> "Transfer lines"
+            mode == TransferMode.SHIP -> "Ship transfer"
+            else -> "Receive transfer"
+        },
+        onBack = stepBack,
+        counter = if (state.order != null && total > 0) "$done / $total" else null,
+        progress = if (state.order != null && total > 0) done.toFloat() / total else null,
+        band = if (state.showingCaptured) null else transferBand(state, mode),
+        remaining = if (!state.showingCaptured && state.step == TransferStep.ITEM && state.captured.isNotEmpty() && left != null) {
+            "$left ${if (left == 1) "line" else "lines"} left"
+        } else {
+            null
+        },
+        scanPill = if (state.showingCaptured || state.lineChoices.isNotEmpty()) null else {
+            { com.d365fo.mobileops.presentation.common.focus.ScanPillField(enabled = !state.busy) }
+        },
+        topBarTrailing = if (state.showingCaptured) null else toolsMenu,
+        actions = transferActions(state, mode, onLines = { viewModel.showCaptured(true) }, onPost = viewModel::postTransfer, onUndo = stepBack, onSkip = viewModel::skipStep),
+    ) {
+        if (state.busy) {
+            androidx.compose.material3.LinearProgressIndicator(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp))
+        }
+        when {
+            state.showingCaptured -> Box(Modifier.weight(1f).padding(horizontal = 16.dp)) {
+                CapturedLines(
+                    captured = state.captured,
+                    busy = state.busy,
+                    onRemove = viewModel::removeCaptured,
+                    onAdjustQuantity = viewModel::adjustCapturedQuantity,
+                    onClose = { viewModel.showCaptured(false) },
+                    onPost = viewModel::postTransfer,
+                    shipping = mode == TransferMode.SHIP,
+                )
+            }
+            state.lineChoices.isNotEmpty() -> Box(Modifier.weight(1f).padding(horizontal = 16.dp)) {
+                LineChoice(state.lineChoices, viewModel::chooseLine)
+            }
+            else -> TransferCenter(state, mode, onQuantityTap = { showQuantity = true })
+        }
+    }
     if (showCamera) {
         CameraScannerSheet(
             onDecoded = {
@@ -941,6 +936,136 @@ private fun Field(label: String, value: String?) {
     }
 }
 
+/** The result band - see ReceivingFlowScreen's receivingBand. */
+private fun transferBand(state: TransferFlowState, mode: TransferMode): BandState? {
+    state.error?.let { return com.d365fo.mobileops.presentation.modules.stepflow.bandOf(BandKind.Bad, it) }
+    state.postNotice?.let { n ->
+        val kind = when (n.kind) {
+            PostNoticeKind.SENT -> BandKind.Ok
+            PostNoticeKind.QUEUED -> BandKind.Warn
+            PostNoticeKind.REFUSED -> BandKind.Bad
+        }
+        return com.d365fo.mobileops.presentation.modules.stepflow.bandOf(kind, n.message)
+    }
+    state.lineNotice?.let { return com.d365fo.mobileops.presentation.modules.stepflow.bandOf(if (it.hint) BandKind.Warn else BandKind.Ok, it.text) }
+    val order = state.order
+    return when {
+        state.step == TransferStep.TRANSFER_ORDER -> BandState(BandKind.Info, "Ready", "No transfer open")
+        state.step == TransferStep.ITEM && state.captured.isEmpty() && order != null -> BandState(
+            BandKind.Info,
+            "Transfer found",
+            listOfNotNull(
+                order.transferId,
+                listOfNotNull(order.fromWarehouseId, order.toWarehouseId).takeIf { it.size == 2 }?.joinToString(" → "),
+            ).joinToString(" · "),
+        )
+        else -> null
+    }
+}
+
+/** Lines + Hold to ship/receive once something is scanned; Undo (+ Skip) on a line's own steps. */
+private fun transferActions(
+    state: TransferFlowState,
+    mode: TransferMode,
+    onLines: () -> Unit,
+    onPost: () -> Unit,
+    onUndo: () -> Unit,
+    onSkip: () -> Unit,
+): (@Composable androidx.compose.foundation.layout.RowScope.() -> Unit)? {
+    if (state.showingCaptured || state.lineChoices.isNotEmpty()) return null
+    return when (state.step) {
+        TransferStep.TRANSFER_ORDER -> null
+        TransferStep.ITEM -> if (state.captured.isEmpty()) null else {
+            {
+                com.d365fo.mobileops.presentation.common.focus.FocusButton(
+                    "Lines", onClick = onLines, icon = Icons.AutoMirrored.Filled.ListAlt,
+                    enabled = !state.busy, modifier = Modifier.weight(1f),
+                )
+                com.d365fo.mobileops.presentation.common.focus.HoldToConfirmButton(
+                    if (mode == TransferMode.SHIP) "Hold to ship" else "Hold to receive",
+                    onConfirm = onPost, enabled = !state.busy, modifier = Modifier.weight(1f),
+                )
+            }
+        }
+        else -> {
+            {
+                com.d365fo.mobileops.presentation.common.focus.FocusButton(
+                    "Undo", onClick = onUndo, icon = Icons.AutoMirrored.Filled.Undo,
+                    enabled = !state.busy, modifier = Modifier.weight(1f),
+                )
+                if (com.d365fo.mobileops.domain.model.canSkipTransferStep(state.step, state.capture)) {
+                    com.d365fo.mobileops.presentation.common.focus.FocusButton(
+                        "Skip", onClick = onSkip, primary = true, enabled = !state.busy, modifier = Modifier.weight(1f),
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** The centre - see ReceivingFlowScreen's ReceivingCenter. */
+@Composable
+private fun androidx.compose.foundation.layout.ColumnScope.TransferCenter(state: TransferFlowState, mode: TransferMode, onQuantityTap: () -> Unit) {
+    val c = state.capture
+    val ship = mode == TransferMode.SHIP
+    when (state.step) {
+        TransferStep.TRANSFER_ORDER -> FocusCenter(caption = "Transfer", code = "Not open")
+        TransferStep.ITEM -> {
+            val last = state.captured.lastOrNull()
+            if (last == null) {
+                val lines = state.outstandingLineCount ?: state.order?.outstandingLineCount ?: 0
+                val units = state.openLines.takeIf { it.isNotEmpty() }?.fold(BigDecimal.ZERO) { sum, l -> sum + l.remainingQuantity }
+                FocusCenter(
+                    caption = if (ship) "To pick" else "To receive",
+                    code = when (lines) {
+                        0 -> "Nothing left"
+                        1 -> "1 line"
+                        else -> "$lines lines"
+                    },
+                    description = units?.takeIf { lines > 0 }?.let { "${plain(it)} units" },
+                )
+            } else {
+                FocusCenter(
+                    caption = if (ship) "Last picked" else "Last scanned",
+                    code = last.itemId,
+                    description = listOf(last.itemName, last.variantLabel).filter { it.isNotBlank() }.joinToString(" · "),
+                    quantity = plain(last.quantity),
+                    unitLine = listOfNotNull(
+                        last.unitSymbol.takeIf { it.isNotBlank() },
+                        last.batchId?.takeIf { it.isNotBlank() }?.let { "Batch $it" },
+                        last.locationId?.takeIf { it.isNotBlank() },
+                    ).joinToString(" · "),
+                )
+            }
+        }
+        else -> {
+            val line = c.line
+            FocusCenter(
+                caption = when (state.step) {
+                    TransferStep.QUANTITY -> "Quantity"
+                    TransferStep.LOCATION -> "Location"
+                    TransferStep.BATCH -> "Batch"
+                    TransferStep.SERIAL -> "Serial"
+                    else -> titleFor(state.step, mode)
+                },
+                code = line?.itemId.orEmpty(),
+                description = listOfNotNull(
+                    line?.itemName?.takeIf { it.isNotBlank() && !it.equals(line.itemId, ignoreCase = true) },
+                    line?.variant?.label?.takeIf { it.isNotBlank() },
+                ).joinToString(" · ").takeIf { it.isNotBlank() },
+                quantity = c.quantity?.let { plain(it) } ?: "–".takeIf { state.step == TransferStep.QUANTITY },
+                unitLine = when (state.step) {
+                    TransferStep.QUANTITY -> line?.let { l ->
+                        "${l.unitId} · ${plain(state.suggestedQuantity ?: l.remainingQuantity)} left of ${plain(l.transferQuantity)}"
+                    }
+                    TransferStep.SERIAL -> listOfNotNull(c.unitSymbol, "${c.serialsOutstanding} serial${if (c.serialsOutstanding == 1) "" else "s"} left").joinToString(" · ")
+                    else -> listOfNotNull(c.unitSymbol, c.batchId?.let { "Batch $it" }, c.locationId).joinToString(" · ")
+                },
+                onQuantityTap = if (state.step == TransferStep.QUANTITY && !state.busy) onQuantityTap else null,
+            )
+        }
+    }
+}
 private fun titleFor(step: TransferStep, mode: TransferMode): String = when (step) {
     TransferStep.TRANSFER_ORDER -> if (mode == TransferMode.SHIP) "Ship" else "Receive"
     TransferStep.ITEM -> "Item"

@@ -56,6 +56,8 @@ fun FocusScreen(
     scanPill: (@Composable () -> Unit)? = null,
     actions: (@Composable RowScope.() -> Unit)? = null,
     overlay: (@Composable BoxScope.() -> Unit)? = null,
+    /** After the counter on the top bar - a flow's tools menu. */
+    topBarTrailing: (@Composable RowScope.() -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     Box(
@@ -68,7 +70,7 @@ fun FocusScreen(
                 .fillMaxSize()
                 .alpha(if (overlay != null) 0.3f else 1f),
         ) {
-            FlowTopBar(title = title, onBack = onBack, counter = counter)
+            FlowTopBar(title = title, onBack = onBack, counter = counter, trailing = topBarTrailing)
             progress?.let { ProgressLine(it) }
             band?.let { ResultBand(it, modifier = Modifier.padding(top = 16.dp)) }
             Column(
