@@ -97,7 +97,11 @@ class ActiveSessionGuard @Inject constructor(
             delay(FIRST_CHECK_MS)
             while (isActive) {
                 // Skipped when a return to the app has just checked (checkOnResume).
-                if (System.currentTimeMillis() - lastCheckAt >= RESUME_CHECK_MIN_MS) {
+                val due = synchronized(this@ActiveSessionGuard) {
+                    val now = System.currentTimeMillis()
+                    (now - lastCheckAt >= RESUME_CHECK_MIN_MS).also { if (it) lastCheckAt = now }
+                }
+                if (due) {
                     runCatching { check() }.onFailure { Timber.w(it, "session check failed") }
                 }
                 delay(CHECK_MS)
@@ -115,7 +119,12 @@ class ActiveSessionGuard @Inject constructor(
      */
     fun checkOnResume() {
         if (!started) return
-        if (System.currentTimeMillis() - lastCheckAt < RESUME_CHECK_MIN_MS) return
+        synchronized(this) {
+            val now = System.currentTimeMillis()
+            // Taken now, not when the check runs: two resumes a moment apart both got through.
+            if (now - lastCheckAt < RESUME_CHECK_MIN_MS) return
+            lastCheckAt = now
+        }
         scope.launch { runCatching { check() }.onFailure { Timber.w(it, "session check failed") } }
     }
 
@@ -157,7 +166,6 @@ class ActiveSessionGuard @Inject constructor(
     /** Records a pending sign-in, or asks whether this device is still the active one. */
     internal suspend fun check() = lock.withLock {
         if (_prompt.value != null) return@withLock
-        lastCheckAt = System.currentTimeMillis()
         val user = sessions.session.value?.userName?.takeIf { it.isNotBlank() } ?: return@withLock
         val body = request(user) ?: return@withLock
         if (pendingStart.equals(user, ignoreCase = true)) {
