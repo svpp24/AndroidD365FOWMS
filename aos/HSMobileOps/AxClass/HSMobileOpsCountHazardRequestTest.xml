@@ -23,6 +23,9 @@ class HSMobileOpsCountHazardRequestTest
         DialogField                 fWarehouse;
         DialogField                 fItems;
         DialogField                 fLocation;
+        DialogField                 fTake;
+        InventSum                   inventSum;
+        InventDim                   inventDim;
         HSMobileOpsCountReqRequest  request = new HSMobileOpsCountReqRequest();
         HSMobileOpsCountReqResponse response;
         Newtonsoft.Json.Linq.JArray  items = new Newtonsoft.Json.Linq.JArray();
@@ -35,12 +38,34 @@ class HSMobileOpsCountHazardRequestTest
         fWarehouse = dialog.addFieldValue(extendedTypeStr(InventLocationId), 'AAC', "Warehouse");
         fItems     = dialog.addFieldValue(extendedTypeStr(Description), 'BSR-10063-0', "Items (comma separated)");
         fLocation  = dialog.addFieldValue(extendedTypeStr(WMSLocationId), '', "Location (optional)");
+        fTake      = dialog.addFieldValue(extendedTypeStr(Counter), 0, "Or take this many items with stock in the warehouse");
         if (!dialog.run())
         {
             return;
         }
 
-        ids = strSplit(fItems.value(), ',');
+        if (fTake.value() > 0)
+        {
+            ids = new List(Types::String);
+            while select ItemId from inventSum
+                group by inventSum.ItemId
+                where inventSum.Closed == NoYes::No
+                   && inventSum.PhysicalInvent > 0
+                exists join inventDim
+                    where inventDim.inventDimId      == inventSum.InventDimId
+                       && inventDim.InventLocationId == fWarehouse.value()
+            {
+                ids.addEnd(inventSum.ItemId);
+                if (ids.elements() >= fTake.value())
+                {
+                    break;
+                }
+            }
+        }
+        else
+        {
+            ids = strSplit(fItems.value(), ',');
+        }
         id  = ids.getEnumerator();
         while (id.moveNext())
         {

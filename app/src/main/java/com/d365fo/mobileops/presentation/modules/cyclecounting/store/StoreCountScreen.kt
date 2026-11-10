@@ -246,7 +246,10 @@ class StoreCountViewModel @Inject constructor(
         "count_draft::${masterId.uppercase()}::${user.uppercase()}"
     }
 
-    /** Where a count starts: the counting menu's location (user, 8 Nov). */
+    /**
+     * The counting menu's location: listed first on the location step, never picked for the
+     * counter - every count goes location, then bin in it, then item (user, 10 Nov).
+     */
     private val startLocation = menuRepository.menu.value?.countStartLocation
 
     private val _state = MutableStateFlow(
@@ -257,8 +260,8 @@ class StoreCountViewModel @Inject constructor(
                 warehouseId = warehouse,
                 draft = draft,
                 startLocation = startLocation,
-                // Back into a count already started: in the start location again.
-                locationId = if (draft?.counting == true) startLocation.orEmpty() else "",
+                // Every count, new or rejoined, starts on the location step (user, 10 Nov).
+                locationId = "",
             )
         },
     )
@@ -353,10 +356,8 @@ class StoreCountViewModel @Inject constructor(
                     saveDraft(current.copy(masterId = opened.data.masterId, stageId = opened.data.stageId, started = true))
                     if (masterId.isNotBlank() && _state.value.requested.isEmpty()) refreshRequested()
                     _state.update {
-                        val location = it.locationId.ifBlank { startLocation.orEmpty() }
                         it.copy(
                             busy = false,
-                            locationId = location,
                             message = null,
                         )
                     }
@@ -374,11 +375,9 @@ class StoreCountViewModel @Inject constructor(
         saveDraft(current.copy(started = true))
         waitingForConnection = true
         _state.update {
-            val location = it.locationId.ifBlank { startLocation.orEmpty() }
             it.copy(
                 busy = false,
                 error = null,
-                locationId = location,
                 message = "Offline - counting on this device. Counts go to D365FO when it answers.",
             )
         }
