@@ -126,50 +126,36 @@ object Breakable {
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun ListHeader(
-    icon: ImageVector?,
+    @Suppress("UNUSED_PARAMETER") icon: ImageVector?,
     title: String,
     count: Int? = null,
     modifier: Modifier = Modifier,
     trailing: String? = null,
     onTrailing: (() -> Unit)? = null,
 ) {
+    // Focus design: an uppercase caption with its count, and a quiet note or action on the right.
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp),
-        modifier = modifier.fillMaxWidth().padding(top = 4.dp, bottom = 2.dp),
+        modifier = modifier.fillMaxWidth().padding(top = 8.dp, bottom = 2.dp),
     ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(5.dp),
-            modifier = Modifier
-                .clip(RoundedCornerShape(8.dp))
-                .background(WarehouseStatusColors.accentDim)
-                .padding(horizontal = 9.dp, vertical = 5.dp),
-        ) {
-            icon?.let { Icon(it, contentDescription = null, tint = WarehouseStatusColors.accent, modifier = Modifier.size(16.dp)) }
-            Text(title, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.ExtraBold, color = WarehouseStatusColors.accent)
-            count?.let {
-                Text(
-                    "$it",
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = Color.White,
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(WarehouseStatusColors.accent)
-                        .padding(horizontal = 5.dp),
-                )
-            }
-        }
-        Box(Modifier.weight(1f))
+        Text(
+            (title + (count?.let { " · $it" } ?: "")).uppercase(),
+            style = com.d365fo.mobileops.presentation.common.theme.FocusType.caption,
+            color = com.d365fo.mobileops.presentation.common.theme.FocusColors.caption,
+            modifier = Modifier.weight(1f),
+        )
         trailing?.let {
             Text(
                 it,
-                style = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.Bold,
-                color = WarehouseStatusColors.accent,
+                style = com.d365fo.mobileops.presentation.common.theme.FocusType.rowDetail,
+                color = if (onTrailing != null) com.d365fo.mobileops.presentation.common.theme.FocusColors.navy else com.d365fo.mobileops.presentation.common.theme.FocusColors.muted,
                 textAlign = TextAlign.End,
-                modifier = if (onTrailing != null) Modifier.clickable(onClick = onTrailing).padding(vertical = 6.dp) else Modifier,
+                modifier = if (onTrailing != null) {
+                    Modifier.heightIn(min = WarehouseDimens.MinTouchTarget).clickable(onClick = onTrailing).padding(vertical = 6.dp, horizontal = 4.dp)
+                } else {
+                    Modifier
+                },
             )
         }
     }
@@ -466,15 +452,13 @@ fun SegmentTabs(
 /** The white bar pinned to the bottom of a flow: an outlined button beside a gradient one. */
 @Composable
 fun FlowDock(modifier: Modifier = Modifier, content: @Composable RowScope.() -> Unit) {
-    Column(modifier = modifier.fillMaxWidth().background(Color.White)) {
-        HorizontalDivider(color = WarehouseStatusColors.overlay)
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
-            content = content,
-        )
-    }
+    // Focus design: the action row on the page colour - 20dp sides, 16dp between the buttons.
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+        verticalAlignment = Alignment.Top,
+        modifier = modifier.fillMaxWidth().background(com.d365fo.mobileops.presentation.common.theme.FocusColors.page).padding(horizontal = 20.dp, vertical = 12.dp),
+        content = content,
+    )
 }
 
 private val DockShape = RoundedCornerShape(12.dp)
@@ -485,23 +469,25 @@ fun DockOutlinedButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
-    color: Color = WarehouseStatusColors.accent,
+    color: Color = com.d365fo.mobileops.presentation.common.theme.FocusColors.navy,
     icon: ImageVector? = null,
     text: String,
 ) {
+    // Focus design: the white secondary button - 16dp corners, the label in [color].
     Row(
         horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
         verticalAlignment = Alignment.CenterVertically,
         modifier = modifier
             .heightIn(min = WarehouseDimens.MinTouchTarget)
             .alpha(if (enabled) 1f else 0.45f)
-            .clip(DockShape)
-            .border(BorderStroke(1.5.dp, color), DockShape)
+            .clip(com.d365fo.mobileops.presentation.common.theme.FocusShapes.button)
+            .background(com.d365fo.mobileops.presentation.common.theme.FocusColors.surface)
+            .border(BorderStroke(1.dp, com.d365fo.mobileops.presentation.common.theme.FocusColors.divider), com.d365fo.mobileops.presentation.common.theme.FocusShapes.button)
             .clickable(enabled = enabled, role = Role.Button, onClick = workerClick(onClick))
             .padding(horizontal = 12.dp, vertical = 8.dp),
     ) {
         icon?.let { Icon(it, contentDescription = null, tint = color, modifier = Modifier.size(20.dp)) }
-        Text(text, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.ExtraBold, color = color, textAlign = TextAlign.Center)
+        Text(text, style = com.d365fo.mobileops.presentation.common.theme.FocusType.button, color = color, textAlign = TextAlign.Center)
     }
 }
 
@@ -513,20 +499,21 @@ fun GradientButton(
     enabled: Boolean = true,
     content: @Composable RowScope.() -> Unit,
 ) {
+    // Focus design: the orange primary button (the name stays - every caller keeps working).
     Row(
         horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
         verticalAlignment = Alignment.CenterVertically,
         modifier = modifier
             .heightIn(min = WarehouseDimens.MinTouchTarget)
             .alpha(if (enabled) 1f else 0.45f)
-            .clip(DockShape)
-            .background(WarehouseStatusColors.accentGradient)
+            .clip(com.d365fo.mobileops.presentation.common.theme.FocusShapes.button)
+            .background(com.d365fo.mobileops.presentation.common.theme.FocusColors.action)
             .clickable(enabled = enabled, role = Role.Button, onClick = workerClick(onClick))
             .padding(horizontal = 12.dp, vertical = 8.dp),
     ) {
         CompositionLocalProvider(
-            LocalContentColor provides Color.White,
-            LocalTextStyle provides MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.ExtraBold, color = Color.White, textAlign = TextAlign.Center),
+            LocalContentColor provides com.d365fo.mobileops.presentation.common.theme.FocusColors.surface,
+            LocalTextStyle provides com.d365fo.mobileops.presentation.common.theme.FocusType.button.copy(color = com.d365fo.mobileops.presentation.common.theme.FocusColors.surface, textAlign = TextAlign.Center),
         ) { content() }
     }
 }
@@ -546,84 +533,6 @@ fun HoldButton(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
 ) {
-    val view = LocalView.current
-    val latestConfirm by rememberUpdatedState(onConfirm)
-    val progress = remember { Animatable(0f) }
-    val scope = rememberCoroutineScope()
-    var hintTap by remember { mutableIntStateOf(0) }
-    var hintVisible by remember { mutableStateOf(false) }
-    LaunchedEffect(hintTap) {
-        if (hintTap == 0) return@LaunchedEffect
-        hintVisible = true
-        delay(2_500)
-        hintVisible = false
-    }
-    Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
-        Box(
-            contentAlignment = Alignment.Center,
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(min = WarehouseDimens.MinTouchTarget)
-                .alpha(if (enabled) 1f else 0.45f)
-                .clip(DockShape)
-                .background(WarehouseStatusColors.accentGradient)
-                .semantics {
-                    role = Role.Button
-                    if (!enabled) disabled()
-                    onClick(label) {
-                        if (enabled) latestConfirm()
-                        enabled
-                    }
-                }
-                .pointerInput(enabled) {
-                    if (!enabled) return@pointerInput
-                    detectTapGestures(
-                        onPress = {
-                            val fill = scope.launch {
-                                progress.animateTo(
-                                    1f,
-                                    tween((HOLD_TO_CONFIRM_MS * (1f - progress.value)).toInt(), easing = LinearEasing),
-                                )
-                                view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
-                                latestConfirm()
-                                progress.snapTo(0f)
-                            }
-                            val released = tryAwaitRelease()
-                            if (fill.isActive) {
-                                val reached = progress.value
-                                fill.cancel()
-                                if (released && reached < 0.2f) hintTap++
-                                scope.launch { progress.animateTo(0f, tween(150)) }
-                            }
-                        },
-                    )
-                },
-        ) {
-            Box(Modifier.matchParentSize()) {
-                Box(
-                    Modifier
-                        .fillMaxHeight()
-                        .fillMaxWidth(progress.value)
-                        .background(WarehouseStatusColors.accentDark),
-                )
-            }
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-            ) {
-                Icon(Icons.Filled.TouchApp, contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp))
-                Text(label, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.ExtraBold, color = Color.White, textAlign = TextAlign.Center)
-            }
-        }
-        if (hintVisible) {
-            Text(
-                "Keep holding until the bar is full",
-                style = MaterialTheme.typography.labelMedium,
-                color = WarehouseStatusColors.text3,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.padding(top = 4.dp),
-            )
-        }
-    }
+    // One hold button in the app: the Focus one (1-second hold, progress fill, no dialog).
+    com.d365fo.mobileops.presentation.common.focus.HoldToConfirmButton(label, onConfirm = onConfirm, modifier = modifier, enabled = enabled)
 }

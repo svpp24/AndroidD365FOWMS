@@ -56,7 +56,8 @@ fun AppTopBar(
     /** The screen's own items in the ⋮ menu, above Send feedback - see [TopBarMenu]. */
     menuItems: (@Composable ColumnScope.(close: () -> Unit) -> Unit)? = null,
 ) {
-    Column(modifier = modifier.background(Color.White)) {
+    // Focus design: the page colour, ink icons and the 18sp bold title (brief section 6).
+    Column(modifier = modifier.background(com.d365fo.mobileops.presentation.common.theme.FocusColors.page)) {
         // Not Material3's TopAppBar: that one has a fixed height, so a title that wraps was cut
         // off. [expandedHeight] is the bar's minimum here, and a long title grows it instead of
         // being truncated. Spacing follows Material's: 4dp at both ends, the title 16dp from the
@@ -69,7 +70,7 @@ fun AppTopBar(
                 .padding(horizontal = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            CompositionLocalProvider(LocalContentColor provides WarehouseStatusColors.accent) {
+            CompositionLocalProvider(LocalContentColor provides com.d365fo.mobileops.presentation.common.theme.FocusColors.ink) {
                 NavigationSlot(navigationIcon)
             }
             Box(
@@ -79,13 +80,13 @@ fun AppTopBar(
                     .semantics { heading() },
             ) {
                 CompositionLocalProvider(
-                    LocalContentColor provides MaterialTheme.colorScheme.onSurface,
-                    LocalTextStyle provides MaterialTheme.typography.titleLarge.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.Bold),
+                    LocalContentColor provides com.d365fo.mobileops.presentation.common.theme.FocusColors.ink,
+                    LocalTextStyle provides com.d365fo.mobileops.presentation.common.theme.FocusType.topBarTitle,
                 ) {
                     title()
                 }
             }
-            CompositionLocalProvider(LocalContentColor provides WarehouseStatusColors.accent) {
+            CompositionLocalProvider(LocalContentColor provides com.d365fo.mobileops.presentation.common.theme.FocusColors.ink) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     status()
                     // Online/offline at a glance on every screen - see ConnectionIcon.
@@ -96,7 +97,7 @@ fun AppTopBar(
                 }
             }
         }
-        HorizontalDivider(color = WarehouseStatusColors.border.copy(alpha = 0.5f))
+        HorizontalDivider(color = com.d365fo.mobileops.presentation.common.theme.FocusColors.divider)
     }
 }
 

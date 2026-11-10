@@ -20,6 +20,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
 import com.d365fo.mobileops.presentation.common.components.AppTopBar as TopAppBar
 import androidx.compose.runtime.Composable
@@ -47,7 +48,6 @@ import com.d365fo.mobileops.util.Formatters
  * screen in this package where a full-page centred spinner is the plain right answer rather
  * than a top progress bar layered over a field the operator is about to type into.
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PoOfTodayScreen(
     onBack: () -> Unit,
@@ -56,62 +56,31 @@ fun PoOfTodayScreen(
     viewModel: PoOfTodayViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
-
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("PO's of today") },
-                expandedHeight = WarehouseDimens.TopBarHeight,
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                    }
-                },
+    // Focus list (brief section 9): one row per PO, its status as a word; tapping an open one
+    // starts receiving it.
+    com.d365fo.mobileops.presentation.common.focus.FocusScreen(
+        title = "Today's POs",
+        onBack = onBack,
+        counter = state.orders.size.takeIf { it > 0 }?.toString(),
+        band = when {
+            state.error != null -> com.d365fo.mobileops.presentation.modules.stepflow.bandOf(
+                com.d365fo.mobileops.presentation.common.focus.BandKind.Bad, state.error.orEmpty(),
             )
+            !state.busy && state.orders.isEmpty() -> com.d365fo.mobileops.presentation.common.focus.BandState(
+                com.d365fo.mobileops.presentation.common.focus.BandKind.Info,
+                "No purchase orders due today",
+                state.warehouseId,
+            )
+            else -> null
         },
-    ) { padding ->
-        Box(modifier = Modifier.fillMaxSize().padding(padding)) {
-            when {
-                state.busy && state.orders.isEmpty() -> {
-                    CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
-                }
-
-                state.error != null -> {
-                    ErrorBanner(
-                        message = state.error.orEmpty(),
-                        modifier = Modifier
-                            .align(Alignment.Center)
-                            .padding(WarehouseDimens.ScreenPadding),
-                    )
-                }
-
-                state.orders.isEmpty() -> {
-                    Text(
-                        text = state.warehouseId
-                            ?.let { "No purchase orders due today in $it." }
-                            ?: "No purchase orders due today.",
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.align(Alignment.Center).padding(WarehouseDimens.ScreenPadding),
-                    )
-                }
-
-                else -> {
-                    LazyColumn(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(horizontal = WarehouseDimens.ScreenPadding),
-                        contentPadding = PaddingValues(vertical = WarehouseDimens.ItemSpacing),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        items(state.orders, key = { it.purchId }) { order ->
-                            PurchaseOrderRow(order, onReceive = {
-                                viewModel.startReceiving(order.purchId)
-                                onReceive()
-                            })
-                        }
-                    }
-                }
+    ) {
+        if (state.busy) LinearProgressIndicator(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp))
+        LazyColumn(modifier = Modifier.weight(1f).fillMaxWidth()) {
+            items(state.orders, key = { it.purchId }) { order ->
+                PurchaseOrderRow(order, onReceive = {
+                    viewModel.startReceiving(order.purchId)
+                    onReceive()
+                })
             }
         }
     }
@@ -119,69 +88,25 @@ fun PoOfTodayScreen(
 
 @Composable
 private fun PurchaseOrderRow(order: PurchaseOrderSummary, onReceive: () -> Unit) {
-    val (statusText, statusColor, statusDim) = when (order.status) {
-        OrderStatus.NONE, OrderStatus.BACKORDER -> Triple(
-            "Open", WarehouseStatusColors.accent, WarehouseStatusColors.accentDim,
-        )
-        OrderStatus.RECEIVED -> Triple(
-            "Received", WarehouseStatusColors.green, WarehouseStatusColors.greenDim,
-        )
-        OrderStatus.INVOICED -> Triple(
-            "Invoiced", WarehouseStatusColors.green, WarehouseStatusColors.greenDim,
-        )
-        OrderStatus.CANCELED -> Triple(
-            "Canceled", WarehouseStatusColors.border, WarehouseStatusColors.surface2,
-        )
+    val (statusText, done) = when (order.status) {
+        OrderStatus.NONE, OrderStatus.BACKORDER -> "Open" to false
+        OrderStatus.RECEIVED -> "Received" to true
+        OrderStatus.INVOICED -> "Invoiced" to true
+        OrderStatus.CANCELED -> "Canceled" to true
     }
-
     // Open orders start receiving on tap; received/invoiced/cancelled ones are information only.
     val receivable = order.status.isOpen
-    val body: @Composable () -> Unit = {
-        Row(
-            modifier = Modifier.padding(start = 12.dp, top = 12.dp, bottom = 12.dp, end = if (receivable) 4.dp else 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        text = order.purchId,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                    StatusChip(text = statusText, color = statusColor, dimColor = statusDim)
-                }
-                Text(
-                    text = listOfNotNull(
-                        "Vendor ${order.vendorAccount}".takeIf { order.vendorAccount.isNotBlank() },
-                        order.warehouseId?.let { "Whs $it" },
-                    ).joinToString(" · "),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                order.deliveryDate?.let {
-                    Text(
-                        text = "Requested ${Formatters.shortDate(it)}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = WarehouseStatusColors.text3,
-                    )
-                }
-            }
-            if (receivable) {
-                Icon(
-                    Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                    contentDescription = "Receive",
-                    tint = WarehouseStatusColors.text3,
-                )
-            }
-        }
-    }
-    if (receivable) {
-        Card(onClick = onReceive, modifier = Modifier.fillMaxWidth()) { body() }
-    } else {
-        Card(modifier = Modifier.fillMaxWidth()) { body() }
-    }
+    com.d365fo.mobileops.presentation.common.focus.FocusListRow(
+        title = order.purchId,
+        titleIsCode = true,
+        state = if (done) com.d365fo.mobileops.presentation.common.focus.RowState.Done else com.d365fo.mobileops.presentation.common.focus.RowState.Open,
+        subtitle = listOfNotNull(
+            "Vendor ${order.vendorAccount}".takeIf { order.vendorAccount.isNotBlank() },
+            order.warehouseId?.let { "Whs $it" },
+            order.deliveryDate?.let { "Requested ${Formatters.shortDate(it)}" },
+        ).joinToString(" · ").ifEmpty { null },
+        count = statusText,
+        chevron = receivable,
+        onClick = if (receivable) onReceive else null,
+    )
 }

@@ -6,7 +6,6 @@ import com.d365fo.mobileops.presentation.common.focus.FocusCenter
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.automirrored.filled.Undo
-import com.d365fo.mobileops.presentation.common.components.StepTrail
 import com.d365fo.mobileops.presentation.common.components.BarcodeFieldIcon
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
@@ -84,7 +83,6 @@ import com.d365fo.mobileops.domain.model.stepsForTransfer
 import com.d365fo.mobileops.presentation.common.components.ErrorBanner
 import com.d365fo.mobileops.presentation.common.components.HeroEnterBadge
 import com.d365fo.mobileops.presentation.common.components.HeroFieldShape
-import com.d365fo.mobileops.presentation.common.components.PromptHeroCard
 import com.d365fo.mobileops.presentation.common.components.heroFieldColors
 import com.d365fo.mobileops.presentation.common.components.TextEntryScreen
 import com.d365fo.mobileops.presentation.common.scan.CameraScannerSheet
@@ -335,242 +333,6 @@ fun TransferFlowScreen(
             },
             onDismiss = { showItemSearch = false },
         )
-    }
-}
-
-@Composable
-private fun StepProgress(state: TransferFlowState) {
-    val sequence = stepsForTransfer(state.capture)
-    val position = (sequence.indexOf(state.step) + 1).coerceAtLeast(1)
-
-    // The tabs first, flush under the bar; the lookup bar under them.
-    Column {
-        StepTrail(names = sequence.map { it.shortName() }, current = position - 1)
-        if (state.busy) {
-            LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-        } else {
-            Box(modifier = Modifier.fillMaxWidth().heightIn(min = 4.dp))
-        }
-    }
-}
-
-@Composable
-private fun StepPrompt(
-    state: TransferFlowState,
-    onSubmit: (String) -> Unit,
-    onTypeManually: () -> Unit,
-    onOpenCamera: () -> Unit,
-    onSkip: () -> Unit = {},
-    onSearchItem: () -> Unit,
-    onSelectUnit: (String) -> Unit = {},
-    onReviewScanned: () -> Unit = {},
-    onPost: () -> Unit = {},
-) {
-    val focusRequester = remember { FocusRequester() }
-
-    // Auto-focused on every step - see the identical note on PO receiving's own StepPrompt: the
-    // "goes back to Home" reports had nothing to do with focus. This device's trigger button
-    // fires a genuine KEY_HOME at the OS input-dispatch level on every press, independent of
-    // anything on screen - so there is no reason not to keep the cursor sitting here for whoever
-    // wants to type instead of scan.
-    //
-    // No keyboardController.hide() any more - see the identical note on PO receiving's own
-    // StepPrompt: the field is readOnly now, which structurally stops the OS from ever showing
-    // the IME for it, rather than this screen racing the device's own IME auto-show.
-    LaunchedEffect(state.step, state.capture.serialIds.size) {
-        focusRequester.requestFocus()
-    }
-
-    // Top group weighted + scrollable, bottom group fixed - see the identical note (and the
-    // live cut-off it fixes) on PO receiving's own StepPrompt. A plain SpaceBetween Column does
-    // not scroll, and the quantity step's keypad alone is tall enough to push the button row
-    // off the bottom edge on some screens.
-    Column(modifier = Modifier.fillMaxSize()) {
-        Column(
-            modifier = Modifier.weight(1f).verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            // No hint line under the field (user, 9 Nov) - the chips carry what to know.
-            PromptHeroCard(prompt = promptFor(state), pills = capturePills(state)) {
-            // Read-only and empty, always - see the identical note on PO receiving's own
-            // StepPrompt: a scan never lands here, and typing now happens on a dedicated
-            // screen. What remains is a tap target styled like the field it replaces.
-            //
-            // Overlaid Box, not clickable() on the field itself - see the identical note on PO
-            // receiving's own StepPrompt: a read-only field's own pointer input swallows the tap.
-            Box {
-                OutlinedTextField(
-                    value = "",
-                    onValueChange = {},
-                    readOnly = true,
-                    singleLine = true,
-                    enabled = !state.busy,
-                    textStyle = if (state.step == TransferStep.QUANTITY) {
-                        MaterialTheme.typography.headlineSmall.copy(textAlign = TextAlign.Center)
-                    } else {
-                        MaterialTheme.typography.headlineSmall
-                    },
-                    shape = HeroFieldShape,
-                    colors = heroFieldColors(),
-                    // Every step but quantity takes a scan.
-                    leadingIcon = if (state.step != TransferStep.QUANTITY) ({ BarcodeFieldIcon() }) else null,
-                    trailingIcon = { HeroEnterBadge() },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = 64.dp)
-                        .focusRequester(focusRequester),
-                )
-                Box(
-                    modifier = Modifier
-                        .matchParentSize()
-                        .clickable(enabled = !state.busy, onClick = onTypeManually),
-                )
-            }
-                        // Inside the card, as on every other scan screen.
-            com.d365fo.mobileops.presentation.common.components.HeroCameraButton(
-                onClick = onOpenCamera,
-                enabled = !state.busy,
-                // Search is only meaningful with a set of lines in hand to filter.
-                extraLabel = "Search items".takeIf { state.step == TransferStep.ITEM && state.openLines.isNotEmpty() },
-                onExtra = onSearchItem,
-            )
-            }
-            if (state.step == TransferStep.ITEM && state.captured.isNotEmpty()) {
-                ScannedSoFar(state, onReviewScanned)
-            }
-            // In the scrolling group with the card, not the fixed bottom one: with up to six unit
-            // chips there, the bottom group squeezed the card - its rounded bottom was cut off
-            // and this button sat against the cut edge, reading as one control (feedback
-            // f0eda53c "controls merged", 10 Oct).
-            // Offered as a button, never pre-filled: pre-filling has an operator confirm the
-            // full quantity by reflex, which is exactly how a short shipment or receipt gets
-            // booked in full.
-            if (state.step == TransferStep.QUANTITY) {
-                state.suggestedQuantity?.let { outstanding ->
-                    com.d365fo.mobileops.presentation.common.components.SquareOutlinedButton(
-                        onClick = { onSubmit(plain(outstanding)) },
-                        modifier = Modifier.fillMaxWidth().heightIn(min = WarehouseDimens.MinTouchTarget),
-                    ) {
-                        Text(
-                            if (state.capture.mode == TransferMode.SHIP) {
-                                "Ship all outstanding (${plain(outstanding)})"
-                            } else {
-                                "Receive all outstanding (${plain(outstanding)})"
-                            },
-                        )
-                    }
-                }
-                state.capture.line?.takeIf { it.units.size > 1 }?.let { line ->
-                    com.d365fo.mobileops.presentation.common.components.UnitChips(
-                        units = line.units,
-                        lineUnit = line.unitId,
-                        selected = state.entryUnit ?: line.unitId,
-                        onSelect = onSelectUnit,
-                    )
-                }
-            }
-        }
-
-        if (com.d365fo.mobileops.domain.model.canSkipTransferStep(state.step, state.capture)) {
-            OutlinedButton(
-                onClick = onSkip,
-                enabled = !state.busy,
-                modifier = Modifier.fillMaxWidth().padding(top = 8.dp).heightIn(min = WarehouseDimens.MinTouchTarget),
-            ) { Text("Skip - not required for this item") }
-        }
-
-        // The dock: review what is scanned, and ship or receive it with a hold.
-        if (state.captured.isNotEmpty()) {
-            com.d365fo.mobileops.presentation.common.components.FlowDock(
-                modifier = Modifier.bleed(16.dp).padding(top = 8.dp),
-            ) {
-                com.d365fo.mobileops.presentation.common.components.DockOutlinedButton(
-                    onClick = onReviewScanned,
-                    enabled = !state.busy,
-                    icon = Icons.AutoMirrored.Filled.ListAlt,
-                    text = "Review",
-                    modifier = Modifier.weight(0.4f),
-                )
-                com.d365fo.mobileops.presentation.common.components.HoldButton(
-                    label = if (state.capture.mode == TransferMode.SHIP) "Hold to ship" else "Hold to receive",
-                    onConfirm = onPost,
-                    enabled = !state.busy,
-                    modifier = Modifier.weight(0.6f),
-                )
-            }
-        } else {
-            Box(Modifier.padding(bottom = WarehouseDimens.ScreenPadding))
-        }
-    }
-}
-
-/** What is picked or scanned so far, latest first, under the item step's card. */
-@Composable
-private fun ScannedSoFar(state: TransferFlowState, onOpen: () -> Unit) {
-    val shipping = state.capture.mode == TransferMode.SHIP
-    val total = state.order?.outstandingLineCount?.takeIf { it > 0 }
-    com.d365fo.mobileops.presentation.common.components.ListHeader(
-        icon = Icons.AutoMirrored.Filled.ListAlt,
-        title = if (shipping) "Picked" else "Scanned",
-        count = state.captured.size,
-        trailing = total?.let { "of $it ${if (it == 1) "line" else "lines"}" },
-    )
-    com.d365fo.mobileops.presentation.common.components.ListCard {
-        state.captured.reversed().forEachIndexed { i, entry ->
-            if (i > 0) com.d365fo.mobileops.presentation.common.components.RowDivider()
-            com.d365fo.mobileops.presentation.common.components.LineRow(
-                title = entry.itemId,
-                description = entry.itemName,
-                lines = listOfNotNull(
-                    listOfNotNull(
-                        entry.variantLabel.takeIf { it.isNotBlank() },
-                        entry.batchId?.takeIf { it.isNotBlank() }?.let { "Batch $it" },
-                    ).joinToString(" · ").takeIf { it.isNotBlank() },
-                    when (entry.serialIds.size) {
-                        0 -> null
-                        1 -> "Serial ${entry.serialIds[0]}"
-                        else -> "${entry.serialIds.size} serials"
-                    },
-                    entry.locationId?.takeIf { it.isNotBlank() }?.let { "Location $it" },
-                ),
-                lead = { com.d365fo.mobileops.presentation.common.components.LeadDot(com.d365fo.mobileops.presentation.common.components.Lead.Done, icon = Icons.Default.Check) },
-                trailing = { com.d365fo.mobileops.presentation.common.components.QtyTrail(plain(entry.quantity), entry.unitSymbol) },
-                onClick = onOpen,
-            )
-        }
-    }
-}
-
-/** What the scan is working on, as pills in the scan card. */
-private fun capturePills(state: TransferFlowState): List<Pair<androidx.compose.ui.graphics.vector.ImageVector?, String>> {
-    val c = state.capture
-    return buildList {
-        // Labelled chips (user, 9 Nov): what each value is, not just the value.
-        c.transferId?.let { add(Icons.Default.SwapHoriz to "Transfer $it") }
-        state.order?.let { o ->
-            if (o.fromWarehouseId != null && o.toWarehouseId != null) {
-                add(Icons.Default.Route to "Route ${o.fromWarehouseId} to ${o.toWarehouseId}")
-            }
-        }
-        // Shipping asks the bin before the item, so it stays on the item step too.
-        if (c.mode == TransferMode.SHIP || state.step != TransferStep.ITEM) c.locationId?.let { add(Icons.Default.LocationOn to "Location $it") }
-        if (state.step != TransferStep.ITEM) {
-            c.line?.let { add(com.d365fo.mobileops.presentation.common.components.BarcodeGlyph to "Item ${it.itemId} · ${it.itemName}") }
-            c.line?.variant?.label?.takeIf { it.isNotBlank() }?.let { add(null to "Variant $it") }
-            c.quantity?.let { add(Icons.Default.Numbers to "Qty " + com.d365fo.mobileops.util.Formatters.qtyUnit(it, c.unitSymbol)) }
-            c.batchId?.let { add(Icons.Default.Tag to "Batch $it") }
-            if (c.serialIds.isNotEmpty()) add(Icons.Default.QrCode2 to "Serials ${c.serialIds.size}")
-        }
-        // On the batch step, which batch the shipment carried (receive) or the order asked for
-        // (ship) - a fact to act on, as a chip rather than a hint line.
-        if (state.step == TransferStep.BATCH) c.line?.let { line ->
-            when {
-                c.mode == TransferMode.RECEIVE && line.shippedBatches.isNotEmpty() ->
-                    line.shippedBatches.forEach { add(Icons.Default.Tag to "Shipped batch ${it.batchId} (${plain(it.quantity)})") }
-                c.mode == TransferMode.SHIP && line.lineBatchId != null ->
-                    add(Icons.Default.Tag to "Ordered batch ${line.lineBatchId}")
-            }
-        }
     }
 }
 
@@ -913,11 +675,6 @@ private fun CaptureSummary(state: TransferFlowState) {
 }
 
 @Composable
-private fun ErrorPanel(message: String, onDismiss: () -> Unit) {
-    ErrorBanner(message = message, onDismiss = onDismiss)
-}
-
-@Composable
 private fun Field(label: String, value: String?) {
     if (value.isNullOrBlank()) return
     Row(modifier = Modifier.fillMaxWidth()) {
@@ -1187,13 +944,3 @@ fun TransferEntryScreen(
     )
 }
 
-/** The step's name in the step trail - short, so the whole flow fits on one line. */
-private fun TransferStep.shortName(): String = when (this) {
-    TransferStep.TRANSFER_ORDER -> "Transfer"
-    TransferStep.ITEM -> "Item"
-    TransferStep.QUANTITY -> "Qty"
-    TransferStep.LOCATION -> "Location"
-    TransferStep.BATCH -> "Batch"
-    TransferStep.SERIAL -> "Serial"
-    TransferStep.CONFIRM -> "Confirm"
-}

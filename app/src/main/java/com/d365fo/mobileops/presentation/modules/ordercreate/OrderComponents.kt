@@ -408,26 +408,6 @@ fun TapToTypeField(value: String, onValueChange: (String) -> Unit, placeholder: 
  * The scan target inside the red prompt card: the same white field as Receiving (a scan never
  * lands in it - the tap opens typing), and a camera button under it.
  */
-@Composable
-fun OrderScanField(onType: () -> Unit, onCamera: () -> Unit, enabled: Boolean = true) {
-    Box {
-        androidx.compose.material3.OutlinedTextField(
-            value = "",
-            onValueChange = {},
-            readOnly = true,
-            singleLine = true,
-            enabled = enabled,
-            placeholder = { Text("Scan, or tap to type", style = MaterialTheme.typography.titleMedium) },
-            shape = com.d365fo.mobileops.presentation.common.components.HeroFieldShape,
-            colors = com.d365fo.mobileops.presentation.common.components.heroFieldColors(),
-            leadingIcon = { com.d365fo.mobileops.presentation.common.components.BarcodeFieldIcon() },
-            trailingIcon = { com.d365fo.mobileops.presentation.common.components.HeroEnterBadge() },
-            modifier = Modifier.fillMaxWidth().heightIn(min = 64.dp),
-        )
-        // A read-only field swallows taps itself - catch them on top (see ReceivingFlowScreen).
-        Box(modifier = Modifier.matchParentSize().clickable(enabled = enabled, onClick = onType))
-    }
-    com.d365fo.mobileops.presentation.common.components.HeroCameraButton(onClick = onCamera, enabled = enabled)
-}
+
 
 fun linesText(count: Int): String = if (count == 1) "1 line" else "$count lines"

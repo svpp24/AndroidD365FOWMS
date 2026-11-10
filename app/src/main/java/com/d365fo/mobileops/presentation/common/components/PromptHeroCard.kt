@@ -35,55 +35,7 @@ import com.d365fo.mobileops.presentation.common.theme.WarehouseStatusColors
  * across the top and the input sitting inside it, so the one instruction and the one place to
  * act on it read as a single unit rather than a heading floating above a plain field.
  */
-@Composable
-fun PromptHeroCard(
-    prompt: String,
-    modifier: Modifier = Modifier,
-    hint: String? = null,
-    /** What the scan is for - the PO, vendor, bin - as pills under the prompt (Harbour). */
-    pills: List<Pair<androidx.compose.ui.graphics.vector.ImageVector?, String>> = emptyList(),
-    content: @Composable ColumnScope.() -> Unit,
-) {
-    // The scan field always first (user, 9 Nov): the prompt and the field in the first card, any
-    // hint under the field, and what the scan is for - the PO, vendor, bin pills - in a second
-    // card below, so the field never moves as that information grows.
-    Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Column(
-            horizontalAlignment = Alignment.Start,
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(12.dp))
-                .background(Color.White)
-                .padding(horizontal = 12.dp, vertical = 12.dp),
-        ) {
-            Text(
-                text = prompt,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.ExtraBold,
-                color = MaterialTheme.colorScheme.onSurface,
-            )
-            content()
-            hint?.let {
-                Text(
-                    text = it,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = WarehouseStatusColors.text3,
-                )
-            }
-        }
-        if (pills.isNotEmpty()) {
-            ContextPills(
-                pills,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(Color.White)
-                    .padding(12.dp),
-            )
-        }
-    }
-}
+
 
 /** The field inside [PromptHeroCard]: white, outlined in the accent, dark text. */
 @Composable

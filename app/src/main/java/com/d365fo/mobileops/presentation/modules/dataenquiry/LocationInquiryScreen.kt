@@ -35,6 +35,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import com.d365fo.mobileops.presentation.common.focus.FocusCenter
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.text.font.FontWeight
@@ -44,7 +45,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.d365fo.mobileops.presentation.common.components.ErrorBanner
 import com.d365fo.mobileops.presentation.common.components.HeroEnterBadge
 import com.d365fo.mobileops.presentation.common.components.HeroFieldShape
-import com.d365fo.mobileops.presentation.common.components.PromptHeroCard
 import com.d365fo.mobileops.presentation.common.components.heroFieldColors
 import com.d365fo.mobileops.presentation.common.components.TextEntryScreen
 import com.d365fo.mobileops.presentation.common.scan.CameraScannerSheet
@@ -58,129 +58,58 @@ import com.d365fo.mobileops.presentation.common.theme.WarehouseStatusColors
  * receiving flow already makes at the put-away step, surfaced on its own for a supervisor who
  * wants the answer without walking through a whole receipt.
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LocationInquiryScreen(
     onBack: () -> Unit,
-    onManualEntryRequested: () -> Unit,
+    @Suppress("UNUSED_PARAMETER") onManualEntryRequested: () -> Unit,
     viewModel: LocationInquiryViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     var showCamera by remember { mutableStateOf(false) }
-    val focusRequester = remember { FocusRequester() }
+    val facts = state.result
 
-    // Read-only field now (see below) - no keyboardController fight needed any more.
-    LaunchedEffect(Unit) {
-        runCatching { focusRequester.requestFocus() }
-    }
-
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("Location inquiry") },
-                expandedHeight = WarehouseDimens.TopBarHeight,
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                    }
-                },
+    // Focus design: the answer in the band (open or blocked for put-away), the location in the
+    // centre, the warehouse it is checked in under it; scan or type the next location in the pill.
+    com.d365fo.mobileops.presentation.common.focus.FocusScreen(
+        title = "Location inquiry",
+        onBack = onBack,
+        counter = state.warehouseId.takeIf { it.isNotBlank() },
+        band = when {
+            state.error != null -> com.d365fo.mobileops.presentation.modules.stepflow.bandOf(
+                com.d365fo.mobileops.presentation.common.focus.BandKind.Bad, state.error.orEmpty(),
+            )
+            facts == null -> null
+            facts.canReceiveInto -> com.d365fo.mobileops.presentation.common.focus.BandState(
+                com.d365fo.mobileops.presentation.common.focus.BandKind.Ok, "Open for put-away", "${facts.warehouseId} · ${facts.locationId}",
+            )
+            else -> com.d365fo.mobileops.presentation.common.focus.BandState(
+                com.d365fo.mobileops.presentation.common.focus.BandKind.Bad,
+                facts.blockingCause ?: "Blocked for put-away",
+                "${facts.warehouseId} · ${facts.locationId}",
             )
         },
-    ) { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .padding(horizontal = WarehouseDimens.ScreenPadding),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            // A fixed slot, so the bar never moves the scan card below it.
-            Box(Modifier.fillMaxWidth().height(4.dp)) { if (state.busy) LinearProgressIndicator(modifier = Modifier.fillMaxWidth()) }
-
-            // Read-only tap target - overlaid Box, not clickable() on the field itself. See the
-            // identical note on OnHandInquiryScreen: a read-only field's own pointer input
-            // swallows a tap before an outer clickable on the same chain ever sees it.
-            PromptHeroCard(prompt = "Scan or enter location") {
-            Box {
-                OutlinedTextField(
-                    value = "",
-                    onValueChange = {},
-                    readOnly = true,
-                    singleLine = true,
-                    textStyle = MaterialTheme.typography.titleLarge,
-                    shape = HeroFieldShape,
-                    colors = heroFieldColors(),
-                    leadingIcon = { BarcodeFieldIcon() },
-                    trailingIcon = { HeroEnterBadge() },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = 64.dp)
-                        .focusRequester(focusRequester),
-                )
-                Box(
-                    modifier = Modifier
-                        .matchParentSize()
-                        .clickable(onClick = onManualEntryRequested),
-                )
+        scanPill = { com.d365fo.mobileops.presentation.common.focus.ScanPillField(enabled = !state.busy) },
+        topBarTrailing = {
+            IconButton(onClick = { showCamera = true }, modifier = Modifier.heightIn(min = 48.dp)) {
+                Icon(Icons.Default.PhotoCamera, contentDescription = "Camera scan", tint = com.d365fo.mobileops.presentation.common.theme.FocusColors.ink)
             }
-            // Inside the card, as on the creation screens and Counting.
-            com.d365fo.mobileops.presentation.common.components.HeroCameraButton(onClick = { showCamera = true })
-            }
-
-            // Under the scan card, not above it - the card stays in one place on every screen.
-            OutlinedTextField(
-                value = state.warehouseId,
-                onValueChange = viewModel::onWarehouseChange,
-                label = { Text("Warehouse") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth().heightIn(min = 64.dp),
-            )
-
-
-            state.error?.let { message ->
-                ErrorBanner(message = message)
-            }
-
-            state.result?.let { facts ->
-                Card(modifier = Modifier.fillMaxWidth()) {
-                    Column(
-                        modifier = Modifier.padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        Text(
-                            text = "${facts.warehouseId} · ${facts.locationId}",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold,
-                        )
-
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                if (facts.canReceiveInto) {
-                                    Icons.Default.CheckCircle
-                                } else {
-                                    Icons.Default.Block
-                                },
-                                contentDescription = null,
-                                tint = if (facts.canReceiveInto) {
-                                    WarehouseStatusColors.green
-                                } else {
-                                    WarehouseStatusColors.red
-                                },
-                                modifier = Modifier.padding(end = 8.dp),
-                            )
-                            Text(
-                                text = if (facts.canReceiveInto) {
-                                    "Open for put-away"
-                                } else {
-                                    facts.blockingCause ?: "Blocked for put-away"
-                                },
-                                style = MaterialTheme.typography.bodyLarge,
-                            )
-                        }
-                    }
-                }
-            }
-        }
+        },
+    ) {
+        if (state.busy) LinearProgressIndicator(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp))
+        FocusCenter(
+            caption = "Location",
+            code = facts?.locationId ?: "–",
+            description = facts?.warehouseId,
+        )
+        // The warehouse the location is checked in - editable, as before.
+        OutlinedTextField(
+            value = state.warehouseId,
+            onValueChange = viewModel::onWarehouseChange,
+            label = { Text("Warehouse") },
+            singleLine = true,
+            shape = com.d365fo.mobileops.presentation.common.theme.FocusShapes.button,
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp).heightIn(min = 60.dp),
+        )
     }
 
     if (showCamera) {

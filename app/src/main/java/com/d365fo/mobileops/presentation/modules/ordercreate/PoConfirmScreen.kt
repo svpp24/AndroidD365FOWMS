@@ -13,6 +13,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -41,7 +42,6 @@ import com.d365fo.mobileops.domain.order.amountText
 import com.d365fo.mobileops.domain.order.qtyText
 import com.d365fo.mobileops.presentation.common.components.AppCard
 import com.d365fo.mobileops.presentation.common.components.ErrorBanner
-import com.d365fo.mobileops.presentation.common.components.PromptHeroCard
 import com.d365fo.mobileops.presentation.common.components.SquareButton
 import com.d365fo.mobileops.presentation.common.components.SquareOutlinedButton
 import com.d365fo.mobileops.presentation.common.components.StatusChip
@@ -58,31 +58,30 @@ fun PoConfirmScreen(onBack: () -> Unit, viewModel: PoConfirmViewModel = hiltView
     val online by viewModel.online.collectAsStateWithLifecycle()
     val confirmations by viewModel.confirmations.collectAsStateWithLifecycle()
     var showCamera by remember { mutableStateOf(false) }
-    var typing by remember { mutableStateOf(false) }
     val detail = state.detail
 
     BackHandler(enabled = detail != null) { viewModel.closeDetail() }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(detail?.summary?.purchId ?: "PO confirmation") },
-                expandedHeight = WarehouseDimens.TopBarHeight,
-                navigationIcon = {
-                    IconButton(onClick = { if (detail != null) viewModel.closeDetail() else onBack() }) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+    com.d365fo.mobileops.presentation.common.focus.FocusScreen(
+        title = detail?.summary?.purchId ?: "PO confirmation",
+        onBack = { if (detail != null) viewModel.closeDetail() else onBack() },
+        // The list takes a scanned or typed PO number in the pill; one order's page does not.
+        scanPill = if (detail != null) null else { { com.d365fo.mobileops.presentation.common.focus.ScanPillField(enabled = !state.opening) } },
+        topBarTrailing = {
+            if (detail == null) {
+                IconButton(onClick = { showCamera = true }, modifier = Modifier.heightIn(min = 48.dp)) {
+                    Icon(Icons.Default.PhotoCamera, contentDescription = "Camera scan", tint = com.d365fo.mobileops.presentation.common.theme.FocusColors.ink)
+                }
+                if (online) {
+                    IconButton(onClick = viewModel::refresh, modifier = Modifier.heightIn(min = 48.dp)) {
+                        Icon(Icons.Default.Refresh, contentDescription = "Refresh", tint = com.d365fo.mobileops.presentation.common.theme.FocusColors.ink)
                     }
-                },
-                actions = {
-                    if (detail == null && online) {
-                        IconButton(onClick = viewModel::refresh) { Icon(Icons.Default.Refresh, contentDescription = "Refresh") }
-                    }
-                },
-            )
+                }
+            }
         },
-    ) { padding ->
+    ) {
         LazyColumn(
-            modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = WarehouseDimens.ScreenPadding),
+            modifier = Modifier.weight(1f).fillMaxWidth().padding(horizontal = WarehouseDimens.ScreenPadding),
             verticalArrangement = Arrangement.spacedBy(WarehouseDimens.ItemSpacing),
         ) {
             item { if (state.loading || state.opening) LinearProgressIndicator(modifier = Modifier.fillMaxWidth()) }
@@ -127,11 +126,6 @@ fun PoConfirmScreen(onBack: () -> Unit, viewModel: PoConfirmViewModel = hiltView
                         item { SquareOutlinedButton(onClick = viewModel::dismissResult, modifier = Modifier.fillMaxWidth()) { Text("OK") } }
                     }
                 }
-                item {
-                    PromptHeroCard(prompt = "Scan a PO") {
-                        OrderScanField(onType = { typing = true }, onCamera = { showCamera = true }, enabled = !state.opening)
-                    }
-                }
                 state.listError?.let { item { Text(it, style = MaterialTheme.typography.bodyMedium, color = WarehouseStatusColors.text3) } }
                 item {
                     Text(
@@ -173,14 +167,6 @@ fun PoConfirmScreen(onBack: () -> Unit, viewModel: PoConfirmViewModel = hiltView
                     confirm = { com.d365fo.mobileops.presentation.common.components.ConfirmButton(onClick = viewModel::confirm, modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget)) { Text("Confirm") } },
                 )
             },
-        )
-    }
-    if (typing) {
-        CodeEntryDialog(
-            title = "Purchase order",
-            label = "PO number",
-            onSubmit = { typing = false; viewModel.open(it) },
-            onDismiss = { typing = false },
         )
     }
     if (showCamera) {

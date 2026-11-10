@@ -2,6 +2,12 @@ package com.d365fo.mobileops.presentation.modules.stepflow
 
 import com.d365fo.mobileops.presentation.common.components.BarcodeFieldIcon
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.size
+import com.d365fo.mobileops.presentation.common.focus.FocusCenter
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -53,7 +59,6 @@ import com.d365fo.mobileops.domain.repository.WarehouseOption
 import com.d365fo.mobileops.presentation.common.components.ErrorBanner
 import com.d365fo.mobileops.presentation.common.components.HeroEnterBadge
 import com.d365fo.mobileops.presentation.common.components.HeroFieldShape
-import com.d365fo.mobileops.presentation.common.components.PromptHeroCard
 import com.d365fo.mobileops.presentation.common.components.heroFieldColors
 import com.d365fo.mobileops.presentation.common.components.TextEntryScreen
 import com.d365fo.mobileops.presentation.common.scan.CameraScannerSheet
@@ -61,175 +66,30 @@ import com.d365fo.mobileops.presentation.common.theme.WarehouseDimens
 import java.math.BigDecimal
 
 /**
- * Scan an item, see what is on hand. Nothing is fetched until something is scanned.
- *
- * The old design preloaded an on-hand cache so this screen could answer instantly offline. That
- * cache was wrong the moment anyone else moved stock, and on-hand is the one figure an operator
- * will act on immediately — walking to a bin because the handheld said there were twelve. A
- * live number that takes a second beats an instant number that might be yesterday's.
+ * On-hand in the Focus design (brief section 9): the item scanned, its available quantity large in
+ * the available colour with on hand / reserved / ordered under it, and WHERE - each warehouse's
+ * available - underneath. Scan or type the next item in the pill. Which warehouses are asked is
+ * in the ⋮ menu (this warehouse only, or one chosen from the list, or all).
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun OnHandInquiryScreen(
     onBack: () -> Unit,
-    onManualEntryRequested: () -> Unit,
+    @Suppress("UNUSED_PARAMETER") onManualEntryRequested: () -> Unit,
     viewModel: OnHandInquiryViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     var showCamera by remember { mutableStateOf(false) }
-    val focusRequester = remember { FocusRequester() }
+    var menuOpen by remember { mutableStateOf(false) }
 
-    // Read-only field now (see below) - no keyboardController fight needed any more. The old
-    // double-hide-with-delay here was working around this exact screen's IME auto-show
-    // consistently beating a single hide() when reached via the bottom tab's restoreState/
-    // launchSingleTop transition (unlike every pushed screen, where one hide() was enough); a
-    // readOnly field makes that race moot everywhere, this screen included.
-    LaunchedEffect(Unit) {
-        runCatching { focusRequester.requestFocus() }
+    if (state.pickerOpen) {
+        WarehousePickerDialog(
+            warehouses = state.warehouses,
+            loading = state.loadingWarehouses,
+            selected = state.pickedWarehouseId,
+            onPick = viewModel::pickWarehouse,
+            onDismiss = viewModel::dismissWarehousePicker,
+        )
     }
-
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("On-hand") },
-                expandedHeight = WarehouseDimens.TopBarHeight,
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                    }
-                },
-            )
-        },
-    ) { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .padding(horizontal = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            // A fixed slot, so the bar never moves the scan card below it.
-            androidx.compose.foundation.layout.Box(Modifier.fillMaxWidth().height(4.dp)) { if (state.busy) LinearProgressIndicator(modifier = Modifier.fillMaxWidth()) }
-
-            // Read-only tap target, not an editable field - a scan lands straight in the
-            // ViewModel (see HidScannerBridge), and typing now happens on a dedicated screen
-            // reached by tapping this one, matching every other scan-first field in this app.
-            //
-            // Overlaid Box, not clickable() on the field itself - a read-only field's own
-            // pointer input (for cursor placement) swallows a tap before an outer clickable on
-            // the same modifier chain ever sees it - confirmed live.
-            PromptHeroCard(
-                prompt = "Scan item",
-                pills = listOfNotNull(
-                    state.homeWarehouseId?.takeIf { state.thisWarehouseOnly }?.let { Icons.Default.Warehouse to "Store $it only" },
-                ),
-            ) {
-            Box {
-                OutlinedTextField(
-                    value = "",
-                    onValueChange = {},
-                    readOnly = true,
-                    singleLine = true,
-                    textStyle = MaterialTheme.typography.titleLarge,
-                    shape = HeroFieldShape,
-                    colors = heroFieldColors(),
-                    leadingIcon = { BarcodeFieldIcon() },
-                    trailingIcon = { HeroEnterBadge() },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = 64.dp)
-                        .focusRequester(focusRequester),
-                )
-                Box(
-                    modifier = Modifier
-                        .matchParentSize()
-                        .clickable(onClick = onManualEntryRequested),
-                )
-            }
-            // Inside the card, as on the creation screens and Counting.
-            com.d365fo.mobileops.presentation.common.components.HeroCameraButton(onClick = { showCamera = true })
-            }
-
-
-            // Label left, switch right - as "Count by location" and Settings' switches.
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween,
-            ) {
-                Text(
-                    text = state.homeWarehouseId
-                        ?.let { "This warehouse only ($it)" }
-                        ?: "No warehouse assigned",
-                    style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.weight(1f),
-                )
-                Switch(
-                    checked = state.thisWarehouseOnly,
-                    onCheckedChange = viewModel::setThisWarehouseOnly,
-                    enabled = state.homeWarehouseId != null,
-                )
-            }
-
-            // With the filter off, the operator picks the warehouse rather than reading a
-            // hundred rows to find one. "All warehouses" stays available because "where is
-            // this stock?" is a real question the enquiry is for.
-            if (!state.thisWarehouseOnly) {
-                // The app's dropdown look; the list itself is a searchable dialog (many warehouses).
-                com.d365fo.mobileops.presentation.common.components.DropdownTrigger(
-                    text = if (state.loadingWarehouses) null else "Warehouse: ${state.scopeLabel}",
-                    placeholder = "Loading warehouses…",
-                    onClick = viewModel::openWarehousePicker,
-                )
-            }
-
-            if (state.pickerOpen) {
-                WarehousePickerDialog(
-                    warehouses = state.warehouses,
-                    loading = state.loadingWarehouses,
-                    selected = state.pickedWarehouseId,
-                    onPick = viewModel::pickWarehouse,
-                    onDismiss = viewModel::dismissWarehousePicker,
-                )
-            }
-
-            state.error?.let { message ->
-                ErrorBanner(message = message)
-            }
-
-            state.itemNumber?.let { item ->
-                Column {
-                    Text(
-                        text = item,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = com.d365fo.mobileops.presentation.common.theme.WarehouseStatusColors.accent,
-                    )
-                    state.productName?.takeIf { it.isNotBlank() && !it.equals(item, ignoreCase = true) }?.let {
-                        Text(it, style = MaterialTheme.typography.bodyMedium, color = com.d365fo.mobileops.presentation.common.theme.WarehouseStatusColors.text2)
-                    }
-                }
-            }
-
-            if (state.rows.isEmpty() && state.itemNumber != null && !state.busy) {
-                // An item with no on-hand row is a real answer, and a different one from an
-                // item that does not exist. Saying "none" rather than showing an empty list
-                // is what stops an operator scanning again to see if it was a bad read.
-                Text(
-                    text = "No stock on hand.",
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-
-            LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(state.rows, key = { "${it.siteId}:${it.warehouseId}" }) { row ->
-                    OnHandRow(row)
-                }
-            }
-        }
-    }
-
     if (showCamera) {
         CameraScannerSheet(
             onDecoded = {
@@ -238,6 +98,142 @@ fun OnHandInquiryScreen(
             },
             onDismiss = { showCamera = false },
         )
+    }
+
+    com.d365fo.mobileops.presentation.common.focus.FocusScreen(
+        title = "On-hand",
+        onBack = onBack,
+        counter = if (state.thisWarehouseOnly) state.homeWarehouseId else state.scopeLabel,
+        band = onHandBand(state),
+        scanPill = { com.d365fo.mobileops.presentation.common.focus.ScanPillField(enabled = !state.busy) },
+        topBarTrailing = {
+            Box {
+                IconButton(onClick = { menuOpen = true }, modifier = Modifier.size(48.dp)) {
+                    Icon(Icons.Default.MoreVert, contentDescription = "More", tint = com.d365fo.mobileops.presentation.common.theme.FocusColors.ink)
+                }
+                androidx.compose.material3.DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                    androidx.compose.material3.DropdownMenuItem(
+                        text = { Text("Camera scan") },
+                        leadingIcon = { Icon(Icons.Default.PhotoCamera, contentDescription = null) },
+                        onClick = { menuOpen = false; showCamera = true },
+                        modifier = Modifier.heightIn(min = 56.dp),
+                    )
+                    if (state.homeWarehouseId != null) {
+                        androidx.compose.material3.DropdownMenuItem(
+                            text = {
+                                Text(
+                                    if (state.thisWarehouseOnly) "Other warehouses" else "This warehouse only (${state.homeWarehouseId})",
+                                )
+                            },
+                            leadingIcon = { Icon(Icons.Default.Warehouse, contentDescription = null) },
+                            onClick = { menuOpen = false; viewModel.setThisWarehouseOnly(!state.thisWarehouseOnly) },
+                            modifier = Modifier.heightIn(min = 56.dp),
+                        )
+                    }
+                    if (!state.thisWarehouseOnly) {
+                        androidx.compose.material3.DropdownMenuItem(
+                            text = { Text("Choose warehouse") },
+                            leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                            onClick = { menuOpen = false; viewModel.openWarehousePicker() },
+                            modifier = Modifier.heightIn(min = 56.dp),
+                        )
+                    }
+                }
+            }
+        },
+    ) {
+        if (state.busy) {
+            LinearProgressIndicator(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp))
+        }
+        OnHandBody(state)
+    }
+}
+
+/** What the last scan found: an error, no stock, or nothing yet asked. */
+internal fun onHandBand(state: OnHandInquiryState): com.d365fo.mobileops.presentation.common.focus.BandState? = when {
+    state.error != null -> bandOf(com.d365fo.mobileops.presentation.common.focus.BandKind.Bad, state.error)
+    // An item with no on-hand row is a real answer, and a different one from an item that does
+    // not exist: saying so stops an operator scanning again to see if it was a bad read.
+    state.itemNumber != null && state.rows.isEmpty() && !state.busy ->
+        com.d365fo.mobileops.presentation.common.focus.BandState(com.d365fo.mobileops.presentation.common.focus.BandKind.Warn, "No stock on hand", state.itemNumber)
+    else -> null
+}
+
+/** The centre (available, large) and WHERE: each warehouse's available. */
+@Composable
+private fun androidx.compose.foundation.layout.ColumnScope.OnHandBody(state: OnHandInquiryState) {
+    val item = state.itemNumber
+    if (item == null) {
+        FocusCenter(
+            caption = "On-hand",
+            code = if (state.thisWarehouseOnly) state.homeWarehouseId ?: "–" else state.scopeLabel,
+            description = "How many, and where?",
+        )
+        return
+    }
+    fun sum(f: (OnHandLine) -> BigDecimal) = state.rows.fold(BigDecimal.ZERO) { acc, r -> acc + f(r) }
+    fun plain(v: BigDecimal) = v.stripTrailingZeros().toPlainString()
+    val many = state.rows.size > 1
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()),
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier.fillMaxWidth().heightIn(min = 240.dp).padding(horizontal = 20.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.Center,
+        ) {
+            com.d365fo.mobileops.presentation.common.focus.FocusCaption("Available")
+            Text(
+                item,
+                style = com.d365fo.mobileops.presentation.common.theme.FocusType.code,
+                color = com.d365fo.mobileops.presentation.common.theme.FocusColors.ink,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                modifier = Modifier.padding(top = 8.dp),
+            )
+            state.productName?.takeIf { it.isNotBlank() && !it.equals(item, ignoreCase = true) }?.let {
+                Text(
+                    it,
+                    style = com.d365fo.mobileops.presentation.common.theme.FocusType.description,
+                    color = com.d365fo.mobileops.presentation.common.theme.FocusColors.inkSoft,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                )
+            }
+            if (state.rows.isNotEmpty()) {
+                Text(
+                    plain(sum { it.available }),
+                    style = com.d365fo.mobileops.presentation.common.theme.FocusType.bigQuantity,
+                    color = com.d365fo.mobileops.presentation.common.theme.FocusColors.availableQty,
+                )
+                Text(
+                    listOf(
+                        "on hand ${plain(sum { it.onHand })}",
+                        "reserved ${plain(sum { it.reserved })}",
+                        "ordered ${plain(sum { it.ordered })}",
+                    ).joinToString(" · ") + if (many) " · ${state.rows.size} warehouses" else "",
+                    style = com.d365fo.mobileops.presentation.common.theme.FocusType.unitLine,
+                    color = com.d365fo.mobileops.presentation.common.theme.FocusColors.caption,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                )
+            }
+        }
+        if (state.rows.isNotEmpty()) {
+            Text(
+                "WHERE",
+                style = com.d365fo.mobileops.presentation.common.theme.FocusType.caption,
+                color = com.d365fo.mobileops.presentation.common.theme.FocusColors.caption,
+                modifier = Modifier.fillMaxWidth().padding(start = 20.dp, top = 8.dp),
+            )
+            state.rows.forEach { row ->
+                com.d365fo.mobileops.presentation.common.focus.FocusListRow(
+                    title = listOfNotNull(row.warehouseId, row.siteId?.let { "Site $it" }).joinToString(" · ").ifBlank { "All warehouses" },
+                    subtitle = "On hand ${plain(row.onHand)} · reserved ${plain(row.reserved)} · ordered ${plain(row.ordered)} · total available ${plain(row.totalAvailable)}",
+                    count = plain(row.available),
+                    countColor = com.d365fo.mobileops.presentation.common.theme.FocusColors.availableQty,
+                    icon = Icons.Default.Warehouse,
+                )
+            }
+        }
     }
 }
 
@@ -260,60 +256,6 @@ fun OnHandEntryScreen(
             onBack()
         },
     )
-}
-
-@Composable
-private fun OnHandRow(row: OnHandLine) {
-    // Harbour: a white card, the warehouse as its heading, and the figures as a 2x2 grid of
-    // tiles - Available first and in green, the number that decides whether it can be picked.
-    val c = com.d365fo.mobileops.presentation.common.theme.WarehouseStatusColors
-    Column(
-        verticalArrangement = Arrangement.spacedBy(6.dp),
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(androidx.compose.ui.graphics.Color.White, androidx.compose.foundation.shape.RoundedCornerShape(12.dp))
-            .padding(12.dp),
-    ) {
-        Text(
-            text = listOfNotNull(
-                row.siteId?.let { "Site $it" },
-                row.warehouseId?.let { "Whs $it" },
-            ).joinToString(" · ").ifBlank { "All warehouses" },
-            style = MaterialTheme.typography.titleSmall,
-            fontWeight = FontWeight.ExtraBold,
-            color = c.accent,
-        )
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            QuantityTile("Available", row.available, c.green, Modifier.weight(1f))
-            QuantityTile("On hand", row.onHand, c.accent, Modifier.weight(1f))
-        }
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            QuantityTile("Reserved", row.reserved, c.accent, Modifier.weight(1f))
-            QuantityTile("Ordered", row.ordered, c.accent, Modifier.weight(1f))
-        }
-        Text(
-            "Total available ${row.totalAvailable.stripTrailingZeros().toPlainString()}",
-            style = MaterialTheme.typography.labelLarge,
-            color = c.text3,
-        )
-    }
-}
-
-@Composable
-private fun QuantityTile(label: String, value: BigDecimal, color: androidx.compose.ui.graphics.Color, modifier: Modifier = Modifier) {
-    Column(
-        modifier = modifier
-            .background(com.d365fo.mobileops.presentation.common.theme.WarehouseStatusColors.surface2, androidx.compose.foundation.shape.RoundedCornerShape(10.dp))
-            .padding(horizontal = 10.dp, vertical = 6.dp),
-    ) {
-        Text(label, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, color = com.d365fo.mobileops.presentation.common.theme.WarehouseStatusColors.text3)
-        Text(
-            value.stripTrailingZeros().toPlainString(),
-            style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.ExtraBold,
-            color = color,
-        )
-    }
 }
 
 /**
@@ -414,4 +356,25 @@ private fun WarehousePickerDialog(
             )
         },
     )
+}
+
+/** On-hand samples for the layout test: 0 nothing asked, 1 one warehouse, 2 three warehouses. */
+@Composable
+internal fun OnHandFocusSample(kind: Int) {
+    fun line(wh: String, avail: Int) = OnHandLine("BSR-11397-0", "BSP", wh, BigDecimal(avail + 3), BigDecimal(avail), BigDecimal(3), BigDecimal(12), BigDecimal(avail + 12))
+    val state = when (kind) {
+        0 -> OnHandInquiryState(homeWarehouseId = "AAC")
+        1 -> OnHandInquiryState(homeWarehouseId = "AAC", itemNumber = "BSR-11397-0", productName = "Panadol Extra 24s tablets, film-coated", rows = listOf(line("AAC", 15)))
+        else -> OnHandInquiryState(
+            homeWarehouseId = "AAC", thisWarehouseOnly = false, itemNumber = "BSR-11397-0", productName = "Panadol Extra 24s",
+            rows = listOf(line("AAC", 15), line("ABB", 4), line("DXB-MAIN", 120)),
+        )
+    }
+    com.d365fo.mobileops.presentation.common.focus.FocusScreen(
+        title = "On-hand",
+        onBack = {},
+        counter = if (state.thisWarehouseOnly) state.homeWarehouseId else state.scopeLabel,
+        band = onHandBand(state),
+        scanPill = { com.d365fo.mobileops.presentation.common.focus.ScanPill(onTap = {}) },
+    ) { OnHandBody(state) }
 }

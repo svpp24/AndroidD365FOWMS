@@ -1,5 +1,6 @@
 package com.d365fo.mobileops.presentation.common
 
+import com.d365fo.mobileops.presentation.common.components.bleed
 import com.d365fo.mobileops.presentation.common.components.LineIcons
 import android.content.Intent
 import android.widget.Toast
@@ -206,28 +207,16 @@ fun SettingsScreen(
         )
     }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(openSection?.title ?: "Settings") },
-                expandedHeight = WarehouseDimens.TopBarHeight,
-                navigationIcon = {
-                    if (!isTab) {
-                        IconButton(onClick = { if (openSection != null) openSection = null else onBack() }) {
-                            Icon(
-                                Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = stringResource(R.string.action_back),
-                            )
-                        }
-                    }
-                },
-            )
-        },
-    ) { padding ->
+    // A section's back arrow returns to the Settings list; the list's to where it was opened.
+    androidx.activity.compose.BackHandler(enabled = openSection != null) { openSection = null }
+    com.d365fo.mobileops.presentation.common.focus.FocusScreen(
+        title = openSection?.title ?: "Settings",
+        onBack = if (isTab && openSection == null) null else { { if (openSection != null) openSection = null else onBack() } },
+    ) {
         Column(
             modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
+                .weight(1f)
+                .fillMaxWidth()
                 .padding(horizontal = WarehouseDimens.ScreenPadding)
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(WarehouseDimens.ItemSpacing),
@@ -504,14 +493,14 @@ private fun SettingsMenu(
                 syncError = (sync as? com.d365fo.mobileops.data.sync.MasterSyncState.Failed)?.let { "Sync failed: ${it.reason}" },
             )
         }
-        com.d365fo.mobileops.presentation.common.components.ListCard {
-            items.forEachIndexed { i, item ->
-                if (i > 0) com.d365fo.mobileops.presentation.common.components.RowDivider()
-                com.d365fo.mobileops.presentation.common.components.LineRow(
+        // Focus list rows (brief section 9): the setting, its value under it, a chevron.
+        Column(modifier = Modifier.bleed(WarehouseDimens.ScreenPadding)) {
+            items.forEach { item ->
+                com.d365fo.mobileops.presentation.common.focus.FocusListRow(
                     title = item.title,
-                    lines = listOf(values[item].orEmpty()),
-                    lead = { com.d365fo.mobileops.presentation.common.components.LeadDot(com.d365fo.mobileops.presentation.common.components.Lead.Accent, icon = item.icon) },
-                    trailing = { com.d365fo.mobileops.presentation.common.components.RowChevron() },
+                    icon = item.icon,
+                    subtitle = values[item]?.takeIf { it.isNotBlank() },
+                    chevron = true,
                     onClick = { onOpen(item) },
                 )
             }
@@ -1158,22 +1147,22 @@ private fun SettingsSection(
     title: String,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    Card(
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-        modifier = Modifier.fillMaxWidth(),
-    ) {
+    // Focus design: an uppercase caption, then the section on a white 16dp panel.
+    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(
+            text = title.uppercase(),
+            style = com.d365fo.mobileops.presentation.common.theme.FocusType.caption,
+            color = com.d365fo.mobileops.presentation.common.theme.FocusColors.caption,
+            modifier = Modifier.padding(top = 8.dp),
+        )
         Column(
-            modifier = Modifier.padding(16.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(com.d365fo.mobileops.presentation.common.theme.FocusColors.surface, com.d365fo.mobileops.presentation.common.theme.FocusShapes.band)
+                .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleMedium,
-                color = WarehouseStatusColors.accent,
-            )
-            content()
-        }
+            content = content,
+        )
     }
 }
 
@@ -1194,11 +1183,11 @@ private fun ToggleRow(
         horizontalArrangement = Arrangement.spacedBy(WarehouseDimens.ItemSpacing),
     ) {
         Column(modifier = Modifier.weight(1f)) {
-            Text(title, style = MaterialTheme.typography.titleMedium)
+            Text(title, style = com.d365fo.mobileops.presentation.common.theme.FocusType.rowTitle, color = com.d365fo.mobileops.presentation.common.theme.FocusColors.ink)
             Text(
                 detail,
-                style = MaterialTheme.typography.bodyMedium,
-                color = WarehouseStatusColors.text3,
+                style = com.d365fo.mobileops.presentation.common.theme.FocusType.rowDetail,
+                color = com.d365fo.mobileops.presentation.common.theme.FocusColors.muted,
             )
         }
         Switch(checked = checked, onCheckedChange = null)

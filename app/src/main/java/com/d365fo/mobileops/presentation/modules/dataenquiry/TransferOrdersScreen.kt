@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -143,23 +144,26 @@ fun TransferOrdersScreen(
         if (order.outbound) onOpenShip() else onOpenReceive()
     }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(if (byStore) "TO's by Store" else "Transfer orders") },
-                expandedHeight = WarehouseDimens.TopBarHeight,
-                navigationIcon = {
-                    IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back") }
-                },
-                actions = {
-                    IconButton(onClick = viewModel::refresh, enabled = !state.busy) {
-                        Icon(Icons.Default.Refresh, contentDescription = "Refresh")
-                    }
-                },
+    com.d365fo.mobileops.presentation.common.focus.FocusScreen(
+        title = if (byStore) "TO's by Store" else "Transfer orders",
+        onBack = onBack,
+        counter = state.orders.size.takeIf { it > 0 }?.toString(),
+        band = when {
+            state.error != null -> com.d365fo.mobileops.presentation.modules.stepflow.bandOf(
+                com.d365fo.mobileops.presentation.common.focus.BandKind.Bad, state.error.orEmpty(),
             )
+            !state.busy && state.orders.isEmpty() -> com.d365fo.mobileops.presentation.common.focus.BandState(
+                com.d365fo.mobileops.presentation.common.focus.BandKind.Info, "No open transfer orders", state.warehouseId,
+            )
+            else -> null
         },
-    ) { padding ->
-        Column(modifier = Modifier.fillMaxSize().padding(padding)) {
+        topBarTrailing = {
+            IconButton(onClick = viewModel::refresh, enabled = !state.busy, modifier = Modifier.heightIn(min = 48.dp)) {
+                Icon(Icons.Default.Refresh, contentDescription = "Refresh", tint = com.d365fo.mobileops.presentation.common.theme.FocusColors.ink)
+            }
+        },
+    ) {
+        Column(modifier = Modifier.weight(1f).fillMaxWidth()) {
             Column(
                 modifier = Modifier.padding(horizontal = WarehouseDimens.ScreenPadding, vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -167,13 +171,14 @@ fun TransferOrdersScreen(
                 OutlinedTextField(
                     value = state.query,
                     onValueChange = viewModel::setQuery,
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
                     singleLine = true,
+                    shape = com.d365fo.mobileops.presentation.common.theme.FocusShapes.button,
                     placeholder = { Text("Transfer number or store") },
                     leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
                     trailingIcon = {
                         if (state.query.isNotEmpty()) {
-                            IconButton(onClick = { viewModel.setQuery("") }) {
+                            IconButton(onClick = { viewModel.setQuery("") }, modifier = Modifier.heightIn(min = 56.dp)) {
                                 Icon(Icons.Default.Clear, contentDescription = "Clear search")
                             }
                         }
@@ -190,6 +195,7 @@ fun TransferOrdersScreen(
                             selected = state.filter == filter,
                             onClick = { viewModel.setFilter(filter) },
                             label = { Text("${filter.label} $count") },
+                            modifier = Modifier.heightIn(min = 56.dp),
                         )
                     }
                 }
@@ -200,11 +206,7 @@ fun TransferOrdersScreen(
                 when {
                     state.busy && state.orders.isEmpty() ->
                         CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
-                    state.error != null -> ErrorBanner(
-                        message = state.error.orEmpty(),
-                        onDismiss = viewModel::refresh,
-                        modifier = Modifier.align(Alignment.TopCenter).padding(WarehouseDimens.ScreenPadding),
-                    )
+                    state.error != null || state.orders.isEmpty() -> Unit
                     visible.isEmpty() -> Text(
                         text = if (state.orders.isEmpty()) {
                             "No open transfer orders for ${state.warehouseId.orEmpty()}."
@@ -216,18 +218,17 @@ fun TransferOrdersScreen(
                         modifier = Modifier.align(Alignment.Center).padding(WarehouseDimens.ScreenPadding),
                     )
                     else -> LazyColumn(
-                        modifier = Modifier.fillMaxSize().padding(horizontal = WarehouseDimens.ScreenPadding),
+                        modifier = Modifier.fillMaxSize(),
                         contentPadding = PaddingValues(bottom = WarehouseDimens.ItemSpacing),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         if (byStore) {
                             visible.groupBy { it.otherWarehouseId }.toSortedMap().forEach { (store, orders) ->
                                 item(key = "store-$store") {
                                     Text(
-                                        text = "$store · ${orders.size} " + if (orders.size == 1) "order" else "orders",
-                                        style = MaterialTheme.typography.titleMedium,
-                                        fontWeight = FontWeight.SemiBold,
-                                        modifier = Modifier.padding(top = 8.dp),
+                                        text = ("$store · ${orders.size} " + if (orders.size == 1) "order" else "orders").uppercase(),
+                                        style = com.d365fo.mobileops.presentation.common.theme.FocusType.caption,
+                                        color = com.d365fo.mobileops.presentation.common.theme.FocusColors.caption,
+                                        modifier = Modifier.padding(start = 20.dp, top = 16.dp),
                                     )
                                 }
                                 items(orders, key = { it.transferId }) { TransferRow(it, showStore = false, onClick = { open(it) }) }
@@ -242,57 +243,23 @@ fun TransferOrdersScreen(
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
+/** A transfer as a Focus row: Ship or Receive on the right (brief section 9), overdue said in words. */
 @Composable
 private fun TransferRow(order: TransferOrderSummary, showStore: Boolean, onClick: () -> Unit) {
     val due = (if (order.outbound) order.shipDate else order.receiveDate).takeIf { Formatters.isoDay(it) != null }.orEmpty()
     val late = Formatters.isoDay(due)?.isBefore(LocalDate.now()) == true
-    Card(onClick = onClick, modifier = Modifier.fillMaxWidth()) {
-        Row(
-            modifier = Modifier.padding(start = 12.dp, top = 12.dp, bottom = 12.dp, end = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                FlowRow(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalArrangement = Arrangement.spacedBy(4.dp),
-                ) {
-                    Text(
-                        order.transferId,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier.align(Alignment.CenterVertically),
-                    )
-                    if (order.outbound) {
-                        StatusChip(text = "To ship", color = WarehouseStatusColors.accent, dimColor = WarehouseStatusColors.accentDim)
-                    } else {
-                        StatusChip(text = "To receive", color = WarehouseStatusColors.green, dimColor = WarehouseStatusColors.greenDim)
-                    }
-                }
-                Text(
-                    text = listOfNotNull(
-                        (if (order.outbound) "To ${order.toWarehouseId}" else "From ${order.fromWarehouseId}").takeIf { showStore },
-                        "${order.lineCount} " + if (order.lineCount == 1) "line" else "lines",
-                    ).joinToString(" · "),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                if (due.isNotBlank()) {
-                    Text(
-                        text = (if (order.outbound) "Ship date: " else "Receive date: ") + Formatters.dayLabel(due) +
-                            if (late) " · overdue" else "",
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = if (late) FontWeight.SemiBold else FontWeight.Normal,
-                        color = if (late) WarehouseStatusColors.red else MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
-            Icon(
-                Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                contentDescription = if (order.outbound) "Ship" else "Receive",
-                tint = WarehouseStatusColors.text3,
-            )
-        }
-    }
+    com.d365fo.mobileops.presentation.common.focus.FocusListRow(
+        title = order.transferId,
+        titleIsCode = true,
+        state = if (late) com.d365fo.mobileops.presentation.common.focus.RowState.Warn else com.d365fo.mobileops.presentation.common.focus.RowState.Open,
+        subtitle = listOfNotNull(
+            (if (order.outbound) "To ${order.toWarehouseId}" else "From ${order.fromWarehouseId}").takeIf { showStore },
+            "${order.lineCount} " + if (order.lineCount == 1) "line" else "lines",
+            due.takeIf { it.isNotBlank() }?.let { (if (order.outbound) "Ship date " else "Receive date ") + Formatters.dayLabel(it) + if (late) " · overdue" else "" },
+        ).joinToString(" · "),
+        count = if (order.outbound) "Ship" else "Receive",
+        countColor = com.d365fo.mobileops.presentation.common.theme.FocusColors.navy,
+        chevron = true,
+        onClick = onClick,
+    )
 }

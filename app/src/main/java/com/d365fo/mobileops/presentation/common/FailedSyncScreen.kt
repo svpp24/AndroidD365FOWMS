@@ -274,21 +274,28 @@ fun FailedSyncScreen(
     // Something just sent: what D365FO received has changed.
     LaunchedEffect(waiting.size) { if (online) viewModel.loadQueueStatus() }
 
-    Scaffold(
-        topBar = {
-            // Reached from Home's Activity row (Focus design): back arrow to Home.
-            TopAppBar(
-                title = { Text("Activity") },
-                expandedHeight = WarehouseDimens.TopBarHeight,
-                navigationIcon = {
-                    androidx.compose.material3.IconButton(onClick = onBack) {
-                        androidx.compose.material3.Icon(androidx.compose.material.icons.Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                    }
-                },
+    // Focus design (brief section 9): failed sends first - the band says how many need someone,
+    // or that everything went; the lists and their actions are as before.
+    com.d365fo.mobileops.presentation.common.focus.FocusScreen(
+        title = "Activity",
+        onBack = onBack,
+        band = when {
+            needsAction.isNotEmpty() -> com.d365fo.mobileops.presentation.common.focus.BandState(
+                com.d365fo.mobileops.presentation.common.focus.BandKind.Bad,
+                if (needsAction.size == 1) "1 not sent" else "${needsAction.size} not sent",
+                "needs attention",
+            )
+            waiting.isNotEmpty() -> com.d365fo.mobileops.presentation.common.focus.BandState(
+                com.d365fo.mobileops.presentation.common.focus.BandKind.Info,
+                "${waiting.size} waiting to send",
+                if (online) "sending now" else "sent when online",
+            )
+            else -> com.d365fo.mobileops.presentation.common.focus.BandState(
+                com.d365fo.mobileops.presentation.common.focus.BandKind.Ok, "All sent", "nothing waiting on this device",
             )
         },
-    ) { padding ->
-        Column(modifier = Modifier.fillMaxSize().padding(padding)) {
+    ) {
+        Column(modifier = Modifier.weight(1f).fillMaxWidth()) {
         // Two tabs (Harbour): what needs someone on this device, and D365FO's registration queue.
         com.d365fo.mobileops.presentation.common.components.SegmentTabs(
             labels = listOf("Needs attention", "Registration queue"),

@@ -84,6 +84,9 @@ class FocusComponentLayoutTest {
         Triple("PoLines", true) { com.d365fo.mobileops.presentation.modules.ordercreate.OrderCreateFocusSample(1) },
         Triple("PoSaved", true) { com.d365fo.mobileops.presentation.modules.ordercreate.OrderCreateFocusSample(2) },
         Triple("ReturnNoReason", true) { com.d365fo.mobileops.presentation.modules.ordercreate.OrderCreateFocusSample(3) },
+        Triple("OnHand0", true) { com.d365fo.mobileops.presentation.modules.stepflow.OnHandFocusSample(0) },
+        Triple("OnHand1", true) { com.d365fo.mobileops.presentation.modules.stepflow.OnHandFocusSample(1) },
+        Triple("OnHand2", true) { com.d365fo.mobileops.presentation.modules.stepflow.OnHandFocusSample(2) },
     )
 
     @Test
