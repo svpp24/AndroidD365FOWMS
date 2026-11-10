@@ -28,8 +28,11 @@ class ListCache @Inject constructor() {
     /** Monotonic milliseconds; replaced in tests. */
     internal var now: () -> Long = { System.nanoTime() / 1_000_000 }
 
-    suspend fun <T> get(key: String, ttlMs: Long = TTL_MS, fetch: suspend () -> NetworkResult<T>): NetworkResult<T> =
-        locks.getOrPut(key) { Mutex() }.withLock {
+    suspend fun <T> get(key: String, ttlMs: Long = TTL_MS, fetch: suspend () -> NetworkResult<T>): NetworkResult<T> {
+        // Never answer before the caller's first suspension: a ViewModel asking from init got a
+        // cached answer before its own state existed (crash, 10 Nov). Same timing as a network call.
+        kotlinx.coroutines.yield()
+        return locks.getOrPut(key) { Mutex() }.withLock {
             val hit = entries[key]
             if (hit != null && now() - hit.at < ttlMs) {
                 @Suppress("UNCHECKED_CAST")
@@ -39,6 +42,7 @@ class ListCache @Inject constructor() {
             if (result is NetworkResult.Success) entries[key] = Entry(now(), result.data)
             result
         }
+    }
 
     /** Drops every kept answer, or only those whose key starts with [prefix]. */
     fun invalidate(prefix: String? = null) {

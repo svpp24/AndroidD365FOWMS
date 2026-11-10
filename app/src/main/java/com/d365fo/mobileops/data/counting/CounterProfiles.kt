@@ -28,6 +28,9 @@ class CounterProfiles @Inject constructor(
 
     /** Asked once per signed-in worker per [MAX_AGE_MS] - the Count menu and the list both asked (calls, 10 Nov). */
     suspend fun refresh(): CounterProfile? {
+        // Never answer before the caller's first suspension: a ViewModel asking from init got a
+        // cached answer before its own state existed (crash, 10 Nov). Same timing as a network call.
+        kotlinx.coroutines.yield()
         val user = sessions.session.value?.userName.orEmpty().uppercase()
         val now = System.currentTimeMillis()
         if (_profile.value != null && fetchedFor == user && now - fetchedAt < MAX_AGE_MS) return _profile.value

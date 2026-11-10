@@ -54,6 +54,9 @@ class CountBinRepository @Inject constructor(
 
     /** The store's bins into Room - at most every 10 minutes per store (asked on every count open before). */
     suspend fun refresh(warehouseId: String) {
+        // Never answer before the caller's first suspension: a ViewModel asking from init got a
+        // cached answer before its own state existed (crash, 10 Nov). Same timing as a network call.
+        kotlinx.coroutines.yield()
         val key = company() + ":" + warehouseId.uppercase()
         val now = System.currentTimeMillis()
         if (now - (refreshedAt[key] ?: 0L) < BINS_MAX_AGE_MS) return

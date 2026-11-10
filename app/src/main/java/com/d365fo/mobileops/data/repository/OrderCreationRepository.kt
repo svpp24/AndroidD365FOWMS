@@ -303,6 +303,9 @@ class OrderCreationRepository @Inject constructor(
 
     @Suppress("UNCHECKED_CAST")
     private suspend fun <T> itemAnswer(key: String, fetch: suspend () -> NetworkResult<T>): NetworkResult<T> {
+        // Never answer before the caller's first suspension: a ViewModel asking from init got a
+        // cached answer before its own state existed (crash, 10 Nov). Same timing as a network call.
+        kotlinx.coroutines.yield()
         orderItemAnswers[key]?.takeIf { System.currentTimeMillis() - it.first < ITEM_MAX_AGE_MS }?.let { return it.second as NetworkResult<T> }
         return fetch().also { if (it is NetworkResult.Success) orderItemAnswers[key] = System.currentTimeMillis() to it }
     }
@@ -566,6 +569,9 @@ class OrderCreationRepository @Inject constructor(
 
     /** Kept for 6 hours per company - set-up data, asked on every return opened before (calls, 10 Nov). */
     suspend fun returnCodes(): NetworkResult<ReturnCodes> {
+        // Never answer before the caller's first suspension: a ViewModel asking from init got a
+        // cached answer before its own state existed (crash, 10 Nov). Same timing as a network call.
+        kotlinx.coroutines.yield()
         val kept = returnCodesKept
         if (kept != null && returnCodesFor == company() && System.currentTimeMillis() - returnCodesAt < SETUP_MAX_AGE_MS) {
             return NetworkResult.Success(kept)

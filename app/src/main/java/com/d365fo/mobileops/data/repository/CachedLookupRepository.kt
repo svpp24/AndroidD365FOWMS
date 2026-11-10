@@ -93,6 +93,9 @@ class CachedLookupRepository @Inject constructor(
 
     override suspend fun listWarehouses(): NetworkResult<List<WarehouseOption>> =
         withContext(ioDispatcher) {
+        // Never answer before the caller's first suspension: a ViewModel asking from init got a
+        // cached answer before its own state existed (crash, 10 Nov). Same timing as a network call.
+        kotlinx.coroutines.yield()
             // Asked at most every 6 hours; the stored list is used in between (calls, 10 Nov).
             if (System.currentTimeMillis() - warehousesAt < WAREHOUSES_MAX_AGE_MS) {
                 val kept = runCatching { warehouseDao.all() }.getOrDefault(emptyList())
