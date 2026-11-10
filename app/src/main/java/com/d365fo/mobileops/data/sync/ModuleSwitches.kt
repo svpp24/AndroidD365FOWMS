@@ -104,6 +104,8 @@ class ModuleSwitches @Inject constructor(
         const val DEFAULT_MESSAGE = "Switched off for now. Ask your supervisor."
         private const val KEY = "module_switches"
         private const val FIRST_POLL_MS = 3_000L
-        private const val POLL_MS = 180_000L
+        // 30 minutes (was 3): the work backup's answer carries the switches whenever work
+        // changes (WorkBackup.update), so this is only the fallback for an idle device.
+        private const val POLL_MS = 1_800_000L
     }
 }

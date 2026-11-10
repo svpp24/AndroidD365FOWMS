@@ -34,6 +34,7 @@ class MainActivity : ComponentActivity() {
     @Inject lateinit var scannerBridge: HidScannerBridge
     @Inject lateinit var sessionGuard: SessionGuard
     @Inject lateinit var syncStatusProvider: SyncStatusProvider
+    @Inject lateinit var activeSessionGuard: com.d365fo.mobileops.data.sync.ActiveSessionGuard
     @Inject lateinit var scanFeedback: ScanFeedback
     @Inject lateinit var themePreferences: ThemePreferences
     @Inject lateinit var displayPreferences: DisplayPreferences
@@ -156,6 +157,8 @@ class MainActivity : ComponentActivity() {
         sessionGuard.evaluateOnResume()
         // Back from sleep or another app: the connection status is re-read, not left stale.
         syncStatusProvider.refresh()
+        // One device per worker, checked on return rather than every 2 minutes (calls, 10 Nov).
+        activeSessionGuard.checkOnResume()
         // Held only while the app is in the foreground. A picker working through a pallet
         // should not have the screen time out between scans, but the wake lock is released
         // the moment the app is backgrounded so a handheld in a pocket does not cook itself.

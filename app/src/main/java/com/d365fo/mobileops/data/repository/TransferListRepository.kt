@@ -52,11 +52,18 @@ class TransferListRepository @Inject constructor(
     private val errorMapper: D365ErrorMapper,
     private val companyProvider: CompanyProvider,
     private val ioDispatcher: CoroutineDispatcher,
+    private val listCache: ListCache,
 ) {
 
-    suspend fun openTransferOrders(warehouseId: String): NetworkResult<List<TransferOrderSummary>> =
-        call("Couldn't list transfer orders") { service.listTransferOrders(request(warehouseId)) }
-            .map { response -> response.orders.filter { it.transferId.isNotBlank() }.map(::toSummary) }
+    /** Shared for a short while by Home, Transfer orders, Create transfer and the prefetcher; [fresh] asks D365FO now. */
+    suspend fun openTransferOrders(warehouseId: String, fresh: Boolean = false): NetworkResult<List<TransferOrderSummary>> {
+        val key = "transfers:${companyProvider().orEmpty().lowercase()}:${warehouseId.trim().uppercase()}"
+        if (fresh) listCache.invalidate(key)
+        return listCache.get(key) {
+            call("Couldn't list transfer orders") { service.listTransferOrders(request(warehouseId)) }
+                .map { response -> response.orders.filter { it.transferId.isNotBlank() }.map(::toSummary) }
+        }
+    }
 
     suspend fun pickedSerials(warehouseId: String, days: Int = 30, search: String = ""): NetworkResult<List<SerialHistoryEntry>> =
         call("Couldn't list picked serials") { service.listPickedSerials(request(warehouseId, days, search.trim())) }

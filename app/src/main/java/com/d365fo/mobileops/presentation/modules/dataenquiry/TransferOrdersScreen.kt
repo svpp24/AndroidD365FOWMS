@@ -102,13 +102,13 @@ class TransferOrdersViewModel @Inject constructor(
         refresh()
     }
 
-    fun refresh() {
+    fun refresh(fresh: Boolean = false) {
         val warehouse = _state.value.warehouseId ?: return run {
             _state.update { it.copy(error = "No warehouse selected") }
         }
         viewModelScope.launch {
             _state.update { it.copy(busy = true, error = null) }
-            when (val result = transfers.openTransferOrders(warehouse)) {
+            when (val result = transfers.openTransferOrders(warehouse, fresh)) {
                 is NetworkResult.Success -> _state.update { it.copy(busy = false, orders = result.data) }
                 is NetworkResult.Error -> _state.update { it.copy(busy = false, error = result.failure.message) }
                 NetworkResult.Loading -> Unit
@@ -158,7 +158,7 @@ fun TransferOrdersScreen(
             else -> null
         },
         topBarTrailing = {
-            IconButton(onClick = viewModel::refresh, enabled = !state.busy, modifier = Modifier.heightIn(min = 48.dp)) {
+            IconButton(onClick = { viewModel.refresh(fresh = true) }, enabled = !state.busy, modifier = Modifier.heightIn(min = 48.dp)) {
                 Icon(Icons.Default.Refresh, contentDescription = "Refresh", tint = com.d365fo.mobileops.presentation.common.theme.FocusColors.ink)
             }
         },

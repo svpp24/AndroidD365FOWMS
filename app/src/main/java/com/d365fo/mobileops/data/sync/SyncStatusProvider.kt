@@ -182,6 +182,7 @@ class SyncStatusProvider @Inject constructor(
     private val countSubmissions: dagger.Lazy<com.d365fo.mobileops.data.counting.CountSubmissions>,
     private val connectionSettings: com.d365fo.mobileops.data.security.ConnectionSettings,
     private val scope: CoroutineScope,
+    private val listCache: com.d365fo.mobileops.data.repository.ListCache,
 ) {
     /**
      * The app came to the front: re-read the network and ask D365FO again, instead of showing
@@ -193,6 +194,16 @@ class SyncStatusProvider @Inject constructor(
     }
 
     init {
+        // Something left the send queue (posted, or given up on): the shared lists (open POs,
+        // transfers, journals) may have changed in D365FO - drop them, the next screen asks.
+        scope.launch {
+            var last = Int.MAX_VALUE
+            syncQueueRepository.observePendingCount().collect { pending ->
+                if (pending < last) listCache.invalidate()
+                last = pending
+            }
+        }
+
         // Posting switched on: send what was held while it was off, now rather than at the next
         // scheduled push.
         scope.launch {
@@ -249,12 +260,15 @@ class SyncStatusProvider @Inject constructor(
                     while (!aosReachabilityMonitor.reachable.value) {
                         delay(wait)
                         prober.probe()
-                        wait = RECOVERY_PROBE_INTERVAL_MS
+                        // 15 s, then 30, 60 and 120 s: a tenant down for long is not asked every 15 s.
+                        wait = if (wait < RECOVERY_PROBE_INTERVAL_MS) RECOVERY_PROBE_INTERVAL_MS else minOf(wait * 2, MAX_RECOVERY_PROBE_MS)
                     }
                 }
             }
         }
     }
+
+    @Volatile private var lastPendingSeen = 0
 
     private val queueSignals: Flow<QueueSignals> = combine(
         syncQueueRepository.observePendingCount(),
@@ -275,7 +289,12 @@ class SyncStatusProvider @Inject constructor(
         // attempt the reachability signal exists to avoid, not just to report.
         // Not while posting is off: the worker only hands the row back, which changes the queue,
         // which landed here again - a push loop for as long as anything was held (6 Nov).
-        if (online && d365Reachable && postingEnabled && queue.pending > 0) scheduler.requestImmediatePush()
+        // Only when the queue grew (or on the first reading): every other change to it - an
+        // attempt counted, a row leased - appended another push run (calls, 10 Nov). Rows that
+        // failed are retried by their own backoff, the reconnect drain and the 15-minute job.
+        val grew = queue.pending > lastPendingSeen
+        lastPendingSeen = queue.pending
+        if (grew && online && d365Reachable && postingEnabled && queue.pending > 0) scheduler.requestImmediatePush()
         SyncStatus(online, d365Reachable, queue.pending, queue.failed, queue.lastSyncAt, queue.oldestQueuedAt, postingEnabled)
     }.stateIn(scope, SharingStarted.WhileSubscribed(5_000), SyncStatus.UNKNOWN)
 
@@ -288,5 +307,6 @@ class SyncStatusProvider @Inject constructor(
          */
         const val FIRST_RECOVERY_PROBE_MS = 3_000L
         const val RECOVERY_PROBE_INTERVAL_MS = 15_000L
+        const val MAX_RECOVERY_PROBE_MS = 120_000L
     }
 }

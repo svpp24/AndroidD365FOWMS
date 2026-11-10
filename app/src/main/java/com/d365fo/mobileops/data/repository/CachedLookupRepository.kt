@@ -52,6 +52,7 @@ class CachedLookupRepository @Inject constructor(
     private val itemDao: ItemDao,
     private val warehouseDao: WarehouseDao,
     private val ioDispatcher: CoroutineDispatcher,
+    private val listCache: ListCache,
 ) : OnDemandLookupRepository {
 
     // -- Cached -------------------------------------------------------------------------
@@ -88,10 +89,18 @@ class CachedLookupRepository @Inject constructor(
      * scan, so the round trip is affordable, and a warehouse added this morning should appear
      * today rather than whenever the cache happens to be cleared.
      */
+    @Volatile private var warehousesAt = 0L
+
     override suspend fun listWarehouses(): NetworkResult<List<WarehouseOption>> =
         withContext(ioDispatcher) {
+            // Asked at most every 6 hours; the stored list is used in between (calls, 10 Nov).
+            if (System.currentTimeMillis() - warehousesAt < WAREHOUSES_MAX_AGE_MS) {
+                val kept = runCatching { warehouseDao.all() }.getOrDefault(emptyList())
+                if (kept.isNotEmpty()) return@withContext NetworkResult.Success(kept.map { it.toOption() })
+            }
             when (val fresh = network.listWarehouses()) {
                 is NetworkResult.Success -> {
+                    warehousesAt = System.currentTimeMillis()
                     runCatching {
                         warehouseDao.replaceAll(fresh.data.map { it.toEntity() })
                     }.onFailure { Timber.w(it, "warehouse cache write failed") }
@@ -174,8 +183,9 @@ class CachedLookupRepository @Inject constructor(
         warehouseId: String?,
     ): NetworkResult<List<OnHandLine>> = network.lookupOnHand(itemNumber, warehouseId)
 
+    // Shared for a short while by Home, PO receiving, Today's POs and the prefetcher - see ListCache.
     override suspend fun lookupOrdersForToday(warehouseId: String?) =
-        network.lookupOrdersForToday(warehouseId)
+        listCache.get("pos-today:${warehouseId.orEmpty().uppercase()}") { network.lookupOrdersForToday(warehouseId) }
 
     override suspend fun isSerialRegistered(
         itemNumber: String,
@@ -251,3 +261,5 @@ class CachedLookupRepository @Inject constructor(
     )
 
 }
+
+private const val WAREHOUSES_MAX_AGE_MS = 6 * 60 * 60 * 1000L

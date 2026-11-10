@@ -17,14 +17,32 @@ import javax.inject.Singleton
  * counting services enforce the same rules themselves.
  */
 @Singleton
-class CounterProfiles @Inject constructor(private val remote: CountTaskRepository) {
+class CounterProfiles @Inject constructor(
+    private val remote: CountTaskRepository,
+    private val sessions: com.d365fo.mobileops.data.repository.WorkerSessionRepository,
+) {
     private val _profile = MutableStateFlow<CounterProfile?>(null)
     val profile: StateFlow<CounterProfile?> = _profile.asStateFlow()
+    private var fetchedFor: String? = null
+    private var fetchedAt = 0L
 
+    /** Asked once per signed-in worker per [MAX_AGE_MS] - the Count menu and the list both asked (calls, 10 Nov). */
     suspend fun refresh(): CounterProfile? {
+        val user = sessions.session.value?.userName.orEmpty().uppercase()
+        val now = System.currentTimeMillis()
+        if (_profile.value != null && fetchedFor == user && now - fetchedAt < MAX_AGE_MS) return _profile.value
+        if (fetchedFor != user) _profile.value = null
         val result = remote.counterProfile()
-        if (result is NetworkResult.Success) _profile.value = result.data
+        if (result is NetworkResult.Success) {
+            _profile.value = result.data
+            fetchedFor = user
+            fetchedAt = now
+        }
         return _profile.value
+    }
+
+    private companion object {
+        const val MAX_AGE_MS = 600_000L
     }
 }
 

@@ -24,7 +24,15 @@ class AuthInterceptor @Inject constructor(
     private val companyProvider: CompanyProvider,
 ) : Interceptor {
 
+    /** When Azure AD last could not be reached - see intercept. */
+    @Volatile private var unreachableAt = 0L
+
     override fun intercept(chain: Interceptor.Chain): Response {
+        // Azure AD unreachable a moment ago: fail at once for 15 s instead of every request
+        // trying for a token again (calls, 10 Nov).
+        if (System.currentTimeMillis() - unreachableAt < TOKEN_RETRY_PAUSE_MS) {
+            throw TokenUnreachableException("Can't reach Azure AD - trying again shortly")
+        }
         val token = runBlocking { tokenProvider.acquireSilent() }
 
         // Fail fast rather than sending an unauthenticated request.
@@ -38,6 +46,7 @@ class AuthInterceptor @Inject constructor(
             // No connection to Azure AD: an outage, not a sign-in problem, so callers can fall
             // back to what works offline.
             if (failure is AppFailure.Offline || failure is AppFailure.Transient) {
+                unreachableAt = System.currentTimeMillis()
                 throw TokenUnreachableException(failure.message)
             }
             throw NotAuthenticatedException("Not signed in to D365FO (${failure?.message ?: "not signed in"})")
@@ -73,3 +82,5 @@ class NotAuthenticatedException(message: String) : java.io.IOException(message)
 
 /** Thrown by [AuthInterceptor] when Azure AD can't be reached for a token. */
 class TokenUnreachableException(message: String) : java.io.IOException(message)
+
+private const val TOKEN_RETRY_PAUSE_MS = 15_000L

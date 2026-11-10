@@ -272,7 +272,11 @@ fun FailedSyncScreen(
     // On opening, and again when the connection comes back - the queue lives in D365FO.
     LaunchedEffect(online) { if (online) viewModel.loadQueueStatus() }
     // Something just sent: what D365FO received has changed.
-    LaunchedEffect(waiting.size) { if (online) viewModel.loadQueueStatus() }
+    // Settled for 3 s first: a batch being sent changes the count several times (calls, 10 Nov).
+    LaunchedEffect(waiting.size) {
+        kotlinx.coroutines.delay(3_000)
+        if (online) viewModel.loadQueueStatus()
+    }
 
     // Focus design (brief section 9): failed sends first - the band says how many need someone,
     // or that everything went; the lists and their actions are as before.

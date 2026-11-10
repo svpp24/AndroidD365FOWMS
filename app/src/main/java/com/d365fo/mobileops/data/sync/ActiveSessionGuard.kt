@@ -96,10 +96,27 @@ class ActiveSessionGuard @Inject constructor(
             // A session restored at start-up (debug builds) is checked straight away, not started.
             delay(FIRST_CHECK_MS)
             while (isActive) {
-                runCatching { check() }.onFailure { Timber.w(it, "session check failed") }
+                // Skipped when a return to the app has just checked (checkOnResume).
+                if (System.currentTimeMillis() - lastCheckAt >= RESUME_CHECK_MIN_MS) {
+                    runCatching { check() }.onFailure { Timber.w(it, "session check failed") }
+                }
                 delay(CHECK_MS)
             }
         }
+    }
+
+    /** When this device last asked D365FO - by the timer or on resume. */
+    @Volatile private var lastCheckAt = 0L
+
+    /**
+     * The app came back to the front: check now rather than at the next 10-minute tick, so a
+     * sign-in on another device is still noticed as soon as this one is picked up. At most once
+     * a minute.
+     */
+    fun checkOnResume() {
+        if (!started) return
+        if (System.currentTimeMillis() - lastCheckAt < RESUME_CHECK_MIN_MS) return
+        scope.launch { runCatching { check() }.onFailure { Timber.w(it, "session check failed") } }
     }
 
     /** The worker chose to continue here: take the session over. */
@@ -140,6 +157,7 @@ class ActiveSessionGuard @Inject constructor(
     /** Records a pending sign-in, or asks whether this device is still the active one. */
     internal suspend fun check() = lock.withLock {
         if (_prompt.value != null) return@withLock
+        lastCheckAt = System.currentTimeMillis()
         val user = sessions.session.value?.userName?.takeIf { it.isNotBlank() } ?: return@withLock
         val body = request(user) ?: return@withLock
         if (pendingStart.equals(user, ignoreCase = true)) {
@@ -172,8 +190,10 @@ class ActiveSessionGuard @Inject constructor(
         this is NetworkResult.Error && (failure as? AppFailure.BusinessRule)?.httpCode == 404
 
     companion object {
-        const val CHECK_MS = 120_000L
+        // 10 minutes (was 2) - and on every return to the app, see checkOnResume.
+        const val CHECK_MS = 600_000L
         const val FIRST_CHECK_MS = 5_000L
+        const val RESUME_CHECK_MIN_MS = 60_000L
         const val ELSEWHERE_MESSAGE =
             "%s signed in on another device."
 

@@ -101,6 +101,7 @@ class CountingJournalRepository @Inject constructor(
     private val json: Json,
     private val ioDispatcher: CoroutineDispatcher,
     @ApplicationContext private val context: Context,
+    private val listCache: ListCache,
 ) {
 
     private fun company(): String =
@@ -113,6 +114,18 @@ class CountingJournalRepository @Inject constructor(
         warehouseId: String,
         userId: String? = null,
         includeDone: Boolean = false,
+    ): NetworkResult<List<CountingJournalSummary>> =
+        // Home's figure and the alerts share one answer for a short while (ListCache); the
+        // count list itself (includeDone) always asks - it is the screen counting starts from.
+        if (includeDone) fetchAssignedJournals(warehouseId, userId, true)
+        else listCache.get("journals:${company()}:${warehouseId.trim().uppercase()}:${userId.orEmpty().uppercase()}") {
+            fetchAssignedJournals(warehouseId, userId, false)
+        }
+
+    private suspend fun fetchAssignedJournals(
+        warehouseId: String,
+        userId: String?,
+        includeDone: Boolean,
     ): NetworkResult<List<CountingJournalSummary>> =
         withContext(ioDispatcher) {
             val trimmedWarehouse = warehouseId.trim()

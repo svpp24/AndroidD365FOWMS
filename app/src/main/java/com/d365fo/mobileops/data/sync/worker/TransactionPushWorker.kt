@@ -37,9 +37,16 @@ class TransactionPushWorker @AssistedInject constructor(
     private val followUp: com.d365fo.mobileops.data.sync.PostingFollowUp,
 ) : CoroutineWorker(context, params) {
 
+    private var sentThisRun = 0
+
     override suspend fun doWork(): Result {
         val result = drain()
         // What became of what was sent, this run or before. Never fails the run: it is asked again.
+        // A run that sent nothing asks at most every 5 minutes - the follow-up job asks every 2
+        // while anything sent is recent (calls, 10 Nov).
+        val now = System.currentTimeMillis()
+        if (sentThisRun == 0 && now - lastFollowUpAt < IDLE_FOLLOW_UP_MS) return result
+        lastFollowUpAt = now
         try {
             followUp.check()
         } catch (e: Exception) {
@@ -55,6 +62,7 @@ class TransactionPushWorker @AssistedInject constructor(
         // admin's permission change is configuration, not a capture, so it still goes.
         val postingAllowed = connectionSettings.postingEnabled.value
         var processed = 0
+        sentThisRun = 0
         var deadLettered = 0
 
         while (processed < MAX_ENTRIES_PER_RUN) {
@@ -74,6 +82,8 @@ class TransactionPushWorker @AssistedInject constructor(
                     queue.releaseLease(toSend.drop(index))
                     return Result.success()
                 }
+
+                sentThisRun++
 
                 when (val result = dispatcher.dispatch(entry)) {
                     is NetworkResult.Success -> {
@@ -123,6 +133,9 @@ class TransactionPushWorker @AssistedInject constructor(
     }
 
     companion object {
+        /** Last follow-up check, any run - see doWork. */
+        @Volatile private var lastFollowUpAt = 0L
+        private const val IDLE_FOLLOW_UP_MS = 300_000L
         /** Bounded so one run cannot exceed WorkManager's ten-minute execution window. */
         private const val MAX_ENTRIES_PER_RUN = 100
     }

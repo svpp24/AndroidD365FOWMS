@@ -325,8 +325,15 @@ class CountSubmitRunner @Inject constructor(
             }
         }
 
-        repeat(maxPollsPerRun) {
-            delay(pollIntervalMs)
+        // Quick at first, then 5 s and 10 s between checks (PollBackoff) - one long import no
+        // longer costs a call every 3 s for 5 minutes. Tests set a short interval: kept fixed.
+        val waits = if (pollIntervalMs >= 1_000L) {
+            com.d365fo.mobileops.data.sync.PollBackoff.delays(pollIntervalMs * maxPollsPerRun, pollIntervalMs)
+        } else {
+            List(maxPollsPerRun) { pollIntervalMs }
+        }
+        for (wait in waits) {
+            delay(wait)
             when (val poll = transport.pollDmfImport(executionId)) {
                 is TransportResult.Retry -> return Stage.Stop(RunResult.RETRY)
                 is TransportResult.Fail -> return Stage.Stop(fail(journalId, poll.error, poll.message))

@@ -299,6 +299,14 @@ class OrderCreationRepository @Inject constructor(
      * [offline]: D365FO is known to be out of reach - the device's item cache only, at once, rather
      * than two calls that each wait for their timeout first ("D365FO is slow", store count, 8 Nov).
      */
+    private val orderItemAnswers = java.util.concurrent.ConcurrentHashMap<String, Pair<Long, NetworkResult<*>>>()
+
+    @Suppress("UNCHECKED_CAST")
+    private suspend fun <T> itemAnswer(key: String, fetch: suspend () -> NetworkResult<T>): NetworkResult<T> {
+        orderItemAnswers[key]?.takeIf { System.currentTimeMillis() - it.first < ITEM_MAX_AGE_MS }?.let { return it.second as NetworkResult<T> }
+        return fetch().also { if (it is NetworkResult.Success) orderItemAnswers[key] = System.currentTimeMillis() to it }
+    }
+
     suspend fun findItem(code: String, fromWarehouseId: String = "", offline: Boolean = false): NetworkResult<OrderItem> {
         val value = code.trim()
         if (value.isBlank()) return NetworkResult.Error(AppFailure.Validation("Scan or type an item"))
@@ -323,8 +331,11 @@ class OrderCreationRepository @Inject constructor(
             return offlineItem(itemId, scanned)
                 ?: NetworkResult.Error(AppFailure.Offline("$value is not on this device yet - offline, so it can't be looked up."))
         }
-        val result = errorMapper.safeCall {
-            api.getOrderItem(OrderServiceRequest(OrderRequestBody(dataAreaId = company(), itemId = itemId, fromWarehouseId = fromWarehouseId)))
+        // The same item scanned again within 10 minutes: D365FO's answer is reused (calls, 10 Nov).
+        val result = itemAnswer(company() + "|" + itemId.uppercase() + "|" + fromWarehouseId.uppercase()) {
+            errorMapper.safeCall {
+                api.getOrderItem(OrderServiceRequest(OrderRequestBody(dataAreaId = company(), itemId = itemId, fromWarehouseId = fromWarehouseId)))
+            }
         }
         return when (result) {
             is NetworkResult.Success -> {
@@ -549,7 +560,26 @@ class OrderCreationRepository @Inject constructor(
     data class ReturnCodes(val reasons: List<ReturnReason>, val actions: List<ReturnReason>)
 
     /** The company's return reasons and actions - D365FO's, or the copy saved the last time it answered. */
-    suspend fun returnCodes(): NetworkResult<ReturnCodes> =
+    private var returnCodesAt = 0L
+    private var returnCodesFor = ""
+    private var returnCodesKept: ReturnCodes? = null
+
+    /** Kept for 6 hours per company - set-up data, asked on every return opened before (calls, 10 Nov). */
+    suspend fun returnCodes(): NetworkResult<ReturnCodes> {
+        val kept = returnCodesKept
+        if (kept != null && returnCodesFor == company() && System.currentTimeMillis() - returnCodesAt < SETUP_MAX_AGE_MS) {
+            return NetworkResult.Success(kept)
+        }
+        val fetched = fetchReturnCodes()
+        if (fetched is NetworkResult.Success) {
+            returnCodesKept = fetched.data
+            returnCodesFor = company()
+            returnCodesAt = System.currentTimeMillis()
+        }
+        return fetched
+    }
+
+    private suspend fun fetchReturnCodes(): NetworkResult<ReturnCodes> =
         when (val result = errorMapper.safeCall { api.listReturnReasons(OrderServiceRequest(OrderRequestBody(dataAreaId = company()))) }) {
             is NetworkResult.Success ->
                 if (result.data.success) {
@@ -767,3 +797,6 @@ class OrderCreationRepository @Inject constructor(
         const val MAX_VENDOR_PAGES = 50
     }
 }
+
+private const val SETUP_MAX_AGE_MS = 6 * 60 * 60 * 1000L
+private const val ITEM_MAX_AGE_MS = 600_000L

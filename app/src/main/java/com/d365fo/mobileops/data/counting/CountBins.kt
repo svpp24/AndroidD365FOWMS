@@ -50,12 +50,19 @@ class CountBinRepository @Inject constructor(
     fun observe(warehouseId: String) = countingDao.observeBins(warehouseId.uppercase())
 
     /** Best effort: with no connection the list last fetched stands. */
+    private val refreshedAt = java.util.concurrent.ConcurrentHashMap<String, Long>()
+
+    /** The store's bins into Room - at most every 10 minutes per store (asked on every count open before). */
     suspend fun refresh(warehouseId: String) {
+        val key = company() + ":" + warehouseId.uppercase()
+        val now = System.currentTimeMillis()
+        if (now - (refreshedAt[key] ?: 0L) < BINS_MAX_AGE_MS) return
         val result = errorMapper.safeCall {
             api.getCountBins(CountBinServiceRequest(CountBinRequestBody(company(), warehouseId, userName())))
         }
         val body = (result as? NetworkResult.Success)?.data ?: return
         if (!body.success) return
+        refreshedAt[key] = now
         countingDao.replaceBins(
             warehouseId.uppercase(),
             body.bins.filter { it.binId.isNotBlank() }.map { it.toEntity(warehouseId) },
@@ -149,3 +156,5 @@ class CountBinRepository @Inject constructor(
         const val ROWS_PER_CALL = 500
     }
 }
+
+private const val BINS_MAX_AGE_MS = 600_000L

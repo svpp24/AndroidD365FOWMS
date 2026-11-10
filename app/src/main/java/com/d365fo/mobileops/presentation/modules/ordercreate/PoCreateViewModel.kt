@@ -258,8 +258,11 @@ class PoCreateViewModel @Inject constructor(
         if (!isOnline || draft.vendorAccount.isBlank() || draft.lines.isEmpty()) return
         priceJob?.cancel()
         priceJob = viewModelScope.launch {
+            // 1.5 s after the last change: a run of scans or edits is priced once (calls, 10 Nov).
+            kotlinx.coroutines.delay(1_500)
+            val latest = _state.value.draft
             _state.update { it.copy(pricing = true) }
-            when (val result = repository.priceLines(draft)) {
+            when (val result = repository.priceLines(latest)) {
                 is NetworkResult.Success -> {
                     val priced = result.data.associateBy { it.id }
                     updateDraft { d -> d.copy(lines = d.lines.map { priced[it.id] ?: it }) }

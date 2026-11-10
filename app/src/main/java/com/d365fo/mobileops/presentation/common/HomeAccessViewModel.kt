@@ -54,9 +54,10 @@ class HomeAccessViewModel @Inject constructor(
             sessionRepository.session.map { it?.userName }.distinctUntilChanged().collect { userName ->
                 if (!userName.isNullOrBlank()) {
                     menuRepository.load(userName)
+                    // Before the pause: Home's refresh() in that gap sent both calls again (calls, 10 Nov).
+                    lastRefresh = System.currentTimeMillis()
                     launch { menuRepository.refresh(userName) }
                     delay(1_500)
-                    lastRefresh = System.currentTimeMillis()
                     orderCreationRepository.refreshPermissions(userName)
                 }
             }
