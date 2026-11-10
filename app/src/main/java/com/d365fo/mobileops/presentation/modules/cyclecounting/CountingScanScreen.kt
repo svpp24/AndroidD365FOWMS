@@ -1,5 +1,20 @@
 package com.d365fo.mobileops.presentation.modules.cyclecounting
 
+import androidx.compose.material.icons.automirrored.filled.ListAlt
+import androidx.compose.material.icons.automirrored.filled.Undo
+import androidx.compose.material.icons.filled.MoreVert
+import com.d365fo.mobileops.presentation.common.focus.BandKind
+import com.d365fo.mobileops.presentation.common.focus.BandState
+import com.d365fo.mobileops.presentation.common.focus.FocusButton
+import com.d365fo.mobileops.presentation.common.focus.FocusCenter
+import com.d365fo.mobileops.presentation.common.focus.FocusListRow
+import com.d365fo.mobileops.presentation.common.focus.FocusScreen
+import com.d365fo.mobileops.presentation.common.focus.HoldToConfirmButton
+import com.d365fo.mobileops.presentation.common.focus.QuantityPadSheet
+import com.d365fo.mobileops.presentation.common.focus.RowState
+import com.d365fo.mobileops.presentation.common.focus.ScanPillField
+import com.d365fo.mobileops.presentation.common.theme.FocusColors
+import com.d365fo.mobileops.presentation.modules.stepflow.bandOf
 import androidx.compose.material.icons.filled.Add
 import com.d365fo.mobileops.presentation.common.components.BarcodeFieldIcon
 import androidx.compose.foundation.background
@@ -84,16 +99,13 @@ import com.d365fo.mobileops.presentation.common.theme.WarehouseStatusColors
 import kotlinx.coroutines.delay
 
 /**
- * Start counting: the journal's items in a list, a scan box, and a quantity popup.
- *
- * Scan (hardware, camera, or type and press Enter) an item or barcode and a popup asks for the
- * quantity; OK saves it and the cursor goes straight back to the scan box for the next scan.
- * Tapping a row opens the same popup to correct it. What is typed in the scan box also narrows
- * the list, so it doubles as a search. The list is deliberately text-only rows (no inputs), so it
- * scrolls smoothly on a low-end handheld. (View lines, the read-only overview with a counted / not
- * counted filter, is opened from the journal card, not from here.)
+ * Cycle and wall-to-wall counting in the Focus design (brief sections 6 and 9), on the existing
+ * steps: location (where the journal counts by location), bin (where the store has bins), then
+ * items. A scan of an item opens the quantity pad for its line; the band says what the last scan
+ * did and the centre shows how much of the journal is counted. The journal's lines, locations and
+ * bins open on demand from the bottom button - tapping a line there corrects its count. Blind
+ * throughout: lines carry no on-hand quantity.
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CountingScanScreen(
     onBack: () -> Unit,
@@ -101,390 +113,262 @@ fun CountingScanScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     var showCamera by remember { mutableStateOf(false) }
-    val scanFocus = remember { FocusRequester() }
-    // The scan box is read-only until tapped: this device's keyboard opens itself on any focus
-    // change, whatever the field asks for, so a focused editable box covered the screen on every
-    // arrival. Scans arrive through the scanner bridge, not the box. A tap switches to typing
-    // (keyboard up); searching, or a popup closing, switches back.
-    var typing by remember { mutableStateOf(false) }
-    val keyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
-    val scanInteraction = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
-    LaunchedEffect(scanInteraction) {
-        scanInteraction.interactions.collect {
-            if (it is androidx.compose.foundation.interaction.PressInteraction.Release && !typing) {
-                typing = true
-                keyboard?.show()
-            }
-        }
-    }
-
-    // Cursor in the scan box on arrival, and again every time the popup closes. The short delay
-    // lets the closing dialog give the window's focus back first.
-    LaunchedEffect(Unit) {
-        delay(300)
-        runCatching { scanFocus.requestFocus() }
-    }
+    var showList by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
+    var menuOpen by remember { mutableStateOf(false) }
     LaunchedEffect(viewModel) { viewModel.leave.collect { onBack() } }
-    LaunchedEffect(state.refocusNonce) {
-        if (state.refocusNonce > 0) {
-            typing = false
-            delay(250)
-            runCatching { scanFocus.requestFocus() }
-        }
-    }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                // "Counting" in the bar and the journal number above the progress (feedback, 11 Oct):
-                // the number wrapped in the bar beside its icons.
-                title = { Text(if (state.isWallToWall) "Wall-to-wall count" else "Cycle count") },
-                expandedHeight = WarehouseDimens.TopBarHeight,
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                    }
-                },
-                // Record an item not on this journal - in the top bar (feedback 3c03d94e); it was
-                // a whole row under the scan card, there even with nothing recorded.
-                actions = {
-                    if (state.exceptionsEnabled && !state.locked && state.showList) {
-                        IconButton(onClick = { viewModel.openUnexpected() }) {
-                            Icon(Icons.Default.Add, contentDescription = "Record an item not on this journal")
-                        }
-                    }
-                },
-            )
-        },
-    ) { padding ->
-        androidx.compose.foundation.layout.BoxWithConstraints(modifier = Modifier.fillMaxSize().padding(padding)) {
-        val headerMax = maxHeight * 0.6f
-        // A triggered check of one line: that line alone, no list, filters or progress (user, 8 Nov).
-        val focusLine = state.focusLine
-        if (focusLine != null) {
-            FocusedCountCard(
-                line = focusLine,
-                originType = state.originType,
-                locked = state.locked,
-                message = state.message,
-                onConfirm = viewModel::confirmAndEnd,
-            )
-        } else Column(modifier = Modifier.fillMaxSize()) {
-            // At most 60% of the height, scrolling on its own past that: with a bin, a location
-            // and the freeze notice, a small handheld (360x640dp) left the list one row, mostly
-            // under the gesture bar (seen 8 Nov, wall-to-wall). It takes only what it needs.
-            val headerScroll = rememberScrollState()
-            // A scan's result and its Undo sit under the scan card: brought into view each time,
-            // or with a bin on a small screen they were below the fold (test, 8 Nov).
-            LaunchedEffect(state.message) {
-                if (state.message != null) {
-                    delay(50)
-                    headerScroll.animateScrollTo(headerScroll.maxValue)
-                }
-            }
-            // Where the counter is in location > bin > items, the same trail as PO receiving
-            // (user, 8 Nov). Above the scrolling header, so it stays in view when a scan message
-            // scrolls the header down. Only when there is more than the item step.
-            if (state.byLocation || state.binsRequired) {
-                val steps = listOfNotNull(
-                    "Location".takeIf { state.byLocation },
-                    "Bin".takeIf { state.binsRequired },
-                    "Items",
-                )
-                val current = when {
-                    state.byLocation && state.selectedLocation == null -> 0
-                    state.binsRequired && state.currentBin == null -> steps.indexOf("Bin")
-                    else -> steps.lastIndex
-                }
-                com.d365fo.mobileops.presentation.common.components.StepTrail(
-                    names = steps,
-                    current = current,
-                    // A done tab goes back to that step - the way back now there are no Back /
-                    // Change buttons (user, 9 Nov). Only to another location when there is one.
-                    onStepClick = { i ->
-                        if (!state.locked) when (steps[i]) {
-                            "Location" -> if (state.locations.size > 1) viewModel.clearLocation()
-                            "Bin" -> viewModel.changeBin()
-                        }
-                    },
-                    // Edge to edge under the bar (Harbour).
-                    bleed = 0.dp,
-                )
-            }
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(max = headerMax)
-                    .verticalScroll(headerScroll)
-                    .padding(horizontal = WarehouseDimens.ScreenPadding, vertical = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                // The scan card first (user, 9 Nov); what it is counting - the journal, location,
-                // bin and how far along - as labelled chips in the card under it. No progress
-                // card or hints: the chips say it.
-                state.addBinPrompt?.let { bin ->
-                    androidx.compose.material3.AlertDialog(
-                        onDismissRequest = viewModel::cancelAddBin,
-                        title = { Text("Add bin $bin?") },
-                        text = { Text("$bin is not on this store's list. Add it, and count in it now?") },
-                        confirmButton = {
-                            com.d365fo.mobileops.presentation.common.components.DialogButtonRow(
-                                dismiss = {
-                                    com.d365fo.mobileops.presentation.common.components.CancelOutlinedButton(
-                                        onClick = viewModel::cancelAddBin,
-                                        modifier = Modifier.weight(1f).heightIn(min = 48.dp),
-                                    ) { Text("Cancel") }
-                                },
-                                confirm = {
-                                    com.d365fo.mobileops.presentation.common.components.ConfirmButton(
-                                        onClick = viewModel::confirmAddBin,
-                                        modifier = Modifier.weight(1f).heightIn(min = 48.dp),
-                                    ) { Text("Add bin") }
-                                },
-                            )
-                        },
-                    )
-                }
-                val needsBin = state.binsRequired && state.currentBin == null
-                com.d365fo.mobileops.presentation.common.components.PromptHeroCard(
-                    // Location, then bin, then item.
-                    prompt = when {
-                        state.byLocation && state.selectedLocation == null -> "Scan a location"
-                        needsBin -> "Scan a bin"
-                        else -> "Scan item"
-                    },
-                    pills = listOfNotNull(
-                        Icons.Default.Description to "Journal ${viewModel.journalId}",
-                        state.selectedLocation?.let { Icons.Default.LocationOn to "Location $it" },
-                        state.currentBin?.let { Icons.Default.Inventory2 to "Bin $it" },
-                        (Icons.Default.Checklist to "${state.counted} of ${state.totalLines} counted").takeIf { state.showProgress },
-                        (Icons.Default.AddCircle to "${state.exceptions.size} not on journal").takeIf { state.exceptions.isNotEmpty() },
-                    ),
-                ) {
-                    OutlinedTextField(
-                        value = state.query,
-                        onValueChange = viewModel::setQuery,
-                        modifier = Modifier.fillMaxWidth().heightIn(min = 64.dp).focusRequester(scanFocus),
-                        singleLine = true,
-                        enabled = !state.locked,
-                        readOnly = !typing,
-                        interactionSource = scanInteraction,
-                        leadingIcon = { BarcodeFieldIcon() },
-                        shape = com.d365fo.mobileops.presentation.common.components.HeroFieldShape,
-                        colors = com.d365fo.mobileops.presentation.common.components.heroFieldColors(),
-                        trailingIcon = {
-                            if (state.query.isNotEmpty()) {
-                                IconButton(onClick = { viewModel.setQuery("") }) {
-                                    Icon(Icons.Default.Clear, contentDescription = "Clear")
-                                }
-                            }
-                        },
-                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                        keyboardActions = KeyboardActions(onSearch = {
-                            typing = false
-                            keyboard?.hide()
-                            viewModel.submitTyped()
-                        }),
-                    )
-                    com.d365fo.mobileops.presentation.common.components.HeroCameraButton(onClick = { showCamera = true }, enabled = !state.locked)
-                }
-
-                // Count by location, where the journal allows it - a quiet switch row.
-                if (state.showProgress && state.showLocationSwitch) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(
-                            "Count by location",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = WarehouseStatusColors.text2,
-                            modifier = Modifier.weight(1f),
-                        )
-                        Switch(
-                            checked = state.byLocation,
-                            onCheckedChange = viewModel::setByLocation,
-                            enabled = !state.locked,
-                        )
-                    }
-                }
-
-                // A wall-to-wall location's "is empty".
-                if (state.byLocation || state.binsRequired) {
-                    PlaceCard(
-                        state = state,
-                        onEmpty = viewModel::requestLocationEmpty,
-                        onPick = viewModel::pickLocation,
-                    )
-                }
-
-                state.freezeBanner?.let {
-                    Text(text = it, style = MaterialTheme.typography.bodySmall, color = WarehouseStatusColors.amber)
-                }
-
-                if (state.locationTypes.isNotEmpty()) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    ) {
-                        FilterChip(selected = state.typeFilter == null, onClick = { viewModel.setTypeFilter(null) }, label = { Text("All") })
-                        state.locationTypes.forEach { type ->
-                            FilterChip(
-                                selected = state.typeFilter == type,
-                                onClick = { viewModel.setTypeFilter(type) },
-                                label = { Text(com.d365fo.mobileops.domain.model.locationTypeLabel(type) ?: "Physical") },
-                            )
-                        }
-                    }
-                }
-
-                if (state.zeroStockCheck) {
-                    Text(
-                        text = "Should be empty - confirm, or count what's there.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = WarehouseStatusColors.amber,
-                    )
-                }
-
-
-
-
-                state.message?.let { message ->
-                    // The message and Undo on one line - Undo as its own full-height row pushed the
-                    // list down after every scan (feedback a14afd70, "clumsy").
-                    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            text = message.text,
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.SemiBold,
-                            color = if (message.isError) MaterialTheme.colorScheme.error else WarehouseStatusColors.green,
-                            modifier = Modifier.weight(1f).clickable(onClick = viewModel::dismissMessage),
-                        )
-                        if (message.undoable) {
-                            TextButton(onClick = viewModel::undoLastScan) { Text("Undo") }
-                        }
-                    }
-                    message.unexpectedItemId?.let { itemId ->
-                        OutlinedButton(
-                            onClick = { viewModel.openUnexpected(itemId) },
-                            modifier = Modifier.fillMaxWidth().heightIn(min = WarehouseDimens.MinTouchTarget),
-                        ) { Text("Not on this journal - record it") }
-                    }
-                }
-
-                if (state.locked) {
-                    Text(
-                        text = "Submitted - reopen to change.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = WarehouseStatusColors.text3,
-                    )
-                }
-            }
-
-            // The location and bin steps list where to count, not the journal's items (user,
-            // 9 Nov): the scan field first, then the locations / this location's bins.
-            val choosingLocation = state.byLocation && state.selectedLocation == null
-            val choosingBin = !choosingLocation && state.binsRequired && state.currentBin == null
-            if (choosingLocation || choosingBin) {
-                LazyColumn(
-                    modifier = Modifier.weight(1f),
-                    contentPadding = PaddingValues(horizontal = WarehouseDimens.ScreenPadding, vertical = 6.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
-                ) {
-                    if (choosingLocation) {
-                        item { LocationRows(state.locations, viewModel::pickLocation, enabled = !state.locked) }
-                    } else {
-                        item {
-                            com.d365fo.mobileops.presentation.common.components.ListHeader(
-                                icon = Icons.Default.Inventory2,
-                                title = state.selectedLocation?.let { "Bins in $it" } ?: "Bins",
-                                count = state.binsHere.size,
-                            )
-                        }
-                        if (state.binsHere.isEmpty()) {
-                            item {
-                                Text(
-                                    "No bins listed here - scan the bin; it is counted as scanned.",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = WarehouseStatusColors.text3,
-                                )
-                            }
-                        }
-                        items(state.binsHere, key = { "bin-$it" }) { bin ->
-                            com.d365fo.mobileops.presentation.common.components.ListCard {
-                                com.d365fo.mobileops.presentation.common.components.LineRow(
-                                    title = bin,
-                                    lead = {
-                                        com.d365fo.mobileops.presentation.common.components.LeadDot(
-                                            com.d365fo.mobileops.presentation.common.components.Lead.Idle,
-                                            icon = Icons.Default.Inventory2,
-                                        )
-                                    },
-                                    trailing = { com.d365fo.mobileops.presentation.common.components.RowChevron() },
-                                    onClick = { viewModel.pickBin(bin) },
-                                )
-                            }
-                        }
-                    }
-                }
-                return@Column
-            }
-
-            // What the row icons mean, once the list has rows of its own (user, 14 Oct).
-            if (state.exceptionsEnabled && state.exceptions.isNotEmpty()) {
-                CountLegend(modifier = Modifier.padding(horizontal = WarehouseDimens.ScreenPadding))
-            }
-
-            if (state.lines.isEmpty() && state.exceptions.isEmpty()) {
-                Text(
-                    text = if (state.totalLines == 0) "This journal has no lines." else "No items match.",
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(WarehouseDimens.ScreenPadding),
-                )
-            }
-
-            // Newest not-on-the-journal row first, and in view when one is added or changes
-            // (seen 14 Oct: the new row sat half under the legend).
-            val notOnJournal = state.exceptions.sortedByDescending { it.capturedAt }
-            val listState = androidx.compose.foundation.lazy.rememberLazyListState()
-            val newest = notOnJournal.firstOrNull()?.let { it.clientId + it.quantity }
-            androidx.compose.runtime.LaunchedEffect(newest) { if (newest != null) listState.animateScrollToItem(0) }
-            LazyColumn(
-                state = listState,
-                modifier = Modifier.weight(1f),
-                contentPadding = PaddingValues(
-                    horizontal = WarehouseDimens.ScreenPadding,
-                    vertical = 6.dp,
-                ),
-                verticalArrangement = Arrangement.spacedBy(6.dp),
-            ) {
-                // Items found that are not on the journal: first, marked as such (user, 14 Oct).
-                if (state.exceptionsEnabled) {
-                    items(notOnJournal, key = { "x-" + it.clientId }, contentType = { "notOnJournal" }) { exception ->
-                        NotOnJournalRow(
-                            exception = exception,
-                            onClick = { viewModel.editUnexpected(exception.clientId) }.takeIf { exception.sentAt == null && !state.locked },
-                        )
-                    }
-                }
-                items(state.lines, key = { it.journalLineId }, contentType = { "line" }) { line ->
-                    CountingLineRow(line = line, onClick = { viewModel.openLine(line) })
-                }
-            }
-        }
-        }
-    }
-
-    state.prompt?.let { prompt ->
-        QuantityDialog(
-            prompt = prompt,
-            bin = state.currentBin,
-            onOk = { text -> viewModel.confirmQuantity(prompt.line.journalLineId, text) },
-            onCancel = viewModel::cancelPrompt,
+    CountingDialogs(state, viewModel)
+    if (showCamera) {
+        CameraScannerSheet(
+            onDecoded = {
+                viewModel.onCameraDecoded(it)
+                showCamera = false
+            },
+            onDismiss = { showCamera = false },
         )
     }
 
+    val choosingLocation = state.byLocation && state.selectedLocation == null
+    val choosingBin = !choosingLocation && state.binsRequired && state.currentBin == null
+    val prompt = state.prompt
+    val pad: (@Composable androidx.compose.foundation.layout.BoxScope.() -> Unit)? = prompt?.let { p ->
+        {
+            QuantityPadSheet(
+                initial = p.initial,
+                onSet = { viewModel.confirmQuantity(p.line.journalLineId, it) },
+                onDismiss = viewModel::cancelPrompt,
+            )
+        }
+    }
+
+    // A triggered check of one line: that line alone, its quantity and Hold to end count.
+    state.focusLine?.let { line ->
+        FocusedCount(state = state, line = line, onBack = onBack, onConfirm = viewModel::confirmAndEnd)
+        return
+    }
+
+    if (showList) {
+        val close = {
+            viewModel.setQuery("")
+            showList = false
+        }
+        androidx.activity.compose.BackHandler(onBack = close)
+        CountingLists(
+            state = state,
+            choosingLocation = choosingLocation,
+            choosingBin = choosingBin,
+            onClose = close,
+            onPickLocation = { close(); viewModel.pickLocation(it) },
+            onPickBin = { close(); viewModel.pickBin(it) },
+            onLine = viewModel::openLine,
+            onException = viewModel::editUnexpected,
+            onQuery = viewModel::setQuery,
+            onTypeFilter = viewModel::setTypeFilter,
+            overlay = pad,
+        )
+        return
+    }
+
+    FocusScreen(
+        title = if (state.isWallToWall) "Wall-to-wall count" else "Cycle count",
+        onBack = onBack,
+        counter = state.currentBin ?: state.selectedLocation
+            ?: "${state.counted} / ${state.totalLines}".takeIf { state.totalLines > 0 },
+        progress = if (state.totalLines > 0) state.counted.toFloat() / state.totalLines else null,
+        band = cycleCountBand(state),
+        remaining = if (!choosingLocation && !choosingBin && state.totalLines > 0) {
+            (state.totalLines - state.counted).let { if (it == 1) "1 line left" else "$it lines left" }
+        } else {
+            null
+        },
+        scanPill = { ScanPillField(enabled = !state.locked) },
+        topBarTrailing = if (state.locked) null else { {
+            Box {
+                IconButton(onClick = { menuOpen = true }, modifier = Modifier.size(48.dp)) {
+                    Icon(Icons.Default.MoreVert, contentDescription = "More", tint = FocusColors.ink)
+                }
+                DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                    MenuRow("Camera scan", Icons.Default.PhotoCamera) { menuOpen = false; showCamera = true }
+                    if (state.exceptionsEnabled) {
+                        MenuRow("Item not on this journal", Icons.Default.AddCircle) { menuOpen = false; viewModel.openUnexpected() }
+                    }
+                    if (state.showLocationSwitch) {
+                        MenuRow(if (state.byLocation) "Count by location: on" else "Count by location: off", Icons.Default.LocationOn) {
+                            menuOpen = false
+                            viewModel.setByLocation(!state.byLocation)
+                        }
+                    }
+                    if (state.byLocation && state.selectedLocation != null && state.locations.size > 1) {
+                        MenuRow("Change location", Icons.Default.LocationOn) { menuOpen = false; viewModel.clearLocation() }
+                    }
+                    if (state.binsRequired && state.currentBin != null) {
+                        MenuRow("Change bin", Icons.Default.Inventory2) { menuOpen = false; viewModel.changeBin() }
+                    }
+                    if (state.isWallToWall && state.selectedLocation != null) {
+                        MenuRow("Location is empty", Icons.Default.Clear) { menuOpen = false; viewModel.requestLocationEmpty() }
+                    }
+                }
+            }
+        } },
+        actions = cycleCountActions(
+            state = state,
+            choosingLocation = choosingLocation,
+            choosingBin = choosingBin,
+            onCancelChange = viewModel::cancelChange,
+            onList = { showList = true },
+            onRecord = { viewModel.openUnexpected(it) },
+            onUndo = viewModel::undoLastScan,
+            onEmpty = viewModel::requestLocationEmpty,
+        ),
+        overlay = pad,
+    ) {
+        CycleCountCenter(state, choosingLocation, choosingBin)
+    }
+}
+
+@Composable
+private fun MenuRow(text: String, icon: androidx.compose.ui.graphics.vector.ImageVector, onClick: () -> Unit) {
+    DropdownMenuItem(
+        text = { Text(text) },
+        leadingIcon = { Icon(icon, contentDescription = null) },
+        onClick = onClick,
+        modifier = Modifier.heightIn(min = 56.dp),
+    )
+}
+
+/**
+ * The band: the last scan's result, else where the count stands - submitted, should-be-empty,
+ * a stock freeze, a change of place under way, or the journal itself.
+ */
+internal fun cycleCountBand(state: CountingScanState): BandState {
+    val message = state.message
+    if (message != null) {
+        // A count needs a bin first - said as what went wrong, not as an instruction.
+        if (message.text == "Scan a bin first.") return BandState(BandKind.Bad, "No bin open", "nothing counted")
+        // "HSN001 · AAC: 1" - a scan that added to a count: the brief's "Counted · {item} · now 3".
+        if (!message.isError && message.undoable) return BandState(BandKind.Ok, "Counted", message.text)
+        // "X · 1 added (not on journal)": recorded for the supervisor, a warning rather than a result.
+        if (!message.isError && message.text.contains("not on journal", ignoreCase = true)) {
+            return BandState(BandKind.Warn, "Not on this journal", message.text)
+        }
+        val band = bandOf(if (message.isError) BandKind.Bad else BandKind.Ok, message.text.removeSuffix("."))
+        // "A-01 empty - scan the next location": the result, without what to scan next.
+        return if (band.detail?.startsWith("scan", ignoreCase = true) == true) band.copy(detail = null) else band
+    }
+    val freeze = state.freezeBanner
+    return when {
+        state.locked -> BandState(BandKind.Info, "Submitted", "reopen to change")
+        state.changingFrom != null -> BandState(BandKind.Info, "Changing place", "from ${state.changingFrom}")
+        state.zeroStockCheck -> BandState(BandKind.Warn, "Should be empty", state.journalDescription)
+        freeze != null -> bandOf(BandKind.Warn, freeze)
+        else -> BandState(
+            BandKind.Info,
+            state.journalDescription.ifBlank { "Count" },
+            "Blind count",
+        )
+    }
+}
+
+private fun cycleCountActions(
+    state: CountingScanState,
+    choosingLocation: Boolean,
+    choosingBin: Boolean,
+    onCancelChange: () -> Unit,
+    onList: () -> Unit,
+    onRecord: (String) -> Unit,
+    onUndo: () -> Unit,
+    onEmpty: () -> Unit,
+): @Composable androidx.compose.foundation.layout.RowScope.() -> Unit = {
+    val message = state.message
+    if (choosingLocation || choosingBin) {
+        if (state.changingFrom != null) {
+            FocusButton("Cancel", onClick = onCancelChange, modifier = Modifier.weight(1f))
+        }
+        FocusButton(
+            if (choosingLocation) "Locations" else "Bins",
+            onClick = onList,
+            icon = if (choosingLocation) Icons.Default.LocationOn else Icons.Default.Inventory2,
+            modifier = Modifier.weight(1f),
+        )
+    } else {
+        FocusButton("Lines", onClick = onList, icon = Icons.AutoMirrored.Filled.ListAlt, modifier = Modifier.weight(1f))
+        val unexpected = message?.unexpectedItemId
+        when {
+            unexpected != null -> FocusButton("Record it", onClick = { onRecord(unexpected) }, primary = true, modifier = Modifier.weight(1f))
+            message?.undoable == true -> FocusButton("Undo", onClick = onUndo, icon = Icons.AutoMirrored.Filled.Undo, modifier = Modifier.weight(1f))
+            state.isWallToWall && state.selectedLocation != null && !state.locked ->
+                FocusButton("Location is empty", onClick = onEmpty, modifier = Modifier.weight(1f))
+        }
+    }
+}
+
+/** The centre: the line in hand while its quantity is entered, else how much is counted. */
+@Composable
+private fun androidx.compose.foundation.layout.ColumnScope.CycleCountCenter(
+    state: CountingScanState,
+    choosingLocation: Boolean,
+    choosingBin: Boolean,
+) {
+    val prompt = state.prompt
+    when {
+        prompt != null -> FocusCenter(
+            caption = state.currentBin?.let { "In $it" } ?: "Quantity",
+            code = prompt.line.itemId,
+            description = listOfNotNull(
+                prompt.line.itemName.takeIf { it.isNotBlank() && !it.equals(prompt.line.itemId, ignoreCase = true) },
+                whereLine(prompt.line),
+            ).joinToString(" · ").ifEmpty { null },
+            quantity = prompt.initial.ifEmpty { "–" },
+        )
+        choosingLocation -> FocusCenter(
+            caption = "Location",
+            code = "${state.locations.count { it.total > 0 && it.counted == it.total }} of ${state.locations.size}",
+            description = "locations counted",
+        )
+        choosingBin -> FocusCenter(
+            caption = "Bin",
+            code = "${state.locationCounted} of ${state.locationTotal}",
+            description = "lines counted in ${state.selectedLocation.orEmpty()}".trim(),
+        )
+        state.selectedLocation != null -> FocusCenter(
+            caption = "Counted",
+            code = "${state.locationCounted} of ${state.locationTotal}",
+            description = "lines in ${state.selectedLocation}",
+        )
+        else -> FocusCenter(
+            caption = "Counted",
+            code = "${state.counted} of ${state.totalLines}",
+            description = if (state.totalLines == 0) "This journal has no lines" else "lines",
+        )
+    }
+}
+
+/** The dialogs the count keeps: line choice, verify, empty location, a new bin, items not on the journal. */
+@Composable
+private fun CountingDialogs(state: CountingScanState, viewModel: CountingScanViewModel) {
+    state.addBinPrompt?.let { bin ->
+        AlertDialog(
+            onDismissRequest = viewModel::cancelAddBin,
+            title = { Text("Add bin $bin?") },
+            text = { Text("$bin is not on this store's list. Add it, and count in it now?") },
+            confirmButton = {
+                com.d365fo.mobileops.presentation.common.components.DialogButtonRow(
+                    dismiss = {
+                        CancelOutlinedButton(
+                            onClick = viewModel::cancelAddBin,
+                            modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget),
+                        ) { Text("Cancel") }
+                    },
+                    confirm = {
+                        ConfirmButton(
+                            onClick = viewModel::confirmAddBin,
+                            modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget),
+                        ) { Text("Add bin") }
+                    },
+                )
+            },
+        )
+    }
     if (state.choice.isNotEmpty()) {
         ChoiceDialog(
             lines = state.choice,
@@ -602,41 +486,8 @@ fun CountingScanScreen(
         )
     }
 
-    if (showCamera) {
-        CameraScannerSheet(
-            onDecoded = {
-                viewModel.onCameraDecoded(it)
-                showCamera = false
-            },
-            onDismiss = { showCamera = false },
-        )
-    }
 }
 
-/**
- * The quantity popup: which item, a whole-number box that is already focused, and Cancel / OK as
- * two full buttons side by side with room around them (the stock dialog's small text buttons
- * were easy to mis-hit with a glove).
- */
-@Composable
-private fun QuantityDialog(prompt: CountPrompt, bin: String?, onOk: (String) -> Unit, onCancel: () -> Unit) {
-    val line = prompt.line
-    // The shared picker (QuantityPicker): whole numbers, and the first key replaces an existing count.
-    com.d365fo.mobileops.presentation.common.components.QuantityPicker(
-        subtitle = listOfNotNull(
-            line.itemId,
-            line.itemName.takeIf { it.isNotBlank() && !it.equals(line.itemId, ignoreCase = true) },
-        ).joinToString(" · "),
-        // With bins the quantity is for this bin, not the line's total: it says so.
-        hint = listOfNotNull(bin?.let { "Bin $it" }, whereLine(line)).joinToString(" · "),
-        initial = prompt.initial,
-        replaceInitial = true,
-        allowDecimal = false,
-        confirmLabel = "Confirm",
-        onConfirm = onOk,
-        onDismiss = onCancel,
-    )
-}
 /**
  * The scanned item is on several lines: pick the location / variant / batch to count. A variant
  * master can be on hundreds of lines (432 seen live), so there is a filter - "red", "M slim" or
@@ -734,65 +585,6 @@ private fun whereLine(line: CountLine): String? =
         line.batchId?.takeIf { it.isNotBlank() }?.let { "Batch $it" },
         line.serialId?.takeIf { it.isNotBlank() }?.let { "Serial $it" },
     ).joinToString(" · ").ifEmpty { null }
-
-/** Location-first: the location being counted, or a prompt to scan one. */
-/**
- * Where the counter is: "AAC  >  BIN-A1" and how much of the location is counted. Moving is the
- * same in every count type (user, 8 Nov): Back one step (bin step: to the location; item step: to
- * the bin) and "Change location / bin", a dialog showing the current location and bin. Choose
- * location before one is chosen. While changing, what is being left and Cancel back to it.
- * Location is empty only on a wall-to-wall count, which settles a location at a time.
- */
-@Composable
-private fun PlaceCard(
-    state: CountingScanState,
-    onEmpty: () -> Unit,
-    onPick: (String) -> Unit,
-) {
-    // Harbour (9 Nov): where the counter is shows as pills on the scan card and the step tabs
-    // go back a step - no Back, Change or Cancel buttons here. What is left: the journal's
-    // locations as rows to pick from, and a wall-to-wall location's "is empty".
-    val location = state.selectedLocation
-    if (state.isWallToWall && location != null) {
-        androidx.compose.material3.OutlinedButton(
-            onClick = onEmpty,
-            enabled = !state.locked,
-            shape = com.d365fo.mobileops.presentation.common.components.HeroFieldShape,
-            border = androidx.compose.foundation.BorderStroke(1.5.dp, WarehouseStatusColors.amber),
-            modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
-        ) { Text("Location is empty", fontWeight = FontWeight.Bold, color = WarehouseStatusColors.amber) }
-    }
-    // The locations to pick from are listed under the scan card, in the screen's list (9 Nov).
-}
-
-/** The journal's locations as Harbour rows - each with how many of its lines are counted. */
-@Composable
-private fun LocationRows(locations: List<LocationChoice>, onPick: (String) -> Unit, enabled: Boolean) {
-    com.d365fo.mobileops.presentation.common.components.ListHeader(
-        icon = Icons.Default.LocationOn,
-        title = "Locations",
-        count = locations.size,
-        trailing = "${locations.count { it.total > 0 && it.counted == it.total }} counted",
-    )
-    com.d365fo.mobileops.presentation.common.components.ListCard {
-        locations.forEachIndexed { i, choice ->
-            if (i > 0) com.d365fo.mobileops.presentation.common.components.RowDivider()
-            val done = choice.total > 0 && choice.counted == choice.total
-            com.d365fo.mobileops.presentation.common.components.LineRow(
-                title = choice.locationId,
-                lines = listOf("${choice.counted} of ${choice.total} counted"),
-                lead = {
-                    com.d365fo.mobileops.presentation.common.components.LeadDot(
-                        if (done) com.d365fo.mobileops.presentation.common.components.Lead.Done else com.d365fo.mobileops.presentation.common.components.Lead.Idle,
-                        icon = if (done) Icons.Default.CheckCircle else Icons.Default.LocationOn,
-                    )
-                },
-                trailing = { com.d365fo.mobileops.presentation.common.components.RowChevron() },
-                onClick = { if (enabled) onPick(choice.locationId) },
-            )
-        }
-    }
-}
 
 /**
  * "Not on this journal": what was found, where, how many. Recorded as an exception for the
@@ -921,63 +713,6 @@ private fun NjField(
 }
 
 
-/** What the row icons mean - shown once the list has rows not on the journal (user, 14 Oct). */
-@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
-@Composable
-private fun CountLegend(modifier: Modifier = Modifier) {
-    androidx.compose.foundation.layout.FlowRow(
-        modifier = modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        verticalArrangement = Arrangement.spacedBy(2.dp),
-    ) {
-        LegendItem(Icons.Default.RadioButtonUnchecked, WarehouseStatusColors.text3, "To count")
-        LegendItem(Icons.Default.CheckCircle, WarehouseStatusColors.green, "Counted")
-        LegendItem(Icons.Default.AddCircle, WarehouseStatusColors.amber, "Not on this journal")
-    }
-}
-
-@Composable
-private fun LegendItem(icon: androidx.compose.ui.graphics.vector.ImageVector, tint: androidx.compose.ui.graphics.Color, label: String) {
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-        Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(16.dp))
-        Text(label, style = MaterialTheme.typography.labelSmall, color = WarehouseStatusColors.text3)
-    }
-}
-
-/** An item found that is not on the journal, in the list like a line, marked as such. */
-@Composable
-private fun NotOnJournalRow(exception: CountExceptionEntity, onClick: (() -> Unit)?) {
-    // A Harbour row with an amber marker and tag - in the list like a line, marked as not on it.
-    val variant = com.d365fo.mobileops.domain.model.ProductVariant(exception.configId, exception.sizeId, exception.colorId, exception.styleId)
-    com.d365fo.mobileops.presentation.common.components.ListCard {
-        com.d365fo.mobileops.presentation.common.components.LineRow(
-            title = exception.itemId,
-            status = {
-                com.d365fo.mobileops.presentation.common.components.StatusTag(
-                    if (exception.sendError != null) "Not sent" else "Not on journal",
-                    if (exception.sendError != null) com.d365fo.mobileops.presentation.common.components.Lead.Bad else com.d365fo.mobileops.presentation.common.components.Lead.Warn,
-                )
-            },
-            lines = listOf(
-                listOfNotNull(
-                    variant.label.takeIf { it.isNotBlank() },
-                    exception.locationId?.let { "Loc $it" },
-                    exception.batchId?.let { "Batch $it" },
-                    exception.serialId?.let { "Serial $it" },
-                ).joinToString(" · "),
-            ),
-            lead = {
-                com.d365fo.mobileops.presentation.common.components.LeadDot(
-                    com.d365fo.mobileops.presentation.common.components.Lead.Warn,
-                    icon = Icons.Default.AddCircle,
-                )
-            },
-            trailing = { com.d365fo.mobileops.presentation.common.components.QtyTrail(exception.quantity, null) },
-            onClick = onClick,
-        )
-    }
-}
-
 @Composable
 private fun NotOnJournalQuantityDialog(
     exception: CountExceptionEntity,
@@ -1028,82 +763,231 @@ private fun NotOnJournalQuantityDialog(
     )
 }
 
+
 /**
- * A triggered or opportunity check of one line: where, what, and one large quantity box that is
- * focused on arrival. Confirm saves it and ends the count; the screen then closes.
+ * The lists on demand: the journal's locations on the location step, the location's bins on the
+ * bin step (tap = the same as scanning it), else the journal's lines - items found that are not
+ * on it first - with a search and, where the journal has several, a location-type filter. Tapping
+ * a line opens its quantity to correct it.
  */
 @Composable
-private fun FocusedCountCard(
+private fun CountingLists(
+    state: CountingScanState,
+    choosingLocation: Boolean,
+    choosingBin: Boolean,
+    onClose: () -> Unit,
+    onPickLocation: (String) -> Unit,
+    onPickBin: (String) -> Unit,
+    onLine: (CountLine) -> Unit,
+    onException: (String) -> Unit,
+    onQuery: (String) -> Unit,
+    onTypeFilter: (String?) -> Unit,
+    overlay: (@Composable androidx.compose.foundation.layout.BoxScope.() -> Unit)?,
+) {
+    FocusScreen(
+        title = when {
+            choosingLocation -> "Locations"
+            choosingBin -> state.selectedLocation?.let { "Bins in $it" } ?: "Bins"
+            else -> "Journal lines"
+        },
+        onBack = onClose,
+        counter = when {
+            choosingLocation -> state.locations.size.toString()
+            choosingBin -> state.binsHere.size.toString()
+            else -> "${state.counted} / ${state.totalLines}"
+        },
+        progress = if (!choosingLocation && !choosingBin && state.totalLines > 0) state.counted.toFloat() / state.totalLines else null,
+        overlay = overlay,
+    ) {
+        if (!choosingLocation && !choosingBin) {
+            OutlinedTextField(
+                value = state.query,
+                onValueChange = onQuery,
+                singleLine = true,
+                placeholder = { Text("Search item, location, batch") },
+                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                trailingIcon = {
+                    if (state.query.isNotEmpty()) {
+                        IconButton(onClick = { onQuery("") }, modifier = Modifier.size(56.dp)) {
+                            Icon(Icons.Default.Clear, contentDescription = "Clear")
+                        }
+                    }
+                },
+                shape = com.d365fo.mobileops.presentation.common.theme.FocusShapes.button,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp).heightIn(min = 56.dp),
+            )
+            if (state.locationTypes.isNotEmpty()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 20.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    FilterChip(
+                        selected = state.typeFilter == null, onClick = { onTypeFilter(null) }, label = { Text("All") },
+                        modifier = Modifier.heightIn(min = 56.dp),
+                    )
+                    state.locationTypes.forEach { type ->
+                        FilterChip(
+                            selected = state.typeFilter == type,
+                            onClick = { onTypeFilter(type) },
+                            label = { Text(com.d365fo.mobileops.domain.model.locationTypeLabel(type) ?: "Physical") },
+                            modifier = Modifier.heightIn(min = 56.dp),
+                        )
+                    }
+                }
+            }
+        }
+        LazyColumn(modifier = Modifier.weight(1f).fillMaxWidth()) {
+            when {
+                choosingLocation -> items(state.locations, key = { "loc-" + it.locationId }) { choice ->
+                    val done = choice.total > 0 && choice.counted == choice.total
+                    FocusListRow(
+                        title = choice.locationId,
+                        titleIsCode = true,
+                        state = if (done) RowState.Done else RowState.Open,
+                        count = "${choice.counted}/${choice.total}",
+                        chevron = true,
+                        onClick = { if (!state.locked) onPickLocation(choice.locationId) },
+                    )
+                }
+                choosingBin -> {
+                    if (state.binsHere.isEmpty()) {
+                        item { EmptyListText("No bins listed here.") }
+                    }
+                    items(state.binsHere, key = { "bin-$it" }) { bin ->
+                        FocusListRow(
+                            title = bin, titleIsCode = true, state = RowState.Open, chevron = true,
+                            onClick = { onPickBin(bin) },
+                        )
+                    }
+                }
+                else -> {
+                    if (state.lines.isEmpty() && state.exceptions.isEmpty()) {
+                        item { EmptyListText(if (state.totalLines == 0) "This journal has no lines." else "No items match.") }
+                    }
+                    if (state.exceptionsEnabled) {
+                        items(state.exceptions.sortedByDescending { it.capturedAt }, key = { "x-" + it.clientId }) { exception ->
+                            val variant = com.d365fo.mobileops.domain.model.ProductVariant(exception.configId, exception.sizeId, exception.colorId, exception.styleId)
+                            FocusListRow(
+                                title = exception.itemId,
+                                titleIsCode = true,
+                                state = RowState.Warn,
+                                icon = Icons.Default.AddCircle,
+                                subtitle = listOfNotNull(
+                                    if (exception.sendError != null) "Not sent" else "Not on this journal",
+                                    variant.label.takeIf { it.isNotBlank() },
+                                    exception.locationId?.let { "Loc $it" },
+                                    exception.batchId?.let { "Batch $it" },
+                                    exception.serialId?.let { "Serial $it" },
+                                ).joinToString(" · "),
+                                count = exception.quantity,
+                                onClick = { onException(exception.clientId) }.takeIf { exception.sentAt == null && !state.locked },
+                            )
+                        }
+                    }
+                    items(state.lines, key = { it.journalLineId }) { line ->
+                        CountingLineRow(line = line, onClick = { onLine(line) })
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun EmptyListText(text: String) = Text(
+    text,
+    style = com.d365fo.mobileops.presentation.common.theme.FocusType.description,
+    color = FocusColors.muted,
+    modifier = Modifier.padding(20.dp),
+)
+
+/**
+ * A triggered or opportunity check of one line: the line in the centre, its quantity (tap the
+ * number for the pad, open on arrival while empty) and Hold to end count, which saves it and
+ * ends the count; the screen then closes.
+ */
+@Composable
+private fun FocusedCount(
+    state: CountingScanState,
     line: CountLine,
-    originType: String,
-    locked: Boolean,
-    message: ScanMessage?,
+    onBack: () -> Unit,
     onConfirm: (String) -> Unit,
 ) {
     var quantity by androidx.compose.runtime.saveable.rememberSaveable(line.journalLineId) { mutableStateOf(line.countedQuantity.orEmpty()) }
-    val focus = remember { FocusRequester() }
-    LaunchedEffect(line.journalLineId) {
-        delay(300)
-        runCatching { focus.requestFocus() }
-    }
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = WarehouseDimens.ScreenPadding, vertical = 16.dp)
-            .background(MaterialTheme.colorScheme.surfaceContainerHighest, MaterialTheme.shapes.medium)
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        Text(
-            text = (com.d365fo.mobileops.domain.model.originLabel(originType) ?: "Count").uppercase(),
-            style = MaterialTheme.typography.labelLarge,
-            fontWeight = FontWeight.Bold,
-            color = WarehouseStatusColors.amber,
-        )
-        Text(
-            text = line.locationId?.takeIf { it.isNotBlank() }?.let { "Location $it" } ?: "No location",
-            style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.Bold,
-        )
-        Text(line.itemId, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold, color = WarehouseStatusColors.accent)
-        val details = listOfNotNull(
-            line.itemName.takeIf { it.isNotBlank() && !it.equals(line.itemId, ignoreCase = true) },
-            line.variant.label.takeIf { it.isNotBlank() },
-            line.batchId?.takeIf { it.isNotBlank() }?.let { "Batch $it" },
-            line.serialId?.takeIf { it.isNotBlank() }?.let { "Serial $it" },
-        )
-        if (details.isNotEmpty()) {
-            Text(details.joinToString(" · "), style = MaterialTheme.typography.bodyLarge, color = WarehouseStatusColors.text3)
-        }
-        OutlinedTextField(
-            value = quantity,
-            onValueChange = { quantity = it.filter(Char::isDigit).take(12) },
-            label = { Text("Quantity found") },
-            singleLine = true,
-            enabled = !locked,
-            textStyle = MaterialTheme.typography.displaySmall.copy(textAlign = TextAlign.Center, fontWeight = FontWeight.Bold),
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
-            keyboardActions = KeyboardActions(onDone = { if (quantity.isNotEmpty()) onConfirm(quantity) }),
-            shape = com.d365fo.mobileops.presentation.common.components.HeroFieldShape,
-            modifier = Modifier.fillMaxWidth().heightIn(min = 96.dp).focusRequester(focus),
-        )
-        message?.let {
-            Text(
-                text = it.text,
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.SemiBold,
-                color = if (it.isError) MaterialTheme.colorScheme.error else WarehouseStatusColors.green,
-            )
-        }
-        if (locked) {
-            Text("Submitted - reopen to change.", style = MaterialTheme.typography.bodySmall, color = WarehouseStatusColors.text3)
-        } else {
-            Button(
-                onClick = { onConfirm(quantity) },
+    var pad by androidx.compose.runtime.saveable.rememberSaveable(line.journalLineId) { mutableStateOf(!state.locked && quantity.isEmpty()) }
+    val origin = com.d365fo.mobileops.domain.model.originLabel(state.originType) ?: "Count"
+    FocusScreen(
+        title = origin,
+        onBack = onBack,
+        counter = line.locationId?.takeIf { it.isNotBlank() },
+        band = state.message?.let { bandOf(if (it.isError) BandKind.Bad else BandKind.Ok, it.text.removeSuffix(".")) }
+            ?: if (state.locked) BandState(BandKind.Info, "Submitted", "reopen to change") else BandState(BandKind.Info, origin, "Blind count"),
+        actions = if (state.locked) null else { {
+            HoldToConfirmButton(
+                "Hold to end count",
+                onConfirm = { onConfirm(quantity) },
                 enabled = quantity.isNotEmpty(),
-                modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
-            ) { Text("Confirm and end count", fontWeight = FontWeight.Bold) }
-        }
+                modifier = Modifier.weight(1f),
+            )
+        } },
+        overlay = if (pad) { {
+            QuantityPadSheet(
+                initial = quantity,
+                onSet = { quantity = it; pad = false },
+                onDismiss = { pad = false },
+            )
+        } } else {
+            null
+        },
+    ) {
+        FocusCenter(
+            caption = line.locationId?.takeIf { it.isNotBlank() }?.let { "At $it" } ?: "No location",
+            code = line.itemId,
+            description = listOfNotNull(
+                line.itemName.takeIf { it.isNotBlank() && !it.equals(line.itemId, ignoreCase = true) },
+                line.variant.label.takeIf { it.isNotBlank() },
+                line.batchId?.takeIf { it.isNotBlank() }?.let { "Batch $it" },
+                line.serialId?.takeIf { it.isNotBlank() }?.let { "Serial $it" },
+            ).joinToString(" · ").ifEmpty { null },
+            quantity = quantity.ifEmpty { "–" },
+            unitLine = "Quantity found",
+            onQuantityTap = if (state.locked) null else { { pad = true } },
+        )
+    }
+}
+
+/** Cycle count samples for the layout test: 0 journal open, 1 counted, 2 quantity pad, 3 not on journal, 4 location step. */
+@Composable
+internal fun CycleCountFocusSample(kind: Int) {
+    val line = CountLine(
+        journalLineId = "L1", journalId = "BSP-JN-000552040", lineNumber = 1, itemId = "BSR-11397-0",
+        itemName = "Panadol Extra 24s", locationId = "AAC", batchId = null, serialId = null, countedQuantity = null,
+        markedCounted = false, countedBy = null, countedAt = null,
+    )
+    val base = CountingScanState(
+        journalDescription = "Weekly cycle count A-class",
+        totalLines = 18, counted = 7, lines = listOf(line),
+        locations = listOf(LocationChoice("AAC", 7, 12), LocationChoice("DAMAGED", 0, 6)),
+    )
+    val state = when (kind) {
+        1 -> base.copy(message = ScanMessage("BSR-11397-0 counted: 3", isError = false, undoable = true))
+        2 -> base.copy(prompt = CountPrompt(line, "3"))
+        3 -> base.copy(message = ScanMessage("HSN010 is not an item on this journal", isError = true, unexpectedItemId = "HSN010"), exceptionsEnabled = true)
+        4 -> base.copy(byLocation = true)
+        else -> base
+    }
+    val choosingLocation = state.byLocation && state.selectedLocation == null
+    FocusScreen(
+        title = "Cycle count",
+        onBack = {},
+        counter = "${state.counted} / ${state.totalLines}",
+        progress = state.counted.toFloat() / state.totalLines,
+        band = cycleCountBand(state),
+        remaining = if (choosingLocation) null else "${state.totalLines - state.counted} lines left",
+        scanPill = { com.d365fo.mobileops.presentation.common.focus.ScanPill(onTap = {}) },
+        actions = cycleCountActions(state, choosingLocation, false, {}, {}, {}, {}, {}),
+        overlay = state.prompt?.let { p -> { QuantityPadSheet(initial = p.initial, onSet = {}, onDismiss = {}) } },
+    ) {
+        CycleCountCenter(state, choosingLocation, false)
     }
 }

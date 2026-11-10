@@ -70,6 +70,16 @@ class FocusComponentLayoutTest {
         Triple("PoScanned", true) { com.d365fo.mobileops.presentation.modules.stepflow.ReceivingFocusSample(2) },
         Triple("PoBatch", true) { com.d365fo.mobileops.presentation.modules.stepflow.ReceivingFocusSample(3) },
         Triple("PoError", true) { com.d365fo.mobileops.presentation.modules.stepflow.ReceivingFocusSample(4) },
+        Triple("StoreNew", true) { com.d365fo.mobileops.presentation.modules.cyclecounting.store.StoreCountFocusSample(0) },
+        Triple("StoreLocation", true) { com.d365fo.mobileops.presentation.modules.cyclecounting.store.StoreCountFocusSample(1) },
+        Triple("StoreCounted", true) { com.d365fo.mobileops.presentation.modules.cyclecounting.store.StoreCountFocusSample(2) },
+        Triple("StorePad", true) { com.d365fo.mobileops.presentation.modules.cyclecounting.store.StoreCountFocusSample(3) },
+        Triple("StoreError", true) { com.d365fo.mobileops.presentation.modules.cyclecounting.store.StoreCountFocusSample(4) },
+        Triple("CycleOpen", true) { com.d365fo.mobileops.presentation.modules.cyclecounting.CycleCountFocusSample(0) },
+        Triple("CycleCounted", true) { com.d365fo.mobileops.presentation.modules.cyclecounting.CycleCountFocusSample(1) },
+        Triple("CyclePad", true) { com.d365fo.mobileops.presentation.modules.cyclecounting.CycleCountFocusSample(2) },
+        Triple("CycleNotOnJournal", true) { com.d365fo.mobileops.presentation.modules.cyclecounting.CycleCountFocusSample(3) },
+        Triple("CycleLocation", true) { com.d365fo.mobileops.presentation.modules.cyclecounting.CycleCountFocusSample(4) },
     )
 
     @Test

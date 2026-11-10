@@ -2,6 +2,13 @@ package com.d365fo.mobileops.presentation.modules.cyclecounting
 
 import kotlinx.coroutines.launch
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.ui.draw.clip
+import com.d365fo.mobileops.presentation.common.focus.FocusButton
+import com.d365fo.mobileops.presentation.common.theme.FocusColors
+import com.d365fo.mobileops.presentation.common.theme.FocusShapes
+import com.d365fo.mobileops.presentation.common.theme.FocusType
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -90,7 +97,6 @@ fun CountingJournalListScreen(
     viewModel: CountingJournalListViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
-    var confirmEndFor by remember { mutableStateOf<String?>(null) }
     var confirmReopenFor by remember { mutableStateOf<String?>(null) }
 
     // Export as CSV (feedback, 12 Oct): the worker picks where - Downloads, a shared drive - in
@@ -164,60 +170,40 @@ fun CountingJournalListScreen(
         )
     }
 
-    confirmEndFor?.let { journalId ->
-        state.countStates[journalId]?.let { countState ->
-            EndCountDialog(
-                countState = countState,
-                onConfirm = {
-                    confirmEndFor = null
-                    viewModel.endCount(journalId)
-                },
-                onDismiss = { confirmEndFor = null },
-            )
-        }
-    }
-
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        when (kind) {
-                            com.d365fo.mobileops.domain.model.CountKind.CYCLE -> "Cycle count"
-                            com.d365fo.mobileops.domain.model.CountKind.WALL_TO_WALL -> "Wall-to-wall count"
-                            null -> "Inventory count"
-                        },
-                    )
-                },
-                expandedHeight = WarehouseDimens.TopBarHeight,
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                    }
-                },
-                // Store count and Count accuracy in the ⋮ menu: four icons beside the title broke
-                // "Inventory count" mid-word (20 Oct restyle).
-                menuItems = { close ->
-                    // Every counter may count the store; the supervisor reviews it in D365FO.
-                    // A sub-menu leaves both to the Inventory count page.
-                    if (kind == null) {
-                    androidx.compose.material3.DropdownMenuItem(
+    var listMenuOpen by remember { mutableStateOf(false) }
+    com.d365fo.mobileops.presentation.common.focus.FocusScreen(
+        title = when (kind) {
+            com.d365fo.mobileops.domain.model.CountKind.CYCLE -> "Cycle count"
+            com.d365fo.mobileops.domain.model.CountKind.WALL_TO_WALL -> "Wall-to-wall count"
+            null -> "Inventory count"
+        },
+        onBack = onBack,
+        // Store count and Count accuracy in the list of every kind (search); a sub-menu leaves
+        // both to the Count menu.
+        topBarTrailing = if (kind != null) null else { {
+            Box {
+                IconButton(onClick = { listMenuOpen = true }, modifier = Modifier.size(48.dp)) {
+                    Icon(Icons.Default.MoreVert, contentDescription = "More", tint = FocusColors.ink)
+                }
+                DropdownMenu(expanded = listMenuOpen, onDismissRequest = { listMenuOpen = false }) {
+                    DropdownMenuItem(
                         text = { Text("Store count") },
                         leadingIcon = { Icon(Icons.Default.Inventory, contentDescription = null) },
-                        onClick = { close(); onStoreCount() },
+                        onClick = { listMenuOpen = false; onStoreCount() },
+                        modifier = Modifier.heightIn(min = 56.dp),
                     )
                     if (state.canViewAccuracy) {
-                        androidx.compose.material3.DropdownMenuItem(
+                        DropdownMenuItem(
                             text = { Text("Count accuracy") },
                             leadingIcon = { Icon(Icons.Default.Insights, contentDescription = null) },
-                            onClick = { close(); onAccuracy() },
+                            onClick = { listMenuOpen = false; onAccuracy() },
+                            modifier = Modifier.heightIn(min = 56.dp),
                         )
                     }
-                    }
-                },
-            )
-        },
-    ) { padding ->
+                }
+            }
+        } },
+    ) {
         // This device's journals draw first and D365FO's open ones arrive above them. A list keeps
         // its place when rows land above it, which would leave the worker looking at closed
         // journals with the ones to count out of sight.
@@ -269,7 +255,7 @@ fun CountingJournalListScreen(
                 },
             )
         }
-        Column(modifier = Modifier.fillMaxSize().padding(padding)) {
+        Column(modifier = Modifier.weight(1f).fillMaxWidth()) {
             // Tabs under the bar, the same as Activity's (Harbour).
             val shown = listOf(0) + listOfNotNull(1.takeIf { 1 in tabs }, 2.takeIf { 2 in tabs }) + 3
             com.d365fo.mobileops.presentation.common.components.SegmentTabs(
@@ -366,7 +352,7 @@ fun CountingJournalListScreen(
                                     viewModel.startCounting(journal.journalId)
                                     onStartCounting(journal.journalId)
                                 },
-                                onEndCount = { confirmEndFor = journal.journalId },
+                                onEndCount = { viewModel.endCount(journal.journalId) },
                                 onResendExceptions = { viewModel.resendExceptions(journal.journalId) },
                                 onReviewVariance = {
                                     if (journal.doubleBlind) onReviewDualCount(journal.journalId) else onReviewVariance(journal.journalId)
@@ -418,8 +404,11 @@ private fun CountingJournalRow(
         countState.phase != CountPhase.SUBMITTING && countState.phase != CountPhase.SUBMITTED &&
         countState.phase != CountPhase.POSTED
 
-    Card(
+    Column(
         modifier = Modifier.fillMaxWidth()
+            .clip(FocusShapes.band)
+            .background(FocusColors.surface)
+            .border(1.dp, FocusColors.divider, FocusShapes.band)
             .then(if (canContinue) Modifier.clickable(onClick = onStartCounting) else Modifier),
     ) {
         // Compact (feedback, 21 Oct): the ring sits left of the journal number and Get data at
@@ -433,21 +422,12 @@ private fun CountingJournalRow(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                if (countState != null) {
-                    com.d365fo.mobileops.presentation.common.components.CountProgressRing(
-                        progress = countState.percent / 100f,
-                        percent = countState.percent,
-                        size = 44.dp,
-                    )
-                }
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         // Breaks after a hyphen, never inside the number.
                         text = with(com.d365fo.mobileops.presentation.common.components.Breakable) { journal.journalId.code() },
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.ExtraBold,
-                        // The document in the accent, as every Harbour row.
-                        color = WarehouseStatusColors.accent,
+                        style = FocusType.rowCode,
+                        color = FocusColors.navy,
                     )
                     // Description, size and date on one quiet line rather than three.
                     Text(
@@ -462,8 +442,16 @@ private fun CountingJournalRow(
                                     else -> "${journal.lineCount} lines"
                                 },
                         ).joinToString(" · "),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = WarehouseStatusColors.text3,
+                        style = FocusType.rowDetail,
+                        color = FocusColors.muted,
+                    )
+                }
+                // How far along: done / total, as every Focus list count.
+                if (countState != null) {
+                    Text(
+                        "${countState.counted}/${countState.total}",
+                        style = FocusType.rowCount,
+                        color = if (countState.total > 0 && countState.counted == countState.total) FocusColors.okIcon else FocusColors.muted,
                     )
                 }
                 // A supervisor sees a dual journal whose lines are all settled, to review it: there
@@ -471,15 +459,7 @@ private fun CountingJournalRow(
                 if (countState == null && exportStatus == null && journal.doneNote == null &&
                     !(journal.lineCount == 0 && onReviewVariance != null)
                 ) {
-                    androidx.compose.material3.FilledTonalButton(
-                        onClick = onGetData,
-                        shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
-                        colors = androidx.compose.material3.ButtonDefaults.filledTonalButtonColors(
-                            containerColor = WarehouseStatusColors.accentDim,
-                            contentColor = WarehouseStatusColors.accent,
-                        ),
-                        modifier = Modifier.heightIn(min = WarehouseDimens.MinTouchTarget),
-                    ) { Text("Get data", fontWeight = FontWeight.Bold) }
+                    FocusButton("Get data", onClick = onGetData)
                 }
                 if (canRefresh || canReopen || onReviewVariance != null || onExportCsv != null) {
                     Box {
@@ -661,85 +641,39 @@ private fun CountControls(
 
         // The Harbour pair: outlined View lines beside the gradient main action.
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-            com.d365fo.mobileops.presentation.common.components.DockOutlinedButton(
-                onClick = onViewLines,
-                text = "View lines",
-                modifier = Modifier.weight(1f),
-            )
+            FocusButton("View lines", onClick = onViewLines, modifier = Modifier.weight(1f))
             when {
                 submitting || phase == CountPhase.POSTED -> Unit
-                finished -> com.d365fo.mobileops.presentation.common.components.GradientButton(
-                    onClick = onReopen,
-                    modifier = Modifier.weight(1f),
-                ) { Text("Reopen") }
-                else -> com.d365fo.mobileops.presentation.common.components.GradientButton(
+                finished -> FocusButton("Reopen", onClick = onReopen, primary = true, modifier = Modifier.weight(1f))
+                else -> FocusButton(
+                    if (phase == CountPhase.READY) "Start counting" else "Continue counting",
                     onClick = onStartCounting,
+                    primary = true,
                     modifier = Modifier.weight(1f),
-                ) { Text(if (phase == CountPhase.READY) "Start counting" else "Continue counting") }
+                )
             }
         }
 
         // End count only exists while a count is under way (or a submission needs another go).
+        // What End count sends - the old dialog's figures, now on the card - and a 1-second
+        // hold (brief rule 8). With nothing to send it stays off, as the dialog's Submit did.
         if (phase == CountPhase.COUNTING || phase == CountPhase.FAILED) {
-            com.d365fo.mobileops.presentation.common.components.DockOutlinedButton(
-                onClick = onEndCount,
-                enabled = !submitBlocked,
-                text = "End count",
-                modifier = Modifier.fillMaxWidth(),
+            val left = listOfNotNull(
+                "${countState.notCounted} not counted - left as they are".takeIf { countState.notCounted > 0 },
+                "${countState.markedOnly} marked OK".takeIf { countState.markedOnly > 0 },
+                "${countState.emptyLocations} empty location${if (countState.emptyLocations == 1) "" else "s"}".takeIf { countState.emptyLocations > 0 },
+                "${countState.exceptions} not on the journal".takeIf { countState.exceptions > 0 },
+            )
+            if (left.isNotEmpty()) {
+                Text(left.joinToString(" · "), style = FocusType.rowDetail, color = FocusColors.warnText)
+            }
+            com.d365fo.mobileops.presentation.common.focus.HoldToConfirmButton(
+                "Hold to end count",
+                onConfirm = onEndCount,
+                enabled = !submitBlocked && (countState.counted > 0 || countState.exceptions > 0),
             )
         }
     }
-}
-
-@Composable
-private fun EndCountDialog(
-    countState: JournalCountState,
-    onConfirm: () -> Unit,
-    onDismiss: () -> Unit,
-) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("End count?") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("${countState.withQuantity} of ${countState.total} lines counted.")
-                if (countState.markedOnly > 0) {
-                    Text(
-                        "${countState.markedOnly} marked OK (on-hand kept).",
-                    )
-                }
-                if (countState.notCounted > 0) {
-                    Text(
-                        "${countState.notCounted} not counted - left as they are.",
-                        color = WarehouseStatusColors.amber,
-                    )
-                }
-                if (countState.emptyLocations > 0) {
-                    Text(
-                        "${countState.emptyLocations} empty location${if (countState.emptyLocations == 1) "" else "s"}.",
-                    )
-                }
-                if (countState.exceptions > 0) {
-                    Text(
-                        "${countState.exceptions} not on the journal - added as new lines.",
-                    )
-                }
-                Text(
-                    when {
-                        countState.counted > 0 -> "Send the counts?"
-                        countState.exceptions > 0 -> "Send the extra items?"
-                        else -> "Nothing counted yet."
-                    },
-                )
-            }
-        },
-        confirmButton = {
-            com.d365fo.mobileops.presentation.common.components.DialogButtonRow(
-                dismiss = { com.d365fo.mobileops.presentation.common.components.CancelOutlinedButton(onClick = onDismiss, modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget)) { Text("Keep counting") } },
-                confirm = { com.d365fo.mobileops.presentation.common.components.ConfirmButton(onClick = onConfirm, enabled = countState.counted > 0 || countState.exceptions > 0, modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget)) { Text("Submit counts") } },
-            )
-        },
-    )
 }
 
 /**
@@ -756,15 +690,7 @@ private fun DownloadSection(
 ) {
     when (status) {
         // A tonal button like the dashboard's actions - a solid one on every card was heavy.
-        null -> androidx.compose.material3.FilledTonalButton(
-            onClick = onGetData,
-            shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
-            colors = androidx.compose.material3.ButtonDefaults.filledTonalButtonColors(
-                containerColor = WarehouseStatusColors.accentDim,
-                contentColor = WarehouseStatusColors.accent,
-            ),
-            modifier = Modifier.fillMaxWidth().heightIn(min = WarehouseDimens.MinTouchTarget),
-        ) { Text("Get data", fontWeight = FontWeight.Bold) }
+        null -> FocusButton("Get data", onClick = onGetData, modifier = Modifier.fillMaxWidth())
 
         is ExportJobStatus.Enqueued -> ProgressRow(label = "Requesting export…", percent = null)
 

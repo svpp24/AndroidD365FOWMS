@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -63,65 +64,26 @@ fun CountingHubScreen(
 ) {
     val canViewAccuracy by viewModel.canViewAccuracy.collectAsStateWithLifecycle()
 
-    Scaffold(
-        topBar = {
-            AppTopBar(
-                title = { Text("Inventory count") },
-                expandedHeight = WarehouseDimens.TopBarHeight,
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                    }
-                },
-            )
-        },
-    ) { padding ->
-        LazyColumn(
-            modifier = Modifier.fillMaxSize().padding(padding),
-            contentPadding = PaddingValues(horizontal = WarehouseDimens.ScreenPadding, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+    // The Count menu in the Focus design (brief section 9): one row per kind of count.
+    com.d365fo.mobileops.presentation.common.focus.FocusScreen(title = "Count", onBack = onBack) {
+        androidx.compose.foundation.layout.Column(
+            Modifier.weight(1f).verticalScroll(androidx.compose.foundation.rememberScrollState()),
         ) {
-            // How much of the item master is on the device - counting offline looks items up there.
-            // "Data up to date" moved to Settings, with a manual Sync (user, 9 Nov).
-            // The kinds of count as Harbour module cards, each with its tag.
-            item(key = "store") {
-                com.d365fo.mobileops.presentation.common.components.ModuleCard(
-                    icon = Icons.Default.Storefront,
-                    color = com.d365fo.mobileops.presentation.common.components.ModuleColor.Green,
-                    title = "Store count",
-                    tags = emptyList(),
-                    onClick = onStoreCount,
-                )
-            }
-            item(key = "cycle") {
-                com.d365fo.mobileops.presentation.common.components.ModuleCard(
-                    icon = Icons.Default.Autorenew,
-                    color = com.d365fo.mobileops.presentation.common.components.ModuleColor.Blue,
-                    title = "Cycle count",
-                    // No counts on the menus (user, 9 Nov).
-                    tags = emptyList(),
-                    onClick = { onJournals(CountKind.CYCLE) },
-                )
-            }
-            item(key = "w2w") {
-                com.d365fo.mobileops.presentation.common.components.ModuleCard(
-                    icon = Icons.Default.GridView,
-                    color = com.d365fo.mobileops.presentation.common.components.ModuleColor.Sienna,
-                    title = "Wall-to-wall count",
-                    tags = emptyList(),
-                    onClick = { onJournals(CountKind.WALL_TO_WALL) },
-                )
-            }
+            com.d365fo.mobileops.presentation.common.focus.FocusListRow(
+                title = "Store count", icon = Icons.Default.Storefront, chevron = true, onClick = onStoreCount,
+            )
+            com.d365fo.mobileops.presentation.common.focus.FocusListRow(
+                title = "Cycle count", icon = Icons.Default.Autorenew, chevron = true,
+                onClick = { onJournals(CountKind.CYCLE) },
+            )
+            com.d365fo.mobileops.presentation.common.focus.FocusListRow(
+                title = "Wall-to-wall count", icon = Icons.Default.GridView, chevron = true,
+                onClick = { onJournals(CountKind.WALL_TO_WALL) },
+            )
             if (canViewAccuracy) {
-                item(key = "accuracy") {
-                    com.d365fo.mobileops.presentation.common.components.ModuleCard(
-                        icon = Icons.Default.Insights,
-                        color = com.d365fo.mobileops.presentation.common.components.ModuleColor.Petrol,
-                        title = "Count accuracy",
-                        tags = emptyList(),
-                        onClick = onAccuracy,
-                    )
-                }
+                com.d365fo.mobileops.presentation.common.focus.FocusListRow(
+                    title = "Count accuracy", icon = Icons.Default.Insights, chevron = true, onClick = onAccuracy,
+                )
             }
         }
     }

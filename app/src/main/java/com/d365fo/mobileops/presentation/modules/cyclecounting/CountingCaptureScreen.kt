@@ -41,6 +41,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.layout.heightIn
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.d365fo.mobileops.presentation.common.components.AppCard as Card
@@ -70,25 +71,14 @@ fun CountingCaptureScreen(
     // was scrolled to.
     LaunchedEffect(state.query, state.filter) { listState.scrollToItem(0) }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                // Not "Lines - <journal description>" - the description is the journal name's
-                // own generic text (e.g. "Inventory Counting Journal", the same on every count
-                // journal), not this journal's own identity, and prefixed it overflowed the top
-                // bar. "View lines" matches the button that opened this screen; which journal
-                // it's showing was already on the card that button was tapped from.
-                title = { Text("View lines") },
-                expandedHeight = WarehouseDimens.TopBarHeight,
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                    }
-                },
-            )
-        },
-    ) { padding ->
-        Column(modifier = Modifier.fillMaxSize().padding(padding)) {
+    // "View lines" matches the button that opened it; which journal it shows was on the card.
+    com.d365fo.mobileops.presentation.common.focus.FocusScreen(
+        title = "View lines",
+        onBack = onBack,
+        counter = "${state.counted} / ${state.totalLines}",
+        progress = if (state.totalLines > 0) state.counted.toFloat() / state.totalLines else null,
+    ) {
+        Column(modifier = Modifier.weight(1f).fillMaxWidth()) {
             // All / Not counted / Counted as tabs under the bar, with their counts (Harbour).
             val filters = LineFilter.entries
             com.d365fo.mobileops.presentation.common.components.SegmentTabs(
@@ -109,50 +99,21 @@ fun CountingCaptureScreen(
                     .padding(horizontal = WarehouseDimens.ScreenPadding, vertical = 10.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                // How far along, in one white card: the ring, the tally, and the bar.
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(Color.White, RoundedCornerShape(12.dp))
-                        .padding(horizontal = 12.dp, vertical = 10.dp),
-                ) {
-                    com.d365fo.mobileops.presentation.common.components.CountProgressRing(
-                        progress = if (state.totalLines > 0) state.counted.toFloat() / state.totalLines else 0f,
-                        percent = state.percent,
-                    )
-                    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Text(
-                            text = "${state.counted} of ${state.totalLines} counted",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = WarehouseStatusColors.accent,
-                        )
-                        Text(
-                            text = "${state.notCounted} still to count",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = WarehouseStatusColors.text3,
-                        )
-                    }
-                }
-
                 OutlinedTextField(
                     value = state.query,
                     onValueChange = viewModel::setQuery,
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
                     singleLine = true,
                     placeholder = { Text("Search item, name, location…") },
                     leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = WarehouseStatusColors.accent) },
                     trailingIcon = {
                         if (state.query.isNotEmpty()) {
-                            IconButton(onClick = { viewModel.setQuery("") }) {
+                            IconButton(onClick = { viewModel.setQuery("") }, modifier = Modifier.size(56.dp)) {
                                 Icon(Icons.Default.Clear, contentDescription = "Clear search")
                             }
                         }
                     },
-                    shape = com.d365fo.mobileops.presentation.common.components.HeroFieldShape,
-                    colors = com.d365fo.mobileops.presentation.common.components.heroFieldColors(),
+                    shape = com.d365fo.mobileops.presentation.common.theme.FocusShapes.button,
                 )
 
                 if (state.resolvingNames) {
@@ -162,11 +123,6 @@ fun CountingCaptureScreen(
                         color = WarehouseStatusColors.text3,
                     )
                 }
-                com.d365fo.mobileops.presentation.common.components.ListHeader(
-                    icon = Icons.Default.Checklist,
-                    title = "Lines",
-                    count = state.lines.size,
-                )
             }
 
             if (state.lines.isEmpty()) {
@@ -181,12 +137,7 @@ fun CountingCaptureScreen(
             LazyColumn(
                 modifier = Modifier.weight(1f),
                 state = listState,
-                contentPadding = PaddingValues(
-                    start = WarehouseDimens.ScreenPadding,
-                    end = WarehouseDimens.ScreenPadding,
-                    bottom = 12.dp,
-                ),
-                verticalArrangement = Arrangement.spacedBy(6.dp),
+                contentPadding = PaddingValues(bottom = 12.dp),
             ) {
                 items(state.lines, key = { it.journalLineId }, contentType = { "line" }) { line ->
                     CountingLineRow(line)

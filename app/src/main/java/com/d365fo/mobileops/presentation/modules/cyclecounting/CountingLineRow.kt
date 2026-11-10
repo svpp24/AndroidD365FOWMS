@@ -32,68 +32,37 @@ import com.d365fo.mobileops.presentation.common.theme.WarehouseStatusColors
 /**
  * One line of the journal: status tick, item number + name + where, and the counted quantity - text only, no inputs, so a list of hundreds scrolls smoothly on a low-end handheld. Shared by View lines and the Count screen; [onClick] makes it tappable.
  *
- * Looks like an AppCard but is drawn as one Row with a background and border: a Material Card
- * adds a Surface, a CompositionLocal provider and a Column per row, and on a fling every newly
- * visible row pays for all of that - on large journals that was most of each frame.
+ * A [com.d365fo.mobileops.presentation.common.focus.FocusListRow] (Focus design): no card, a
+ * divider under each row - light enough for a list of hundreds on a low-end handheld.
  *
  * Nothing is truncated: a long name or location/variant line wraps. That is also cheaper than an
  * ellipsis, which measures the text a second time to fit the "…".
  */
 @Composable
 internal fun CountingLineRow(line: CountLine, onClick: (() -> Unit)? = null) {
-    val shape = MaterialTheme.shapes.medium
     // The "where" text only changes with the line itself, not on every recomposition.
     val where = remember(line) { lineWhere(line) }
-    // Harbour row: a round status marker, the item in the accent, its name, where, and the
-    // counted quantity on the right.
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(androidx.compose.ui.graphics.Color.White, shape)
-            .then(if (onClick != null) Modifier.clip(shape).clickable(onClick = onClick) else Modifier)
-            .padding(horizontal = 12.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.Top,
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        val (icon, bg, tint) = when {
-            line.countedQuantity != null -> Triple(Icons.Default.Check, WarehouseStatusColors.greenDim, WarehouseStatusColors.green)
-            line.verifyOnly && line.confirmedAt != null -> Triple(Icons.Default.Check, WarehouseStatusColors.greenDim, WarehouseStatusColors.green)
-            line.markedCounted -> Triple(Icons.Default.Flag, WarehouseStatusColors.amberDim, WarehouseStatusColors.amber)
-            else -> Triple(Icons.Default.Inventory2, WarehouseStatusColors.surface2, WarehouseStatusColors.text3)
-        }
-        androidx.compose.foundation.layout.Box(
-            contentAlignment = Alignment.Center,
-            modifier = Modifier.size(30.dp).background(bg, androidx.compose.foundation.shape.CircleShape),
-        ) {
-            Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(17.dp))
-        }
-
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = line.itemId,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.ExtraBold,
-                color = WarehouseStatusColors.accent,
-            )
-            // The export has no item name; this is the name resolved from D365FO, and is
-            // skipped while it's still just the item number again.
-            line.itemName.takeIf { it.isNotBlank() && !it.equals(line.itemId, ignoreCase = true) }?.let {
-                Text(text = it, style = MaterialTheme.typography.bodyMedium, color = WarehouseStatusColors.text2)
-            }
-            if (where.isNotEmpty()) {
-                Text(text = where, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Normal, color = WarehouseStatusColors.text3)
-            }
-        }
-
-        Text(
-            text = line.countedQuantity ?: if (line.verifyOnly && line.confirmedAt != null) "Verified" else "-",
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.ExtraBold,
-            maxLines = 1,
-            softWrap = false,
-            color = if (line.isCounted) WarehouseStatusColors.accent else WarehouseStatusColors.text3,
-        )
-    }
+    val verified = line.verifyOnly && line.confirmedAt != null
+    com.d365fo.mobileops.presentation.common.focus.FocusListRow(
+        title = line.itemId,
+        titleIsCode = true,
+        state = when {
+            line.countedQuantity != null || verified -> com.d365fo.mobileops.presentation.common.focus.RowState.Done
+            line.markedCounted -> com.d365fo.mobileops.presentation.common.focus.RowState.Warn
+            else -> com.d365fo.mobileops.presentation.common.focus.RowState.Open
+        },
+        icon = Icons.Default.Flag.takeIf { line.markedCounted && line.countedQuantity == null && !verified },
+        // The export has no item name; this is the name resolved from D365FO, and is skipped
+        // while it's still just the item number again.
+        subtitle = listOfNotNull(
+            line.itemName.takeIf { it.isNotBlank() && !it.equals(line.itemId, ignoreCase = true) },
+            where.ifEmpty { null },
+        ).joinToString(" · ").ifEmpty { null },
+        count = line.countedQuantity ?: if (verified) "Verified" else "–",
+        countColor = if (line.isCounted) com.d365fo.mobileops.presentation.common.theme.FocusColors.navy
+        else com.d365fo.mobileops.presentation.common.theme.FocusColors.muted,
+        onClick = onClick,
+    )
 }
 
 private fun lineWhere(line: CountLine): String = listOfNotNull(

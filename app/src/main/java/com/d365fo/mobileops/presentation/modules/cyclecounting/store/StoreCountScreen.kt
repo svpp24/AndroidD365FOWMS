@@ -1,5 +1,25 @@
 package com.d365fo.mobileops.presentation.modules.cyclecounting.store
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.size
+import androidx.compose.material.icons.automirrored.filled.ListAlt
+import androidx.compose.material.icons.automirrored.filled.Undo
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.PhotoCamera
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.LinearProgressIndicator
+import com.d365fo.mobileops.presentation.common.focus.BandKind
+import com.d365fo.mobileops.presentation.common.focus.BandState
+import com.d365fo.mobileops.presentation.common.focus.FocusButton
+import com.d365fo.mobileops.presentation.common.focus.FocusCenter
+import com.d365fo.mobileops.presentation.common.focus.FocusListRow
+import com.d365fo.mobileops.presentation.common.focus.FocusScreen
+import com.d365fo.mobileops.presentation.common.focus.HoldToConfirmButton
+import com.d365fo.mobileops.presentation.common.focus.QuantityPadSheet
+import com.d365fo.mobileops.presentation.common.focus.RowState
+import com.d365fo.mobileops.presentation.common.theme.FocusColors
+import com.d365fo.mobileops.presentation.modules.stepflow.bandOf
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -617,43 +637,22 @@ class StoreCountViewModel @Inject constructor(
 }
 
 /** "AAC > BIN-A1", or the location alone. */
-private val StoreCountLine.place: String get() = if (binId.isBlank()) locationId else "$locationId \u203A $binId"
+private val StoreCountLine.place: String get() = if (binId.isBlank()) locationId else "$locationId › $binId"
 
-@OptIn(ExperimentalMaterial3Api::class)
+/**
+ * Store count in the Focus design (brief sections 6 and 9), on the existing steps: location, bin
+ * (where the store has bins), then items and their quantity. The band says what the last scan
+ * did, the centre shows the place or the last line counted, and the lists of locations, bins and
+ * counted lines open on demand from the bottom button. A step shows its caption, never "Scan ...".
+ */
 @Composable
 fun StoreCountScreen(onBack: () -> Unit, viewModel: StoreCountViewModel = hiltViewModel()) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     var showCamera by remember { mutableStateOf(false) }
-    var typing by remember { mutableStateOf(false) }
-    var confirmEnd by remember { mutableStateOf(false) }
-    var changePlace by remember { mutableStateOf(false) }
-    if (changePlace) {
-        com.d365fo.mobileops.presentation.modules.cyclecounting.ChangePlaceDialog(
-            location = state.locationId,
-            bin = state.binId,
-            binsUsed = state.binsRequired,
-            canChangeLocation = true,
-            onChangeLocation = { changePlace = false; viewModel.changeLocation() },
-            onChangeBin = { changePlace = false; viewModel.changeBin() },
-            onDismiss = { changePlace = false },
-        )
-    }
-    if (typing) {
-        com.d365fo.mobileops.presentation.modules.ordercreate.CodeEntryDialog(
-            title = when {
-                state.needsLocation -> "Location"
-                state.needsBin -> "Bin"
-                else -> "Item"
-            },
-            label = when {
-                state.needsLocation -> "Location"
-                state.needsBin -> "Bin"
-                else -> "Item number or barcode"
-            },
-            onSubmit = { typing = false; viewModel.onScan(it) },
-            onDismiss = { typing = false },
-        )
-    }
+    var showList by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
+    var menuOpen by remember { mutableStateOf(false) }
+    val draft = state.draft
+    val counting = draft?.counting == true && !state.ended
 
     if (showCamera) {
         com.d365fo.mobileops.presentation.common.scan.CameraScannerSheet(
@@ -661,338 +660,404 @@ fun StoreCountScreen(onBack: () -> Unit, viewModel: StoreCountViewModel = hiltVi
             onDismiss = { showCamera = false },
         )
     }
-    state.pending?.let { pending ->
-        when {
-            pending.needsVariant -> VariantPickerDialog(item = pending.item, onPick = viewModel::pickVariant, onDismiss = viewModel::cancelPending)
-            pending.needsBatch -> TextEntryDialog("Batch", "Scan or type the batch of ${pending.item.itemId}", viewModel::setBatch, viewModel::cancelPending)
-            pending.needsSerial -> TextEntryDialog("Serial number", "Scan or type the serial of ${pending.item.itemId}", viewModel::setSerial, viewModel::cancelPending)
-            else -> QuantityPicker(
-                subtitle = listOfNotNull(
-                    pending.item.itemId,
-                    pending.variant?.takeIf { pending.item.hasProductDimensions }?.label,
-                    pending.batchId.takeIf { it.isNotBlank() }?.let { "Batch $it" },
-                    pending.serialId.takeIf { it.isNotBlank() }?.let { "Serial $it" },
-                    pending.item.inventUnit,
-                ).joinToString(" · "),
-                hint = "At " + if (state.binId.isBlank()) state.locationId else "${state.locationId} \u203A ${state.binId}",
-                confirmLabel = "Add count",
-                initial = if (pending.item.serialActive) "1" else "",
-                onConfirm = viewModel::confirmQuantity,
-                onDismiss = viewModel::cancelPending,
-            )
-        }
+    val pending = state.pending
+    if (pending != null && pending.needsVariant) {
+        VariantPickerDialog(item = pending.item, onPick = viewModel::pickVariant, onDismiss = viewModel::cancelPending)
     }
-    if (confirmEnd) {
-        AlertDialog(
-            onDismissRequest = { confirmEnd = false },
-            title = { Text("End count?") },
-            text = {
-                Text(
-                    "${state.draft?.lines?.size ?: 0} line(s) go to the supervisor. You can't add after this.",
-                )
-            },
-            confirmButton = {
-                DialogButtonRow(
-                    dismiss = {
-                        CancelOutlinedButton(onClick = { confirmEnd = false }, modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget)) {
-                            Text("Keep counting")
-                        }
-                    },
-                    confirm = {
-                        ConfirmButton(
-                            onClick = { confirmEnd = false; viewModel.send(end = true) },
-                            modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget),
-                        ) { Text("End count") }
-                    },
-                )
-            },
+
+    if (showList && counting && draft != null) {
+        androidx.activity.compose.BackHandler { showList = false }
+        StoreCountList(
+            state = state,
+            draft = draft,
+            onClose = { showList = false },
+            onPickLocation = { showList = false; viewModel.pickLocation(it) },
+            onPickBin = { showList = false; viewModel.pickBin(it) },
+            onRemove = viewModel::remove,
         )
+        return
     }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("Store count") },
-                expandedHeight = WarehouseDimens.TopBarHeight,
-                navigationIcon = {
-                    IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back") }
-                },
-            )
+    val padOpen = pending != null && !pending.needsVariant && !pending.needsBatch && !pending.needsSerial
+    FocusScreen(
+        title = "Store count",
+        onBack = onBack,
+        counter = when {
+            !counting || state.needsLocation -> null
+            state.binId.isNotBlank() -> state.binId
+            else -> state.locationId
         },
-    ) { padding ->
-        val draft = state.draft
-        Column(
-            modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = WarehouseDimens.ScreenPadding),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            // Ended: say so and stay until Done - closing at once took the message with it (13 Oct).
-            if (state.ended) {
-                Text("Count ended", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 16.dp))
-                state.message?.let { Text(it, style = MaterialTheme.typography.bodyLarge) }
-                Button(onClick = onBack, modifier = Modifier.fillMaxWidth().heightIn(min = WarehouseDimens.MinTouchTarget)) { Text("Done") }
-                return@Column
-            }
-            if (draft == null || !draft.counting) {
-                Text(
-                    "Count ${state.warehouseId ?: "the store"}, location by location.",
-                    style = MaterialTheme.typography.bodyLarge,
-                    modifier = Modifier.padding(top = 16.dp),
-                )
-                state.error?.let { ErrorBanner(message = it) }
-                com.d365fo.mobileops.presentation.common.components.GradientButton(
-                    onClick = viewModel::start,
-                    enabled = !state.busy,
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Icon(Icons.Default.Add, contentDescription = null)
-                    Text(if (state.busy) "Starting…" else "New store count")
+        band = storeCountBand(state),
+        remaining = if (counting && draft != null) sentLine(draft) else null,
+        scanPill = if (counting && !state.countClosed) {
+            { com.d365fo.mobileops.presentation.common.focus.ScanPillField(enabled = !state.busy) }
+        } else {
+            null
+        },
+        topBarTrailing = if (!counting) null else { {
+            Box {
+                IconButton(onClick = { menuOpen = true }, modifier = Modifier.size(48.dp)) {
+                    Icon(Icons.Default.MoreVert, contentDescription = "More", tint = FocusColors.ink)
                 }
-                return@Column
-            }
-
-            // Location > bin > items as tabs under the bar (Harbour).
-            com.d365fo.mobileops.presentation.common.components.StepTrail(
-                names = listOfNotNull("Location", "Bin".takeIf { state.binsRequired }, "Items"),
-                current = when {
-                    state.needsLocation -> 0
-                    state.needsBin -> 1
-                    else -> if (state.binsRequired) 2 else 1
-                },
-                // A done tab goes back to that step (user, 9 Nov: no Back / Change / Cancel buttons).
-                onStepClick = { i ->
-                    if (!state.busy) when (i) {
-                        0 -> viewModel.changeLocation()
-                        1 -> if (state.binsRequired) viewModel.changeBin()
+                DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                    DropdownMenuItem(
+                        text = { Text("Camera scan") },
+                        leadingIcon = { Icon(Icons.Default.PhotoCamera, contentDescription = null) },
+                        enabled = !state.busy,
+                        onClick = { menuOpen = false; showCamera = true },
+                        modifier = Modifier.heightIn(min = 56.dp),
+                    )
+                    if (!state.needsLocation) {
+                        DropdownMenuItem(
+                            text = { Text("Change location") },
+                            leadingIcon = { Icon(Icons.Default.LocationOn, contentDescription = null) },
+                            enabled = !state.busy,
+                            onClick = { menuOpen = false; viewModel.changeLocation() },
+                            modifier = Modifier.heightIn(min = 56.dp),
+                        )
                     }
-                },
-            )
-            com.d365fo.mobileops.presentation.common.components.PromptHeroCard(
-                prompt = when {
-                    state.needsLocation -> "Choose a location"
-                    state.needsBin -> "Scan a bin"
-                    else -> "Scan item"
-                },
-                pills = buildList {
-                    // Labelled chips (user, 9 Nov): what each value is, not just the value.
-                    draft.masterId.takeIf { it.isNotBlank() }?.let { add(Icons.Default.Description to "Count $it") }
-                    state.locationId.takeIf { it.isNotBlank() && !state.needsLocation }?.let { add(Icons.Default.LocationOn to "Location $it") }
-                    state.binId.takeIf { it.isNotBlank() && state.binsRequired && !state.needsBin && !state.needsLocation }?.let { add(Icons.Default.Inventory2 to "Bin $it") }
-                },
-            ) {
-                // The same scan field as every other scan screen (feedback, 13 Oct: "where is the
-                // barcode scanning field?"): a scan never lands in it, a tap opens typing.
-                com.d365fo.mobileops.presentation.modules.ordercreate.OrderScanField(
-                    onType = { typing = true },
-                    onCamera = { showCamera = true },
-                    enabled = !state.busy,
-                )
-            }
-            state.error?.let { ErrorBanner(message = it) }
-            if (state.countClosed) {
-                Button(
-                    onClick = viewModel::moveToNewCount,
-                    enabled = !state.busy,
-                    modifier = Modifier.fillMaxWidth().heightIn(min = WarehouseDimens.MinTouchTarget),
-                ) { Text("Move ${state.unsent} line(s) to a new stock count") }
-            }
-            state.message?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = WarehouseStatusColors.text3) }
-
-            // The location and bin steps list where to count, not what was counted (user, 9 Nov):
-            // the scan field first, then the store's locations / this location's bins.
-            if (state.needsLocation || state.needsBin) {
-                PlaceChoices(state, onPickLocation = viewModel::pickLocation, onPickBin = viewModel::pickBin, modifier = Modifier.weight(1f))
-            } else {
-            if (draft.lines.isNotEmpty()) {
-                com.d365fo.mobileops.presentation.common.components.ListHeader(
-                    icon = Icons.Default.Checklist,
-                    title = "Counted",
-                    count = draft.lines.size,
-                    trailing = when {
-                        state.binsRequired && state.binId.isNotBlank() -> "${state.inBin} in this bin"
-                        else -> "${state.atLocation} here"
-                    },
-                )
-            }
-            // The newest line is added on top; a list kept scrolled to the line that was first
-            // before hid it (test, 13 Oct) - show it.
-            val listState = rememberLazyListState()
-            val newest = draft.lines.firstOrNull()?.clientLineId
-            LaunchedEffect(newest) { if (newest != null) listState.animateScrollToItem(0) }
-            LazyColumn(state = listState, modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                items(draft.lines, key = { it.clientLineId }) { line ->
-                    com.d365fo.mobileops.presentation.common.components.ListCard {
-                        com.d365fo.mobileops.presentation.common.components.LineRow(
-                            title = line.itemId,
-                            description = line.itemName,
-                            lines = listOfNotNull(
-                                listOfNotNull(
-                                    OrderVariant(line.configId, line.sizeId, line.colorId, line.styleId).takeIf { v -> v != OrderVariant() }?.label,
-                                    line.batchId.takeIf { it.isNotBlank() }?.let { "Batch $it" },
-                                    line.serialId.takeIf { it.isNotBlank() }?.let { "Serial $it" },
-                                ).joinToString(" · ").takeIf { it.isNotBlank() },
-                                "At ${line.place} · " + if (line.sent) "With the supervisor" else "On this device",
-                            ),
-                            lead = {
-                                com.d365fo.mobileops.presentation.common.components.LeadDot(
-                                    if (line.sent) com.d365fo.mobileops.presentation.common.components.Lead.Done else com.d365fo.mobileops.presentation.common.components.Lead.Warn,
-                                    icon = Icons.Default.Check,
-                                )
-                            },
-                            trailing = {
-                                Row(verticalAlignment = Alignment.Top) {
-                                    com.d365fo.mobileops.presentation.common.components.QtyTrail(qtyText(line.quantity), line.unitId)
-                                    if (!line.sent) {
-                                        IconButton(onClick = { viewModel.remove(line) }) { Icon(Icons.Default.Delete, contentDescription = "Remove", tint = WarehouseStatusColors.text3) }
-                                    }
-                                }
-                            },
+                    if (state.binsRequired && !state.needsLocation && !state.needsBin) {
+                        DropdownMenuItem(
+                            text = { Text("Change bin") },
+                            leadingIcon = { Icon(Icons.Default.Inventory2, contentDescription = null) },
+                            enabled = !state.busy,
+                            onClick = { menuOpen = false; viewModel.changeBin() },
+                            modifier = Modifier.heightIn(min = 56.dp),
                         )
                     }
                 }
             }
+        } },
+        actions = storeCountActions(
+            state = state,
+            counting = counting,
+            onStart = viewModel::start,
+            onDone = onBack,
+            onMove = viewModel::moveToNewCount,
+            onUndo = viewModel::cancelPending,
+            onCancelChange = viewModel::cancelChange,
+            onList = { showList = true },
+            onEnd = { viewModel.send(end = true) },
+        ),
+        overlay = if (padOpen) { {
+            QuantityPadSheet(
+                initial = if (pending!!.item.serialActive) "1" else "",
+                onSet = viewModel::confirmQuantity,
+                onDismiss = viewModel::cancelPending,
+                allowDecimal = true,
+            )
+        } } else {
+            null
+        },
+    ) {
+        if (state.busy) {
+            LinearProgressIndicator(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp))
+        }
+        StoreCountCenter(state, counting)
+    }
+}
+
+/** What the last action did; with nothing to report, where counting stands. */
+internal fun storeCountBand(state: StoreCountState): BandState? {
+    val message = state.message
+    val error = state.error
+    return when {
+        state.ended -> BandState(BandKind.Ok, "Count ended", message)
+        error != null -> if (error.startsWith("Offline")) bandOf(BandKind.Warn, error) else bandOf(BandKind.Bad, error)
+        message != null -> when {
+            message.startsWith("Offline") -> bandOf(BandKind.Warn, message)
+            message.contains("line(s) sent") -> BandState(BandKind.Ok, "Sent", message)
+            else -> BandState(BandKind.Ok, "Counted", message)
+        }
+        state.draft?.counting != true -> null
+        state.back != null -> BandState(
+            BandKind.Info,
+            "Changing place",
+            "from " + listOfNotNull(state.back?.locationId, state.back?.binId).filter { it.isNotBlank() }.joinToString(" › "),
+        )
+        state.needsLocation -> BandState(
+            BandKind.Info,
+            "Count open",
+            state.draft?.masterId.orEmpty().ifBlank { "On this device" }.let { "$it · ${state.warehouseId.orEmpty()}" }.trimEnd(' ', '·'),
+        )
+        else -> BandState(
+            BandKind.Info,
+            (if (state.binId.isBlank()) state.locationId else "${state.locationId} › ${state.binId}") + " open",
+            state.draft?.masterId?.takeIf { it.isNotBlank() }?.let { "Count $it" },
+        )
+    }
+}
+
+/** "3 on this device · 7 sent" - how much is counted, never what to count. */
+private fun sentLine(draft: StoreCountDraft): String? {
+    val sent = draft.lines.count { it.sent }
+    val unsent = draft.lines.size - sent
+    return listOfNotNull(
+        "$unsent on this device".takeIf { unsent > 0 },
+        "$sent sent".takeIf { sent > 0 },
+    ).joinToString(" · ").ifEmpty { null }
+}
+
+private fun storeCountActions(
+    state: StoreCountState,
+    counting: Boolean,
+    onStart: () -> Unit,
+    onDone: () -> Unit,
+    onMove: () -> Unit,
+    onUndo: () -> Unit,
+    onCancelChange: () -> Unit,
+    onList: () -> Unit,
+    onEnd: () -> Unit,
+): (@Composable androidx.compose.foundation.layout.RowScope.() -> Unit) {
+    val pending = state.pending
+    return {
+        when {
+            state.ended -> FocusButton("Done", onClick = onDone, primary = true, modifier = Modifier.weight(1f))
+            !counting -> FocusButton(
+                if (state.busy) "Starting…" else "New count",
+                onClick = onStart,
+                primary = true,
+                icon = Icons.Default.Add,
+                enabled = !state.busy,
+                modifier = Modifier.weight(1f),
+            )
+            state.countClosed -> FocusButton(
+                "Move ${state.unsent} line(s) to a new count",
+                onClick = onMove,
+                primary = true,
+                enabled = !state.busy,
+                modifier = Modifier.weight(1f),
+            )
+            pending != null && (pending.needsBatch || pending.needsSerial) -> FocusButton(
+                "Undo", onClick = onUndo, icon = Icons.AutoMirrored.Filled.Undo, modifier = Modifier.weight(1f),
+            )
+            state.needsLocation || state.needsBin -> {
+                if (state.back != null) {
+                    FocusButton("Cancel", onClick = onCancelChange, enabled = !state.busy, modifier = Modifier.weight(1f))
+                }
+                FocusButton(
+                    if (state.needsLocation) "Locations" else "Bins",
+                    onClick = onList,
+                    icon = if (state.needsLocation) Icons.Default.LocationOn else Icons.Default.Inventory2,
+                    enabled = !state.busy,
+                    modifier = Modifier.weight(1f),
+                )
             }
-            // Change location / bin where Send was (user, 8 Nov): lines go by themselves. End
-            // count is a hold (Harbour) - the lines go to the supervisor and can't be added to.
-            com.d365fo.mobileops.presentation.common.components.FlowDock(modifier = Modifier.bleed(WarehouseDimens.ScreenPadding)) {
-                // Change bin only - a location is changed from its tab (user, 9 Nov).
-                if (state.binsRequired && !state.needsLocation && !state.needsBin) {
-                    com.d365fo.mobileops.presentation.common.components.DockOutlinedButton(
-                        onClick = viewModel::changeBin,
-                        enabled = !state.busy,
-                        icon = Icons.Default.Inventory2,
-                        text = "Change bin",
-                        modifier = Modifier.weight(0.42f),
+            else -> {
+                if (state.draft?.lines?.isNotEmpty() == true) {
+                    FocusButton(
+                        "Lines", onClick = onList, icon = Icons.AutoMirrored.Filled.ListAlt,
+                        enabled = !state.busy, modifier = Modifier.weight(1f),
                     )
                 }
-                com.d365fo.mobileops.presentation.common.components.HoldButton(
-                    label = "Hold to end count",
-                    onConfirm = { viewModel.send(end = true) },
-                    enabled = !state.busy && draft.lines.isNotEmpty(),
-                    modifier = Modifier.weight(0.58f),
+                HoldToConfirmButton(
+                    "Hold to end count",
+                    onConfirm = onEnd,
+                    enabled = !state.busy && state.draft?.lines?.isNotEmpty() == true,
+                    modifier = Modifier.weight(1f),
                 )
             }
         }
     }
 }
 
+/** The centre: the store before a count, the place being chosen, the item in hand, or the last line counted. */
 @Composable
-private fun TextEntryDialog(title: String, hint: String, onConfirm: (String) -> Unit, onDismiss: () -> Unit) {
-    var value by remember { mutableStateOf("") }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(title) },
-        text = {
-            OutlinedTextField(value = value, onValueChange = { value = it }, label = { Text(hint) }, singleLine = true, modifier = Modifier.fillMaxWidth())
-        },
-        confirmButton = {
-            DialogButtonRow(
-                dismiss = {
-                    CancelOutlinedButton(onClick = onDismiss, modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget)) { Text("Cancel") }
-                },
-                confirm = {
-                    ConfirmButton(
-                        onClick = { onConfirm(value) },
-                        enabled = value.isNotBlank(),
-                        modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget),
-                    ) { Text("OK") }
-                },
+private fun androidx.compose.foundation.layout.ColumnScope.StoreCountCenter(state: StoreCountState, counting: Boolean) {
+    val draft = state.draft
+    val pending = state.pending
+    when {
+        state.ended -> FocusCenter(caption = "Store count", code = "Ended", description = state.warehouseId)
+        !counting || draft == null -> FocusCenter(
+            caption = "Store count",
+            code = state.warehouseId ?: "–",
+            description = "No count open",
+        )
+        pending != null && !pending.needsVariant -> FocusCenter(
+            caption = when {
+                pending.needsBatch -> "Batch"
+                pending.needsSerial -> "Serial"
+                else -> "Quantity"
+            },
+            code = pending.item.itemId,
+            description = listOfNotNull(
+                pending.item.itemName.takeIf { it.isNotBlank() && !it.equals(pending.item.itemId, ignoreCase = true) },
+                pending.variant?.takeIf { pending.item.hasProductDimensions }?.label,
+                pending.batchId.takeIf { it.isNotBlank() }?.let { "Batch $it" },
+                pending.serialId.takeIf { it.isNotBlank() }?.let { "Serial $it" },
+            ).joinToString(" · ").ifEmpty { null },
+            unitLine = pending.item.inventUnit.takeIf { it.isNotBlank() },
+        )
+        state.needsLocation -> {
+            val places = draft.lines.map { it.locationId.uppercase() }.distinct().size
+            FocusCenter(
+                caption = "Location",
+                code = if (places == 1) "1 location" else "$places locations",
+                description = "counted · ${linesText(draft.lines.size)}",
             )
+        }
+        state.needsBin -> {
+            val bins = draft.lines.filter { it.locationId.equals(state.locationId, ignoreCase = true) && it.binId.isNotBlank() }
+                .map { it.binId.uppercase() }.distinct().size
+            FocusCenter(
+                caption = "Bin",
+                code = if (bins == 1) "1 bin" else "$bins bins",
+                description = "counted in ${state.locationId}",
+            )
+        }
+        else -> {
+            val last = draft.lines.firstOrNull {
+                it.locationId.equals(state.locationId, ignoreCase = true) && it.binId.equals(state.binId, ignoreCase = true)
+            }
+            if (last == null) {
+                FocusCenter(caption = "Counted here", code = linesText(0))
+            } else {
+                FocusCenter(
+                    caption = "Last counted",
+                    code = last.itemId,
+                    description = listOfNotNull(
+                        last.itemName.takeIf { it.isNotBlank() && !it.equals(last.itemId, ignoreCase = true) },
+                        OrderVariant(last.configId, last.sizeId, last.colorId, last.styleId).takeIf { v -> v != OrderVariant() }?.label,
+                        last.batchId.takeIf { it.isNotBlank() }?.let { "Batch $it" },
+                        last.serialId.takeIf { it.isNotBlank() }?.let { "Serial $it" },
+                    ).joinToString(" · ").ifEmpty { null },
+                    quantity = qtyText(last.quantity),
+                    unitLine = listOfNotNull(
+                        last.unitId.takeIf { it.isNotBlank() },
+                        if (last.sent) "With the supervisor" else "On this device",
+                        "${state.inBin.takeIf { state.binsRequired } ?: state.atLocation} here",
+                    ).joinToString(" · "),
+                )
+            }
+        }
+    }
+}
+
+private fun linesText(n: Int) = if (n == 1) "1 line" else "$n lines"
+
+/**
+ * The lists on demand: the store's locations on the location step, the location's bins on the
+ * bin step (tap = the same as scanning it), and the lines counted once items are being counted -
+ * a line not sent yet can be removed.
+ */
+@Composable
+private fun StoreCountList(
+    state: StoreCountState,
+    draft: StoreCountDraft,
+    onClose: () -> Unit,
+    onPickLocation: (String) -> Unit,
+    onPickBin: (String) -> Unit,
+    onRemove: (StoreCountLine) -> Unit,
+) {
+    val title = when {
+        state.needsLocation -> "Locations"
+        state.needsBin -> "Bins in ${state.locationId}"
+        else -> "Counted lines"
+    }
+    FocusScreen(
+        title = title,
+        onBack = onClose,
+        counter = when {
+            state.needsLocation -> state.knownLocations.size.toString()
+            state.needsBin -> state.binsHere.size.toString()
+            else -> draft.lines.size.toString()
         },
-    )
+    ) {
+        androidx.compose.foundation.lazy.LazyColumn(modifier = Modifier.weight(1f).fillMaxWidth()) {
+            when {
+                state.needsLocation || state.needsBin -> {
+                    val picking = if (state.needsLocation) state.knownLocations else state.binsHere
+                    if (picking.isEmpty()) {
+                        item {
+                            Text(
+                                if (state.needsLocation) "No locations on this device." else "No bins listed here.",
+                                style = com.d365fo.mobileops.presentation.common.theme.FocusType.description,
+                                color = FocusColors.muted,
+                                modifier = Modifier.padding(20.dp),
+                            )
+                        }
+                    }
+                    items(picking, key = { it.uppercase() }) { id ->
+                        val counted = if (state.needsLocation) state.countedAt(id) else state.countedAt(state.locationId, id)
+                        FocusListRow(
+                            title = id,
+                            titleIsCode = true,
+                            state = if (counted > 0) RowState.Done else RowState.Open,
+                            count = if (counted > 0) linesText(counted) else null,
+                            chevron = true,
+                            onClick = { if (state.needsLocation) onPickLocation(id) else onPickBin(id) },
+                        )
+                    }
+                }
+                else -> items(draft.lines, key = { it.clientLineId }) { line ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        FocusListRow(
+                            title = line.itemId,
+                            titleIsCode = true,
+                            state = if (line.sent) RowState.Done else RowState.Open,
+                            subtitle = listOfNotNull(
+                                line.itemName.takeIf { it.isNotBlank() && !it.equals(line.itemId, ignoreCase = true) },
+                                OrderVariant(line.configId, line.sizeId, line.colorId, line.styleId).takeIf { v -> v != OrderVariant() }?.label,
+                                line.batchId.takeIf { it.isNotBlank() }?.let { "Batch $it" },
+                                line.serialId.takeIf { it.isNotBlank() }?.let { "Serial $it" },
+                                line.place,
+                                if (line.sent) "With the supervisor" else "On this device",
+                            ).joinToString(" · "),
+                            count = qtyText(line.quantity) + line.unitId.takeIf { it.isNotBlank() }?.let { " $it" }.orEmpty(),
+                            modifier = Modifier.weight(1f),
+                        )
+                        if (!line.sent) {
+                            IconButton(onClick = { onRemove(line) }, modifier = Modifier.size(56.dp)) {
+                                Icon(Icons.Default.Delete, contentDescription = "Remove", tint = FocusColors.badIcon)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 private fun qtyText(qty: Double): String = java.math.BigDecimal.valueOf(qty).stripTrailingZeros().toPlainString()
 
-/**
- * Where the counter is: "STOCK > BIN-A1" and how many lines are counted there. On the bin step a
- * Back button to the location, on the item step one to the bin (user, 8 Nov). While changing:
- * what is being left, and Cancel back to it.
- */
+/** Store count samples for the layout test: 0 new, 1 location step, 2 counted, 3 quantity pad, 4 error. */
 @Composable
-private fun StorePlaceControls(
-    state: StoreCountState,
-    onBackToLocation: () -> Unit,
-    onBackToBin: () -> Unit,
-    onCancel: () -> Unit,
-) {
-    // Where the counter is shows as pills above; here only the way back a step, and while
-    // changing, what is being left with Cancel back to it.
-    state.back?.let { back ->
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                text = "Changing from " + listOf(back.locationId, back.binId).filter { it.isNotBlank() }.joinToString(" › "),
-                style = MaterialTheme.typography.bodyMedium,
-                color = WarehouseStatusColors.text3,
-                modifier = Modifier.weight(1f),
-            )
-            CancelOutlinedButton(onClick = onCancel, modifier = Modifier.heightIn(min = WarehouseDimens.MinTouchTarget)) { Text("Cancel") }
-        }
-    }
-    when {
-        state.needsLocation -> Unit
-        state.needsBin -> com.d365fo.mobileops.presentation.modules.cyclecounting.StepBackButton(
-            "Back to location", onBackToLocation, enabled = !state.busy,
+internal fun StoreCountFocusSample(kind: Int) {
+    val line = StoreCountLine(
+        clientLineId = "1", itemId = "BSR-11397-0", itemName = "Panadol Extra 24s", locationId = "AAC",
+        quantity = 3.0, unitId = "Pack", countedAt = 0L, binId = "BIN-A1",
+    )
+    val draft = StoreCountDraft(warehouseId = "AAC", masterId = "AAC-20261108-3", stageId = "S1", lines = listOf(line), started = true)
+    val state = when (kind) {
+        0 -> StoreCountState(warehouseId = "AAC")
+        1 -> StoreCountState(warehouseId = "AAC", draft = draft, binsRequired = true)
+        3 -> StoreCountState(
+            warehouseId = "AAC", draft = draft, locationId = "AAC", binId = "BIN-A1", binsRequired = true,
+            pending = PendingCount(
+                item = OrderItem("HSN002", "Handset charger 20W", "Each", "Each", false, false, false, false, false, false, 1.0, 0.0, 0.0, 1.0, emptyList(), null),
+                variant = OrderVariant(),
+            ),
         )
-        state.binsRequired -> com.d365fo.mobileops.presentation.modules.cyclecounting.StepBackButton(
-            "Back to bin", onBackToBin, enabled = !state.busy,
+        4 -> StoreCountState(
+            warehouseId = "AAC", draft = draft, locationId = "AAC", binId = "BIN-A1", binsRequired = true,
+            error = "BIN-B4 is in DAMAGED, not AAC. Change location to count it.",
         )
-        else -> com.d365fo.mobileops.presentation.modules.cyclecounting.StepBackButton(
-            "Back to location", onBackToLocation, enabled = !state.busy,
+        else -> StoreCountState(
+            warehouseId = "AAC", draft = draft, locationId = "AAC", binId = "BIN-A1", binsRequired = true,
+            message = "BSR-11397-0 · 3 at AAC › BIN-A1",
         )
     }
-}
-
-/**
- * Where to count next, under the scan card: the store's locations on the location step, the
- * location's bins on the bin step - each with how many lines are counted there. Tap = scan.
- */
-@Composable
-private fun PlaceChoices(
-    state: StoreCountState,
-    onPickLocation: (String) -> Unit,
-    onPickBin: (String) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val picking = if (state.needsLocation) state.knownLocations else state.binsHere
-    LazyColumn(modifier = modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        item {
-            com.d365fo.mobileops.presentation.common.components.ListHeader(
-                icon = if (state.needsLocation) Icons.Default.LocationOn else Icons.Default.Inventory2,
-                title = if (state.needsLocation) "Locations" else "Bins in ${state.locationId}",
-                count = picking.size,
-                trailing = picking.count { (if (state.needsLocation) state.countedAt(it) else state.countedAt(state.locationId, it)) > 0 }
-                    .takeIf { it > 0 }?.let { "$it counted" },
-            )
-        }
-        if (picking.isEmpty()) {
-            item {
-                Text(
-                    if (state.needsLocation) "Scan a location to count it." else "No bins listed here - scan the bin; it is counted as scanned.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = WarehouseStatusColors.text3,
-                )
-            }
-        }
-        items(picking, key = { it.uppercase() }) { id ->
-            val counted = if (state.needsLocation) state.countedAt(id) else state.countedAt(state.locationId, id)
-            com.d365fo.mobileops.presentation.common.components.ListCard {
-                com.d365fo.mobileops.presentation.common.components.LineRow(
-                    title = id,
-                    lines = listOf(if (counted > 0) "$counted ${if (counted == 1) "line" else "lines"} counted" else "Not counted"),
-                    lead = {
-                        com.d365fo.mobileops.presentation.common.components.LeadDot(
-                            if (counted > 0) com.d365fo.mobileops.presentation.common.components.Lead.Done else com.d365fo.mobileops.presentation.common.components.Lead.Idle,
-                            icon = if (counted > 0) Icons.Default.Check else if (state.needsLocation) Icons.Default.LocationOn else Icons.Default.Inventory2,
-                        )
-                    },
-                    trailing = { com.d365fo.mobileops.presentation.common.components.RowChevron() },
-                    onClick = { if (state.needsLocation) onPickLocation(id) else onPickBin(id) },
-                )
-            }
-        }
+    val counting = state.draft?.counting == true
+    FocusScreen(
+        title = "Store count",
+        onBack = {},
+        counter = if (counting && !state.needsLocation) state.binId.ifBlank { state.locationId } else null,
+        band = storeCountBand(state),
+        remaining = state.draft?.let { sentLine(it) },
+        scanPill = if (counting) { { com.d365fo.mobileops.presentation.common.focus.ScanPill(onTap = {}) } } else null,
+        actions = storeCountActions(state, counting, {}, {}, {}, {}, {}, {}, {}),
+        overlay = if (kind == 3) { { QuantityPadSheet(initial = "", onSet = {}, onDismiss = {}, allowDecimal = true) } } else null,
+    ) {
+        StoreCountCenter(state, counting)
     }
 }
