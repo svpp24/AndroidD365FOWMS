@@ -197,7 +197,7 @@ fun CountCreateScreen(onBack: () -> Unit, viewModel: CountCreateViewModel = hilt
                 item(key = "cat-caption") { FocusCaption("Categories · all their items", Modifier.padding(start = 16.dp, top = 12.dp, bottom = 4.dp)) }
                 items(state.categories, key = { "cat-" + it.id }) { c ->
                     Removable(enabled = state.created == null, onRemove = { viewModel.toggle(c) }) {
-                        FocusListRow(title = c.name, state = RowState.Open, modifier = Modifier.weight(1f))
+                        FocusListRow(title = c.name, subtitle = itemsText(c.itemCount), state = RowState.Open, modifier = Modifier.weight(1f))
                     }
                 }
             }
@@ -235,6 +235,12 @@ private fun Removable(enabled: Boolean, onRemove: () -> Unit, row: @Composable a
     }
 }
 
+private fun itemsText(n: Int) = when (n) {
+    0 -> "No items"
+    1 -> "1 item"
+    else -> "$n items"
+}
+
 /** The retail product hierarchy, level by level: tap opens a category, Add takes it whole. */
 @Composable
 private fun CategoryBrowser(
@@ -256,7 +262,7 @@ private fun CategoryBrowser(
         actions = if (here == null) null else { {
             val chosen = state.categories.any { it.id == here.id }
             FocusButton(
-                if (chosen) "Remove ${here.name}" else "Add all of ${here.name}",
+                if (chosen) "Remove ${here.name}" else "Add all of ${here.name} (${itemsText(here.itemCount).lowercase()})",
                 onClick = { onToggle(here) },
                 primary = !chosen,
                 modifier = Modifier.weight(1f),
@@ -269,7 +275,7 @@ private fun CategoryBrowser(
                 FocusListRow(
                     title = c.name,
                     state = if (chosen) RowState.Done else RowState.Open,
-                    subtitle = if (c.hasChildren) "Tap to see its sub-categories" else "Tap to add",
+                    subtitle = itemsText(c.itemCount) + " · " + if (c.hasChildren) "tap to see its sub-categories" else "tap to add",
                     count = if (chosen) "Added" else null,
                     chevron = c.hasChildren,
                     onClick = { if (c.hasChildren) onOpen(c) else onToggle(c) },

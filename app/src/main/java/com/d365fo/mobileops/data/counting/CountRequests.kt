@@ -95,7 +95,7 @@ data class CountResult(
 )
 
 /** A category the supervisor can pick, or open to see its sub-categories. */
-data class CategoryChoice(val id: String, val name: String, val hasChildren: Boolean)
+data class CategoryChoice(val id: String, val name: String, val hasChildren: Boolean, val itemCount: Int = 0)
 
 /** What createCount answered: the control center record, and whether an open one was joined. */
 data class CreatedCount(val masterId: String, val message: String, val existing: Boolean)
@@ -153,7 +153,7 @@ class CountRequestRepository @Inject constructor(
             api.listCategories(CountRequestServiceRequest(body(warehouseId = warehouseId).request.copy(categoryId = parentId)))
         }.answer { r ->
             parse(r.payloadJson, com.d365fo.mobileops.data.remote.dto.CountCategoryDto.serializer()).map {
-                CategoryChoice(it.categoryId, it.name, it.hasChildren.equals("true", ignoreCase = true))
+                CategoryChoice(it.categoryId, it.name, it.hasChildren.equals("true", ignoreCase = true), it.itemCount.toIntOrNull() ?: 0)
             }
         }
 

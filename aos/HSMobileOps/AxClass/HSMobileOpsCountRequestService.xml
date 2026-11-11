@@ -693,6 +693,9 @@ class HSMobileOpsCountRequestService
                 HSMobileOpsCountRequestService::put(row, 'Name', category.(fieldName2Id(categoryTable, 'Name')));
                 HSMobileOpsCountRequestService::put(row, 'HasChildren',
                     HSMobileOpsCountRequestService::hasChildCategory(category.RecId) ? 'true' : 'false');
+                // Released items of the company in it and its sub-categories (user, 11 Nov).
+                HSMobileOpsCountRequestService::put(row, 'ItemCount',
+                    int642Str(HSMobileOpsCountRequestService::categoryItemCount(category, hierarchy)));
                 rows.Add(row);
             }
         }
@@ -892,6 +895,55 @@ class HSMobileOpsCountRequestService
             response.parmMessage(strFmt('%1 is not a cycle count supervisor.', _request.parmUserName()));
         }
         return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>categoryItemCount</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// How many released items of the company sit in the category or its sub-categories - one
+    /// counting query (tables read by name: Retail extends them).
+    /// </summary>
+    private static int64 categoryItemCount(Common _category, RefRecId _hierarchy)
+    {
+        TableId              categoryTable = tableName2Id('EcoResCategory');
+        TableId              productCategoryTable = tableName2Id('EcoResProductCategory');
+        Query                query = new Query();
+        QueryBuildDataSource dsCategory;
+        QueryBuildDataSource dsProduct;
+        QueryBuildDataSource dsItem;
+        QueryRun             queryRun;
+        InventTable          inventTable;
+
+        dsCategory = query.addDataSource(categoryTable);
+        dsCategory.fields().dynamic(NoYes::No);
+        dsCategory.fields().clearFieldList();
+        dsCategory.addRange(fieldName2Id(categoryTable, 'CategoryHierarchy')).value(queryValue(_hierarchy));
+        dsCategory.addRange(fieldName2Id(categoryTable, 'NestedSetLeft')).value(
+            SysQuery::range(_category.(fieldName2Id(categoryTable, 'NestedSetLeft')), ''));
+        dsCategory.addRange(fieldName2Id(categoryTable, 'NestedSetRight')).value(
+            SysQuery::range('', _category.(fieldName2Id(categoryTable, 'NestedSetRight'))));
+        dsProduct = dsCategory.addDataSource(productCategoryTable);
+        dsProduct.joinMode(JoinMode::InnerJoin);
+        dsProduct.fields().dynamic(NoYes::No);
+        dsProduct.fields().clearFieldList();
+        dsProduct.addLink(fieldName2Id(categoryTable, 'RecId'), fieldName2Id(productCategoryTable, 'Category'));
+        dsProduct.addRange(fieldName2Id(productCategoryTable, 'CategoryHierarchy')).value(queryValue(_hierarchy));
+        dsItem = dsProduct.addDataSource(tableNum(InventTable));
+        dsItem.joinMode(JoinMode::InnerJoin);
+        dsItem.fields().dynamic(NoYes::No);
+        dsItem.fields().clearFieldList();
+        dsItem.addLink(fieldName2Id(productCategoryTable, 'Product'), fieldNum(InventTable, Product));
+        dsItem.addSelectionField(fieldNum(InventTable, RecId), SelectionField::Count);
+        queryRun = new QueryRun(query);
+        if (!queryRun.next())
+        {
+            return 0;
+        }
+        inventTable = queryRun.get(tableNum(InventTable));
+        return inventTable.RecId;
     }
 ]]></Source>
 			</Method>

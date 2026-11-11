@@ -31,6 +31,8 @@ data class CountCategoryDto(
     @SerialName("CategoryId") val categoryId: String = "",
     @SerialName("Name") val name: String = "",
     @SerialName("HasChildren") val hasChildren: String = "false",
+    /** Released items in it and its sub-categories. */
+    @SerialName("ItemCount") val itemCount: String = "0",
 )
 
 @Serializable
