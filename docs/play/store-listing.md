@@ -61,7 +61,7 @@ Inventory hub is an independent product and is not affiliated with or endorsed b
 |---|---|---|
 | App icon | 512 × 512 PNG | `docs/play/play-store-icon-512.png` (done) |
 | Feature graphic | 1024 × 500 PNG or JPG | `docs/play/feature-graphic-1024x500.png` (done) |
-| Phone screenshots | 2–8; 9:16, at least 1080 × 1920 recommended | To capture, see below |
+| Phone screenshots | 2–8; 9:16, at least 1080 × 1920 recommended | `docs/play/screenshots/01-06` (720 × 1280, from the built-in demo, no customer data) |
 
 ### Screenshots to capture (in this order)
 
