@@ -7,9 +7,7 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.content.pm.ServiceInfo
 import android.os.Build
-import androidx.work.ForegroundInfo
 import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
@@ -100,23 +98,6 @@ class SyncNotifier @Inject constructor(
             .setContentIntent(openApp)
             .build()
         safeNotify(journalId.hashCode(), notification)
-    }
-
-    /** The ongoing notification an End count job shows while it runs in the foreground. */
-    fun countSubmitForegroundInfo(journalId: String): ForegroundInfo {
-        val notification = NotificationCompat.Builder(context, COUNT_CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_notification)
-            .setContentTitle("Submitting count")
-            .setContentText(journalId.ifBlank { "Sending counted quantities to D365FO" })
-            .setPriority(NotificationCompat.PRIORITY_LOW)
-            .setOngoing(true)
-            .build()
-        val id = COUNT_NOTIFICATION_BASE + (journalId.hashCode() and 0xFFF)
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            ForegroundInfo(id, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
-        } else {
-            ForegroundInfo(id, notification)
-        }
     }
 
     /**
@@ -239,7 +220,6 @@ class SyncNotifier @Inject constructor(
         const val CHANNEL_ID = "posting_failures"
         const val PROGRESS_CHANNEL_ID = "receiving_progress"
         const val COUNT_CHANNEL_ID = "count_submission"
-        const val COUNT_NOTIFICATION_BASE = 20000
 
         // Fixed rather than hashed per line: a second "line added" notification is meant to
         // replace the first in the shade, not stack up one per item on a fifty-line order.

@@ -14,7 +14,6 @@ Use this with [privacy-policy.md](privacy-policy.md).
   - USE_BIOMETRIC: unlock, handled by Android
   - VIBRATE and WAKE_LOCK
   - POST_NOTIFICATIONS: local notifications only
-  - FOREGROUND_SERVICE and FOREGROUND_SERVICE_DATA_SYNC: sending queued work
   
   No location, contacts, storage, microphone or phone permissions.
 
@@ -49,7 +48,7 @@ Notes:
 ## Other Play Console declarations the same release will ask for
 
 - **Privacy policy URL:** https://svpp24.github.io/inventoryhub-privacy/ (GitHub Pages, public repository `svpp24/inventoryhub-privacy`, file `index.html` = `privacy-policy.html`). Change it there and here together.
-- **Foreground service permissions:** see [foreground-service.md](foreground-service.md).
+- **Foreground service permissions:** none since 1.5.3 (End count runs as ordinary background work), so no foreground service declaration is needed.
 - **App access:** all functionality needs sign-in to a company's D365FO. Reviewers need instructions and a demo user before a **production** release; internal testing doesn't need it.
 - **Ads:** No. **Target audience:** 18+, staff only. **Content rating:** questionnaire, business/utility, no sensitive content.
 - **Government app / financial features / health:** No.

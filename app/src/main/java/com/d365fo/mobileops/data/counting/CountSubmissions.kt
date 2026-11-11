@@ -7,7 +7,6 @@ import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
 import androidx.work.WorkInfo
 import androidx.work.OneTimeWorkRequestBuilder
-import androidx.work.OutOfQuotaPolicy
 import androidx.work.WorkManager
 import androidx.work.workDataOf
 import com.d365fo.mobileops.data.local.dao.CountingDao
@@ -43,7 +42,6 @@ class CountSubmitScheduler @Inject constructor(@ApplicationContext context: Cont
                 .setInputData(workDataOf(CountSubmitWorker.KEY_JOURNAL_ID to journalId))
                 .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
                 .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
-                .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
                 .build(),
         )
     }
