@@ -180,24 +180,13 @@ fun WorkerLoginScreen(
                     .padding(horizontal = 24.dp)
                     .width(120.dp),
             )
-            // The copyright sits beside the title, not on its own line (user, 11 Nov).
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            // No copyright line (user, 11 Nov).
+            Text(
+                text = "Inventory hub",
+                style = FocusType.panelTitle,
+                color = FocusColors.ink,
                 modifier = Modifier.padding(top = 12.dp),
-            ) {
-                Text(
-                    text = "Inventory hub",
-                    style = FocusType.panelTitle,
-                    color = FocusColors.ink,
-                    modifier = Modifier.alignByBaseline(),
-                )
-                Text(
-                    text = "© 2026",
-                    style = FocusType.rowDetail,
-                    color = FocusColors.caption,
-                    modifier = Modifier.alignByBaseline(),
-                )
-            }
+            )
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(6.dp),

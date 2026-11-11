@@ -3,7 +3,7 @@
     <string name="app_name">Inventory hub</string>
     <!-- Shown under the launcher icon, where the full name would wrap or truncate. -->
     <string name="app_name_launcher">Inventory hub</string>
-    <string name="copyright_notice">Inventory hub · © 2026</string>
+    <string name="copyright_notice">Inventory hub</string>
 
     <string name="action_back">Back</string>
 </resources>
