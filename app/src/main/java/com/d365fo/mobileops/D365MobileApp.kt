@@ -41,6 +41,8 @@ class D365MobileApp : Application(), Configuration.Provider {
             .build()
 
     override fun onCreate() {
+        // Before super.onCreate(): Hilt may build the HTTP clients there, and they read it.
+        com.d365fo.mobileops.data.demo.DemoMode.init(this)
         super.onCreate()
 
         // Independent of BuildConfig.ALLOW_SENSITIVE_LOGGING and of everything below - see

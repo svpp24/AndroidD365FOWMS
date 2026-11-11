@@ -4,6 +4,8 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -62,6 +64,7 @@ fun AppRoot(
     onboardingViewModel: OnboardingViewModel = hiltViewModel(),
     licenseViewModel: LicenseViewModel = hiltViewModel(),
     integrityViewModel: IntegrityViewModel = hiltViewModel(),
+    demoViewModel: com.d365fo.mobileops.presentation.auth.DemoViewModel = hiltViewModel(),
 ) {
     // Checked before anything else in this whole gate, including Settings - a resigned APK
     // (see SelfIntegrityCheck) gets no path forward at all, not even to reconfigure a
@@ -74,7 +77,17 @@ fun AppRoot(
     val session by sessionViewModel.state.collectAsStateWithLifecycle()
     val worker by workerSessionViewModel.session.collectAsStateWithLifecycle()
     val licenseWarning by workerSessionViewModel.licenseWarning.collectAsStateWithLifecycle()
-    val licenseState by licenseViewModel.state.collectAsStateWithLifecycle()
+    val realLicenseState by licenseViewModel.state.collectAsStateWithLifecycle()
+    val demoActive by demoViewModel.active.collectAsStateWithLifecycle()
+    // Demo mode runs on fictional data with no customer behind it - nothing to license.
+    val licenseState = if (demoActive) com.d365fo.mobileops.data.repository.LicenseState.Ok else realLicenseState
+
+    // Signing out of the demo (or an idle sign-out) ends it: the device goes back to unconfigured.
+    LaunchedEffect(demoActive, worker == null, session is SessionState.Ready) {
+        if (demoActive && worker == null && session is SessionState.Ready && !demoViewModel.starting) {
+            demoViewModel.end { sessionViewModel.refresh() }
+        }
+    }
     val tenant by settingsViewModel.tenant.collectAsStateWithLifecycle()
     val navController = rememberNavController()
 
@@ -82,7 +95,7 @@ fun AppRoot(
     // re-runs every time the device gate itself flips back to Ready (a fresh launch, or a
     // reconnect after Settings was fixed), never on every recomposition.
     LaunchedEffect(session is SessionState.Ready) {
-        if (session is SessionState.Ready) licenseViewModel.validate()
+        if (session is SessionState.Ready && !demoActive) licenseViewModel.validate()
     }
 
     // Settings has to be reachable *before* sign-in — an unconfigured tenant is exactly why
@@ -154,6 +167,7 @@ fun AppRoot(
             )
 
         session is SessionState.Ready -> Column(modifier = Modifier.fillMaxSize()) {
+            if (demoActive) DemoBanner()
             // Shown once, right where a worker lands after signing in, for as long as the
             // license's renewal-warning window lasts - dismissed here, not auto-hidden, so it
             // doesn't disappear before anyone reads it. See WorkerSessionRepository.signIn.
@@ -206,6 +220,9 @@ fun AppRoot(
             tenant = tenant,
             onOpenSettings = { settingsWhileSignedOut = true },
             onConnected = sessionViewModel::refresh,
+            onTryDemo = { demoViewModel.start { sessionViewModel.refresh() } },
+            demoBusy = demoViewModel.busy.collectAsStateWithLifecycle().value,
+            demoError = demoViewModel.error.collectAsStateWithLifecycle().value,
         )
     }
 }
@@ -222,6 +239,24 @@ private fun TamperedScreen() {
             text = "This app cannot run. Reinstall it from the official source.",
             style = MaterialTheme.typography.titleMedium,
             textAlign = TextAlign.Center,
+        )
+    }
+}
+
+/** A thin strip over every signed-in screen while the demo runs, so nobody mistakes it for live data. */
+@Composable
+private fun DemoBanner() {
+    androidx.compose.foundation.layout.Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(com.d365fo.mobileops.presentation.common.theme.FocusColors.navy)
+            .padding(vertical = 4.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        androidx.compose.material3.Text(
+            "Demo - sample data only, sign out to leave",
+            style = com.d365fo.mobileops.presentation.common.theme.FocusType.rowDetail,
+            color = androidx.compose.ui.graphics.Color.White,
         )
     }
 }

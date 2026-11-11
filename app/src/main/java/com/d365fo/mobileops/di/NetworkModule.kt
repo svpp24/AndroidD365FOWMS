@@ -132,6 +132,8 @@ object NetworkModule {
         // why that ordering is what makes it count one outcome per logical request.
         .addInterceptor(aosReachabilityInterceptor)
         .addInterceptor(rateLimitInterceptor)
+        // Demo mode (DemoMode): answers here, from data on the device, before any token fetch.
+        .addInterceptor(com.d365fo.mobileops.data.demo.DemoInterceptor)
         .addInterceptor(authInterceptor)
         .addInterceptor(retryAfterInterceptor)
         .addInterceptor(crossCompanyInterceptor)
@@ -197,6 +199,8 @@ object NetworkModule {
     @Singleton
     @AadClient
     fun provideAadOkHttpClient(): OkHttpClient = OkHttpClient.Builder()
+        // Demo mode hands out a dummy token without asking Microsoft (see DemoInterceptor).
+        .addInterceptor(com.d365fo.mobileops.data.demo.DemoInterceptor)
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
         .apply {
@@ -229,6 +233,7 @@ object NetworkModule {
     @Singleton
     @BlobClient
     fun provideBlobOkHttpClient(): OkHttpClient = OkHttpClient.Builder()
+        .addInterceptor(com.d365fo.mobileops.data.demo.DemoInterceptor)
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(60, TimeUnit.SECONDS)
         .writeTimeout(60, TimeUnit.SECONDS)

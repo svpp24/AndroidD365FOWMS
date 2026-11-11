@@ -56,6 +56,9 @@ fun NotConfiguredScreen(
     tenant: TenantConfig,
     onOpenSettings: () -> Unit,
     onConnected: () -> Unit = {},
+    onTryDemo: () -> Unit = {},
+    demoBusy: Boolean = false,
+    demoError: String? = null,
 ) {
     // Dead centre of the page, on its own - not sharing a Column with the title above it. A
     // Column with Arrangement.Center centres the *pair* of title-plus-spinner as one block,
@@ -129,5 +132,30 @@ fun NotConfiguredScreen(
             onConnected = onConnected,
             modifier = Modifier.padding(horizontal = FocusDimens.side).padding(bottom = 20.dp),
         )
+        // Demo mode (user, 11 Nov): every screen on sample data, no connection or password.
+        Text(
+            text = "No connection yet? Look around with sample data.",
+            style = FocusType.bandDetail,
+            color = FocusColors.muted,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            modifier = Modifier.padding(horizontal = FocusDimens.side),
+        )
+        com.d365fo.mobileops.presentation.common.focus.FocusButton(
+            if (demoBusy) "Starting the demo…" else "Try the demo",
+            onClick = onTryDemo,
+            enabled = !demoBusy,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = FocusDimens.side, vertical = 12.dp),
+        )
+        demoError?.let {
+            Text(
+                text = it,
+                style = FocusType.bandDetail,
+                color = FocusColors.badIcon,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                modifier = Modifier.padding(horizontal = FocusDimens.side).padding(bottom = 20.dp),
+            )
+        }
     }
 }

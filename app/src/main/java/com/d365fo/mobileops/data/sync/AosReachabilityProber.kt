@@ -45,6 +45,8 @@ class AosReachabilityProber @Inject constructor(
     private val client = OkHttpClient.Builder()
         .certificatePinner(certificatePinner)
         .addInterceptor(reachabilityInterceptor)
+        // Demo mode: the demo "server" always answers (see DemoInterceptor).
+        .addInterceptor(com.d365fo.mobileops.data.demo.DemoInterceptor)
         // Debug builds only: a simulated outage must fail the probe too, as a real one would.
         .apply {
             if (com.d365fo.mobileops.BuildConfig.DEBUG) {
