@@ -10,7 +10,8 @@
 /// supervisor decides duplicates and creates the journal.
 ///
 /// Outside system: createHazardCount, cancelHazardCount, getHazardCountStatus (privilege
-/// HSMobileOpsCountRequestApi). Handheld: listCounts, getCountItems, getCountResults.
+/// HSMobileOpsCountRequestApi). Handheld: listCounts, getCountItems, getCountResults; cycle count
+/// supervisor: listCategories, createCount.
 /// </summary>
 class HSMobileOpsCountRequestService
 {
@@ -313,8 +314,11 @@ class HSMobileOpsCountRequestService
         HSMobileOpsCountReqResponse  response = HSMobileOpsCountRequestService::validateUser(_request);
         HSMobileOpsCountMaster       master;
         HSMobileOpsCountItem         item;
+        HSMobileOpsCountStageLine    stageLine;
         Newtonsoft.Json.Linq.JArray  items = new Newtonsoft.Json.Linq.JArray();
         Newtonsoft.Json.Linq.JObject row;
+        RefRecId                     hierarchy;
+        Map                          categories = new Map(Types::String, Types::String);
 
         if (response.parmErrorCode())
         {
@@ -322,6 +326,7 @@ class HSMobileOpsCountRequestService
         }
         changecompany (_request.parmDataAreaId())
         {
+            hierarchy = HSMobileOpsCountRequestService::retailHierarchy();
             master = HSMobileOpsCountMaster::find(_request.parmMasterId());
             if (!master.RecId)
             {
@@ -339,6 +344,27 @@ class HSMobileOpsCountRequestService
                 HSMobileOpsCountRequestService::put(row, 'ColorId', item.InventColorId);
                 HSMobileOpsCountRequestService::put(row, 'StyleId', item.InventStyleId);
                 HSMobileOpsCountRequestService::put(row, 'LocationId', item.WMSLocationId);
+                // The supervisor's view (user, 10 Nov): first-level category of the retail product
+                // hierarchy, and whether any counter has counted the item yet.
+                if (!categories.exists(item.ItemId))
+                {
+                    categories.insert(item.ItemId, HSMobileOpsCountRequestService::topCategory(item.ItemId, hierarchy));
+                }
+                HSMobileOpsCountRequestService::put(row, 'Category', categories.lookup(item.ItemId));
+                if (item.WMSLocationId)
+                {
+                    select firstonly RecId from stageLine
+                        where stageLine.MasterRecId   == master.RecId
+                           && stageLine.ItemId        == item.ItemId
+                           && stageLine.WMSLocationId == item.WMSLocationId;
+                }
+                else
+                {
+                    select firstonly RecId from stageLine
+                        where stageLine.MasterRecId == master.RecId
+                           && stageLine.ItemId      == item.ItemId;
+                }
+                HSMobileOpsCountRequestService::put(row, 'Counted', stageLine.RecId ? 'true' : 'false');
                 items.Add(row);
             }
             HSMobileOpsCountRequestService::describe(master, response);
@@ -608,6 +634,438 @@ class HSMobileOpsCountRequestService
     private static void put(Newtonsoft.Json.Linq.JObject _obj, str _name, str _value)
     {
         _obj.Add(_name, new Newtonsoft.Json.Linq.JValue(_value));
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>listCategories</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Supervisor, creating a count (user, 10 Nov): the retail product hierarchy's categories under
+    /// CategoryId (blank = first level), A to Z, each with whether it has sub-categories.
+    /// </summary>
+    [Wrappable(false), Hookable(false)]
+    public HSMobileOpsCountReqResponse listCategories(HSMobileOpsCountReqRequest _request)
+    {
+        HSMobileOpsCountReqResponse  response = HSMobileOpsCountRequestService::validateSupervisor(_request);
+        TableId                      categoryTable = tableName2Id('EcoResCategory');
+        Newtonsoft.Json.Linq.JArray  rows = new Newtonsoft.Json.Linq.JArray();
+        Newtonsoft.Json.Linq.JObject row;
+        Query                        query;
+        QueryBuildDataSource         ds;
+        QueryRun                     queryRun;
+        Common                       category;
+        RefRecId                     hierarchy;
+        RefRecId                     parent = str2Int64(_request ? _request.parmCategoryId() : '');
+
+        if (response.parmErrorCode())
+        {
+            return response;
+        }
+        changecompany (_request.parmDataAreaId())
+        {
+            hierarchy = HSMobileOpsCountRequestService::retailHierarchy();
+            if (!hierarchy || !categoryTable)
+            {
+                response.parmErrorCode('NO_HIERARCHY');
+                response.parmMessage('No retail product hierarchy is set up.');
+                return response;
+            }
+            query = new Query();
+            ds = query.addDataSource(categoryTable);
+            ds.addRange(fieldName2Id(categoryTable, 'CategoryHierarchy')).value(queryValue(hierarchy));
+            if (parent)
+            {
+                ds.addRange(fieldName2Id(categoryTable, 'ParentCategory')).value(queryValue(parent));
+            }
+            else
+            {
+                ds.addRange(fieldName2Id(categoryTable, 'Level')).value(queryValue(2));
+            }
+            ds.addSortField(fieldName2Id(categoryTable, 'Name'));
+            queryRun = new QueryRun(query);
+            while (queryRun.next())
+            {
+                category = queryRun.get(categoryTable);
+                row = new Newtonsoft.Json.Linq.JObject();
+                HSMobileOpsCountRequestService::put(row, 'CategoryId', int642Str(category.RecId));
+                HSMobileOpsCountRequestService::put(row, 'Name', category.(fieldName2Id(categoryTable, 'Name')));
+                HSMobileOpsCountRequestService::put(row, 'HasChildren',
+                    HSMobileOpsCountRequestService::hasChildCategory(category.RecId) ? 'true' : 'false');
+                rows.Add(row);
+            }
+        }
+        response.parmPayloadJson(rows.ToString());
+        response.parmSuccess(true);
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>createCount</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Supervisor, from the handheld (user, 10 Nov): one Stock count control center record of type
+    /// Blind, Hazard or Wall to wall for the warehouse, seen by every counter of it in the Count menu.
+    /// Blind and hazard: the items of the chosen categories (all of them, stocked here or not, with
+    /// their sub-categories) plus the chosen items. Wall to wall: joins the warehouse's open one.
+    /// </summary>
+    [Wrappable(false), Hookable(false)]
+    public HSMobileOpsCountReqResponse createCount(HSMobileOpsCountReqRequest _request)
+    {
+        HSMobileOpsCountReqResponse  response = HSMobileOpsCountRequestService::validateSupervisor(_request);
+        HSMobileOpsCountMaster       master;
+        HSMobileOpsCountItem         item;
+        HSMobileOpsCountMasterType   type;
+        Set                          itemIds = new Set(Types::String);
+        SetEnumerator                itemEnum;
+        Newtonsoft.Json.Linq.JArray  jArray;
+        Newtonsoft.Json.Linq.JObject jItem;
+        System.Object                parsed;
+        RefRecId                     hierarchy;
+        str                          itemId;
+        str                          unknown;
+        str                          countType = _request ? _request.parmCountType() : '';
+        int                          unknownCount;
+        int                          i;
+        LineNum                      lineNum;
+
+        if (response.parmErrorCode())
+        {
+            return response;
+        }
+        switch (countType)
+        {
+            case 'Blind':      type = HSMobileOpsCountMasterType::Blind;      break;
+            case 'Hazard':     type = HSMobileOpsCountMasterType::Hazard;     break;
+            case 'WallToWall': type = HSMobileOpsCountMasterType::WallToWall; break;
+            default:
+                response.parmErrorCode('INVALID_REQUEST');
+                response.parmMessage('CountType must be Blind, Hazard or WallToWall.');
+                return response;
+        }
+        if (!_request.parmWarehouseId())
+        {
+            response.parmErrorCode('INVALID_REQUEST');
+            response.parmMessage('WarehouseId is required.');
+            return response;
+        }
+        changecompany (_request.parmDataAreaId())
+        {
+            if (!InventLocation::find(_request.parmWarehouseId()).RecId)
+            {
+                response.parmErrorCode('INVALID_REQUEST');
+                response.parmMessage(strFmt('Warehouse %1 does not exist.', _request.parmWarehouseId()));
+                return response;
+            }
+            if (type == HSMobileOpsCountMasterType::WallToWall)
+            {
+                select firstonly RecId from master
+                    where master.InventLocationId == _request.parmWarehouseId()
+                       && master.SourceJournalId  == ''
+                       && master.MasterType       == HSMobileOpsCountMasterType::WallToWall
+                       && master.Status           == HSMobileOpsCountMasterStatus::Open;
+                response.parmExisting(master.RecId != 0);
+                ttsbegin;
+                master = HSMobileOpsCountControl::openMaster(_request.parmWarehouseId(), '', _request.parmUserName());
+                ttscommit;
+                HSMobileOpsCountRequestService::describe(master, response);
+                response.parmSuccess(true);
+                response.parmMessage(strFmt('Wall to wall count %1 is open.', master.MasterId));
+                return response;
+            }
+
+            hierarchy = HSMobileOpsCountRequestService::retailHierarchy();
+            if (_request.parmCategoriesJson())
+            {
+                try
+                {
+                    parsed = Newtonsoft.Json.Linq.JArray::Parse(_request.parmCategoriesJson());
+                }
+                catch (Exception::CLRError)
+                {
+                    response.parmErrorCode('INVALID_REQUEST');
+                    response.parmMessage('CategoriesJson is not a JSON array.');
+                    return response;
+                }
+                jArray = parsed;
+                for (i = 0; jArray != null && i < jArray.get_Count(); i++)
+                {
+                    HSMobileOpsCountRequestService::addCategoryItems(str2Int64(jArray.get_Item(i).ToString()), hierarchy, itemIds);
+                }
+            }
+            if (_request.parmItemsJson())
+            {
+                try
+                {
+                    parsed = Newtonsoft.Json.Linq.JArray::Parse(_request.parmItemsJson());
+                }
+                catch (Exception::CLRError)
+                {
+                    response.parmErrorCode('INVALID_REQUEST');
+                    response.parmMessage('ItemsJson is not a JSON array.');
+                    return response;
+                }
+                jArray = parsed;
+                for (i = 0; jArray != null && i < jArray.get_Count(); i++)
+                {
+                    jItem  = jArray.get_Item(i);
+                    itemId = jItem ? HSMobileOpsCountRequestService::jsonStr(jItem, 'ItemId') : '';
+                    if (!itemId || !InventTable::exist(itemId))
+                    {
+                        unknownCount++;
+                        if (unknownCount <= 10)
+                        {
+                            unknown += (unknown ? ', ' : '') + (itemId ? itemId : '(no ItemId)');
+                        }
+                        continue;
+                    }
+                    itemIds.add(itemId);
+                }
+            }
+            if (unknownCount)
+            {
+                response.parmErrorCode('UNKNOWN_ITEMS');
+                response.parmMessage(strFmt('%1 item(s) are not in D365FO: %2. Nothing was created.', unknownCount, unknown));
+                return response;
+            }
+            if (!itemIds.elements())
+            {
+                response.parmErrorCode('NO_ITEMS');
+                response.parmMessage('Pick at least one category with items, or an item.');
+                return response;
+            }
+
+            ttsbegin;
+            master = HSMobileOpsCountControl::newMaster(type, _request.parmWarehouseId(),
+                _request.parmDescription() ? _request.parmDescription()
+                    : strFmt('%1 count by %2', type == HSMobileOpsCountMasterType::Hazard ? 'Hazard' : 'Blind', _request.parmUserName()),
+                _request.parmUserName());
+            // doInsert: numbered here and counted once below, not per row (a category can hold thousands).
+            itemEnum = itemIds.getEnumerator();
+            while (itemEnum.moveNext())
+            {
+                lineNum++;
+                item.clear();
+                item.MasterRecId = master.RecId;
+                item.LineNum     = lineNum;
+                item.ItemId      = itemEnum.current();
+                item.ItemName    = subStr(InventTable::find(item.ItemId).defaultProductName(), 1, 60);
+                item.doInsert();
+            }
+            ttscommit;
+            HSMobileOpsCountItem::recount(master.RecId);
+            master = HSMobileOpsCountControl::masterOf(master.RecId);
+            HSMobileOpsCountRequestService::describe(master, response);
+            response.parmSuccess(true);
+            response.parmMessage(strFmt('%1 created with %2 item(s).', master.MasterId, master.RequestedItemCount));
+        }
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>validateSupervisor</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The handheld user must be an active cycle count supervisor.
+    /// </summary>
+    private static HSMobileOpsCountReqResponse validateSupervisor(HSMobileOpsCountReqRequest _request)
+    {
+        HSMobileOpsCountReqResponse response = HSMobileOpsCountRequestService::validateUser(_request);
+        HSMobileOpsUser             user;
+
+        if (response.parmErrorCode())
+        {
+            return response;
+        }
+        changecompany (_request.parmDataAreaId())
+        {
+            user = HSMobileOpsUser::find(_request.parmUserName());
+        }
+        if (!HSMobileOpsCountDualEngine::isSupervisor(user))
+        {
+            response.parmErrorCode('NOT_SUPERVISOR');
+            response.parmMessage(strFmt('%1 is not a cycle count supervisor.', _request.parmUserName()));
+        }
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>hasChildCategory</Name>
+				<Source><![CDATA[
+
+    private static boolean hasChildCategory(RefRecId _category)
+    {
+        TableId              categoryTable = tableName2Id('EcoResCategory');
+        Query                query = new Query();
+        QueryBuildDataSource ds = query.addDataSource(categoryTable);
+        QueryRun             queryRun;
+
+        ds.firstOnly(true);
+        ds.addRange(fieldName2Id(categoryTable, 'ParentCategory')).value(queryValue(_category));
+        queryRun = new QueryRun(query);
+        return queryRun.next();
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>addCategoryItems</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Every released item of the company in the category or its sub-categories (read by name:
+    /// Retail extends EcoResCategory and EcoResProductCategory).
+    /// </summary>
+    private static void addCategoryItems(RefRecId _category, RefRecId _hierarchy, Set _itemIds)
+    {
+        TableId              categoryTable = tableName2Id('EcoResCategory');
+        TableId              productCategoryTable = tableName2Id('EcoResProductCategory');
+        Query                query;
+        QueryBuildDataSource dsCategory;
+        QueryBuildDataSource dsProduct;
+        QueryRun             queryRun;
+        Common               category;
+        Common               productCategory;
+        InventTable          inventTable;
+        RefRecId             product;
+
+        if (!_category || !_hierarchy)
+        {
+            return;
+        }
+        query = new Query();
+        dsCategory = query.addDataSource(categoryTable);
+        dsCategory.addRange(fieldName2Id(categoryTable, 'RecId')).value(queryValue(_category));
+        queryRun = new QueryRun(query);
+        if (!queryRun.next())
+        {
+            return;
+        }
+        category = queryRun.get(categoryTable);
+
+        query = new Query();
+        dsCategory = query.addDataSource(categoryTable);
+        dsCategory.addRange(fieldName2Id(categoryTable, 'CategoryHierarchy')).value(queryValue(_hierarchy));
+        dsCategory.addRange(fieldName2Id(categoryTable, 'NestedSetLeft')).value(
+            SysQuery::range(category.(fieldName2Id(categoryTable, 'NestedSetLeft')), ''));
+        dsCategory.addRange(fieldName2Id(categoryTable, 'NestedSetRight')).value(
+            SysQuery::range('', category.(fieldName2Id(categoryTable, 'NestedSetRight'))));
+        dsProduct = dsCategory.addDataSource(productCategoryTable);
+        dsProduct.joinMode(JoinMode::InnerJoin);
+        dsProduct.addLink(fieldName2Id(categoryTable, 'RecId'), fieldName2Id(productCategoryTable, 'Category'));
+        dsProduct.addRange(fieldName2Id(productCategoryTable, 'CategoryHierarchy')).value(queryValue(_hierarchy));
+        queryRun = new QueryRun(query);
+        while (queryRun.next())
+        {
+            productCategory = queryRun.get(productCategoryTable);
+            product = productCategory.(fieldName2Id(productCategoryTable, 'Product'));
+            select firstonly ItemId from inventTable where inventTable.Product == product;
+            if (inventTable.ItemId)
+            {
+                _itemIds.add(inventTable.ItemId);
+            }
+        }
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>retailHierarchy</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The company's retail product hierarchy - where an item's category for the supervisor comes from.
+    /// </summary>
+    private static RefRecId retailHierarchy()
+    {
+        EcoResCategoryHierarchyRole role;
+
+        select firstonly CategoryHierarchy from role
+            where role.NamedCategoryHierarchyRole == EcoResCategoryNamedHierarchyRole::Retail;
+        return role.CategoryHierarchy;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>topCategory</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The item's first-level category (the level under the hierarchy's root), e.g. Health Care;
+    /// blank when the item is not in the hierarchy.
+    /// </summary>
+    private static str topCategory(ItemId _itemId, RefRecId _hierarchy)
+    {
+        // EcoResProductCategory and EcoResCategory are read by name: Retail extends both tables,
+        // and a compiled reference would make this model depend on Retail.
+        InventTable           inventTable = InventTable::find(_itemId);
+        TableId               productCategoryTable = tableName2Id('EcoResProductCategory');
+        TableId               categoryTable = tableName2Id('EcoResCategory');
+        Common                productCategory;
+        RefRecId              categoryRecId;
+        Common                leaf;
+        Common                top;
+        Query                 query;
+        QueryBuildDataSource  ds;
+        QueryRun              queryRun;
+        int                   level;
+
+        if (!_hierarchy || !inventTable.Product || !categoryTable || !productCategoryTable)
+        {
+            return '';
+        }
+        query = new Query();
+        ds = query.addDataSource(productCategoryTable);
+        ds.firstOnly(true);
+        ds.addRange(fieldName2Id(productCategoryTable, 'Product')).value(queryValue(inventTable.Product));
+        ds.addRange(fieldName2Id(productCategoryTable, 'CategoryHierarchy')).value(queryValue(_hierarchy));
+        queryRun = new QueryRun(query);
+        if (!queryRun.next())
+        {
+            return '';
+        }
+        productCategory = queryRun.get(productCategoryTable);
+        categoryRecId   = productCategory.(fieldName2Id(productCategoryTable, 'Category'));
+        if (!categoryRecId)
+        {
+            return '';
+        }
+        query = new Query();
+        ds = query.addDataSource(categoryTable);
+        ds.addRange(fieldName2Id(categoryTable, 'RecId')).value(queryValue(categoryRecId));
+        queryRun = new QueryRun(query);
+        if (!queryRun.next())
+        {
+            return '';
+        }
+        leaf  = queryRun.get(categoryTable);
+        level = leaf.(fieldName2Id(categoryTable, 'Level'));
+        if (level < 2)
+        {
+            return '';
+        }
+        if (level == 2)
+        {
+            return leaf.(fieldName2Id(categoryTable, 'Name'));
+        }
+        query = new Query();
+        ds = query.addDataSource(categoryTable);
+        ds.firstOnly(true);
+        ds.addRange(fieldName2Id(categoryTable, 'CategoryHierarchy')).value(queryValue(leaf.(fieldName2Id(categoryTable, 'CategoryHierarchy'))));
+        ds.addRange(fieldName2Id(categoryTable, 'Level')).value(queryValue(2));
+        ds.addRange(fieldName2Id(categoryTable, 'NestedSetLeft')).value(SysQuery::range('', leaf.(fieldName2Id(categoryTable, 'NestedSetLeft'))));
+        ds.addRange(fieldName2Id(categoryTable, 'NestedSetRight')).value(SysQuery::range(leaf.(fieldName2Id(categoryTable, 'NestedSetRight')), ''));
+        queryRun = new QueryRun(query);
+        if (!queryRun.next())
+        {
+            return '';
+        }
+        top = queryRun.get(categoryTable);
+        return top.(fieldName2Id(categoryTable, 'Name'));
     }
 ]]></Source>
 			</Method>

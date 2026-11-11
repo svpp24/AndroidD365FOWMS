@@ -114,7 +114,7 @@ const val HOLD_TO_CONFIRM_MS = 1_000
 /**
  * Hold to confirm - only for what cannot be undone: End count and Post return (brief section 4.8).
  * Orange, a darker fill sweeps across while held, letting go early empties it, and only a full
- * second fires [onConfirm] - with a firm haptic. No dialog. "Hold for 1 second" sits under it.
+ * second fires [onConfirm] - with a firm haptic. No dialog, no hint line under it.
  * TalkBack's double-tap confirms straight away (a hold is awkward with a screen reader).
  */
 @Composable
@@ -187,13 +187,7 @@ fun HoldToConfirmButton(
                 Text(label, style = FocusType.button, color = FocusColors.surface, textAlign = TextAlign.Center)
             }
         }
-        Text(
-            "Hold for 1 second",
-            style = FocusType.holdHint,
-            color = FocusColors.caption,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.padding(top = 4.dp),
-        )
+        // No "Hold for 1 second" line under it (user, 10 Nov): the label already says Hold.
     }
 }
 

@@ -14,6 +14,23 @@ data class CountRequestBody(
     @SerialName("DeviceId") val deviceId: String = "",
     @SerialName("WarehouseId") val warehouseId: String = "",
     @SerialName("MasterId") val masterId: String = "",
+    /** Supervisor's createCount: Blind, Hazard or WallToWall. */
+    @SerialName("CountType") val countType: String = "",
+    @SerialName("Description") val description: String = "",
+    /** createCount: ["RecId", ...] of the chosen categories. */
+    @SerialName("CategoriesJson") val categoriesJson: String = "",
+    /** createCount: [{"ItemId": ...}]. */
+    @SerialName("ItemsJson") val itemsJson: String = "",
+    /** listCategories: the parent category's RecId; blank = first level. */
+    @SerialName("CategoryId") val categoryId: String = "",
+)
+
+/** One category of the retail product hierarchy (listCategories). */
+@Serializable
+data class CountCategoryDto(
+    @SerialName("CategoryId") val categoryId: String = "",
+    @SerialName("Name") val name: String = "",
+    @SerialName("HasChildren") val hasChildren: String = "false",
 )
 
 @Serializable
@@ -27,6 +44,8 @@ data class CountRequestServiceResponse(
     @SerialName("Status") val status: String? = null,
     @SerialName("JournalId") val journalId: String? = null,
     @SerialName("Posted") val posted: Boolean = false,
+    /** createCount of a wall to wall count: the warehouse's open one was joined. */
+    @SerialName("Existing") val existing: Boolean = false,
     /** A JSON array: [CountSummaryDto], [CountItemDto] or [CountResultDto], by operation. */
     @SerialName("PayloadJson") val payloadJson: String? = null,
 )
@@ -59,6 +78,10 @@ data class CountItemDto(
     @SerialName("ColorId") val colorId: String = "",
     @SerialName("StyleId") val styleId: String = "",
     @SerialName("LocationId") val locationId: String = "",
+    /** First-level category of the retail product hierarchy (blank: none). */
+    @SerialName("Category") val category: String = "",
+    /** "true" once any counter has counted the item in this count. */
+    @SerialName("Counted") val counted: String = "false",
 )
 
 /** One counting journal line once the journal exists (getCountResults). */

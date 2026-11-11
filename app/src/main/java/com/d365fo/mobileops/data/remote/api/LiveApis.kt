@@ -627,4 +627,13 @@ class LiveCountRequestServiceApi @Inject constructor(
         body: com.d365fo.mobileops.data.remote.dto.CountRequestServiceRequest,
         tag: com.d365fo.mobileops.data.remote.interceptor.IdempotentRead,
     ) = delegate.get().getCountResults(body, tag)
+
+    override suspend fun listCategories(
+        body: com.d365fo.mobileops.data.remote.dto.CountRequestServiceRequest,
+        tag: com.d365fo.mobileops.data.remote.interceptor.IdempotentRead,
+    ) = delegate.get().listCategories(body, tag)
+
+    override suspend fun createCount(
+        body: com.d365fo.mobileops.data.remote.dto.CountRequestServiceRequest,
+    ) = delegate.get().createCount(body)
 }

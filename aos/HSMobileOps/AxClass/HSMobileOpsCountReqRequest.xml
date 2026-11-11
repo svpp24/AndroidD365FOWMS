@@ -8,6 +8,8 @@
 /// getHazardCountStatus): DataAreaId, Reference, WarehouseId, DueUtc (ISO 8601, UTC), Description and
 /// ItemsJson [{ItemId, ConfigId, SizeId, ColorId, StyleId, LocationId}]. Handheld (listCounts,
 /// getCountItems, getCountResults): DataAreaId, UserName, DeviceId, WarehouseId, MasterId.
+/// Supervisor (listCategories, createCount): CategoryId (parent, blank = first level), CountType
+/// (Blind, WallToWall, Hazard), Description, CategoriesJson ["RecId", ...], ItemsJson.
 /// </summary>
 [DataContractAttribute]
 class HSMobileOpsCountReqRequest
@@ -21,6 +23,9 @@ class HSMobileOpsCountReqRequest
     str description;
     str itemsJson;
     str masterId;
+    str countType;
+    str categoriesJson;
+    str categoryId;
 }
 ]]></Declaration>
 		<Methods>
@@ -129,6 +134,42 @@ class HSMobileOpsCountReqRequest
     {
         masterId = _value;
         return masterId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmCountType</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('CountType')]
+    public str parmCountType(str _value = countType)
+    {
+        countType = _value;
+        return countType;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmCategoriesJson</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('CategoriesJson')]
+    public str parmCategoriesJson(str _value = categoriesJson)
+    {
+        categoriesJson = _value;
+        return categoriesJson;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmCategoryId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('CategoryId')]
+    public str parmCategoryId(str _value = categoryId)
+    {
+        categoryId = _value;
+        return categoryId;
     }
 ]]></Source>
 			</Method>

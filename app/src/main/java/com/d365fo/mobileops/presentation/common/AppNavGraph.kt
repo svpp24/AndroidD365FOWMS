@@ -190,6 +190,14 @@ object Routes {
     const val COUNTING_LIST = "counting/list/{type}"
     fun countingList(type: com.d365fo.mobileops.data.counting.CountType) = "counting/list/${type.route}"
 
+    /** A cycle count supervisor's new count (Blind, Hazard, Wall to wall). See CountCreateScreen. */
+    const val COUNTING_CREATE = "counting/create/{type}"
+    fun countingCreate(type: com.d365fo.mobileops.data.counting.CountType) = "counting/create/${type.route}"
+
+    /** A hazard count by first-level category, for a cycle count supervisor. See CountCategoriesScreen. */
+    const val COUNTING_CATEGORIES = "counting/categories/{masterId}"
+    fun countingCategories(masterId: String) = "counting/categories/$masterId"
+
     /** A finished count's counted, on-hand and variance. See CountResultsScreen. */
     const val COUNTING_RESULTS = "counting/results/{masterId}"
     fun countingResults(masterId: String) = "counting/results/$masterId"
@@ -468,6 +476,26 @@ fun AppNavGraph(
                         onBack = { navController.popBackStack() },
                         onCount = { masterId, type -> navController.navigate(Routes.countingStore(masterId, type)) },
                         onResults = { masterId -> navController.navigate(Routes.countingResults(masterId)) },
+                        onCategories = { masterId -> navController.navigate(Routes.countingCategories(masterId)) },
+                        onCreate = { type -> navController.navigate(Routes.countingCreate(type)) },
+                    )
+                }
+
+                composable(
+                    Routes.COUNTING_CREATE,
+                    arguments = listOf(navArgument("type") { type = NavType.StringType }),
+                ) {
+                    com.d365fo.mobileops.presentation.modules.cyclecounting.counts.CountCreateScreen(
+                        onBack = { navController.popBackStack() },
+                    )
+                }
+
+                composable(
+                    Routes.COUNTING_CATEGORIES,
+                    arguments = listOf(navArgument("masterId") { type = NavType.StringType }),
+                ) {
+                    com.d365fo.mobileops.presentation.modules.cyclecounting.counts.CountCategoriesScreen(
+                        onBack = { navController.popBackStack() },
                     )
                 }
 

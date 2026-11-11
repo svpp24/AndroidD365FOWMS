@@ -754,7 +754,8 @@ fun StoreCountScreen(onBack: () -> Unit, viewModel: StoreCountViewModel = hiltVi
             else -> state.locationId
         },
         band = storeCountBand(state),
-        remaining = if (counting && draft != null) sentLine(draft) else null,
+        // No "28 on this device" line (user, 10 Nov).
+        remaining = null,
         scanPill = if (counting && !state.countClosed) {
             { com.d365fo.mobileops.presentation.common.focus.ScanPillField(enabled = !state.busy) }
         } else {
@@ -853,16 +854,6 @@ internal fun storeCountBand(state: StoreCountState): BandState? {
             state.draft?.masterId?.takeIf { it.isNotBlank() }?.let { "Count $it" },
         )
     }
-}
-
-/** "3 on this device · 7 sent" - how much is counted, never what to count. */
-private fun sentLine(draft: StoreCountDraft): String? {
-    val sent = draft.lines.count { it.sent }
-    val unsent = draft.lines.size - sent
-    return listOfNotNull(
-        "$unsent on this device".takeIf { unsent > 0 },
-        "$sent sent".takeIf { sent > 0 },
-    ).joinToString(" · ").ifEmpty { null }
 }
 
 private fun storeCountActions(
@@ -999,11 +990,8 @@ private fun androidx.compose.foundation.layout.ColumnScope.StoreCountCenter(stat
                         last.serialId.takeIf { it.isNotBlank() }?.let { "Serial $it" },
                     ).joinToString(" · ").ifEmpty { null },
                     quantity = qtyText(last.quantity),
-                    unitLine = listOfNotNull(
-                        last.unitId.takeIf { it.isNotBlank() },
-                        if (last.sent) "With the supervisor" else "On this device",
-                        "${state.inBin.takeIf { state.binsRequired } ?: state.atLocation} here",
-                    ).joinToString(" · "),
+                    // Only the unit: "On this device · 29 here" is not wanted (user, 10 Nov).
+                    unitLine = last.unitId.takeIf { it.isNotBlank() },
                 )
             }
         }
@@ -1150,7 +1138,7 @@ internal fun StoreCountFocusSample(kind: Int) {
         onBack = {},
         counter = if (counting && !state.needsLocation) state.binId.ifBlank { state.locationId } else null,
         band = storeCountBand(state),
-        remaining = state.draft?.let { sentLine(it) },
+        remaining = null,
         scanPill = if (counting) { { com.d365fo.mobileops.presentation.common.focus.ScanPill(onTap = {}) } } else null,
         actions = storeCountActions(state, counting, {}, {}, {}, {}, {}, {}, {}, {}),
         overlay = if (kind == 3) { { QuantityPadSheet(initial = "", onSet = {}, onDismiss = {}, allowDecimal = true) } } else null,

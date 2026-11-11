@@ -67,6 +67,10 @@ data class RequestedItem(
     val colorId: String = "",
     val styleId: String = "",
     val locationId: String = "",
+    /** First-level category (supervisor's view); blank when the item has none. */
+    val category: String = "",
+    /** Counted by any counter of this count - as D365FO knew it when the list was read. */
+    val countedByAnyone: Boolean = false,
 ) {
     /** The same rule D365FO applies (HSMobileOpsCountControl::isRequested): a blank field matches anything. */
     fun matches(itemId: String, location: String, configId: String? = null, sizeId: String? = null,
@@ -89,6 +93,12 @@ data class CountResult(
     val onHand: Double,
     val variance: Double,
 )
+
+/** A category the supervisor can pick, or open to see its sub-categories. */
+data class CategoryChoice(val id: String, val name: String, val hasChildren: Boolean)
+
+/** What createCount answered: the control center record, and whether an open one was joined. */
+data class CreatedCount(val masterId: String, val message: String, val existing: Boolean)
 
 data class CountResults(val masterId: String, val status: String, val journalId: String, val posted: Boolean, val lines: List<CountResult>)
 
@@ -130,9 +140,48 @@ class CountRequestRepository @Inject constructor(
     suspend fun items(masterId: String): NetworkResult<List<RequestedItem>> =
         errorMapper.safeCall { api.getCountItems(body(masterId = masterId)) }.answer { r ->
             parse(r.payloadJson, CountItemDto.serializer()).map { d ->
-                RequestedItem(d.itemId, d.itemName, d.configId, d.sizeId, d.colorId, d.styleId, d.locationId)
+                RequestedItem(
+                    d.itemId, d.itemName, d.configId, d.sizeId, d.colorId, d.styleId, d.locationId,
+                    category = d.category, countedByAnyone = d.counted.equals("true", ignoreCase = true),
+                )
             }
         }
+
+    /** Cycle count supervisor: categories under [parentId] (blank = first level), A to Z. */
+    suspend fun categories(warehouseId: String, parentId: String = ""): NetworkResult<List<CategoryChoice>> =
+        errorMapper.safeCall {
+            api.listCategories(CountRequestServiceRequest(body(warehouseId = warehouseId).request.copy(categoryId = parentId)))
+        }.answer { r ->
+            parse(r.payloadJson, com.d365fo.mobileops.data.remote.dto.CountCategoryDto.serializer()).map {
+                CategoryChoice(it.categoryId, it.name, it.hasChildren.equals("true", ignoreCase = true))
+            }
+        }
+
+    /**
+     * Cycle count supervisor: a new Stock count control center record (user, 10 Nov) - every
+     * counter of the warehouse sees it in the Count menu. Blind and hazard: the categories' items
+     * (all of them) plus the items. Wall to wall: opens, or joins, the warehouse's one.
+     */
+    suspend fun create(
+        type: CountType,
+        warehouseId: String,
+        categoryIds: List<String>,
+        itemIds: List<String>,
+    ): NetworkResult<CreatedCount> = errorMapper.safeCall {
+        api.createCount(
+            CountRequestServiceRequest(
+                body(warehouseId = warehouseId).request.copy(
+                    countType = type.symbol,
+                    categoriesJson = if (categoryIds.isEmpty()) "" else
+                        kotlinx.serialization.json.JsonArray(categoryIds.map { kotlinx.serialization.json.JsonPrimitive(it) }).toString(),
+                    itemsJson = if (itemIds.isEmpty()) "" else
+                        kotlinx.serialization.json.JsonArray(
+                            itemIds.map { kotlinx.serialization.json.JsonObject(mapOf("ItemId" to kotlinx.serialization.json.JsonPrimitive(it))) },
+                        ).toString(),
+                ),
+            ),
+        )
+    }.answer { r -> CreatedCount(r.masterId.orEmpty(), r.message.orEmpty(), r.existing) }
 
     /** Counted, on-hand and variance per journal line, once the supervisor has created the journal. */
     suspend fun results(masterId: String): NetworkResult<CountResults> =
@@ -170,6 +219,7 @@ class CountRequestRepository @Inject constructor(
                         data.message?.takeIf { it.isNotBlank() } ?: when (data.errorCode) {
                             "NOT_ALLOWED" -> "You are not an active mobile user in D365FO."
                             "COUNT_NOT_FOUND" -> "This count is not in D365FO any more."
+                            "NOT_SUPERVISOR" -> "Only a cycle count supervisor can create counts."
                             else -> data.errorCode ?: "D365FO refused the request."
                         },
                         d365ErrorCode = data.errorCode,

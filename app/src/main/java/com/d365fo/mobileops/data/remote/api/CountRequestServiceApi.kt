@@ -28,4 +28,15 @@ interface CountRequestServiceApi {
         @Body body: CountRequestServiceRequest,
         @Tag tag: IdempotentRead = IdempotentRead,
     ): Response<CountRequestServiceResponse>
+
+    /** Cycle count supervisor: the retail product hierarchy's categories under a parent. */
+    @POST("HSMobileOpsServiceGroup/HSMobileOpsCountRequestSvc/listCategories")
+    suspend fun listCategories(
+        @Body body: CountRequestServiceRequest,
+        @Tag tag: IdempotentRead = IdempotentRead,
+    ): Response<CountRequestServiceResponse>
+
+    /** Cycle count supervisor: a new count in the Stock count control center. Not retried. */
+    @POST("HSMobileOpsServiceGroup/HSMobileOpsCountRequestSvc/createCount")
+    suspend fun createCount(@Body body: CountRequestServiceRequest): Response<CountRequestServiceResponse>
 }

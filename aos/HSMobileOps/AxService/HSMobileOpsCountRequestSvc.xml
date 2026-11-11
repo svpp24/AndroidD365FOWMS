@@ -29,5 +29,13 @@
 			<Name>getCountResults</Name>
 			<Method>getCountResults</Method>
 		</AxServiceOperation>
+		<AxServiceOperation>
+			<Name>listCategories</Name>
+			<Method>listCategories</Method>
+		</AxServiceOperation>
+		<AxServiceOperation>
+			<Name>createCount</Name>
+			<Method>createCount</Method>
+		</AxServiceOperation>
 	</ServiceOperations>
 </AxService>

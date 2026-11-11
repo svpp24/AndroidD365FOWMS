@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.ReportProblem
@@ -49,6 +50,8 @@ data class CountListState(
     val loading: Boolean = true,
     val counts: List<CountSummary> = emptyList(),
     val error: String? = null,
+    /** A cycle count supervisor does not count a hazard count - they see it by category (user, 10 Nov). */
+    val supervisor: Boolean = false,
 ) {
     /** Soonest due first (user, 10 Nov); counts without a due time after them. */
     val open: List<CountSummary> get() = counts.filter { it.open }
@@ -64,7 +67,11 @@ class CountListViewModel @Inject constructor(
 ) : ViewModel() {
     private val warehouse = workerSession.session.value?.selected?.warehouseId
     private val _state = MutableStateFlow(
-        CountListState(type = CountType.fromRoute(savedStateHandle.get<String>("type")) ?: CountType.WALL_TO_WALL, warehouseId = warehouse),
+        CountListState(
+            type = CountType.fromRoute(savedStateHandle.get<String>("type")) ?: CountType.WALL_TO_WALL,
+            warehouseId = warehouse,
+            supervisor = workerSession.session.value?.isCycleCountSupervisor == true,
+        ),
     )
     val state = _state.asStateFlow()
 
@@ -92,6 +99,8 @@ fun CountListScreen(
     onBack: () -> Unit,
     onCount: (masterId: String?, type: CountType) -> Unit,
     onResults: (masterId: String) -> Unit,
+    onCategories: (masterId: String) -> Unit = {},
+    onCreate: (type: CountType) -> Unit = {},
     viewModel: CountListViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -117,7 +126,22 @@ fun CountListScreen(
                 CountType.BLIND -> Icons.Default.VisibilityOff
                 CountType.WALL_TO_WALL -> Icons.Default.GridView
             }
-            if (state.type == CountType.WALL_TO_WALL) {
+            // A cycle count supervisor creates counts (user, 10 Nov) - a record in the control
+            // center every counter of the warehouse sees here - and does not count.
+            if (state.supervisor) {
+                FocusListRow(
+                    title = if (state.type == CountType.WALL_TO_WALL) "Open a wall to wall count" else "New ${state.type.label.lowercase()}",
+                    subtitle = if (state.type == CountType.WALL_TO_WALL) {
+                        "The whole of ${state.warehouseId.orEmpty()}, for every counter here."
+                    } else {
+                        "By category or item. Every counter of ${state.warehouseId.orEmpty()} sees it."
+                    },
+                    icon = androidx.compose.material.icons.Icons.Default.Add,
+                    chevron = true,
+                    onClick = { onCreate(state.type) },
+                )
+            }
+            if (state.type == CountType.WALL_TO_WALL && !state.supervisor) {
                 FocusListRow(
                     title = "Count the whole warehouse",
                     subtitle = "Location by location. Joins the open wall to wall count of ${state.warehouseId.orEmpty()}, or starts one.",
@@ -135,13 +159,19 @@ fun CountListScreen(
                         icon = icon,
                         state = if (c.myStatus == "Submitted") RowState.Done else RowState.Open,
                         subtitle = summaryLine(c),
-                        count = when (c.myStatus) {
-                            "Counting" -> "Yours"
-                            "Submitted" -> "Ended"
+                        count = when {
+                            state.supervisor -> null
+                            c.myStatus == "Counting" -> "Yours"
+                            c.myStatus == "Submitted" -> "Ended"
                             else -> null
                         },
-                        chevron = true,
-                        onClick = { onCount(if (c.type == CountType.WALL_TO_WALL) null else c.masterId, c.type) },
+                        chevron = !(state.supervisor && c.type == CountType.WALL_TO_WALL),
+                        onClick = when {
+                            // Hazard and blind: the supervisor sees the items by category.
+                            state.supervisor && c.type != CountType.WALL_TO_WALL -> ({ onCategories(c.masterId) })
+                            state.supervisor -> null
+                            else -> ({ onCount(if (c.type == CountType.WALL_TO_WALL) null else c.masterId, c.type) })
+                        },
                     )
                 }
             }
