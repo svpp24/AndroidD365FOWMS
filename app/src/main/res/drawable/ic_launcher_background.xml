@@ -1,10 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Adaptive-icon background: solid white, the same as Chrome's own icon - a plain white card
-  behind the "H" mark, corner-rounded by whichever mask shape the launcher applies (circle/
-  squircle/rounded square), not by anything drawn here. Reverted back to this after a brief
-  detour through a red-badge design (own field colour sampled from that badge's own artwork) -
-  see git history for that version's own doc comment if it needs picking up again.
+  Adaptive-icon background: solid white behind the forklift mark (ic_launcher_foreground.png,
+  11 Nov 2026), corner-rounded by whichever mask shape the launcher applies.
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
