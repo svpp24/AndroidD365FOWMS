@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Inventory hub by Headstart</string>
+    <string name="app_name">Inventory hub</string>
     <!-- Shown under the launcher icon, where the full name would wrap or truncate. -->
     <string name="app_name_launcher">Inventory hub</string>
-    <string name="copyright_notice">Inventory hub™ · © 2026 Headstart Global FZ LLC</string>
+    <string name="copyright_notice">Inventory hub · © 2026</string>
 
     <string name="action_back">Back</string>
 </resources>
