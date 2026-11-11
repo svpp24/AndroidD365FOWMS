@@ -1,8 +1,8 @@
-# Privacy Policy – Inventory hub by Headstart
+# Privacy Policy – Inventory hub
 
 *Last updated: 11 November 2026*
 
-Inventory hub by Headstart ("the app") is a warehouse and store app published by **Headstart Global FZ LLC** ("Headstart", "we"). It lets the staff of a company that uses Microsoft Dynamics 365 Finance \& Operations ("D365FO") receive, ship, transfer and count stock from an Android device.
+Inventory hub ("the app") is a warehouse and store app published by its independent developer ("we"). It lets the staff of a company that uses Microsoft Dynamics 365 Finance \& Operations ("D365FO") receive, ship, transfer and count stock from an Android device.
 
 This policy explains what information the app handles, where it goes, and the choices you have.
 
@@ -10,7 +10,7 @@ This policy explains what information the app handles, where it goes, and the ch
 
 The app is used by companies ("your employer") for their own staff. Your employer runs its own D365FO system, creates your user in it, and decides how the information the app sends there is used and kept. For that information your employer is the data controller; please contact them first about it.
 
-Headstart provides the app. **The app does not send your information to Headstart's servers**, and Headstart does not sell it or use it for advertising.
+We provide the app. **The app does not send your information to any server of ours**, and we do not sell it or use it for advertising.
 
 ## What the app handles, and why
 
@@ -20,7 +20,7 @@ Headstart provides the app. **The app does not send your information to Headstar
 |Your name and role, such as supervisor|After you sign in|Received from your employer's D365FO and kept on the device while you are signed in|To show who is signed in and which functions you may use|
 |A device identifier (Android ID)|With each request|Your employer's D365FO|To tell devices apart, for example which device counted which stock, and to manage the devices licensed for the app|
 |Your work in the app (receipts, shipments, transfers, stock counts and the user who did them)|When you use these functions|Your employer's D365FO|This is the purpose of the app|
-|Feedback you choose to send: your message, a screenshot of the screen you were on, the app's own log, the app version and device model|Only when you tap Feedback and send|Your employer's D365FO|So your employer and Headstart's support can look into a problem or suggestion|
+|Feedback you choose to send: your message, a screenshot of the screen you were on, the app's own log, the app version and device model|Only when you tap Feedback and send|Your employer's D365FO|So your employer can look into a problem or suggestion|
 |Camera images|While you scan a barcode with the camera|Processed on the device only; never stored or sent|To read barcodes|
 |Fingerprint or face unlock|If you turn it on|Handled by Android on the device; the app never sees your biometric data|To unlock the app quickly|
 
@@ -48,7 +48,7 @@ Information sent to D365FO is kept according to your employer's own rules. The a
 
 * You can choose not to send feedback, screenshots or logs, and not to use the camera or fingerprint unlock.
 * Your user is created and removed by your employer. To see, correct or delete information in D365FO, contact your employer's administrator.
-* For anything about the app itself, contact Headstart (below).
+* For anything about the app itself, contact us (below).
 
 ## Children
 
@@ -60,7 +60,5 @@ We will publish any change on this page and update the date at the top.
 
 ## Contact
 
-Headstart Global FZ LLC
-133/134, Building No. 16 – Dubai Internet City, UAE
-Email: info@headstartglobal.com
+Questions about this policy or the app: open an issue at https://github.com/svpp24/inventoryhub-privacy/issues. Issues there are public, so please do not include personal details; say how to reach you and we will reply privately.
 

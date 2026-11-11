@@ -1,12 +1,12 @@
 # Google Play Data safety form: proposed answers
 
-App: Inventory hub by Headstart (`com.d365fo.mobileops`), version 1.5.1. Drafted 11 Nov 2026 from the code.
+App: Inventory hub (`com.d365fo.mobileops`), version 1.5.1. Drafted 11 Nov 2026 from the code.
 Use this with [privacy-policy.md](privacy-policy.md).
 
 ## What the app does with data, in short
 
 - The app's own traffic goes only to the customer's own D365FO (`*.operations.dynamics.com` or the customer's host) and to Microsoft Entra (`login.microsoftonline.com`). The Entra token is app-only (client credentials) and carries no user.
-- There is no Headstart server, and no analytics, ads or crash-reporting SDK.
+- There is no server of the developer's own, and no analytics, ads or crash-reporting SDK.
 - Two Google SDKs: **ML Kit barcode scanning** (`com.google.mlkit:barcode-scanning` 17.3.0, on-device) and **Play Integrity** (`com.google.android.play:integrity` 1.4.0, licence check).
 - Permissions:
   - INTERNET and ACCESS_NETWORK_STATE
@@ -24,7 +24,7 @@ Use this with [privacy-policy.md](privacy-policy.md).
 |---|---|---|
 | Does your app collect or share any of the required user data types? | **Yes** | User ID, device ID, feedback and diagnostics leave the device. |
 | Is all of the user data collected by your app encrypted in transit? | **Yes** | HTTPS/TLS only; there is no cleartext traffic. |
-| Do you provide a way for users to request that their data is deleted? | **Yes** | Users are created and removed by their employer's administrator in D365FO. Users can't create accounts in the app, so Play's in-app account deletion requirement shouldn't apply; confirm when filling in the form. Point the deletion request route to the employer and to the contact email in the privacy policy. |
+| Do you provide a way for users to request that their data is deleted? | **Yes** | Users are created and removed by their employer's administrator in D365FO. Users can't create accounts in the app, so Play's in-app account deletion requirement shouldn't apply; confirm when filling in the form. Point the deletion request route to the employer and to the contact (GitHub issues page) in the privacy policy. |
 
 ## Section 2: Data types
 
