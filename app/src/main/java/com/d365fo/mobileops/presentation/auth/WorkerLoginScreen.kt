@@ -180,12 +180,24 @@ fun WorkerLoginScreen(
                     .padding(horizontal = 24.dp)
                     .width(120.dp),
             )
-            Text(
-                text = "Inventory hub",
-                style = FocusType.panelTitle,
-                color = FocusColors.ink,
+            // The copyright sits beside the title, not on its own line (user, 11 Nov).
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
                 modifier = Modifier.padding(top = 12.dp),
-            )
+            ) {
+                Text(
+                    text = "Inventory hub",
+                    style = FocusType.panelTitle,
+                    color = FocusColors.ink,
+                    modifier = Modifier.alignByBaseline(),
+                )
+                Text(
+                    text = "© 2026",
+                    style = FocusType.rowDetail,
+                    color = FocusColors.caption,
+                    modifier = Modifier.alignByBaseline(),
+                )
+            }
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -204,14 +216,6 @@ fun WorkerLoginScreen(
                     color = if (offline) FocusColors.muted else FocusColors.okText,
                 )
             }
-            // Ownership/trademark notice, on the one screen every worker sees.
-            Text(
-                text = stringResource(R.string.copyright_notice),
-                style = FocusType.holdHint,
-                color = FocusColors.caption,
-                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                modifier = Modifier.padding(top = 4.dp, start = 24.dp, end = 24.dp),
-            )
             androidx.compose.foundation.layout.Spacer(Modifier.weight(1f))
 
             Column(
