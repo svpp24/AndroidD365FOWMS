@@ -1,6 +1,6 @@
 # Google Play Data safety form: proposed answers
 
-App: Inventory hub (`com.d365fo.mobileops`), version 1.5.1. Drafted 11 Nov 2026 from the code.
+App: Inventory hub by Headstart (`com.d365fo.mobileops`), version 1.5.1. Drafted 11 Nov 2026 from the code.
 Use this with [privacy-policy.md](privacy-policy.md).
 
 ## What the app does with data, in short
