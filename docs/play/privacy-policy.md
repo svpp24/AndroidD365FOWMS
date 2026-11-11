@@ -60,5 +60,5 @@ We will publish any change on this page and update the date at the top.
 
 ## Contact
 
-Questions about this policy or the app: open an issue at https://github.com/svpp24/inventoryhub-privacy/issues. Issues there are public, so please do not include personal details; say how to reach you and we will reply privately.
+Questions about this policy, the app, or your information: email inventoryhub.app@gmail.com.
 

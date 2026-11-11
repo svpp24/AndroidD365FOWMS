@@ -24,7 +24,7 @@ Use this with [privacy-policy.md](privacy-policy.md).
 |---|---|---|
 | Does your app collect or share any of the required user data types? | **Yes** | User ID, device ID, feedback and diagnostics leave the device. |
 | Is all of the user data collected by your app encrypted in transit? | **Yes** | HTTPS/TLS only; there is no cleartext traffic. |
-| Do you provide a way for users to request that their data is deleted? | **Yes** | Users are created and removed by their employer's administrator in D365FO. Users can't create accounts in the app, so Play's in-app account deletion requirement shouldn't apply; confirm when filling in the form. Point the deletion request route to the employer and to the contact (GitHub issues page) in the privacy policy. |
+| Do you provide a way for users to request that their data is deleted? | **Yes** | Users are created and removed by their employer's administrator in D365FO. Users can't create accounts in the app, so Play's in-app account deletion requirement shouldn't apply; confirm when filling in the form. Point the deletion request route to the employer and to the contact email in the privacy policy (inventoryhub.app@gmail.com). |
 
 ## Section 2: Data types
 
