@@ -1,6 +1,6 @@
 # Privacy Policy – Inventory hub by Headstart
 
-*Last updated: \[DATE]*
+*Last updated: 11 November 2026*
 
 Inventory hub by Headstart ("the app") is a warehouse and store app published by **Headstart Global FZ LLC** ("Headstart", "we"). It lets the staff of a company that uses Microsoft Dynamics 365 Finance \& Operations ("D365FO") receive, ship, transfer and count stock from an Android device.
 
