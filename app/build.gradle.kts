@@ -47,7 +47,7 @@ val buildDate: String = LocalDate.now().toString()
 
 android {
     namespace = "com.d365fo.mobileops"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         // Ship ARM only. The x86 and x86_64 slices exist for emulators and account for 18.7 MB
@@ -63,7 +63,7 @@ android {
 
         applicationId = "com.d365fo.mobileops"
         minSdk = 26
-        targetSdk = 35
+        targetSdk = 36
         versionCode = versionMajor * 10_000 + versionMinor * 100 + versionPatch
         versionName = "$versionMajor.$versionMinor.$versionPatch"
         // Shown with the version on the sign-in screen and in Settings.
