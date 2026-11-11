@@ -181,7 +181,7 @@ fun WorkerLoginScreen(
                     .width(120.dp),
             )
             Text(
-                text = "Mobile Operations",
+                text = "Inventory hub",
                 style = FocusType.panelTitle,
                 color = FocusColors.ink,
                 modifier = Modifier.padding(top = 12.dp),
