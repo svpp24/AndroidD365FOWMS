@@ -49,7 +49,7 @@ Notes:
 ## Other Play Console declarations the same release will ask for
 
 - **Privacy policy URL:** https://svpp24.github.io/inventoryhub-privacy/ (GitHub Pages, public repository `svpp24/inventoryhub-privacy`, file `index.html` = `privacy-policy.html`). Change it there and here together.
-- **Foreground service permissions:** declare type **Data sync**. Use: "Sends stock receipts, transfers and counts that were captured offline or in bulk to the company's ERP (Microsoft Dynamics 365) and shows their progress; the user starts these transfers." Play may ask for a short video of it.
+- **Foreground service permissions:** see [foreground-service.md](foreground-service.md).
 - **App access:** all functionality needs sign-in to a company's D365FO. Reviewers need instructions and a demo user before a **production** release; internal testing doesn't need it.
 - **Ads:** No. **Target audience:** 18+, staff only. **Content rating:** questionnaire, business/utility, no sensitive content.
 - **Government app / financial features / health:** No.
