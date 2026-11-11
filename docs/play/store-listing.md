@@ -1,6 +1,6 @@
 # Google Play store listing – Inventory hub
 
-Play Console → Grow → Store presence → **Main store listing**. Drafted 11 Nov 2026 from the app's features.
+Play Console → Grow → Store presence → **Main store listing**. Drafted 11 Nov 2026 from the app's features; text saved in Play Console as a draft (11 Nov).
 
 ## App details
 
@@ -15,6 +15,9 @@ Play Console → Grow → Store presence → **Main store listing**. Drafted 11 
 Inventory hub puts warehouse and store work on an Android handheld, connected live to your company's Microsoft Dynamics 365 Finance & Operations (D365FO).
 
 Scan, confirm and move on. Every receipt, transfer and count goes straight into D365FO, so stock levels are right the moment the work is done.
+
+TRY IT FIRST
+• Tap "Try the demo" on the first screen to use every main screen on sample data - no account or connection needed
 
 RECEIVE
 • Receive purchase orders line by line, by scanning the item, batch or serial
