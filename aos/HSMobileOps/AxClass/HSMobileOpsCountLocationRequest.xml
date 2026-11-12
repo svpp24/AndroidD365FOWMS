@@ -4,7 +4,7 @@
 	<SourceCode>
 		<Declaration><![CDATA[
 /// <summary>
-/// completeLocation's and confirmLocationEmpty's request: one location of a wall-to-wall count.
+/// completeLocation's request: one location of a wall-to-wall count.
 /// </summary>
 [DataContractAttribute]
 class HSMobileOpsCountLocationRequest

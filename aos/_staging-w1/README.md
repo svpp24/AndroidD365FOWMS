@@ -10,11 +10,11 @@ First import (2026-11-07) did not compile (`AxFormTileButtonControl` unknown) an
 
 Store scope and time thresholds are static methods called inside the query range values (standard files do this, for example `(HcmWorkerLookup::currentWorker())`):
 - `HSMobileOpsWorkspaceScope`: `isAllStores`, `warehouses`, `hasAnyStore`, `warehouseRange` and one method per table (`postQueue`, `deviceWork`, `countMaster`, `countWarehouse`, `device`, `feedback`, `users`). Admin and system administrator: an always-true expression. Others: their warehouses; no worker link: `#NOSTORE#` (nothing). Users tiles scope on the mobile user RecId list.
-- `HSMobileOpsWorkspaceRange`: `stuckBefore` (15 min), `cycleBefore` (2 days), `deviceBefore` (7 days), `lockedAfter`, `notEmpty`.
+- `HSMobileOpsWorkspaceRange`: `stuckBefore` (15 min), `deviceBefore` (7 days), `lockedAfter`, `notEmpty`.
 
 ## What is here (`HSMobileOps/`, 54 files)
-- `AxForm/HSMobileOpsWorkspace`: pattern TabbedWorkspace, Panorama tab, four tile sections (Receiving and posting, Counting, Devices and users, Feedback), 13 count tiles and the licence tile. `init` warns when a non-administrator has no store.
-- `AxTile` (14): 13 Count tiles plus `HSMobileOpsWorkspaceLicenceTile` (Standard, opens the licence setup).
+- `AxForm/HSMobileOpsWorkspace`: pattern TabbedWorkspace, Panorama tab, four tile sections (Receiving and posting, Counting, Devices and users, Feedback), 12 count tiles and the licence tile. `init` warns when a non-administrator has no store.
+- `AxTile` (13): 12 Count tiles plus `HSMobileOpsWorkspaceLicenceTile` (Standard, opens the licence setup).
 - `AxQuery` (13) `HSMobileOpsWorkspace<Key>Query`, `AxMenuItemDisplay` (14: workspace plus 13 drill-downs), two classes.
 - `AxSecurityPrivilege` (6), `AxSecurityDuty/HSMobileOpsViewWorkspace`.
 - Patched COPIES of `AxMenu/HSMobileOps`, `AxSecurityRole/HSMobileOpsAdministrator` and `HSMobileOpsViewer`. They overwrite live files if copied: re-apply the insertions to the live files instead (menu item first in the menu; the view duty in both roles).
@@ -43,3 +43,6 @@ Imported, compiled (Errors: 0) and checked as Administrator: the tiles show coun
 - A function used as a query range value must carry `[QueryRangeFunction]`. Without it every tile fails with "Query extended range failure". An administrator gets `*` (and `!0` for the users tiles), not an expression.
 - Warehouse filter on the page: `WorkspacePageFilterGroup` with a lookup (`FilterStringControl`). The choice is kept per user in the AOS cache by `HSMobileOpsWorkspaceFilter` (lost when the AOS restarts) and read by `HSMobileOpsWorkspaceScope::stores()`. Empty means every store the user may see; for a non-administrator the choice narrows their own stores. The form implements `SysIFilterProvider` with an empty filter and the count tiles have ApplyFilter Yes, so they refresh when the box changes. With ADF picked "Postings failed" shows 1 (the database holds 1 for ADF; 18276 failed posts have an empty warehouse).
 - Still open: tile counts for a user with stores and for a user with no worker link; the control center list is not scoped.
+
+## Removed 12 Nov 2026
+The Cycle stopped tile (tile, query, menu item, its WorkspaceView entry and `cycleBefore`) went with cycle counting; removed from the dev VM too.

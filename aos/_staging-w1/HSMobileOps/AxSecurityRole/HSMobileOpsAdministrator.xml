@@ -29,9 +29,6 @@
 			<Name>HSMobileOpsFeedbackMaintain</Name>
 		</AxSecurityPrivilegeReference>
 		<AxSecurityPrivilegeReference>
-			<Name>HSMobileOpsAiSampleMaintain</Name>
-		</AxSecurityPrivilegeReference>
-		<AxSecurityPrivilegeReference>
 			<Name>HSMobileOpsDeviceWorkView</Name>
 		</AxSecurityPrivilegeReference>
 		<AxSecurityPrivilegeReference>

@@ -4,7 +4,7 @@
 	<SourceCode>
 		<Declaration><![CDATA[
 /// <summary>
-/// Wall-to-wall counting. A supervisor starts it for a warehouse on Cycle count warehouses: the
+/// Wall-to-wall counting. A supervisor starts it for a warehouse on Count warehouses: the
 /// warehouse is frozen at once (HSMobileOpsWarehouseFreeze) and a batch job builds the counting
 /// journal from what D365FO holds there, every item at location, batch and serial level, under
 /// the warehouse's wall-to-wall journal name. The store's assortment is added when the warehouse
@@ -25,6 +25,27 @@ class HSMobileOpsCountWallToWall
 ]]></Declaration>
 		<Methods>
 			<Method>
+				<Name>errorsSince</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// What D365FO said since the given infolog line, in order. Its last line is often only
+    /// "Update has been canceled"; the reason is the one before it.
+    /// </summary>
+    public static str errorsSince(int _fromLine)
+    {
+        str text;
+        int i;
+
+        for (i = _fromLine + 1; i <= infologLine(); i++)
+        {
+            text += (text ? ' ' : '') + strReplace(infolog.text(i), '	', ' ');
+        }
+        return text;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
 				<Name>start</Name>
 				<Source><![CDATA[
 
@@ -40,7 +61,7 @@ class HSMobileOpsCountWallToWall
 
         if (!row.RecId)
         {
-            throw error(strFmt('%1 is not on Cycle count warehouses.', _warehouse));
+            throw error(strFmt('%1 is not on Count warehouses.', _warehouse));
         }
         if (freeze.RecId && freeze.Status != HSMobileOpsFreezeStatus::Building)
         {
@@ -172,7 +193,7 @@ class HSMobileOpsCountWallToWall
         catch (Exception::Error)
         {
             HSMobileOpsCountWallToWall::noteFailure(_freezeRecId,
-                strFmt('Cancel failed: %1. Cancel again to retry.', HSMobileOpsCountJournalCreateBatch::errorsSince(infologFrom)));
+                strFmt('Cancel failed: %1. Cancel again to retry.', HSMobileOpsCountWallToWall::errorsSince(infologFrom)));
         }
     }
 ]]></Source>
@@ -276,7 +297,7 @@ class HSMobileOpsCountWallToWall
                 }
                 catch (Exception::Error)
                 {
-                    assortmentResult = strFmt('Assortment not applied: %1', HSMobileOpsCountJournalCreateBatch::errorsSince(assortmentInfolog));
+                    assortmentResult = strFmt('Assortment not applied: %1', HSMobileOpsCountWallToWall::errorsSince(assortmentInfolog));
                 }
             }
 
@@ -305,7 +326,7 @@ class HSMobileOpsCountWallToWall
         catch (Exception::Error)
         {
             HSMobileOpsCountWallToWall::noteFailure(_freezeRecId,
-                strFmt('Build failed: %1. Start wall-to-wall again to resume it, or cancel it.', HSMobileOpsCountJournalCreateBatch::errorsSince(infologFrom)));
+                strFmt('Build failed: %1. Start wall-to-wall again to resume it, or cancel it.', HSMobileOpsCountWallToWall::errorsSince(infologFrom)));
         }
     }
 ]]></Source>
@@ -483,7 +504,7 @@ class HSMobileOpsCountWallToWall
             freeze = HSMobileOpsCountWallToWall::freezeOf(_freezeRecId, true);
             freeze.Status     = HSMobileOpsFreezeStatus::Counting;
             freeze.BatchJobId = 0;
-            freeze.Message    = subStr(strFmt('Posting failed: %1', HSMobileOpsCountJournalCreateBatch::errorsSince(infologFrom)), 1, 250);
+            freeze.Message    = subStr(strFmt('Posting failed: %1', HSMobileOpsCountWallToWall::errorsSince(infologFrom)), 1, 250);
             freeze.update();
             ttscommit;
         }
@@ -519,7 +540,7 @@ class HSMobileOpsCountWallToWall
             if (HSMobileOpsWarehouseFreeze::findByJournal(_journalId).Status != HSMobileOpsFreezeStatus::Posting
              && _posting)
             {
-                ok = checkFailed(strFmt('%1 is a wall-to-wall count. Post it with Post wall-to-wall on Cycle count warehouses, which releases the warehouse when it has posted.', _journalId));
+                ok = checkFailed(strFmt('%1 is a wall-to-wall count. Post it with Post wall-to-wall on Count warehouses, which releases the warehouse when it has posted.', _journalId));
             }
             openTasks = HSMobileOpsCountTask::openTasks(_journalId);
             if (openTasks)

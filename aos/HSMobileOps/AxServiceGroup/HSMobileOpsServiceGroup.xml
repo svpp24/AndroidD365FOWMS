@@ -99,10 +99,6 @@
 			<Name>HSMobileOpsItemSvc</Name>
 			<Service>HSMobileOpsItemSvc</Service>
 		</AxServiceGroupService>
-		<AxServiceGroupService>
-			<Name>HSMobileOpsAiSampleSvc</Name>
-			<Service>HSMobileOpsAiSampleSvc</Service>
-		</AxServiceGroupService>
 	<AxServiceGroupService>
 			<Name>HSMobileOpsCountRequestSvc</Name>
 			<Service>HSMobileOpsCountRequestSvc</Service>

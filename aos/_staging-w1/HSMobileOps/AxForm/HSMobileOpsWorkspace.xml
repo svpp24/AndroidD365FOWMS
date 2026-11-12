@@ -312,27 +312,6 @@ public class HSMobileOpsWorkspace extends FormRun implements SysIFilterProvider
 													</ExtensionProperties>
 												</FormControlExtension>
 											</AxFormControl>
-											<AxFormControl xmlns=""
-												i:type="AxFormMenuFunctionButtonControl">
-												<Name>TileCycleStopped</Name>
-												<Type>MenuFunctionButton</Type>
-												<FormControlExtension>
-													<Name>TileButtonControl</Name>
-													<ExtensionComponents />
-													<ExtensionProperties>
-														<AxFormControlExtensionProperty>
-															<Name>tile</Name>
-															<Type>String</Type>
-															<Value>HSMobileOpsWorkspaceCycleStoppedTile</Value>
-														</AxFormControlExtensionProperty>
-														<AxFormControlExtensionProperty>
-															<Name>tileDisplay</Name>
-															<Type>Enum</Type>
-															<TypeName>TileDisplay</TypeName>
-														</AxFormControlExtensionProperty>
-													</ExtensionProperties>
-												</FormControlExtension>
-											</AxFormControl>
 										</Controls>
 										<ArrangeMethod>HorizontalLeft</ArrangeMethod>
 										<Caption>Counting</Caption>

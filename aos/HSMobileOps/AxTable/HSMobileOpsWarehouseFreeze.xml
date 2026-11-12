@@ -6,7 +6,7 @@
 /// <summary>
 /// Wall-to-wall counts, one row each, kept as history. While a row is Building, Counting or Posting
 /// its warehouse is frozen: the handheld's movements and D365FO's stock postings there are refused,
-/// except the posting of the count's own journal. Started, cancelled and posted from Cycle count
+/// except the posting of the count's own journal. Started, cancelled and posted from Count
 /// warehouses (HSMobileOpsCountWallToWall).
 /// </summary>
 public class HSMobileOpsWarehouseFreeze extends common

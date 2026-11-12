@@ -66,10 +66,6 @@
 			<Method>completeLocation</Method>
 		</AxServiceOperation>
 		<AxServiceOperation>
-			<Name>confirmLocationEmpty</Name>
-			<Method>confirmLocationEmpty</Method>
-		</AxServiceOperation>
-		<AxServiceOperation>
 			<Name>getFreezeStatus</Name>
 			<Method>getFreezeStatus</Method>
 		</AxServiceOperation>

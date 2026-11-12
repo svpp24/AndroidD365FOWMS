@@ -193,7 +193,7 @@ class HSMobileOpsCountAssortment
                 couldNotAdd++;
                 if (!firstRefusal)
                 {
-                    firstRefusal = strFmt('%1: %2', inventTable.ItemId, HSMobileOpsCountJournalCreateBatch::errorsSince(infologFrom));
+                    firstRefusal = strFmt('%1: %2', inventTable.ItemId, HSMobileOpsCountWallToWall::errorsSince(infologFrom));
                 }
                 infolog.clear(infologFrom);
             }

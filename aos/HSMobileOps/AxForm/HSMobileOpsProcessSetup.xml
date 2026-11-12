@@ -81,24 +81,6 @@ public class HSMobileOpsProcessSetup extends FormRun
 						<DataSource>HSMobileOpsProcessSetup</DataSource>
 					</AxFormControl>
 					<AxFormControl xmlns=""
-						i:type="AxFormStringControl">
-						<Name>HSMobileOpsProcessSetup_ConcurrencyMode</Name>
-						<Type>String</Type>
-						<FormControlExtension
-							i:nil="true" />
-						<DataField>ConcurrencyMode</DataField>
-						<DataSource>HSMobileOpsProcessSetup</DataSource>
-					</AxFormControl>
-					<AxFormControl xmlns=""
-						i:type="AxFormIntegerControl">
-						<Name>HSMobileOpsProcessSetup_ClaimTimeoutMinutes</Name>
-						<Type>Integer</Type>
-						<FormControlExtension
-							i:nil="true" />
-						<DataField>ClaimTimeoutMinutes</DataField>
-						<DataSource>HSMobileOpsProcessSetup</DataSource>
-					</AxFormControl>
-					<AxFormControl xmlns=""
 						i:type="AxFormCheckBoxControl">
 						<Name>HSMobileOpsProcessSetup_RequireLocationCapture</Name>
 						<Type>CheckBox</Type>

@@ -1,8 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<AxMenuItemDisplay xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
-	<Name>HSMobileOpsSkuSyncSetup</Name>
-	<Label>Mobile SKU sync setup</Label>
-	<HelpText>Override which standard data entities the bulk SKU/barcode sync exports from - leave blank to use the built-in defaults.</HelpText>
-	<Object>HSMobileOpsSkuSyncSetup</Object>
-	<ObjectType>Form</ObjectType>
-</AxMenuItemDisplay>

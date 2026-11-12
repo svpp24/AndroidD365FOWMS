@@ -6,7 +6,7 @@
 			<Method>
 				<Name>classDeclaration</Name>
 				<Source><![CDATA[
-/// <summary>Cycle count warehouses (Setup): which warehouses the nightly job counts, and how.</summary>
+/// <summary>Count warehouses (Setup): wall-to-wall counting and assortment based counting per warehouse.</summary>
 [Form]
 public class HSMobileOpsCountWarehouse extends FormRun
 {
@@ -30,7 +30,7 @@ public class HSMobileOpsCountWarehouse extends FormRun
 		</AxFormDataSource>
 	</DataSources>
 	<Design>
-		<Caption xmlns="">Cycle count warehouses</Caption>
+		<Caption xmlns="">Count warehouses</Caption>
 		<DataSource xmlns="">HSMobileOpsCountWarehouse</DataSource>
 		<ViewEditMode xmlns="">Edit</ViewEditMode>
 		<Controls xmlns="">
@@ -109,74 +109,11 @@ public class HSMobileOpsCountWarehouse extends FormRun
 					</AxFormControl>
 					<AxFormControl xmlns=""
 						i:type="AxFormCheckBoxControl">
-						<Name>HSMobileOpsCountWarehouse_CycleEnabled</Name>
-						<Type>CheckBox</Type>
-						<FormControlExtension
-							i:nil="true" />
-						<DataField>CycleEnabled</DataField>
-						<DataSource>HSMobileOpsCountWarehouse</DataSource>
-					</AxFormControl>
-					<AxFormControl xmlns=""
-						i:type="AxFormStringControl">
-						<Name>HSMobileOpsCountWarehouse_JournalNameId</Name>
-						<Type>String</Type>
-						<FormControlExtension
-							i:nil="true" />
-						<DataField>JournalNameId</DataField>
-						<DataSource>HSMobileOpsCountWarehouse</DataSource>
-					</AxFormControl>
-					<AxFormControl xmlns=""
-						i:type="AxFormCheckBoxControl">
 						<Name>HSMobileOpsCountWarehouse_AssortmentBased</Name>
 						<Type>CheckBox</Type>
 						<FormControlExtension
 							i:nil="true" />
 						<DataField>AssortmentBased</DataField>
-						<DataSource>HSMobileOpsCountWarehouse</DataSource>
-					</AxFormControl>
-					<AxFormControl xmlns=""
-						i:type="AxFormCheckBoxControl">
-						<Name>HSMobileOpsCountWarehouse_IncludeZeroOnHand</Name>
-						<Type>CheckBox</Type>
-						<FormControlExtension
-							i:nil="true" />
-						<DataField>IncludeZeroOnHand</DataField>
-						<DataSource>HSMobileOpsCountWarehouse</DataSource>
-					</AxFormControl>
-					<AxFormControl xmlns=""
-						i:type="AxFormDateTimeControl">
-						<Name>HSMobileOpsCountWarehouse_LastRunUtc</Name>
-						<Type>DateTime</Type>
-						<FormControlExtension
-							i:nil="true" />
-						<DataField>LastRunUtc</DataField>
-						<DataSource>HSMobileOpsCountWarehouse</DataSource>
-					</AxFormControl>
-					<AxFormControl xmlns=""
-						i:type="AxFormStringControl">
-						<Name>HSMobileOpsCountWarehouse_LastJournalId</Name>
-						<Type>String</Type>
-						<FormControlExtension
-							i:nil="true" />
-						<DataField>LastJournalId</DataField>
-						<DataSource>HSMobileOpsCountWarehouse</DataSource>
-					</AxFormControl>
-					<AxFormControl xmlns=""
-						i:type="AxFormIntegerControl">
-						<Name>HSMobileOpsCountWarehouse_LastLineCount</Name>
-						<Type>Integer</Type>
-						<FormControlExtension
-							i:nil="true" />
-						<DataField>LastLineCount</DataField>
-						<DataSource>HSMobileOpsCountWarehouse</DataSource>
-					</AxFormControl>
-					<AxFormControl xmlns=""
-						i:type="AxFormStringControl">
-						<Name>HSMobileOpsCountWarehouse_LastMessage</Name>
-						<Type>String</Type>
-						<FormControlExtension
-							i:nil="true" />
-						<DataField>LastMessage</DataField>
 						<DataSource>HSMobileOpsCountWarehouse</DataSource>
 					</AxFormControl>
 					<AxFormControl xmlns=""

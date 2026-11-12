@@ -4,7 +4,7 @@
 	<SourceCode>
 		<Declaration><![CDATA[
 /// <summary>
-/// Cycle count warehouses: Start, Cancel and Post wall-to-wall, for the selected warehouse. The
+/// Count warehouses: Start, Cancel and Post wall-to-wall, for the selected warehouse. The
 /// menu item's parameter says which (START, CANCEL, POST).
 /// </summary>
 class HSMobileOpsCountWallToWallAction

@@ -121,8 +121,6 @@ class HSMobileOpsReceivingService
             response.parmCurrencyCode(purchTable.CurrencyCode);
 
             setup = HSMobileOpsProcessSetup::find(HSMobileOpsProcessSetup::processReceiving());
-            response.parmConcurrencyMode(setup.ConcurrencyMode);
-            response.parmClaimTimeoutMinutes(setup.ClaimTimeoutMinutes);
             response.parmRequireLocationCapture(setup.RequireLocationCapture == NoYes::Yes);
 
             blockReason = HSMobileOpsReceivingService::receivableBlockReason(purchTable);
@@ -149,7 +147,7 @@ class HSMobileOpsReceivingService
             if (outstanding && outstanding <= HSMobileOpsReceivingService::inlineLineLimit())
             {
                 HSMobileOpsReceivingService::appendLines(
-                    response, purchId, '', setup.ConcurrencyMode);
+                    response, purchId, '');
                 response.parmLinesIncluded(true);
             }
 
@@ -205,7 +203,7 @@ class HSMobileOpsReceivingService
             setup = null;
             setup = HSMobileOpsProcessSetup::find(HSMobileOpsProcessSetup::processReceiving());
             HSMobileOpsReceivingService::appendLines(
-                carrier, purchId, itemId, setup.ConcurrencyMode);
+                carrier, purchId, itemId);
         }
 
         response.parmSuccess(true);
@@ -217,141 +215,6 @@ class HSMobileOpsReceivingService
             response.parmErrorCode('NOT_ON_ORDER');
         }
 
-        return response;
-    }
-]]></Source>
-			</Method>
-			<Method>
-				<Name>claimLine</Name>
-				<Source><![CDATA[
-
-    /// <summary>
-    /// Claims a line for the calling worker, in LineClaim mode.
-    ///
-    /// Called from the client once a line is selected, not once per step - the same claim
-    /// covers quantity, location, batch and serial capture on that line, and is released or
-    /// naturally left to expire when the operator moves on. Safe to call when the process is
-    /// not in LineClaim mode at all: it always succeeds trivially in that case, so the client
-    /// does not need to know the mode before calling - though it will already know, from
-    /// ConcurrencyMode on the order response, whether calling it does anything.
-    /// </summary>
-    public HSMobileOpsClaimResponse claimLine(HSMobileOpsClaimRequest _request)
-    {
-        HSMobileOpsClaimResponse response = new HSMobileOpsClaimResponse();
-        HSMobileOpsProcessSetup  setup;
-        HSMobileOpsLineClaim     claim;
-        DataAreaId               company;
-
-        response.parmSuccess(false);
-
-        if (!_request || !_request.parmDataAreaId() || !_request.parmSourceId()
-            || !_request.parmLineNumber() || !_request.parmUserName())
-        {
-            response.parmErrorCode('INVALID_REQUEST');
-            return response;
-        }
-
-        company = _request.parmDataAreaId();
-
-        if (!CompanyInfo::findDataArea(company).RecId)
-        {
-            response.parmErrorCode('INVALID_REQUEST');
-            response.parmMessage(strFmt('No legal entity %1', company));
-            return response;
-        }
-
-        changecompany (company)
-        {
-            setup = null;
-            claim = null;
-
-            setup = HSMobileOpsProcessSetup::find(HSMobileOpsProcessSetup::processReceiving());
-
-            if (setup.ConcurrencyMode != HSMobileOpsProcessSetup::modeLineClaim())
-            {
-                // Not in this mode: nothing to claim, and saying so is not an error. A client
-                // that calls this defensively on every process should not have to special-case
-                // the processes where it does nothing.
-                response.parmSuccess(true);
-                response.parmGranted(true);
-                return response;
-            }
-
-            ttsbegin;
-            claim = HSMobileOpsLineClaim::claim(
-                HSMobileOpsProcessSetup::processReceiving(),
-                _request.parmSourceId(),
-                _request.parmLineNumber(),
-                _request.parmUserName(),
-                _request.parmDisplayName(),
-                _request.parmDeviceId(),
-                setup.ClaimTimeoutMinutes);
-            ttscommit;
-
-            response.parmSuccess(true);
-            response.parmGranted(
-                strUpr(claim.ClaimedByUserName) == strUpr(_request.parmUserName()));
-            response.parmClaimedByUserName(claim.ClaimedByUserName);
-            response.parmClaimedByDisplayName(claim.ClaimedByDisplayName);
-            response.parmClaimExpiresUtc(claim.ClaimExpiresUtc);
-
-            if (!response.parmGranted())
-            {
-                response.parmErrorCode('LINE_CLAIMED');
-                response.parmMessage(strFmt(
-                    'Already being received by %1',
-                    claim.ClaimedByDisplayName ? claim.ClaimedByDisplayName : claim.ClaimedByUserName));
-            }
-        }
-
-        return response;
-    }
-]]></Source>
-			</Method>
-			<Method>
-				<Name>releaseLine</Name>
-				<Source><![CDATA[
-
-    /// <summary>
-    /// Releases the calling worker's own claim - back button, reset, or a successful commit of
-    /// the line all call this. A no-op, not an error, when the process is not in LineClaim mode
-    /// or when the caller held no claim to begin with.
-    /// </summary>
-    public HSMobileOpsClaimResponse releaseLine(HSMobileOpsClaimRequest _request)
-    {
-        HSMobileOpsClaimResponse response = new HSMobileOpsClaimResponse();
-        DataAreaId               company;
-
-        response.parmSuccess(false);
-
-        if (!_request || !_request.parmDataAreaId() || !_request.parmSourceId()
-            || !_request.parmLineNumber() || !_request.parmUserName())
-        {
-            response.parmErrorCode('INVALID_REQUEST');
-            return response;
-        }
-
-        company = _request.parmDataAreaId();
-
-        if (!CompanyInfo::findDataArea(company).RecId)
-        {
-            response.parmErrorCode('INVALID_REQUEST');
-            response.parmMessage(strFmt('No legal entity %1', company));
-            return response;
-        }
-
-        changecompany (company)
-        {
-            ttsbegin;
-            HSMobileOpsLineClaim::release(
-                HSMobileOpsProcessSetup::processReceiving(),
-                _request.parmSourceId(),
-                _request.parmLineNumber(),
-                _request.parmUserName());
-            ttscommit;
-        }
-
-        response.parmSuccess(true);
         return response;
     }
 ]]></Source>
@@ -369,26 +232,17 @@ class HSMobileOpsReceivingService
     /// that will never show them.
     ///
     /// A blank _itemId returns every outstanding line; a supplied one narrows to that item.
-    ///
-    /// _concurrencyMode decides whether lines carry claim annotation at all. Passed in rather
-    /// than looked up here so the setup table is read once by the caller, not once per line -
-    /// and so a caller that already knows the mode is None can skip the claim query entirely,
-    /// which is the common case on every process that has never turned this on.
     /// </summary>
     private static void appendLines(
-        HSMobileOpsPurchOrderResponse _response, PurchId _purchId, ItemId _itemId,
-        str _concurrencyMode)
+        HSMobileOpsPurchOrderResponse _response, PurchId _purchId, ItemId _itemId)
     {
         PurchLine                    purchLine;
         InventDim                    inventDim;
         HSMobileOpsPurchLineContract line;
         WHSInventTable               whsItem;
         InventDimGroupSetup          dimSetup;
-        HSMobileOpsLineClaim         activeClaim;
         List                         lines = _response.parmLines();
         int                          lineCount;
-        boolean                      claimsActive = _concurrencyMode
-            == HSMobileOpsProcessSetup::modeLineClaim();
         InventQty                    orderedForLine;
         PurchQty                     stagedForLine;
         PurchQty                     remainingAfterStaged;
@@ -482,19 +336,6 @@ class HSMobileOpsReceivingService
             line.parmOverDeliveryPct(purchLine.OverDeliveryPct);
             line.parmUnderDeliveryPct(purchLine.UnderDeliveryPct);
             line.parmLineStatus(enum2Symbol(enumNum(PurchStatus), purchLine.PurchStatus));
-
-            if (claimsActive)
-            {
-                activeClaim = HSMobileOpsLineClaim::findActive(
-                    HSMobileOpsProcessSetup::processReceiving(), _purchId, purchLine.LineNumber);
-
-                if (activeClaim.RecId)
-                {
-                    line.parmClaimedByUserName(activeClaim.ClaimedByUserName);
-                    line.parmClaimedByDisplayName(activeClaim.ClaimedByDisplayName);
-                    line.parmClaimExpiresUtc(activeClaim.ClaimExpiresUtc);
-                }
-            }
 
             lines.addEnd(line);
 

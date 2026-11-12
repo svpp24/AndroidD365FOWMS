@@ -80,11 +80,6 @@
 				</AxMenuElement>
 				<AxMenuElement xmlns=""
 					i:type="AxMenuElementMenuItem">
-					<Name>HSMobileOpsSkuSyncSetup</Name>
-					<MenuItemName>HSMobileOpsSkuSyncSetup</MenuItemName>
-				</AxMenuElement>
-				<AxMenuElement xmlns=""
-					i:type="AxMenuElementMenuItem">
 					<Name>HSMobileOpsCountTolerance</Name>
 					<MenuItemName>HSMobileOpsCountTolerance</MenuItemName>
 				</AxMenuElement>

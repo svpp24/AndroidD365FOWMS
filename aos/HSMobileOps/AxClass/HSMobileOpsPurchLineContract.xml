@@ -41,14 +41,6 @@ class HSMobileOpsPurchLineContract
     str                 lineStatus;
     boolean             stopped;
 
-    // Populated only when the receiving process is in LineClaim mode; see
-    // HSMobileOpsProcessSetup and HSMobileOpsLineClaim. Blank when the line is free, or when
-    // the process is not in that mode at all - the client tells the two apart by ConcurrencyMode
-    // on the order response, not by guessing from these being empty.
-    str                 claimedByUserName;
-    str                 claimedByDisplayName;
-    utcdatetime         claimExpiresUtc;
-
     str     configId;
     str     sizeId;
     str     colorId;
@@ -305,42 +297,6 @@ class HSMobileOpsPurchLineContract
     {
         stopped = _value;
         return stopped;
-    }
-]]></Source>
-			</Method>
-			<Method>
-				<Name>parmClaimedByUserName</Name>
-				<Source><![CDATA[
-
-    [DataMemberAttribute('ClaimedByUserName')]
-    public str parmClaimedByUserName(str _value = claimedByUserName)
-    {
-        claimedByUserName = _value;
-        return claimedByUserName;
-    }
-]]></Source>
-			</Method>
-			<Method>
-				<Name>parmClaimedByDisplayName</Name>
-				<Source><![CDATA[
-
-    [DataMemberAttribute('ClaimedByDisplayName')]
-    public str parmClaimedByDisplayName(str _value = claimedByDisplayName)
-    {
-        claimedByDisplayName = _value;
-        return claimedByDisplayName;
-    }
-]]></Source>
-			</Method>
-			<Method>
-				<Name>parmClaimExpiresUtc</Name>
-				<Source><![CDATA[
-
-    [DataMemberAttribute('ClaimExpiresUtc')]
-    public utcdatetime parmClaimExpiresUtc(utcdatetime _value = claimExpiresUtc)
-    {
-        claimExpiresUtc = _value;
-        return claimExpiresUtc;
     }
 ]]></Source>
 			</Method>

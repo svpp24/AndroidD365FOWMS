@@ -78,15 +78,6 @@
 			<Forms />
 		</AxSecurityEntryPointReference>
 		<AxSecurityEntryPointReference>
-			<Name>HSMobileOpsCycleStopped</Name>
-			<Grant>
-				<Read>Allow</Read>
-			</Grant>
-			<ObjectName>HSMobileOpsCycleStopped</ObjectName>
-			<ObjectType>MenuItemDisplay</ObjectType>
-			<Forms />
-		</AxSecurityEntryPointReference>
-		<AxSecurityEntryPointReference>
 			<Name>HSMobileOpsUserLocked</Name>
 			<Grant>
 				<Read>Allow</Read>

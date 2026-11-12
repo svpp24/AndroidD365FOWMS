@@ -15,11 +15,6 @@
 /// overlapping capture is rejected at post time against the live remaining quantity rather than
 /// silently over-received - see HSMobileOpsPostingService.
 ///
-/// **LineClaim** adds a soft, time-limited claim: selecting a line marks it as being worked by
-/// this user for ClaimTimeoutMinutes, and another worker scanning the same item is told who has
-/// it rather than being silently offered a line someone is already standing at. See
-/// HSMobileOpsLineClaim.
-///
 /// **LicensePlate** scopes a whole visit to one pallet, built ad hoc by the worker on the handheld
 /// rather than pre-staged from an ASN - there is no inbound-shipment feed anywhere in this system
 /// to pre-stage it from. Two workers building two different pallets against the same order collide
@@ -68,8 +63,6 @@ public class HSMobileOpsProcessSetup extends common
         if (!setup.RecId)
         {
             setup.ProcessType            = _processType;
-            setup.ConcurrencyMode        = HSMobileOpsProcessSetup::modeNone();
-            setup.ClaimTimeoutMinutes    = HSMobileOpsProcessSetup::defaultClaimTimeoutMinutes();
             // Unconfigured means "behave exactly as before this field existed" - see the class
             // doc on RequireLocationCapture. Before it existed, the app always asked whenever
             // the item's own storage dimension tracked location, so the safe default is to keep
@@ -78,26 +71,6 @@ public class HSMobileOpsProcessSetup extends common
         }
 
         return setup;
-    }
-]]></Source>
-			</Method>
-			<Method>
-				<Name>modeNone</Name>
-				<Source><![CDATA[
-
-    public static str modeNone()
-    {
-        return 'None';
-    }
-]]></Source>
-			</Method>
-			<Method>
-				<Name>modeLineClaim</Name>
-				<Source><![CDATA[
-
-    public static str modeLineClaim()
-    {
-        return 'LineClaim';
     }
 ]]></Source>
 			</Method>
@@ -147,25 +120,6 @@ public class HSMobileOpsProcessSetup extends common
 ]]></Source>
 			</Method>
 			<Method>
-				<Name>defaultClaimTimeoutMinutes</Name>
-				<Source><![CDATA[
-
-    /// <summary>
-    /// How long an unattended claim survives before another worker can take the line.
-    ///
-    /// Generous on purpose. The failure mode of too short is a worker who stepped away to find a
-    /// supervisor coming back to find their own claim gone and the line offered to someone else -
-    /// confusing and worse than the problem the claim exists to prevent. The failure mode of too
-    /// long is a genuinely abandoned line staying blocked for a while, which costs nothing but
-    /// patience and resolves itself on expiry regardless.
-    /// </summary>
-    public static int defaultClaimTimeoutMinutes()
-    {
-        return 20;
-    }
-]]></Source>
-			</Method>
-			<Method>
 				<Name>ensureSeeded</Name>
 				<Source><![CDATA[
 
@@ -197,8 +151,6 @@ public class HSMobileOpsProcessSetup extends common
             {
                 setup.clear();
                 setup.ProcessType            = conPeek(processes, i);
-                setup.ConcurrencyMode        = HSMobileOpsProcessSetup::modeNone();
-                setup.ClaimTimeoutMinutes    = HSMobileOpsProcessSetup::defaultClaimTimeoutMinutes();
                 setup.RequireLocationCapture = NoYes::Yes;
                 setup.insert();
             }
@@ -250,7 +202,7 @@ public class HSMobileOpsProcessSetup extends common
 	</SourceCode>
 	<Label>Mobile process setup</Label>
 	<TitleField1>ProcessType</TitleField1>
-	<TitleField2>ConcurrencyMode</TitleField2>
+	<TitleField2>AutoGrn</TitleField2>
 	<CacheLookup>NotInTTS</CacheLookup>
 	<ClusteredIndex>ProcessTypeIdx</ClusteredIndex>
 	<PrimaryIndex>ProcessTypeIdx</PrimaryIndex>
@@ -262,20 +214,6 @@ public class HSMobileOpsProcessSetup extends common
 			<Label>Process</Label>
 			<Mandatory>Yes</Mandatory>
 			<StringSize>30</StringSize>
-		</AxTableField>
-		<AxTableField xmlns=""
-			i:type="AxTableFieldString">
-			<Name>ConcurrencyMode</Name>
-			<HelpText>None, LineClaim or LicensePlate.</HelpText>
-			<Label>Mode</Label>
-			<Mandatory>Yes</Mandatory>
-			<StringSize>20</StringSize>
-		</AxTableField>
-		<AxTableField xmlns=""
-			i:type="AxTableFieldInt">
-			<Name>ClaimTimeoutMinutes</Name>
-			<HelpText>Only used in LineClaim mode. How long a claim survives with no activity.</HelpText>
-			<Label>Claim timeout (minutes)</Label>
 		</AxTableField>
 		<AxTableField xmlns=""
 			i:type="AxTableFieldEnum">

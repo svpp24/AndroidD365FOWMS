@@ -13,13 +13,5 @@
 			<Name>getLinesForItem</Name>
 			<Method>getLinesForItem</Method>
 		</AxServiceOperation>
-		<AxServiceOperation>
-			<Name>claimLine</Name>
-			<Method>claimLine</Method>
-		</AxServiceOperation>
-		<AxServiceOperation>
-			<Name>releaseLine</Name>
-			<Method>releaseLine</Method>
-		</AxServiceOperation>
 	</ServiceOperations>
 </AxService>

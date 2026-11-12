@@ -10,7 +10,6 @@
 public final class HSMobileOpsWorkspaceRange
 {
     public static const int StuckPostingMinutes = 15;
-    public static const int CycleStoppedDays    = 2;
     public static const int DeviceNotSeenDays   = 7;
 }
 ]]></Declaration>
@@ -23,17 +22,6 @@ public final class HSMobileOpsWorkspaceRange
     public static str stuckBefore()
     {
         return '<' + queryValue(DateTimeUtil::addMinutes(DateTimeUtil::utcNow(), -HSMobileOpsWorkspaceRange::StuckPostingMinutes));
-    }
-]]></Source>
-			</Method>
-			<Method>
-				<Name>cycleBefore</Name>
-				<Source><![CDATA[
-    /// <summary>A cycle count that last ran before this moment has stopped.</summary>
-    [QueryRangeFunction]
-    public static str cycleBefore()
-    {
-        return '<' + queryValue(DateTimeUtil::addDays(DateTimeUtil::utcNow(), -HSMobileOpsWorkspaceRange::CycleStoppedDays));
     }
 ]]></Source>
 			</Method>

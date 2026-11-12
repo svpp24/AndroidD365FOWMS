@@ -2049,91 +2049,12 @@ class HSMobileOpsPostingService
 ]]></Source>
 			</Method>
 			<Method>
-				<Name>splitForBatch</Name>
-				<Source><![CDATA[
-
-    /// <summary>
-    /// Moves _quantity of a transfer line onto the line for another batch (or single serial) in
-    /// this posting - a new line of the same order, created the first time that batch comes up
-    /// (same item, warehouses and dimensions, with that batch) - and returns that line, selected
-    /// for update. The
-    /// original line's ordered and outstanding quantities go down by the same amount.
-    /// </summary>
-    private static InventTransferLine splitForBatch(
-        InventTransferLine _line,
-        Map                _lineOfBatch,
-        str                _batchKey,
-        InventBatchId      _batchId,
-        InventSerialId     _serialId,
-        InventQty          _quantity)
-    {
-        InventTransferLine original;
-        InventTransferLine splitLine;
-        InventTransferLine last;
-        InventDim          splitDim;
-        RecId              splitRecId;
-
-        select forUpdate firstOnly original
-            where original.RecId == _line.RecId;
-        original.QtyTransfer      -= _quantity;
-        original.QtyRemainShip    -= _quantity;
-        original.QtyRemainReceive -= _quantity;
-        original.update();
-
-        if (_lineOfBatch.exists(_batchKey))
-        {
-            select forUpdate firstOnly splitLine
-                where splitLine.TransferId == original.TransferId
-                   && splitLine.LineNum    == _lineOfBatch.lookup(_batchKey);
-            splitLine.QtyTransfer      += _quantity;
-            splitLine.QtyRemainShip    += _quantity;
-            splitLine.QtyRemainReceive += _quantity;
-            splitLine.update();
-        }
-        else
-        {
-            select maxOf(LineNum) from last
-                where last.TransferId == original.TransferId;
-
-            splitDim               = original.inventDim();
-            if (_batchId)
-            {
-                splitDim.InventBatchId = _batchId;
-            }
-            if (_serialId)
-            {
-                splitDim.InventSerialId = _serialId;
-            }
-
-            splitLine.clear();
-            splitLine.initValue();
-            splitLine.initFromInventTransferTable(InventTransferTable::find(original.TransferId), NoYes::Yes);
-            splitLine.ItemId = original.ItemId;
-            splitLine.initFromInventTable(InventTable::find(splitLine.ItemId));
-            splitLine.UnitId           = original.UnitId;
-            splitLine.InventDimId      = InventDim::findOrCreate(splitDim).inventDimId;
-            splitLine.QtyTransfer      = _quantity;
-            splitLine.QtyRemainShip    = _quantity;
-            splitLine.QtyRemainReceive = _quantity;
-            splitLine.LineNum          = real2int(last.LineNum) + 1;
-            splitLine.insert();
-            _lineOfBatch.insert(_batchKey, splitLine.LineNum);
-
-            splitRecId = splitLine.RecId;
-            select forUpdate firstOnly splitLine
-                where splitLine.RecId == splitRecId;
-        }
-        return splitLine;
-    }
-]]></Source>
-			</Method>
-			<Method>
 				<Name>movedOff</Name>
 				<Source><![CDATA[
 
     /// <summary>
     /// How much of a transfer line this posting has already moved onto lines of other batches
-    /// (splitForBatch) - still part of what the line had outstanding when the posting began.
+    /// - still part of what the line had outstanding when the posting began.
     /// </summary>
     private static InventQty movedOff(Map _lineOfBatch, LineNum _lineNum, InventTransferId _transferId)
     {
@@ -2637,17 +2558,6 @@ class HSMobileOpsPostingService
 ]]></Source>
 			</Method>
 			<Method>
-				<Name>firstSerial</Name>
-				<Source><![CDATA[
-
-    private static InventSerialId firstSerial(List _serials)
-    {
-        ListEnumerator enumerator = _serials.getEnumerator();
-        return enumerator.moveNext() ? enumerator.current() : '';
-    }
-]]></Source>
-			</Method>
-			<Method>
 				<Name>addPick</Name>
 				<Source><![CDATA[
 
@@ -3028,31 +2938,6 @@ class HSMobileOpsPostingService
         postLog.DeviceId         = _request.parmDeviceId();
         postLog.PostedUtc        = DateTimeUtil::utcNow();
         postLog.insert();
-    }
-]]></Source>
-			</Method>
-			<Method>
-				<Name>replayOf</Name>
-				<Source><![CDATA[
-
-    /// <summary>
-    /// The answer to a request that has already been posted.
-    ///
-    /// Success, not failure. The client's retry did exactly what it was supposed to, and the work
-    /// landed once - so it clears its queue entry knowing the receipt exists, and the operator is
-    /// not told a second one was created when it was not.
-    /// </summary>
-    private static HSMobileOpsPostResponse replayOf(
-        HSMobileOpsPostResponse _response, HSMobileOpsPostLog _existing)
-    {
-        _response.parmSuccess(true);
-        _response.parmAlreadyPosted(true);
-        _response.parmDocumentNumber(_existing.DocumentNumber);
-        _response.parmMessage(strFmt(
-            'Already posted as %1 at %2',
-            _existing.DocumentNumber, DateTimeUtil::toStr(_existing.PostedUtc)));
-
-        return _response;
     }
 ]]></Source>
 			</Method>

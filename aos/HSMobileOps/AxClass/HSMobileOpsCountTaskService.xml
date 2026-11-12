@@ -1072,21 +1072,6 @@ class HSMobileOpsCountTaskService
 ]]></Source>
 			</Method>
 			<Method>
-				<Name>confirmLocationEmpty</Name>
-				<Source><![CDATA[
-
-    /// <summary>
-    /// Wall-to-wall: a counter says a location holds nothing. Its lines settle at 0 and it is
-    /// complete. Refused once anyone has counted a line there.
-    /// </summary>
-    [Wrappable(false), Hookable(false)]
-    public HSMobileOpsCountLocationResponse confirmLocationEmpty(HSMobileOpsCountLocationRequest _request)
-    {
-        return HSMobileOpsCountTaskService::locationAction(_request, true);
-    }
-]]></Source>
-			</Method>
-			<Method>
 				<Name>locationAction</Name>
 				<Source><![CDATA[
 

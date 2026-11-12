@@ -38,8 +38,6 @@ class HSMobileOpsPurchOrderResponse
     // How this process currently coordinates concurrent workers - see HSMobileOpsProcessSetup.
     // The client decides whether to show claim UI, a pallet prompt, or neither, from this field
     // alone; it does not infer the mode from whether individual lines happen to carry a claim.
-    str         concurrencyMode;
-    int         claimTimeoutMinutes;
 
     // Whether the client should still ask for a put-away location when a line has none of its
     // own - see HSMobileOpsProcessSetup.RequireLocationCapture. A line that already carries a
@@ -277,30 +275,6 @@ class HSMobileOpsPurchOrderResponse
     {
         lines = _value;
         return lines;
-    }
-]]></Source>
-			</Method>
-			<Method>
-				<Name>parmConcurrencyMode</Name>
-				<Source><![CDATA[
-
-    [DataMemberAttribute('ConcurrencyMode')]
-    public str parmConcurrencyMode(str _value = concurrencyMode)
-    {
-        concurrencyMode = _value;
-        return concurrencyMode;
-    }
-]]></Source>
-			</Method>
-			<Method>
-				<Name>parmClaimTimeoutMinutes</Name>
-				<Source><![CDATA[
-
-    [DataMemberAttribute('ClaimTimeoutMinutes')]
-    public int parmClaimTimeoutMinutes(int _value = claimTimeoutMinutes)
-    {
-        claimTimeoutMinutes = _value;
-        return claimTimeoutMinutes;
     }
 ]]></Source>
 			</Method>

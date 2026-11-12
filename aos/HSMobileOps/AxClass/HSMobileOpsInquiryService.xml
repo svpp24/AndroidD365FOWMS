@@ -200,61 +200,6 @@ class HSMobileOpsInquiryService
 ]]></Source>
 			</Method>
 			<Method>
-				<Name>debugPostLog</Name>
-				<Source><![CDATA[
-
-    /// <summary>
-    /// Temporary troubleshooting: the last 20 HSMobileOpsPostLog rows, most recent first.
-    ///
-    /// Exists to answer one question directly instead of guessing at it through black-box HTTP
-    /// timing - is HSMobileOpsPostLog carrying a row with a blank or unexpected IdempotencyKey,
-    /// which is what a DuplicateKeyException on every insert regardless of the key sent would
-    /// mean. The IdempotencyKey is wrapped in brackets specifically so a blank one is visible as
-    /// "Key=[]" rather than an easily-missed run of spaces in a fixed-width column. Safe to
-    /// delete once that question is answered - this is not part of the app's real API surface.
-    /// </summary>
-    public HSMobileOpsDebugResponse debugPostLog()
-    {
-        HSMobileOpsDebugResponse response = new HSMobileOpsDebugResponse();
-        HSMobileOpsPostLog       postLog;
-        List                     rows = new List(Types::String);
-        // 'count' is a reserved word in X++ (the aggregate).
-        int                      countLog;
-
-        // crossCompany, and DataAreaId in the output - the first version of this method had
-        // neither and always came back empty despite every insert attempt reporting the row it
-        // was trying to write already existed. A plain select without crossCompany is scoped to
-        // this service's own ambient company, which need not be the one the insert actually ran
-        // under (that happens inside its own changecompany block in HSMobileOpsPostingService) -
-        // so the two were very possibly never looking at the same rows at all.
-        while select crossCompany postLog
-            order by PostedUtc desc
-        {
-            rows.addEnd(strFmt(
-                'Company=%1 Key=[%2] Type=%3 Source=%4 Doc=%5 By=%6 At=%7',
-                postLog.DataAreaId,
-                postLog.IdempotencyKey,
-                postLog.DocumentType,
-                postLog.SourceId,
-                postLog.DocumentNumber,
-                postLog.PostedByUserName,
-                DateTimeUtil::toStr(postLog.PostedUtc)));
-
-            countLog++;
-            if (countLog >= 20)
-            {
-                break;
-            }
-        }
-
-        response.parmSuccess(true);
-        response.parmRows(rows);
-
-        return response;
-    }
-]]></Source>
-			</Method>
-			<Method>
 				<Name>getOnHand</Name>
 				<Source><![CDATA[
 
