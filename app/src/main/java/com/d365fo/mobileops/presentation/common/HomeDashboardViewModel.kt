@@ -2,7 +2,6 @@ package com.d365fo.mobileops.presentation.common
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.d365fo.mobileops.data.local.dao.JournalDao
 import com.d365fo.mobileops.data.repository.TransferListRepository
 import com.d365fo.mobileops.data.repository.WorkerSessionRepository
 import com.d365fo.mobileops.data.sync.SyncStatus
@@ -20,17 +19,16 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 /**
- * Home's "My Dashboard" figures (20 Oct restyle): counts in progress on this device, POs due
+ * Home's "My Dashboard" figures (20 Oct restyle): open counts of this warehouse, POs due
  * today, transfers to ship from this warehouse, and what is waiting to post. Each one is
  * fetched on its own and stays null until it answers - a figure D365FO could not give is left
  * out, never guessed.
  */
 @HiltViewModel
 class HomeDashboardViewModel @Inject constructor(
-    private val inventoryDao: JournalDao,
     private val lookup: OnDemandLookupRepository,
     private val transfers: TransferListRepository,
-    private val countJournals: com.d365fo.mobileops.data.repository.CountingJournalRepository,
+    private val countRequests: com.d365fo.mobileops.data.counting.CountRequestRepository,
     private val workerSession: WorkerSessionRepository,
     syncStatusProvider: SyncStatusProvider,
 ) : ViewModel() {
@@ -54,15 +52,11 @@ class HomeDashboardViewModel @Inject constructor(
     /** Each time Home shows. */
     fun refresh() {
         val wh = warehouseId
-        viewModelScope.launch {
-            val counts = runCatching { inventoryDao.countUnsubmittedCounts() }.getOrNull()
-            _figures.update { it.copy(countsInProgress = counts) }
-        }
         if (wh.isNullOrBlank()) return
-        // Open in D365FO for this warehouse, which is what the card's "open" promises. Keeps the
-        // device's own figure above when D365FO cannot be reached.
+        // The open counts the Count lists show - hazard, wall to wall and blind together (user,
+        // 12 Nov: Home said 20 from the old counting journals while the lists held 10).
         viewModelScope.launch {
-            val open = (countJournals.listAssignedJournals(wh, workerSession.session.value?.userName) as? NetworkResult.Success)?.data?.size
+            val open = (countRequests.counts(wh) as? NetworkResult.Success)?.data?.count { it.open }
             if (open != null) _figures.update { it.copy(countsInProgress = open) }
         }
         viewModelScope.launch {
