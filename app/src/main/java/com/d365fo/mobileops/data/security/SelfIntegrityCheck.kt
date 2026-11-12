@@ -47,7 +47,10 @@ class SelfIntegrityCheck @Inject constructor(@ApplicationContext private val con
         }
 
         val normalize: (String) -> String = { it.replace(":", "").lowercase() }
-        val ok = normalize(actual) == normalize(expected)
+        // Our own release key (sideloaded APKs) or Google Play's app signing key (installs from
+        // Play, which re-signs with it) - both are genuine.
+        val genuine = listOf(expected, BuildConfig.PLAY_SIGNING_CERT_SHA256).filter { it.isNotBlank() }.map(normalize)
+        val ok = normalize(actual) in genuine
         if (!ok) {
             Timber.e("signing certificate mismatch: expected=%s actual=%s", expected, actual)
         }

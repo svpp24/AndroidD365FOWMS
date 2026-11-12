@@ -99,6 +99,10 @@ android {
         // compares its installed signature against — see D365MobileApp.onCreate.
         buildConfigField("String", "LICENSE_ROOT_PUBLIC_KEY_B64", "\"${secret("LICENSE_ROOT_PUBLIC_KEY_B64")}\"")
         buildConfigField("String", "RELEASE_SIGNING_CERT_SHA256", "\"${secret("RELEASE_SIGNING_CERT_SHA256")}\"")
+        // Google Play's app signing key (Play Console > Test and release > App integrity > App
+        // signing). Play re-signs every install with it, so a copy from Play carries this
+        // certificate, not the upload key above. A public fingerprint, not a secret.
+        buildConfigField("String", "PLAY_SIGNING_CERT_SHA256", "\"4A:41:71:BB:23:9F:B4:02:F0:1F:44:6D:27:36:4F:02:C1:85:ED:6D:8B:99:19:61:B5:1E:4A:2D:55:39:D2:8D\"")
         // LICENSE_CHECK=false in local.properties skips license activation and the per-launch
         // license check (LicenseRepository.validate) - for testing a build before a device has
         // a license certificate. On unless set; a build for the fleet must leave it on.
