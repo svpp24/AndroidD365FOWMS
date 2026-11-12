@@ -1169,6 +1169,8 @@ class HSMobileOpsOrderCreateService
             case HSMobileOpsModule::TO_CREATE:          return 'TO_CREATE';
             case HSMobileOpsModule::PO_CONFIRM:         return 'PO_CONFIRM';
             case HSMobileOpsModule::PURCHASE_RETURN:    return 'PURCHASE_RETURN';
+            case HSMobileOpsModule::ITEMS_BY_CATEGORY:  return 'ITEMS_BY_CATEGORY';
+            case HSMobileOpsModule::PRICE_CHECK:        return 'PRICE_CHECK';
             default:                                    return '';
         }
     }

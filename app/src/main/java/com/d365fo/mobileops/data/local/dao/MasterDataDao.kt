@@ -40,6 +40,9 @@ data class ScannedItem(
         get() = com.d365fo.mobileops.domain.model.ProductVariant.of(configId, sizeId, colorId, styleId)
 }
 
+/** A category path and how many active items sit directly in it. */
+data class CategoryCount(val category: String, val items: Int)
+
 @Dao
 interface ItemDao {
 
@@ -88,6 +91,20 @@ interface ItemDao {
 
     @Query("SELECT COUNT(*) FROM item")
     suspend fun itemCount(): Int
+
+    /** Active items per category path ("" = none) - Items by category builds its tree from this. */
+    @Query("SELECT IFNULL(category, '') AS category, COUNT(*) AS items FROM item WHERE active = 1 GROUP BY IFNULL(category, '')")
+    suspend fun categoryCounts(): List<CategoryCount>
+
+    /** Active items whose category is exactly [path] ("" = items with none). */
+    @Query("SELECT * FROM item WHERE active = 1 AND IFNULL(category, '') = :path ORDER BY itemName, itemId")
+    suspend fun itemsInCategory(path: String): List<ItemEntity>
+
+    @Query("SELECT * FROM item WHERE itemId IN (:itemIds)")
+    suspend fun itemsByIds(itemIds: List<String>): List<ItemEntity>
+
+    @Query("SELECT * FROM barcode WHERE itemId = :itemId ORDER BY active DESC, barcode")
+    suspend fun barcodesOf(itemId: String): List<BarcodeEntity>
 
     @Query("SELECT COUNT(*) FROM barcode")
     suspend fun barcodeCount(): Int

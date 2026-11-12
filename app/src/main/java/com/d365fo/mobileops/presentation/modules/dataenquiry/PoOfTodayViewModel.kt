@@ -3,7 +3,6 @@ package com.d365fo.mobileops.presentation.modules.dataenquiry
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.d365fo.mobileops.data.repository.WorkerSessionRepository
-import com.d365fo.mobileops.domain.repository.OnDemandLookupRepository
 import com.d365fo.mobileops.domain.repository.PurchaseOrderSummary
 import com.d365fo.mobileops.util.NetworkResult
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -15,14 +14,12 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 /**
- * Purchase orders requested for delivery today, in this worker's warehouse.
- *
- * Unlike every other lookup in this package, this one loads itself - there is nothing to scan,
- * the question is "what's due today", not "tell me about the thing in my hand".
+ * Every open purchase order of this worker's warehouse (user, 12 Nov: was today's only), soonest
+ * delivery first. Loads itself - there is nothing to scan.
  */
 @HiltViewModel
 class PoOfTodayViewModel @Inject constructor(
-    private val lookups: OnDemandLookupRepository,
+    private val enquiry: com.d365fo.mobileops.data.repository.EnquiryRepository,
     private val workerSession: WorkerSessionRepository,
     private val pendingFlowResume: com.d365fo.mobileops.data.repository.PendingFlowResume,
 ) : ViewModel() {
@@ -47,8 +44,12 @@ class PoOfTodayViewModel @Inject constructor(
     }
 
     private suspend fun load(warehouseId: String?) {
+        if (warehouseId.isNullOrBlank()) {
+            _state.update { it.copy(busy = false, error = "No warehouse is assigned to you.") }
+            return
+        }
         _state.update { it.copy(busy = true, error = null) }
-        when (val result = lookups.lookupOrdersForToday(warehouseId)) {
+        when (val result = enquiry.openOrders(warehouseId)) {
             is NetworkResult.Error -> _state.update {
                 it.copy(busy = false, error = result.failure.message)
             }

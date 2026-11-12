@@ -126,13 +126,11 @@ class TransferOrdersViewModel @Inject constructor(
 }
 
 /**
- * The open transfer orders for this warehouse. [byStore] groups them under the other store - the
- * "TO's by Store" view - instead of one list soonest first.
+ * The open transfer orders for this warehouse, soonest first.
  */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun TransferOrdersScreen(
-    byStore: Boolean,
     onBack: () -> Unit,
     onOpenShip: () -> Unit,
     onOpenReceive: () -> Unit,
@@ -145,7 +143,7 @@ fun TransferOrdersScreen(
     }
 
     com.d365fo.mobileops.presentation.common.focus.FocusScreen(
-        title = if (byStore) "TO's by Store" else "Transfer orders",
+        title = "Transfer orders",
         onBack = onBack,
         counter = state.orders.size.takeIf { it > 0 }?.toString(),
         band = when {
@@ -221,21 +219,7 @@ fun TransferOrdersScreen(
                         modifier = Modifier.fillMaxSize(),
                         contentPadding = PaddingValues(bottom = WarehouseDimens.ItemSpacing),
                     ) {
-                        if (byStore) {
-                            visible.groupBy { it.otherWarehouseId }.toSortedMap().forEach { (store, orders) ->
-                                item(key = "store-$store") {
-                                    Text(
-                                        text = ("$store · ${orders.size} " + if (orders.size == 1) "order" else "orders").uppercase(),
-                                        style = com.d365fo.mobileops.presentation.common.theme.FocusType.caption,
-                                        color = com.d365fo.mobileops.presentation.common.theme.FocusColors.caption,
-                                        modifier = Modifier.padding(start = 20.dp, top = 16.dp),
-                                    )
-                                }
-                                items(orders, key = { it.transferId }) { TransferRow(it, showStore = false, onClick = { open(it) }) }
-                            }
-                        } else {
-                            items(visible, key = { it.transferId }) { TransferRow(it, showStore = true, onClick = { open(it) }) }
-                        }
+                        items(visible, key = { it.transferId }) { TransferRow(it, showStore = true, onClick = { open(it) }) }
                     }
                 }
             }

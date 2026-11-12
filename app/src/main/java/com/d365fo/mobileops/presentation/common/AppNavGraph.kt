@@ -81,8 +81,6 @@ import com.d365fo.mobileops.presentation.common.theme.WarehouseDimens
 import com.d365fo.mobileops.presentation.common.theme.WarehouseStatusColors
 import com.d365fo.mobileops.presentation.modules.dataenquiry.LocationEntryScreen
 import com.d365fo.mobileops.presentation.modules.dataenquiry.LocationInquiryScreen
-import com.d365fo.mobileops.presentation.modules.dataenquiry.PoLinesEntryScreen
-import com.d365fo.mobileops.presentation.modules.dataenquiry.PoLinesScreen
 import com.d365fo.mobileops.presentation.modules.dataenquiry.PoOfTodayScreen
 import com.d365fo.mobileops.presentation.modules.cyclecounting.CountingCaptureScreen
 import com.d365fo.mobileops.presentation.modules.cyclecounting.CountingJournalListScreen
@@ -212,10 +210,16 @@ object Routes {
      */
     const val INQUIRY_LOCATION = "enquiry/location"
     const val INQUIRY_PO_TODAY = "enquiry/po-today"
-    const val INQUIRY_PO_LINES = "enquiry/po-lines"
     const val INQUIRY_TRANSFERS = "enquiry/transfers"
-    const val INQUIRY_TRANSFERS_BY_STORE = "enquiry/transfers-by-store"
-    const val INQUIRY_PICKED_SERIALS = "enquiry/picked-serials"
+
+    const val INQUIRY_PRICE = "enquiry/price"
+
+    /** Items by category: the tree's root, a category (its path, encoded), and one item. */
+    const val INQUIRY_ITEMS = "enquiry/items"
+    const val INQUIRY_ITEMS_CATEGORY = "enquiry/items/category/{path}"
+    fun itemsCategory(path: String) = "enquiry/items/category/" + android.net.Uri.encode(path)
+    const val INQUIRY_ITEM = "enquiry/items/item/{itemId}"
+    fun itemDetail(itemId: String) = "enquiry/items/item/" + android.net.Uri.encode(itemId)
 
     /**
      * The dedicated "type it in" screen for whichever scan-first field sent you here - see
@@ -228,7 +232,6 @@ object Routes {
     const val TRANSFER_RECEIVE_ENTRY = "transfer/receive/entry"
     const val ON_HAND_ENTRY = "inquiry/onhand/entry"
     const val INQUIRY_LOCATION_ENTRY = "enquiry/location/entry"
-    const val INQUIRY_PO_LINES_ENTRY = "enquiry/po-lines/entry"
 }
 
 /** Home, when a switched-off module was the only screen on the stack. */
@@ -420,43 +423,51 @@ fun AppNavGraph(
                     )
                 }
 
+                composable(Routes.INQUIRY_PRICE) {
+                    com.d365fo.mobileops.presentation.modules.dataenquiry.PriceCheckScreen(
+                        onBack = { navController.popBackStack() },
+                    )
+                }
+
+                composable(Routes.INQUIRY_ITEMS) {
+                    com.d365fo.mobileops.presentation.modules.dataenquiry.ItemCategoryScreen(
+                        onBack = { navController.popBackStack() },
+                        onCategory = { navController.navigate(Routes.itemsCategory(it)) },
+                        onItem = { navController.navigate(Routes.itemDetail(it)) },
+                    )
+                }
+
+                composable(
+                    Routes.INQUIRY_ITEMS_CATEGORY,
+                    arguments = listOf(navArgument("path") { type = NavType.StringType }),
+                ) {
+                    com.d365fo.mobileops.presentation.modules.dataenquiry.ItemCategoryScreen(
+                        onBack = { navController.popBackStack() },
+                        onCategory = { navController.navigate(Routes.itemsCategory(it)) },
+                        onItem = { navController.navigate(Routes.itemDetail(it)) },
+                    )
+                }
+
+                composable(
+                    Routes.INQUIRY_ITEM,
+                    arguments = listOf(navArgument("itemId") { type = NavType.StringType }),
+                ) {
+                    com.d365fo.mobileops.presentation.modules.dataenquiry.ItemDetailScreen(
+                        onBack = { navController.popBackStack() },
+                    )
+                }
+
                 composable(Routes.INQUIRY_TRANSFERS) {
                     com.d365fo.mobileops.presentation.modules.dataenquiry.TransferOrdersScreen(
-                        byStore = false,
                         onBack = { navController.popBackStack() },
                         onOpenShip = { navController.navigate(Routes.TRANSFER_SHIP) },
                         onOpenReceive = { navController.navigate(Routes.TRANSFER_RECEIVE) },
                     )
                 }
 
-                composable(Routes.INQUIRY_TRANSFERS_BY_STORE) {
-                    com.d365fo.mobileops.presentation.modules.dataenquiry.TransferOrdersScreen(
-                        byStore = true,
-                        onBack = { navController.popBackStack() },
-                        onOpenShip = { navController.navigate(Routes.TRANSFER_SHIP) },
-                        onOpenReceive = { navController.navigate(Routes.TRANSFER_RECEIVE) },
-                    )
-                }
 
-                composable(Routes.INQUIRY_PICKED_SERIALS) {
-                    com.d365fo.mobileops.presentation.modules.dataenquiry.PickedSerialsScreen(
-                        onBack = { navController.popBackStack() },
-                    )
-                }
 
-                composable(Routes.INQUIRY_PO_LINES) {
-                    PoLinesScreen(
-                        onBack = { navController.popBackStack() },
-                        onManualEntryRequested = { navController.navigate(Routes.INQUIRY_PO_LINES_ENTRY) },
-                    )
-                }
 
-                composable(Routes.INQUIRY_PO_LINES_ENTRY) { entry ->
-                    PoLinesEntryScreen(
-                        viewModel = hiltViewModel(remember(entry) { navController.getBackStackEntry(Routes.INQUIRY_PO_LINES) }),
-                        onBack = { navController.popBackStack() },
-                    )
-                }
 
                 composable(Routes.COUNTING_HUB) {
                     com.d365fo.mobileops.presentation.modules.cyclecounting.CountingHubScreen(
@@ -726,10 +737,9 @@ internal fun screenLabel(route: String?): String = when {
     route.startsWith("orders/po/confirm") -> "PO confirmation"
     route.startsWith("counting/") -> "Inventory count"
     route.startsWith(Routes.INQUIRY_LOCATION) -> "Location inquiry"
-    route == Routes.INQUIRY_PO_TODAY -> "PO's of today"
-    route.startsWith(Routes.INQUIRY_PO_LINES) -> "PO lines"
+    route == Routes.INQUIRY_PO_TODAY -> "Purchase orders"
+    route.startsWith(Routes.INQUIRY_ITEMS) -> "Items by category"
+    route == Routes.INQUIRY_PRICE -> "Price check"
     route == Routes.INQUIRY_TRANSFERS -> "Transfer orders"
-    route == Routes.INQUIRY_TRANSFERS_BY_STORE -> "TO's by Store"
-    route == Routes.INQUIRY_PICKED_SERIALS -> "Picked serials"
     else -> route
 }

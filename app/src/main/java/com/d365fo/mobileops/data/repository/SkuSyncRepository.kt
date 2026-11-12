@@ -185,7 +185,7 @@ class SkuSyncRepository @Inject constructor(
     private fun startCycle(forceFull: Boolean = false) {
         val now = System.currentTimeMillis()
         val watermark = prefs.getString(KEY_WATERMARK, null)
-        // A new column on a feed (variant names, SCHEMA 2) needs every row again, not a delta.
+        // A new column on a feed (variant names SCHEMA 2, item category 3) needs every row again, not a delta.
         val full = forceFull || watermark.isNullOrBlank() || now - prefs.getLong(KEY_LAST_FULL, 0L) >= FULL_REFRESH_INTERVAL_MS ||
             prefs.getInt(KEY_SCHEMA, 0) < SCHEMA
         prefs.edit()
@@ -302,7 +302,7 @@ class SkuSyncRepository @Inject constructor(
         const val KEY_SUM_STORED = "sum_stored"
         const val MB = 1024L * 1024L
         /** Bumped when a feed gains a column; 2 = variant names. */
-        const val SCHEMA = 2
+        const val SCHEMA = 3
     }
 }
 

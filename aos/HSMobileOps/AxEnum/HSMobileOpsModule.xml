@@ -30,7 +30,7 @@
 			<Value>4</Value>		</AxEnumValue>
 		<AxEnumValue>
 			<Name>PO_OF_TODAY</Name>
-			<Label>PO's of today</Label>
+			<Label>Purchase orders</Label>
 			<Value>5</Value>		</AxEnumValue>
 		<AxEnumValue>
 			<Name>PO_LINES</Name>
@@ -71,6 +71,16 @@
 			<Name>PURCHASE_RETURN</Name>
 			<Label>Purchase return</Label>
 			<Value>13</Value>
+		</AxEnumValue>
+		<AxEnumValue>
+			<Name>ITEMS_BY_CATEGORY</Name>
+			<Label>Items by category</Label>
+			<Value>14</Value>
+		</AxEnumValue>
+		<AxEnumValue>
+			<Name>PRICE_CHECK</Name>
+			<Label>Price check</Label>
+			<Value>15</Value>
 		</AxEnumValue>
 	</EnumValues>
 	<UseEnumValueForDisplayValue>No</UseEnumValueForDisplayValue>

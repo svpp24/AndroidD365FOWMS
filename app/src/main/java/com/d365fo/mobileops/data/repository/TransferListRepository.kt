@@ -1,7 +1,6 @@
 package com.d365fo.mobileops.data.repository
 
 import com.d365fo.mobileops.data.remote.api.MobileOpsServiceApi
-import com.d365fo.mobileops.data.remote.dto.SerialHistoryDto
 import com.d365fo.mobileops.data.remote.dto.TransferListRequestBody
 import com.d365fo.mobileops.data.remote.dto.TransferListServiceRequest
 import com.d365fo.mobileops.data.remote.dto.TransferListServiceResponse
@@ -32,20 +31,7 @@ data class TransferOrderSummary(
     val otherWarehouseId: String get() = if (outbound) toWarehouseId else fromWarehouseId
 }
 
-/** A serial number that left the warehouse, and the order that took it. */
-data class SerialHistoryEntry(
-    val itemId: String,
-    val itemName: String,
-    val serialId: String,
-    val batchId: String,
-    val reference: String,
-    val referenceType: String,
-    val status: String,
-    val transDate: String,
-    val quantity: Double,
-)
-
-/** Reads for the Transfer orders, TO's by Store and Picked serials screens (HSMobileOpsTransferListSvc). */
+/** Reads for the Transfer orders screen and Home's figures (HSMobileOpsTransferListSvc). */
 @Singleton
 class TransferListRepository @Inject constructor(
     private val service: MobileOpsServiceApi,
@@ -64,10 +50,6 @@ class TransferListRepository @Inject constructor(
                 .map { response -> response.orders.filter { it.transferId.isNotBlank() }.map(::toSummary) }
         }
     }
-
-    suspend fun pickedSerials(warehouseId: String, days: Int = 30, search: String = ""): NetworkResult<List<SerialHistoryEntry>> =
-        call("Couldn't list picked serials") { service.listPickedSerials(request(warehouseId, days, search.trim())) }
-            .map { response -> response.serials.filter { it.serialId.isNotBlank() }.map(::toEntry) }
 
     private fun request(warehouseId: String, days: Int = 0, search: String = "") = TransferListServiceRequest(
         TransferListRequestBody(
@@ -112,15 +94,4 @@ class TransferListRepository @Inject constructor(
         outbound = dto.direction.equals("OUT", ignoreCase = true),
     )
 
-    private fun toEntry(dto: SerialHistoryDto) = SerialHistoryEntry(
-        itemId = dto.itemId,
-        itemName = dto.itemName,
-        serialId = dto.serialId,
-        batchId = dto.batchId,
-        reference = dto.reference,
-        referenceType = dto.referenceType,
-        status = dto.status,
-        transDate = dto.transDate,
-        quantity = dto.quantity,
-    )
 }

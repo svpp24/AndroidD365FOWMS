@@ -74,7 +74,7 @@ class CachedLookupRepository @Inject constructor(
 
             when (val fresh = network.lookupItem(key)) {
                 is NetworkResult.Success -> {
-                    fresh.data?.let { runCatching { itemDao.upsertItems(listOf(it.toEntity())) } }
+                    fresh.data?.let { runCatching { itemDao.upsertItems(listOf(it.toEntity().copy(category = itemDao.getItem(it.itemNumber)?.category))) } }
                     fresh
                 }
                 // A miss with no cache entry is a real miss; nothing to fall back to.

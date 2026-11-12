@@ -97,6 +97,92 @@ class HSMobileOpsPurchListService
 ]]></Source>
 			</Method>
 			<Method>
+				<Name>getOpenOrders</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The store's open purchase orders (user, 12 Nov: the Purchase orders enquiry): Open order
+    /// status with a line still Ordered in InventTrans - the HasOpenLines test of getOrdersForDate -
+    /// for WarehouseId, soonest delivery first. DeliveryDate is not used.
+    /// </summary>
+    public HSMobileOpsOrdersForDateResponse getOpenOrders(HSMobileOpsOrdersForDateRequest _request)
+    {
+        HSMobileOpsOrdersForDateResponse response = new HSMobileOpsOrdersForDateResponse();
+        HSMobileOpsOrderSummaryRow       row;
+        List                             orders = new List(Types::Class);
+        PurchTable                       purchTable;
+        PurchLine                        purchLine;
+        InventTrans                      inventTrans;
+        InventTransOrigin                inventTransOrigin;
+        str                              warehouseId;
+        int                              rows;
+
+        response.parmSuccess(false);
+        response.parmOrders(orders);
+
+        if (!_request || !_request.parmDataAreaId() || !_request.parmWarehouseId()
+         || !CompanyInfo::findDataArea(_request.parmDataAreaId()).RecId)
+        {
+            response.parmErrorCode('INVALID_REQUEST');
+            return response;
+        }
+        warehouseId = _request.parmWarehouseId();
+
+        changecompany (_request.parmDataAreaId())
+        {
+            while select PurchId, OrderAccount, PurchStatus, DeliveryDate, InventSiteId, InventLocationId
+                from purchTable
+                order by DeliveryDate, PurchId
+                where purchTable.InventLocationId == warehouseId
+                   && purchTable.PurchStatus      == PurchStatus::Backorder
+                   && purchTable.PurchaseType     == PurchaseType::Purch
+                exists join purchLine
+                    where purchLine.PurchId     == purchTable.PurchId
+                       && purchLine.PurchStatus != PurchStatus::Canceled
+                       && !purchLine.IsDeleted
+                exists join inventTransOrigin
+                    where inventTransOrigin.InventTransId == purchLine.InventTransId
+                exists join inventTrans
+                    where inventTrans.InventTransOrigin == inventTransOrigin.RecId
+                       && inventTrans.StatusReceipt     == StatusReceipt::Ordered
+            {
+                row = new HSMobileOpsOrderSummaryRow();
+                row.parmPurchId(purchTable.PurchId);
+                row.parmVendorAccount(purchTable.OrderAccount);
+                row.parmStatus(enum2Symbol(enumNum(PurchStatus), purchTable.PurchStatus));
+                row.parmHasOpenLines(true);
+                row.parmSiteId(purchTable.InventSiteId);
+                row.parmWarehouseId(purchTable.InventLocationId);
+                row.parmDeliveryDate(date2Str(purchTable.DeliveryDate, 321, DateDay::Digits2,
+                    DateSeparator::Hyphen, DateMonth::Digits2, DateSeparator::Hyphen, DateYear::Digits4));
+                orders.addEnd(row);
+
+                rows++;
+                if (rows >= HSMobileOpsPurchListService::maxOpenOrders())
+                {
+                    response.parmErrorCode('TRUNCATED');
+                    break;
+                }
+            }
+        }
+
+        response.parmOrders(orders);
+        response.parmSuccess(true);
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>maxOpenOrders</Name>
+				<Source><![CDATA[
+
+    private static int maxOpenOrders()
+    {
+        return 500;
+    }
+]]></Source>
+			</Method>
+			<Method>
 				<Name>maxOrders</Name>
 				<Source><![CDATA[
 

@@ -19,7 +19,7 @@ internal object SkuRows {
     private fun JsonArray.text(i: Int): String = getOrNull(i)?.jsonPrimitive?.content.orEmpty()
     private fun JsonArray.flag(i: Int): Boolean = text(i) == "1"
 
-    /** [itemId, searchName, inventUnit, purchUnit, salesUnit, batch, serial, location, active] */
+    /** [itemId, searchName, inventUnit, purchUnit, salesUnit, batch, serial, location, active, category] */
     fun item(row: JsonArray, now: Long): ItemEntity? = with(row) {
         val itemId = text(0).trim().takeIf { it.isNotEmpty() } ?: return@with null
         val batch = flag(5)
@@ -40,6 +40,8 @@ internal object SkuRows {
             locationMandatory = flag(7),
             active = flag(8),
             modifiedAt = now,
+            // Column 9 from a server with the 12 Nov item feed; absent before.
+            category = if (size > 9) text(9).trim().ifBlank { null } else null,
         )
     }
 

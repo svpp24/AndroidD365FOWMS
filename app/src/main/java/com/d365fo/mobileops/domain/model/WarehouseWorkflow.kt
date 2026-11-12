@@ -17,7 +17,7 @@ enum class WarehouseWorkflow(val label: String) {
     TRANSFER_RECEIVE("Transfer — Receive"),
     INVENTORY_COUNT("Inventory count"),
     LOCATION_INQUIRY("Location inquiry"),
-    PO_OF_TODAY("PO's of today"),
+    PO_OF_TODAY("Purchase orders"),
     PO_LINES("PO lines"),
     TRANSFER_ORDERS("Transfer orders"),
     TRANSFERS_BY_STORE("TO's by Store"),
@@ -26,6 +26,8 @@ enum class WarehouseWorkflow(val label: String) {
     TO_CREATE("TO creation"),
     PO_CONFIRM("PO confirmation"),
     PURCHASE_RETURN("Purchase return"),
+    ITEMS_BY_CATEGORY("Items by category"),
+    PRICE_CHECK("Price check"),
     ;
 
     /**

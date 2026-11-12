@@ -9,5 +9,9 @@
 			<Name>getOrdersForDate</Name>
 			<Method>getOrdersForDate</Method>
 		</AxServiceOperation>
+		<AxServiceOperation>
+			<Name>getOpenOrders</Name>
+			<Method>getOpenOrders</Method>
+		</AxServiceOperation>
 	</ServiceOperations>
 </AxService>

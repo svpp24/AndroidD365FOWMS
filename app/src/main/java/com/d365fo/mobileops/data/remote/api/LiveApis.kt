@@ -134,6 +134,11 @@ class LiveMobileOpsServiceApi @Inject constructor(
         tag: com.d365fo.mobileops.data.remote.interceptor.IdempotentRead,
     ) = delegate.get().getOnHand(body, tag)
 
+    override suspend fun getLocationOnHand(
+        body: com.d365fo.mobileops.data.remote.dto.LocationServiceRequest,
+        tag: com.d365fo.mobileops.data.remote.interceptor.IdempotentRead,
+    ) = delegate.get().getLocationOnHand(body, tag)
+
     override suspend fun listOpenJournals(
         body: com.d365fo.mobileops.data.remote.dto.JournalListServiceRequest,
         tag: com.d365fo.mobileops.data.remote.interceptor.IdempotentRead,
@@ -203,15 +208,21 @@ class LiveMobileOpsServiceApi @Inject constructor(
         tag: com.d365fo.mobileops.data.remote.interceptor.IdempotentRead,
     ) = delegate.get().listTransferOrders(body, tag)
 
-    override suspend fun listPickedSerials(
-        body: com.d365fo.mobileops.data.remote.dto.TransferListServiceRequest,
-        tag: com.d365fo.mobileops.data.remote.interceptor.IdempotentRead,
-    ) = delegate.get().listPickedSerials(body, tag)
 
     override suspend fun getOrdersForDate(
         body: com.d365fo.mobileops.data.remote.dto.OrdersForDateServiceRequest,
         tag: com.d365fo.mobileops.data.remote.interceptor.IdempotentRead,
     ) = delegate.get().getOrdersForDate(body, tag)
+
+    override suspend fun checkPrice(
+        body: com.d365fo.mobileops.data.remote.dto.PriceCheckServiceRequest,
+        tag: com.d365fo.mobileops.data.remote.interceptor.IdempotentRead,
+    ) = delegate.get().checkPrice(body, tag)
+
+    override suspend fun getOpenOrders(
+        body: com.d365fo.mobileops.data.remote.dto.OrdersForDateServiceRequest,
+        tag: com.d365fo.mobileops.data.remote.interceptor.IdempotentRead,
+    ) = delegate.get().getOpenOrders(body, tag)
 
     override suspend fun getItem(
         body: com.d365fo.mobileops.data.remote.dto.ItemServiceRequest,

@@ -96,20 +96,24 @@ fun LocationInquiryScreen(
         },
     ) {
         if (state.busy) LinearProgressIndicator(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp))
-        FocusCenter(
-            caption = "Location",
-            code = facts?.locationId ?: "–",
-            description = facts?.warehouseId,
-        )
-        // The warehouse the location is checked in - editable, as before.
-        OutlinedTextField(
-            value = state.warehouseId,
-            onValueChange = viewModel::onWarehouseChange,
-            label = { Text("Warehouse") },
-            singleLine = true,
-            shape = com.d365fo.mobileops.presentation.common.theme.FocusShapes.button,
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp).heightIn(min = 60.dp),
-        )
+        if (facts == null) {
+            FocusCenter(
+                caption = "Location",
+                code = "–",
+                description = null,
+            )
+            // The warehouse the location is checked in - editable, as before.
+            OutlinedTextField(
+                value = state.warehouseId,
+                onValueChange = viewModel::onWarehouseChange,
+                label = { Text("Warehouse") },
+                singleLine = true,
+                shape = com.d365fo.mobileops.presentation.common.theme.FocusShapes.button,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp).heightIn(min = 60.dp),
+            )
+        } else {
+            LocationStockList(state, modifier = Modifier.weight(1f))
+        }
     }
 
     if (showCamera) {
@@ -143,3 +147,52 @@ fun LocationEntryScreen(
         },
     )
 }
+
+/** What is on the scanned location, by category (user, 12 Nov). */
+@Composable
+private fun LocationStockList(state: LocationInquiryState, modifier: Modifier = Modifier) {
+    val colors = com.d365fo.mobileops.presentation.common.theme.FocusColors
+    val type = com.d365fo.mobileops.presentation.common.theme.FocusType
+    androidx.compose.foundation.lazy.LazyColumn(modifier = modifier.fillMaxWidth()) {
+        item(key = "head") {
+            Column(Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) {
+                Text(state.result?.locationId.orEmpty(), style = type.rowCode, color = colors.ink)
+                val count = state.stock.sumOf { it.second.size }
+                Text(
+                    when {
+                        state.stockLoading -> "Asking D365FO what is here"
+                        state.stockError != null -> "Couldn't list the items: ${state.stockError}"
+                        count == 0 -> "Nothing on this location"
+                        count == 1 -> "1 item"
+                        else -> "$count items"
+                    },
+                    style = type.rowDetail,
+                    color = if (state.stockError != null) colors.badText else colors.muted,
+                )
+            }
+        }
+        state.stock.forEach { (category, rows) ->
+            item(key = "cat:$category") {
+                com.d365fo.mobileops.presentation.common.focus.FocusCaption(
+                    "${displayCategoryPath(category)} · ${rows.size}",
+                    Modifier.padding(start = 20.dp, end = 20.dp, top = 16.dp, bottom = 4.dp),
+                )
+            }
+            rows.forEach { row ->
+                item(key = "item:$category:${row.itemId}") {
+                    com.d365fo.mobileops.presentation.common.focus.FocusListRow(
+                        title = row.itemName.ifBlank { row.itemId },
+                        subtitle = listOfNotNull(
+                            row.itemId.takeIf { row.itemName.isNotBlank() },
+                            row.reserved.takeIf { it != 0.0 }?.let { "${plainQty(it)} reserved" },
+                        ).joinToString(" · ").ifEmpty { null },
+                        count = "${plainQty(row.onHand)} ${row.unit}".trim(),
+                    )
+                }
+            }
+        }
+    }
+}
+
+private fun plainQty(value: Double): String =
+    java.math.BigDecimal.valueOf(value).stripTrailingZeros().toPlainString()

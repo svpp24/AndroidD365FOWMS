@@ -40,8 +40,8 @@ import com.d365fo.mobileops.presentation.common.theme.WarehouseStatusColors
 import com.d365fo.mobileops.util.Formatters
 
 /**
- * Purchase orders requested for delivery today. Loads itself on entry - there is no scan field
- * here, the same as the standard WMS app's own worklist-style screens.
+ * Every open purchase order of the store, soonest delivery first. Loads itself on entry - there
+ * is no scan field here, the same as the standard WMS app's own worklist-style screens.
  *
  * The loading state is a spinner dead centre of the page, not a bar pinned to the top: on
  * first entry there is nothing else on screen yet to share space with, so this is the one
@@ -59,7 +59,7 @@ fun PoOfTodayScreen(
     // Focus list (brief section 9): one row per PO, its status as a word; tapping an open one
     // starts receiving it.
     com.d365fo.mobileops.presentation.common.focus.FocusScreen(
-        title = "Today's POs",
+        title = "Purchase orders",
         onBack = onBack,
         counter = state.orders.size.takeIf { it > 0 }?.toString(),
         band = when {
@@ -68,7 +68,7 @@ fun PoOfTodayScreen(
             )
             !state.busy && state.orders.isEmpty() -> com.d365fo.mobileops.presentation.common.focus.BandState(
                 com.d365fo.mobileops.presentation.common.focus.BandKind.Info,
-                "No purchase orders due today",
+                "No open purchase orders",
                 state.warehouseId,
             )
             else -> null
@@ -103,7 +103,7 @@ private fun PurchaseOrderRow(order: PurchaseOrderSummary, onReceive: () -> Unit)
         subtitle = listOfNotNull(
             "Vendor ${order.vendorAccount}".takeIf { order.vendorAccount.isNotBlank() },
             order.warehouseId?.let { "Whs $it" },
-            order.deliveryDate?.let { "Requested ${Formatters.shortDate(it)}" },
+            order.deliveryDate?.let { "Delivery ${Formatters.shortDate(it)}" },
         ).joinToString(" · ").ifEmpty { null },
         count = statusText,
         chevron = receivable,

@@ -1,0 +1,186 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsPriceCheckService</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Price check on the handheld (user, 12 Nov: "price fetching logic has to be same as price
+/// simulator"). Registered as HSMobileOpsPriceCheckSvc.
+///
+/// It does not re-implement pricing: it gives Commerce's own price simulator
+/// (RetailPricingSimulator, the class behind Retail and Commerce > Pricing > Price simulator) a
+/// simulation for the warehouse's store with one line, lets it calculate prices and discounts
+/// exactly as the form does, reads the line back, and rolls the whole simulation back - so no
+/// simulation is left in the form's list. No customer is set, as in a new simulation in the form.
+/// </summary>
+class HSMobileOpsPriceCheckService
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>checkPrice</Name>
+				<Source><![CDATA[
+
+    [Wrappable(false), Hookable(false)]
+    public HSMobileOpsPriceCheckResponse checkPrice(HSMobileOpsPriceCheckRequest _request)
+    {
+        HSMobileOpsPriceCheckResponse          response = new HSMobileOpsPriceCheckResponse();
+        RetailPricingSimulatorSalesTransaction simulation;
+        RetailPricingSimulatorSalesLine        line;
+        RetailPricingSimulatorSalesLine        result;
+        RetailPricingSimulator                 simulator;
+        RetailStoreTable                       store;
+        RetailChannelTable                     channel;
+        InventTable                            inventTable;
+        InventDim                              inventDim;
+        InventDimCombination                   combination;
+        UnitOfMeasure                          unit;
+        str                                    unitId;
+        str                                    offers;
+        real                                   quantity;
+        real                                   lineQuantity;
+        real                                   gross;
+        real                                   discount;
+        real                                   net;
+        int                                    infoStart = infologLine();
+
+        response.parmSuccess(false);
+        if (!_request || !_request.parmDataAreaId() || !_request.parmWarehouseId() || !_request.parmItemId()
+         || !CompanyInfo::findDataArea(_request.parmDataAreaId()).RecId)
+        {
+            response.parmErrorCode('INVALID_REQUEST');
+            return response;
+        }
+        quantity = _request.parmQuantity();
+        if (quantity <= 0)
+        {
+            response.parmErrorCode('INVALID_QUANTITY');
+            response.parmMessage('Enter a quantity above 0.');
+            return response;
+        }
+
+        changecompany (_request.parmDataAreaId())
+        {
+            inventTable = InventTable::find(_request.parmItemId());
+            if (!inventTable.RecId)
+            {
+                response.parmErrorCode('NOT_FOUND');
+                response.parmMessage(strFmt('No item %1.', _request.parmItemId()));
+                return response;
+            }
+            // The store whose warehouse this is - its channel prices the line, as the channel
+            // chosen in the price simulator does.
+            select firstonly RecId, StoreNumber from store
+                where store.inventLocation           == _request.parmWarehouseId()
+                   && store.inventLocationDataAreaId == curExt();
+            if (!store.RecId)
+            {
+                response.parmErrorCode('NO_STORE');
+                response.parmMessage(strFmt('Warehouse %1 is not a store in D365FO, so it has no retail price.', _request.parmWarehouseId()));
+                return response;
+            }
+            channel = RetailChannelTable::findByRecId(store.RecId);
+
+            unitId = _request.parmUnitId();
+            if (!unitId)
+            {
+                unitId = InventTableModule::find(inventTable.ItemId, ModuleInventPurchSales::Sales).UnitId;
+            }
+            unit = UnitOfMeasure::findBySymbol(unitId);
+            if (!unit.RecId)
+            {
+                response.parmErrorCode('INVALID_UNIT');
+                response.parmMessage(strFmt('No unit %1.', unitId));
+                return response;
+            }
+
+            try
+            {
+                ttsbegin;
+
+                inventDim.clear();
+                inventDim.configId      = _request.parmConfigId();
+                inventDim.InventSizeId  = _request.parmSizeId();
+                inventDim.InventColorId = _request.parmColorId();
+                inventDim.InventStyleId = _request.parmStyleId();
+                inventDim = InventDim::findOrCreate(inventDim);
+                if (inventDim.configId || inventDim.InventSizeId || inventDim.InventColorId || inventDim.InventStyleId)
+                {
+                    combination = InventDimCombination::findByInventDim(inventTable.ItemId, inventDim);
+                }
+
+                simulation.clear();
+                simulation.initValue();
+                simulation.RetailChannelTable = store.RecId;
+                simulation.SimulationDateTime = DateTimeUtil::getSystemDateTime();
+                simulation.SimulationName     = 'HSMobileOps ' + guid2Str(newGuid());
+                simulation.Description        = 'Handheld price check';
+                simulation.insert();
+
+                line.clear();
+                line.initValue();
+                line.RetailPricingSimulatorSalesTransaction = simulation.RecId;
+                line.SalesLineNum                = 1;
+                line.LineNum                     = '001';
+                line.DisplayProductNumber        = inventTable.ItemId;
+                line.Product                     = inventTable.Product;
+                line.InventDimId                 = inventDim.inventDimId;
+                line.Variant                     = combination.DistinctProductVariant;
+                line.DisplayProductVariantNumber = combination.RetailVariantId;
+                line.Quantity                    = quantity;
+                line.UoM                         = unit.RecId;
+                line.insert();
+
+                simulator = RetailPricingSimulator::construct(simulation.RecId);
+                simulator.parmRetailPricingSimulatorSalesLineRecId(line.RecId);
+                simulator.calculatePricesAndDiscounts();
+
+                // The engine may split the line; the answer is all of them together. OriginalPrice
+                // is price x quantity, SalesPrice the net after DiscountAmount (see
+                // RetailPricingSimulator.updatePriceAndDiscountsInDbTable).
+                while select result
+                    where result.RetailPricingSimulatorSalesTransaction == simulation.RecId
+                {
+                    gross        += result.OriginalPrice;
+                    discount     += result.DiscountAmount;
+                    net          += result.SalesPrice;
+                    lineQuantity += result.Quantity;
+                    if (result.OfferName && !strScan(offers, result.OfferName, 1, strLen(offers)))
+                    {
+                        offers += (offers ? ', ' : '') + result.OfferName;
+                    }
+                }
+
+                // Nothing of the simulation is kept.
+                ttsabort;
+            }
+            catch
+            {
+                response.parmErrorCode('PRICING_FAILED');
+                response.parmMessage(HSMobileOpsCountWallToWall::errorsSince(infoStart));
+                return response;
+            }
+
+            response.parmItemId(inventTable.ItemId);
+            response.parmItemName(inventTable.itemName());
+            response.parmQuantity(quantity);
+            response.parmUnitId(unit.Symbol);
+            response.parmUnitPrice(quantity ? gross / quantity : 0);
+            response.parmGrossAmount(gross);
+            response.parmDiscountAmount(discount);
+            response.parmDiscountPct(gross ? discount * 100 / gross : 0);
+            response.parmNetAmount(net);
+            response.parmOfferName(offers);
+            response.parmCurrency(channel.Currency);
+            response.parmPriceIncludesTax(channel.PriceIncludesSalesTax == NoYes::Yes);
+            response.parmStoreName(store.StoreNumber);
+            response.parmSuccess(true);
+        }
+        return response;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

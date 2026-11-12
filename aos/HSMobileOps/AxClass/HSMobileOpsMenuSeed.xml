@@ -43,10 +43,9 @@ class HSMobileOpsMenuSeed
         inquiry = HSMobileOpsMenuSeed::createMenu('INQUIRY', 'Inquiries', NoYes::No);
         HSMobileOpsMenuSeed::addModule(inquiry, HSMobileOpsModule::LOCATION_INQUIRY);
         HSMobileOpsMenuSeed::addModule(inquiry, HSMobileOpsModule::PO_OF_TODAY);
-        HSMobileOpsMenuSeed::addModule(inquiry, HSMobileOpsModule::PO_LINES);
         HSMobileOpsMenuSeed::addModule(inquiry, HSMobileOpsModule::TRANSFER_ORDERS);
-        HSMobileOpsMenuSeed::addModule(inquiry, HSMobileOpsModule::TRANSFERS_BY_STORE);
-        HSMobileOpsMenuSeed::addModule(inquiry, HSMobileOpsModule::PICKED_SERIALS);
+        HSMobileOpsMenuSeed::addModule(inquiry, HSMobileOpsModule::ITEMS_BY_CATEGORY);
+        HSMobileOpsMenuSeed::addModule(inquiry, HSMobileOpsModule::PRICE_CHECK);
 
         mainMenu = HSMobileOpsMenuSeed::createMenu('MAIN', 'Main menu',
             HSMobileOpsMenu::findDefault().RecId ? NoYes::No : NoYes::Yes);

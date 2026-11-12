@@ -103,7 +103,6 @@ class OfflinePrefetcher @Inject constructor(
         }
 
         // Picked serials, as the screen first opens it (30 days, no search) - one call.
-        if (transferList.pickedSerials(warehouseId) is NetworkResult.Error) Timber.w("offline prefetch: picked serials failed")
 
         Timber.i("offline prefetch for %s: %d purchase orders, %d transfer orders", warehouseId, purchaseOrders, transferOrders)
         return OfflineReadiness(

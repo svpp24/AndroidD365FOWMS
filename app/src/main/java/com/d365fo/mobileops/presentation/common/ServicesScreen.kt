@@ -56,8 +56,10 @@ internal fun areaOf(workflow: WarehouseWorkflow?): ModuleArea? = when (workflow)
     WarehouseWorkflow.PO_CREATE, WarehouseWorkflow.PO_CONFIRM -> ModuleArea.INBOUND
     WarehouseWorkflow.TRANSFER_SHIP, WarehouseWorkflow.TO_CREATE, WarehouseWorkflow.PURCHASE_RETURN -> ModuleArea.OUTBOUND
     WarehouseWorkflow.INVENTORY_COUNT -> ModuleArea.INVENTORY
-    WarehouseWorkflow.LOCATION_INQUIRY, WarehouseWorkflow.PO_OF_TODAY, WarehouseWorkflow.PO_LINES,
-    WarehouseWorkflow.TRANSFER_ORDERS, WarehouseWorkflow.TRANSFERS_BY_STORE, WarehouseWorkflow.PICKED_SERIALS -> ModuleArea.ENQUIRY
+    WarehouseWorkflow.LOCATION_INQUIRY, WarehouseWorkflow.PO_OF_TODAY, WarehouseWorkflow.TRANSFER_ORDERS,
+    WarehouseWorkflow.ITEMS_BY_CATEGORY, WarehouseWorkflow.PRICE_CHECK -> ModuleArea.ENQUIRY
+    // Taken off the menu (user, 12 Nov); still in D365FO's module list, so a menu line may name them.
+    WarehouseWorkflow.PO_LINES, WarehouseWorkflow.TRANSFERS_BY_STORE, WarehouseWorkflow.PICKED_SERIALS -> null
     null -> null
 }
 
@@ -86,8 +88,8 @@ internal fun modulesIn(area: ModuleArea, modules: List<ModuleTile>): List<Module
     modules.filter { areaOf(it.workflow) == area }
 
 /**
- * Enquiry (redesign brief section 9): the look-ups as rows - Location inquiry, Today's POs and
- * Transfer orders with their counts, PO lines, Picked serials. Scanning works here too: the
+ * Enquiry (redesign brief section 9): the look-ups as rows - Location inquiry, Purchase orders,
+ * Price check, Items by category and Transfer orders. Scanning works here too: the
  * look-up screens take the scan.
  */
 @Composable
@@ -114,16 +116,11 @@ fun ServicesScreen(
                     modifier = Modifier.padding(20.dp),
                 )
             }
+            // No counts here (user, 12 Nov): Home's are today's, these lists hold every open order.
             enquiries.forEach { module ->
-                val count = when (module.workflow) {
-                    WarehouseWorkflow.PO_OF_TODAY -> figures.posDueToday
-                    WarehouseWorkflow.TRANSFER_ORDERS -> figures.transfersToShip?.let { s -> figures.transfersToReceive?.let { r -> s + r } }
-                    else -> null
-                }
                 com.d365fo.mobileops.presentation.common.focus.FocusListRow(
-                    title = if (module.workflow == WarehouseWorkflow.PO_OF_TODAY) "Today's POs" else module.title,
+                    title = module.title,
                     icon = module.icon,
-                    count = count?.toString(),
                     chevron = true,
                     onClick = { module.route?.let(onModuleSelected) },
                 )

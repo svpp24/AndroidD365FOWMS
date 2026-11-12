@@ -26,6 +26,7 @@ enum class TrackingRequirement {
         Index("itemName"),
         Index("active"),
         Index("modifiedAt"),
+        Index("category"),
     ],
 )
 data class ItemEntity(
@@ -42,6 +43,11 @@ data class ItemEntity(
     val active: Boolean,
     /** Server modifiedDateTime — the delta-sync watermark. */
     val modifiedAt: Long,
+    /**
+     * Retail product hierarchy category as a path from the first level, "Health Care > Vitamins";
+     * null when the item has none, or before the item list was downloaded with categories.
+     */
+    val category: String? = null,
 )
 
 /** EcoResProductBarcode. One item can carry many barcodes (EAN, UPC, inner/outer pack). */

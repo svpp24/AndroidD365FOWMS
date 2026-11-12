@@ -30,6 +30,8 @@ class LocationInquiryViewModel @Inject constructor(
     private val workerSession: WorkerSessionRepository,
     private val scannerBridge: HidScannerBridge,
     private val scanFeedback: ScanFeedback,
+    private val enquiry: com.d365fo.mobileops.data.repository.EnquiryRepository,
+    private val itemDao: com.d365fo.mobileops.data.local.dao.ItemDao,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(LocationInquiryState())
@@ -77,7 +79,7 @@ class LocationInquiryViewModel @Inject constructor(
 
         pending?.cancel()
         pending = viewModelScope.launch {
-            _state.update { it.copy(busy = true, error = null, result = null, locationId = locationId) }
+            _state.update { it.copy(busy = true, error = null, result = null, locationId = locationId, stock = emptyList(), stockError = null) }
 
             when (val result = lookups.lookupLocation(warehouseId, locationId)) {
                 is NetworkResult.Error -> {
@@ -99,13 +101,55 @@ class LocationInquiryViewModel @Inject constructor(
                         }
                     } else {
                         scanFeedback.success()
-                        _state.update { it.copy(busy = false, result = facts) }
+                        _state.update { it.copy(busy = false, result = facts, stockLoading = true, stock = emptyList(), stockError = null) }
+                        loadStock(warehouseId, facts.locationId.ifBlank { locationId })
                     }
                 }
             }
         }
     }
+
+    /**
+     * What is on the location (user, 12 Nov), by category: D365FO's on-hand there, with names and
+     * categories from the device's item list.
+     */
+    private suspend fun loadStock(warehouseId: String, locationId: String) {
+        when (val r = enquiry.locationItems(warehouseId, locationId)) {
+            is NetworkResult.Success -> {
+                val known = r.data.map { it.itemId }.distinct().chunked(500)
+                    .flatMap { itemDao.itemsByIds(it) }.associateBy { it.itemId }
+                _state.update { it.copy(stockLoading = false, stock = groupByCategory(r.data, known)) }
+            }
+            is NetworkResult.Error -> _state.update { it.copy(stockLoading = false, stockError = r.failure.message) }
+            NetworkResult.Loading -> Unit
+        }
+    }
 }
+
+/** One item on the location, named from the device's item list when it has it. */
+data class LocationItemRow(
+    val itemId: String,
+    val itemName: String,
+    val onHand: Double,
+    val reserved: Double,
+    val unit: String,
+)
+
+internal const val LOCATION_NO_CATEGORY = "No category"
+
+/** Category path ("No category" last), A to Z; items by name inside each. */
+internal fun groupByCategory(
+    stock: List<com.d365fo.mobileops.data.repository.LocationStock>,
+    items: Map<String, com.d365fo.mobileops.data.local.entity.ItemEntity>,
+): List<Pair<String, List<LocationItemRow>>> =
+    stock.groupBy { items[it.itemId]?.category?.takeIf { c -> c.isNotBlank() } ?: LOCATION_NO_CATEGORY }
+        .map { (category, rows) ->
+            category to rows.map { s ->
+                val item = items[s.itemId]
+                LocationItemRow(s.itemId, item?.itemName.orEmpty(), s.onHand, s.reserved, item?.inventoryUnit.orEmpty())
+            }.sortedWith(compareBy({ it.itemName.ifBlank { it.itemId }.lowercase() }, { it.itemId }))
+        }
+        .sortedWith(compareBy({ it.first == LOCATION_NO_CATEGORY }, { it.first.lowercase() }))
 
 data class LocationInquiryState(
     val warehouseId: String = "",
@@ -113,4 +157,7 @@ data class LocationInquiryState(
     val result: LocationFacts? = null,
     val busy: Boolean = false,
     val error: String? = null,
+    val stockLoading: Boolean = false,
+    val stock: List<Pair<String, List<LocationItemRow>>> = emptyList(),
+    val stockError: String? = null,
 )

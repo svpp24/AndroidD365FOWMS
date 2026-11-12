@@ -64,6 +64,10 @@
 			<Service>HSMobileOpsDmfSvc</Service>
 		</AxServiceGroupService>
 		<AxServiceGroupService>
+			<Name>HSMobileOpsPriceCheckSvc</Name>
+			<Service>HSMobileOpsPriceCheckSvc</Service>
+		</AxServiceGroupService>
+		<AxServiceGroupService>
 			<Name>HSMobileOpsPurchListSvc</Name>
 			<Service>HSMobileOpsPurchListSvc</Service>
 		</AxServiceGroupService>

@@ -21,5 +21,9 @@
 			<Name>getOnHand</Name>
 			<Method>getOnHand</Method>
 		</AxServiceOperation>
+		<AxServiceOperation>
+			<Name>getLocationOnHand</Name>
+			<Method>getLocationOnHand</Method>
+		</AxServiceOperation>
 	</ServiceOperations>
 </AxService>

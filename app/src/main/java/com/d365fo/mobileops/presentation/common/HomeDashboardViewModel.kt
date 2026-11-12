@@ -37,7 +37,7 @@ class HomeDashboardViewModel @Inject constructor(
         val countsInProgress: Int? = null,
         val posDueToday: Int? = null,
         val transfersToShip: Int? = null,
-        /** Open transfers coming in to this warehouse - part of Home's Receive count. */
+        /** Transfers coming in to this warehouse today - part of Home's Receive count. */
         val transfersToReceive: Int? = null,
     )
 
@@ -67,8 +67,18 @@ class HomeDashboardViewModel @Inject constructor(
             if (due != null) _figures.update { it.copy(posDueToday = due) }
         }
         viewModelScope.launch {
+            // Due today only (user, 12 Nov): ship date today to ship, receive date today to receive -
+            // the overdue ones stay in Enquiry > Transfer orders.
+            val today = java.time.LocalDate.now().toString()
             val open = (transfers.openTransferOrders(wh) as? NetworkResult.Success)?.data
-            if (open != null) _figures.update { it.copy(transfersToShip = open.count { t -> t.outbound }, transfersToReceive = open.count { t -> !t.outbound }) }
+            if (open != null) {
+                _figures.update {
+                    it.copy(
+                        transfersToShip = open.count { t -> t.outbound && t.shipDate.take(10) == today },
+                        transfersToReceive = open.count { t -> !t.outbound && t.receiveDate.take(10) == today },
+                    )
+                }
+            }
         }
     }
 }

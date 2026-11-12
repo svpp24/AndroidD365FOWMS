@@ -156,6 +156,13 @@ interface MobileOpsServiceApi {
         @Tag tag: IdempotentRead = IdempotentRead,
     ): Response<OnHandServiceResponse>
 
+    /** What is on one location, one row per item (Location inquiry). */
+    @POST("HSMobileOpsServiceGroup/HSMobileOpsInquirySvc/getLocationOnHand")
+    suspend fun getLocationOnHand(
+        @Body body: LocationServiceRequest,
+        @Tag tag: IdempotentRead = IdempotentRead,
+    ): Response<OnHandServiceResponse>
+
     // -- Counting journals ----------------------------------------------------------------------
     //
     // Headers only — cheap, same load shape as the inquiry reads above. A journal's lines are a
@@ -296,6 +303,20 @@ interface MobileOpsServiceApi {
         @Tag tag: IdempotentRead = IdempotentRead,
     ): Response<com.d365fo.mobileops.data.remote.dto.OrdersForDateServiceResponse>
 
+    /** Price check: one line priced by Commerce's price simulator for the warehouse's store. Writes nothing. */
+    @POST("HSMobileOpsServiceGroup/HSMobileOpsPriceCheckSvc/checkPrice")
+    suspend fun checkPrice(
+        @Body body: com.d365fo.mobileops.data.remote.dto.PriceCheckServiceRequest,
+        @Tag tag: IdempotentRead = IdempotentRead,
+    ): Response<com.d365fo.mobileops.data.remote.dto.PriceCheckServiceResponse>
+
+    /** Every open purchase order of the warehouse (the Purchase orders enquiry); DeliveryDate unused. */
+    @POST("HSMobileOpsServiceGroup/HSMobileOpsPurchListSvc/getOpenOrders")
+    suspend fun getOpenOrders(
+        @Body body: com.d365fo.mobileops.data.remote.dto.OrdersForDateServiceRequest,
+        @Tag tag: IdempotentRead = IdempotentRead,
+    ): Response<com.d365fo.mobileops.data.remote.dto.OrdersForDateServiceResponse>
+
     // -- Home search (HSMobileOpsSearchSvc) - a pure read --------------------------------------
 
     @POST("HSMobileOpsServiceGroup/HSMobileOpsSearchSvc/search")
@@ -312,11 +333,6 @@ interface MobileOpsServiceApi {
         @Tag tag: IdempotentRead = IdempotentRead,
     ): Response<com.d365fo.mobileops.data.remote.dto.TransferListServiceResponse>
 
-    @POST("HSMobileOpsServiceGroup/HSMobileOpsTransferListSvc/listPickedSerials")
-    suspend fun listPickedSerials(
-        @Body body: com.d365fo.mobileops.data.remote.dto.TransferListServiceRequest,
-        @Tag tag: IdempotentRead = IdempotentRead,
-    ): Response<com.d365fo.mobileops.data.remote.dto.TransferListServiceResponse>
 
     // -- Items, barcodes, warehouses (HSMobileOpsItemSvc) --------------------------------------
     //

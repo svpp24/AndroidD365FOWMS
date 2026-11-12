@@ -299,6 +299,92 @@ class HSMobileOpsInquiryService
 ]]></Source>
 			</Method>
 			<Method>
+				<Name>getLocationOnHand</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// What is on one location (user, 12 Nov: Location inquiry lists the items by category): one
+    /// row per item with stock or a reservation there, summed over its batches, serials and
+    /// variants. The device adds names and categories from its own item list.
+    /// </summary>
+    public HSMobileOpsOnHandResponse getLocationOnHand(HSMobileOpsLocationRequest _request)
+    {
+        HSMobileOpsOnHandResponse response = new HSMobileOpsOnHandResponse();
+        HSMobileOpsOnHandRow      row;
+        InventSum                 inventSum;
+        InventDim                 inventDim;
+        List                      rows = new List(Types::Class);
+        DataAreaId                company;
+        InventLocationId          warehouseId;
+        WMSLocationId             locationId;
+        int                       rowCount;
+
+        response.parmSuccess(false);
+        response.parmRows(rows);
+
+        if (_request)
+        {
+            company     = _request.parmDataAreaId();
+            warehouseId = _request.parmWarehouseId();
+            locationId  = _request.parmLocationId();
+        }
+        if (!company || !warehouseId || !locationId || !CompanyInfo::findDataArea(company).RecId)
+        {
+            response.parmErrorCode('INVALID_REQUEST');
+            return response;
+        }
+
+        changecompany (company)
+        {
+            inventSum = null;
+            inventDim = null;
+
+            while select ItemId, sum(PhysicalInvent), sum(AvailPhysical), sum(ReservPhysical)
+                from inventSum
+                group by inventSum.ItemId
+                where inventSum.Closed == NoYes::No
+                exists join inventDim
+                    where inventDim.InventDimId      == inventSum.InventDimId
+                       && inventDim.InventLocationId == warehouseId
+                       && inventDim.wMSLocationId    == locationId
+            {
+                if (!inventSum.PhysicalInvent && !inventSum.ReservPhysical)
+                {
+                    continue;
+                }
+                row = new HSMobileOpsOnHandRow();
+                row.parmItemId(inventSum.ItemId);
+                row.parmWarehouseId(warehouseId);
+                row.parmOnHand(inventSum.PhysicalInvent);
+                row.parmAvailable(inventSum.AvailPhysical);
+                row.parmReserved(inventSum.ReservPhysical);
+                rows.addEnd(row);
+
+                rowCount++;
+                if (rowCount >= HSMobileOpsInquiryService::maxLocationRows())
+                {
+                    response.parmErrorCode('TRUNCATED');
+                    break;
+                }
+            }
+            response.parmSuccess(true);
+        }
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>maxLocationRows</Name>
+				<Source><![CDATA[
+
+    /// <summary>Ceiling on the items of one location - a bin, so a few dozen is normal.</summary>
+    private static int maxLocationRows()
+    {
+        return 2000;
+    }
+]]></Source>
+			</Method>
+			<Method>
 				<Name>maxOnHandRows</Name>
 				<Source><![CDATA[
 

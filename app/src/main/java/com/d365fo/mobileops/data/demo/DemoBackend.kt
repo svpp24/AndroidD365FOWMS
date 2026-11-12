@@ -283,6 +283,7 @@ object DemoBackend {
             "HSMobileOpsCountTaskSvc" -> countTask(op, r)
             "HSMobileOpsCountingSvc" -> if (op == "listOpenJournals") ok(obj("Success" to true, "Rows" to emptyList<Any>())) else fallback(rest)
             "HSMobileOpsInquirySvc" -> inquiry(op, r)
+            "HSMobileOpsPriceCheckSvc" -> priceCheck(r)
             "HSMobileOpsItemSvc" -> itemSvc(op, r)
             "HSMobileOpsUnitSvc" -> itemUnits(r)
             "HSMobileOpsSearchSvc" -> search(r)
@@ -529,7 +530,6 @@ object DemoBackend {
     // =============================================================================================
 
     private fun transferList(op: String, r: JsonObject): Reply {
-        if (op == "listPickedSerials") return ok(obj("Success" to true, "Serials" to emptyList<Any>()))
         val wh = r.s("WarehouseId").ifBlank { WAREHOUSE }
         val search = r.s("Search")
         val rows = state.transfers
@@ -726,6 +726,15 @@ object DemoBackend {
         }
         "validateBatch" -> ok(obj("Success" to true, "Registered" to r.s("BatchId").equals(BATCH, true)))
         "validateSerial" -> ok(obj("Success" to true, "Registered" to false))
+        "getLocationOnHand" -> {
+            val wh = r.s("WarehouseId")
+            val loc = r.s("LocationId").trim().uppercase()
+            val rows = if (!wh.equals(WAREHOUSE, true)) emptyList() else state.stock.mapNotNull { (itemId, byLoc) ->
+                val qty = byLoc[loc] ?: 0.0
+                if (qty == 0.0) null else obj("ItemId" to itemId, "WarehouseId" to WAREHOUSE, "OnHand" to qty, "Available" to qty, "Reserved" to 0.0)
+            }
+            ok(obj("Success" to true, "Rows" to rows))
+        }
         "getOnHand" -> {
             val it = item(r.s("ItemId")) ?: return ok(obj("Success" to false, "ErrorCode" to "NOT_FOUND", "Rows" to emptyList<Any>()))
             val wh = r.s("WarehouseId")
@@ -738,6 +747,27 @@ object DemoBackend {
             ok(obj("Success" to true, "Rows" to rows))
         }
         else -> ok(obj("Success" to true))
+    }
+
+    /** Price check: the demo item's own price, no promotions. */
+    private fun priceCheck(r: JsonObject): Reply {
+        val it = item(r.s("ItemId")) ?: return ok(obj("Success" to false, "ErrorCode" to "NOT_FOUND", "Message" to "No item ${r.s("ItemId")}."))
+        val qty = r.s("Quantity").toDoubleOrNull() ?: 1.0
+        val gross = it.price * qty
+        return ok(
+            obj(
+                "Success" to true, "ItemId" to it.id, "ItemName" to it.name, "Quantity" to qty, "UnitId" to UNIT,
+                "UnitPrice" to it.price, "GrossAmount" to gross, "DiscountAmount" to 0.0, "DiscountPct" to 0.0, "NetAmount" to gross,
+                "OfferName" to "", "Currency" to "AED", "PriceIncludesTax" to true, "StoreName" to WAREHOUSE,
+            ),
+        )
+    }
+
+    /** "Health Care > Pain Relief" - the item feed's category column. */
+    private fun categoryPath(id: String): String {
+        val leaf = categories.firstOrNull { it.id == id } ?: return ""
+        val parent = categories.firstOrNull { it.id == leaf.parent }
+        return if (parent == null) leaf.name else "${parent.name} > ${leaf.name}"
     }
 
     private fun orderedQty(itemId: String) =
@@ -798,7 +828,7 @@ object DemoBackend {
     /** getSkuPage: positional rows per feed, all in one page (see SkuRows for the column order). */
     private fun skuPage(r: JsonObject): Reply {
         val rows: List<List<String>> = when (r.s("Feed").uppercase()) {
-            "ITEMS" -> items.map { listOf(it.id, it.name, UNIT, UNIT, UNIT, if (it.batch) "1" else "0", "0", "1", "1") }
+            "ITEMS" -> items.map { listOf(it.id, it.name, UNIT, UNIT, UNIT, if (it.batch) "1" else "0", "0", "1", "1", categoryPath(it.category)) }
             "BARCODES" -> items.map { listOf(it.barcode, it.id, "1", UNIT, "", "", "", "", "0") }
             else -> emptyList()
         }

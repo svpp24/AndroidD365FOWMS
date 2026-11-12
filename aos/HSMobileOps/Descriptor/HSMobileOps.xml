@@ -7,7 +7,7 @@
 	<Layer>14</Layer>
 	<Locked>false</Locked>
 	<ModelModule>HSMobileOps</ModelModule>
-	<ModelReferences>ApplicationCommon;ApplicationFoundation;ApplicationPlatform;ApplicationSuite;Calendar;Directory;UnitOfMeasure</ModelReferences>
+	<ModelReferences>ApplicationCommon;ApplicationFoundation;ApplicationPlatform;ApplicationSuite;Calendar;Directory;Retail;UnitOfMeasure</ModelReferences>
 	<Name>HSMobileOps</Name>
 	<Publisher>HS</Publisher>
 	<SolutionId i:nil="true" />

@@ -24,7 +24,10 @@ class HSMobileOpsSkuPageService
     /// at a time: the device resumes from NextKey, and with ChangedSinceUtc only what changed.
     ///
     /// Feeds and their row columns:
-    ///   ITEMS    - key ItemId:  [itemId, searchName, inventUnit, purchUnit, salesUnit, batch(0/1), serial(0/1), location(0/1), active(0/1)]
+    ///   ITEMS    - key ItemId:  [itemId, searchName, inventUnit, purchUnit, salesUnit, batch(0/1), serial(0/1), location(0/1), active(0/1), category]
+    ///              category: the item's retail product hierarchy category as a path from the first
+    ///              level, "Health Care > Vitamins" (blank when it has none). A category move does not
+    ///              touch InventTable, so a delta misses it; the weekly full refresh picks it up.
     ///              ChangedSinceUtc: InventTable.ModifiedDateTime.
     ///   BARCODES - key RecId:   [barcode, itemId, qty, unit, configId, sizeId, colorId, styleId, blocked(0/1)]
     ///              ChangedSinceUtc: InventItemBarcode.ModifiedDateTime.
@@ -99,6 +102,8 @@ class HSMobileOpsSkuPageService
         EcoResStorageDimensionGroupItem     storageItem;
         Map                                 trackingCache = new Map(Types::Int64, Types::Container);
         Map                                 locationCache = new Map(Types::Int64, Types::Integer);
+        Map                                 categoryPaths = new Map(Types::Int64, Types::String);
+        RefRecId                            hierarchy = HSMobileOpsSkuPageService::retailHierarchy();
         System.Text.StringBuilder           json = new System.Text.StringBuilder();
         container                           tracking;
         int                                 rows;
@@ -108,7 +113,7 @@ class HSMobileOpsSkuPageService
         json.Append('[');
         boolean full = _since == DateTimeUtil::minValue();
 
-        while select ItemId, NameAlias, ProductLifecycleStateId from inventTable
+        while select ItemId, NameAlias, ProductLifecycleStateId, Product from inventTable
             order by inventTable.ItemId
             where inventTable.ItemId > _after
                && inventTable.ModifiedDateTime >= _since
@@ -149,7 +154,8 @@ class HSMobileOpsSkuPageService
             json.Append(conPeek(tracking, 1) ? '1' : '0'); json.Append(',');
             json.Append(conPeek(tracking, 2) ? '1' : '0'); json.Append(',');
             json.Append(HSMobileOpsSkuPageService::locationActive(storageItem.StorageDimensionGroup, locationCache) ? '1' : '0'); json.Append(',');
-            json.Append(!inventTable.ProductLifecycleStateId || inventTable.ProductLifecycleStateId == 'Active' ? '1' : '0');
+            json.Append(!inventTable.ProductLifecycleStateId || inventTable.ProductLifecycleStateId == 'Active' ? '1' : '0'); json.Append(',');
+            json.Append(HSMobileOpsSkuPageService::jsonStr(HSMobileOpsSkuPageService::categoryPath(inventTable.Product, hierarchy, categoryPaths)));
             json.Append(']');
             last = inventTable.ItemId;
             rows++;
@@ -339,6 +345,97 @@ class HSMobileOpsSkuPageService
         active = setup.RecId ? 1 : 0;
         _cache.insert(_group, active);
         return active == 1;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>retailHierarchy</Name>
+				<Source><![CDATA[
+
+    /// <summary>The company's retail product hierarchy - where an item's category comes from.</summary>
+    private static RefRecId retailHierarchy()
+    {
+        EcoResCategoryHierarchyRole role;
+
+        select firstonly CategoryHierarchy from role
+            where role.NamedCategoryHierarchyRole == EcoResCategoryNamedHierarchyRole::Retail;
+        return role.CategoryHierarchy;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>categoryPath</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The product's category in the hierarchy as a path from the first level down
+    /// ("Health Care > Vitamins"); blank when it has none. Each category's path is worked out
+    /// once per page. EcoResProductCategory and EcoResCategory are read by name, as in
+    /// HSMobileOpsCountRequestService: Retail extends both tables.
+    /// </summary>
+    private static str categoryPath(RefRecId _product, RefRecId _hierarchy, Map _paths)
+    {
+        TableId              productCategoryTable = tableName2Id('EcoResProductCategory');
+        TableId              categoryTable = tableName2Id('EcoResCategory');
+        Query                query;
+        QueryBuildDataSource ds;
+        QueryRun             queryRun;
+        Common               productCategory;
+        Common               category;
+        RefRecId             categoryId;
+        RefRecId             current;
+        str                  path;
+        str                  name;
+        int                  depth;
+
+        if (!_product || !_hierarchy || !productCategoryTable || !categoryTable)
+        {
+            return '';
+        }
+        query = new Query();
+        ds = query.addDataSource(productCategoryTable);
+        ds.firstOnly(true);
+        ds.addRange(fieldName2Id(productCategoryTable, 'Product')).value(queryValue(_product));
+        ds.addRange(fieldName2Id(productCategoryTable, 'CategoryHierarchy')).value(queryValue(_hierarchy));
+        queryRun = new QueryRun(query);
+        if (!queryRun.next())
+        {
+            return '';
+        }
+        productCategory = queryRun.get(productCategoryTable);
+        categoryId = productCategory.(fieldName2Id(productCategoryTable, 'Category'));
+        if (!categoryId)
+        {
+            return '';
+        }
+        if (_paths.exists(categoryId))
+        {
+            return _paths.lookup(categoryId);
+        }
+        current = categoryId;
+        while (current && depth < 10)
+        {
+            depth++;
+            query = new Query();
+            ds = query.addDataSource(categoryTable);
+            ds.addRange(fieldName2Id(categoryTable, 'RecId')).value(queryValue(current));
+            queryRun = new QueryRun(query);
+            if (!queryRun.next())
+            {
+                break;
+            }
+            category = queryRun.get(categoryTable);
+            // Level 1 is the hierarchy's root, which names the hierarchy, not a category.
+            if (category.(fieldName2Id(categoryTable, 'Level')) < 2)
+            {
+                break;
+            }
+            name = category.(fieldName2Id(categoryTable, 'Name'));
+            path = path ? name + ' > ' + path : name;
+            current = category.(fieldName2Id(categoryTable, 'ParentCategory'));
+        }
+        _paths.insert(categoryId, path);
+        return path;
     }
 ]]></Source>
 			</Method>
