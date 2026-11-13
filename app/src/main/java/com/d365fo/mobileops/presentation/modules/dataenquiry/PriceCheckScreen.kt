@@ -12,7 +12,6 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PhotoCamera
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -218,12 +217,7 @@ fun PriceCheckScreen(
                 modifier = Modifier.padding(horizontal = 20.dp),
             ) {
                 state.units.forEach { u ->
-                    FilterChip(
-                        selected = u.equals(state.unit, ignoreCase = true),
-                        onClick = { viewModel.setUnit(u) },
-                        label = { Text(u) },
-                        modifier = Modifier.heightIn(min = 48.dp),
-                    )
+                    com.d365fo.mobileops.presentation.common.focus.FocusChip(u, selected = u.equals(state.unit, ignoreCase = true), onClick = { viewModel.setUnit(u) })
                 }
             }
             FocusButton(

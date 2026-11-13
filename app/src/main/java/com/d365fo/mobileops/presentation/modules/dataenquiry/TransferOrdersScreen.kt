@@ -21,7 +21,6 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -166,21 +165,10 @@ fun TransferOrdersScreen(
                 modifier = Modifier.padding(horizontal = WarehouseDimens.ScreenPadding, vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                OutlinedTextField(
+                com.d365fo.mobileops.presentation.common.focus.FocusSearchField(
                     value = state.query,
                     onValueChange = viewModel::setQuery,
-                    modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
-                    singleLine = true,
-                    shape = com.d365fo.mobileops.presentation.common.theme.FocusShapes.button,
-                    placeholder = { Text("Transfer number or store") },
-                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-                    trailingIcon = {
-                        if (state.query.isNotEmpty()) {
-                            IconButton(onClick = { viewModel.setQuery("") }, modifier = Modifier.heightIn(min = 56.dp)) {
-                                Icon(Icons.Default.Clear, contentDescription = "Clear search")
-                            }
-                        }
-                    },
+                    placeholder = "Transfer number or store",
                 )
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     TransferDirectionFilter.entries.forEach { filter ->
@@ -189,12 +177,7 @@ fun TransferOrdersScreen(
                             TransferDirectionFilter.SHIP -> state.orders.count { it.outbound }
                             TransferDirectionFilter.RECEIVE -> state.orders.count { !it.outbound }
                         }
-                        FilterChip(
-                            selected = state.filter == filter,
-                            onClick = { viewModel.setFilter(filter) },
-                            label = { Text("${filter.label} $count") },
-                            modifier = Modifier.heightIn(min = 56.dp),
-                        )
+                        com.d365fo.mobileops.presentation.common.focus.FocusChip("${filter.label} $count", selected = state.filter == filter, onClick = { viewModel.setFilter(filter) })
                     }
                 }
             }
