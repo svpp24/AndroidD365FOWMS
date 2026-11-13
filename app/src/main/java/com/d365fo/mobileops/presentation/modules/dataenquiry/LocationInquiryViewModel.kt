@@ -64,6 +64,17 @@ class LocationInquiryViewModel @Inject constructor(
         scannerBridge.enabled = enabled
     }
 
+    fun openCategory(path: String) = _state.update { it.copy(categoryPath = path) }
+
+    /** Up one level of the location's category tree; false at the first level. */
+    fun categoryUp(): Boolean {
+        val path = _state.value.categoryPath
+        if (path.isEmpty()) return false
+        val up = if (path == NO_CATEGORY || !path.contains(CATEGORY_SEPARATOR)) "" else path.substringBeforeLast(CATEGORY_SEPARATOR)
+        _state.update { it.copy(categoryPath = up) }
+        return true
+    }
+
     fun onWarehouseChange(value: String) {
         _state.update { it.copy(warehouseId = value) }
     }
@@ -79,7 +90,7 @@ class LocationInquiryViewModel @Inject constructor(
 
         pending?.cancel()
         pending = viewModelScope.launch {
-            _state.update { it.copy(busy = true, error = null, result = null, locationId = locationId, stock = emptyList(), stockError = null) }
+            _state.update { it.copy(busy = true, error = null, result = null, locationId = locationId, stock = emptyList(), stockError = null, categoryPath = "") }
 
             when (val result = lookups.lookupLocation(warehouseId, locationId)) {
                 is NetworkResult.Error -> {
@@ -118,7 +129,7 @@ class LocationInquiryViewModel @Inject constructor(
             is NetworkResult.Success -> {
                 val known = r.data.map { it.itemId }.distinct().chunked(500)
                     .flatMap { itemDao.itemsByIds(it) }.associateBy { it.itemId }
-                _state.update { it.copy(stockLoading = false, stock = groupByCategory(r.data, known)) }
+                _state.update { it.copy(stockLoading = false, stock = locationRows(r.data, known), categoryPath = "") }
             }
             is NetworkResult.Error -> _state.update { it.copy(stockLoading = false, stockError = r.failure.message) }
             NetworkResult.Loading -> Unit
@@ -126,30 +137,38 @@ class LocationInquiryViewModel @Inject constructor(
     }
 }
 
-/** One item on the location, named from the device's item list when it has it. */
+/** One item on the location, named and placed in a category from the device's item list. */
 data class LocationItemRow(
     val itemId: String,
     val itemName: String,
     val onHand: Double,
     val reserved: Double,
     val unit: String,
+    /** Stored category path; "" when the item has none (or is not on the device). */
+    val category: String,
 )
 
-internal const val LOCATION_NO_CATEGORY = "No category"
-
-/** Category path ("No category" last), A to Z; items by name inside each. */
-internal fun groupByCategory(
+/** The location's items with names, units and categories from the device's item list, by name. */
+internal fun locationRows(
     stock: List<com.d365fo.mobileops.data.repository.LocationStock>,
     items: Map<String, com.d365fo.mobileops.data.local.entity.ItemEntity>,
-): List<Pair<String, List<LocationItemRow>>> =
-    stock.groupBy { items[it.itemId]?.category?.takeIf { c -> c.isNotBlank() } ?: LOCATION_NO_CATEGORY }
-        .map { (category, rows) ->
-            category to rows.map { s ->
-                val item = items[s.itemId]
-                LocationItemRow(s.itemId, item?.itemName.orEmpty(), s.onHand, s.reserved, item?.inventoryUnit.orEmpty())
-            }.sortedWith(compareBy({ it.itemName.ifBlank { it.itemId }.lowercase() }, { it.itemId }))
-        }
-        .sortedWith(compareBy({ it.first == LOCATION_NO_CATEGORY }, { it.first.lowercase() }))
+): List<LocationItemRow> =
+    stock.map { s ->
+        val item = items[s.itemId]
+        LocationItemRow(s.itemId, item?.itemName.orEmpty(), s.onHand, s.reserved, item?.inventoryUnit.orEmpty(), item?.category.orEmpty())
+    }.sortedWith(compareBy({ it.itemName.ifBlank { it.itemId }.lowercase() }, { it.itemId }))
+
+/**
+ * One level of the location's category tree, as Items by category shows it (user, 13 Nov): the
+ * categories under [path] that hold any of its items, then its items placed directly in [path].
+ */
+internal fun locationLevel(rows: List<LocationItemRow>, path: String): Pair<List<CategoryNode>, List<LocationItemRow>> {
+    if (path == NO_CATEGORY) return emptyList<CategoryNode>() to rows.filter { it.category.isEmpty() }
+    val counts = rows.groupingBy { it.category }.eachCount()
+        .map { (category, n) -> com.d365fo.mobileops.data.local.dao.CategoryCount(category, n) }
+    val here = if (path.isEmpty()) emptyList() else rows.filter { it.category == path }
+    return childCategories(counts, path) to here
+}
 
 data class LocationInquiryState(
     val warehouseId: String = "",
@@ -158,6 +177,8 @@ data class LocationInquiryState(
     val busy: Boolean = false,
     val error: String? = null,
     val stockLoading: Boolean = false,
-    val stock: List<Pair<String, List<LocationItemRow>>> = emptyList(),
+    val stock: List<LocationItemRow> = emptyList(),
     val stockError: String? = null,
+    /** The category open in the location's tree; "" = the first level. */
+    val categoryPath: String = "",
 )

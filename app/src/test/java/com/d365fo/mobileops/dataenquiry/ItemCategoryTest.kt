@@ -6,11 +6,11 @@ import com.d365fo.mobileops.data.local.entity.TrackingRequirement
 import com.d365fo.mobileops.data.repository.LocationStock
 import com.d365fo.mobileops.data.repository.SkuRows
 import com.d365fo.mobileops.presentation.modules.dataenquiry.CategoryNode
-import com.d365fo.mobileops.presentation.modules.dataenquiry.LOCATION_NO_CATEGORY
 import com.d365fo.mobileops.presentation.modules.dataenquiry.NO_CATEGORY
 import com.d365fo.mobileops.presentation.modules.dataenquiry.childCategories
 import com.d365fo.mobileops.presentation.modules.dataenquiry.displayCategoryPath
-import com.d365fo.mobileops.presentation.modules.dataenquiry.groupByCategory
+import com.d365fo.mobileops.presentation.modules.dataenquiry.locationLevel
+import com.d365fo.mobileops.presentation.modules.dataenquiry.locationRows
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonArray
 import org.junit.Assert.assertEquals
@@ -72,19 +72,29 @@ class ItemCategoryTest {
     }
 
     @Test
-    fun `location items group by category, no category last`() {
+    fun `location items form the same tree as items by category`() {
         fun item(id: String, name: String, category: String?) = ItemEntity(
             itemId = id, itemName = name, searchName = null, inventoryUnit = "EA", purchaseUnit = null, salesUnit = null,
             trackingRequirement = TrackingRequirement.NONE, locationMandatory = false, active = true, modifiedAt = 0L, category = category,
         )
-        val items = listOf(item("B", "Beta", "Health Care"), item("A", "Alpha", "Health Care"), item("C", "Gamma", null)).associateBy { it.itemId }
-        val groups = groupByCategory(
-            listOf(LocationStock("C", 1.0, 1.0, 0.0), LocationStock("B", 2.0, 2.0, 0.0), LocationStock("A", 3.0, 3.0, 0.0), LocationStock("X", 1.0, 1.0, 0.0)),
+        val items = listOf(
+            item("B", "Beta", "Health Care > Health Care.Gsl"),
+            item("A", "Alpha", "Health Care > Health Care.Gsl"),
+            item("D", "Delta", "Health Care"),
+            item("C", "Gamma", null),
+        ).associateBy { it.itemId }
+        val rows = locationRows(
+            listOf("C", "B", "A", "D", "X").map { LocationStock(it, 1.0, 1.0, 0.0) },
             items,
         )
-        assertEquals(listOf("Health Care", LOCATION_NO_CATEGORY), groups.map { it.first })
-        assertEquals(listOf("A", "B"), groups[0].second.map { it.itemId })
-        assertEquals(listOf("X", "C"), groups[1].second.map { it.itemId }.sortedDescending())
+        val (top, topItems) = locationLevel(rows, "")
+        assertEquals(listOf(CategoryNode("Health Care", "Health Care", 3), CategoryNode(NO_CATEGORY, "No category", 2)), top)
+        assertEquals(emptyList<Any>(), topItems)
+        val (sub, here) = locationLevel(rows, "Health Care")
+        assertEquals(listOf(CategoryNode("Health Care > Health Care.Gsl", "Gsl", 2)), sub)
+        assertEquals(listOf("D"), here.map { it.itemId })
+        assertEquals(listOf("A", "B"), locationLevel(rows, "Health Care > Health Care.Gsl").second.map { it.itemId })
+        assertEquals(listOf("C", "X"), locationLevel(rows, NO_CATEGORY).second.map { it.itemId })
     }
 
     @Test

@@ -112,7 +112,9 @@ fun LocationInquiryScreen(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp).heightIn(min = 60.dp),
             )
         } else {
-            LocationStockList(state, modifier = Modifier.weight(1f))
+            // Back climbs the category tree before it leaves the screen.
+            androidx.activity.compose.BackHandler(enabled = state.categoryPath.isNotEmpty()) { viewModel.categoryUp() }
+            LocationStockList(state, onCategory = viewModel::openCategory, modifier = Modifier.weight(1f))
         }
     }
 
@@ -148,16 +150,20 @@ fun LocationEntryScreen(
     )
 }
 
-/** What is on the scanned location, by category (user, 12 Nov). */
+/**
+ * What is on the scanned location as a category tree (user, 13 Nov: like Items by category) - the
+ * categories holding its items with how many, then the items of the open category with quantities.
+ */
 @Composable
-private fun LocationStockList(state: LocationInquiryState, modifier: Modifier = Modifier) {
+private fun LocationStockList(state: LocationInquiryState, onCategory: (String) -> Unit, modifier: Modifier = Modifier) {
     val colors = com.d365fo.mobileops.presentation.common.theme.FocusColors
     val type = com.d365fo.mobileops.presentation.common.theme.FocusType
+    val (categories, items) = remember(state.stock, state.categoryPath) { locationLevel(state.stock, state.categoryPath) }
     androidx.compose.foundation.lazy.LazyColumn(modifier = modifier.fillMaxWidth()) {
         item(key = "head") {
             Column(Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) {
                 Text(state.result?.locationId.orEmpty(), style = type.rowCode, color = colors.ink)
-                val count = state.stock.sumOf { it.second.size }
+                val count = state.stock.size
                 Text(
                     when {
                         state.stockLoading -> "Asking D365FO what is here"
@@ -169,26 +175,46 @@ private fun LocationStockList(state: LocationInquiryState, modifier: Modifier = 
                     style = type.rowDetail,
                     color = if (state.stockError != null) colors.badText else colors.muted,
                 )
-            }
-        }
-        state.stock.forEach { (category, rows) ->
-            item(key = "cat:$category") {
-                com.d365fo.mobileops.presentation.common.focus.FocusCaption(
-                    "${displayCategoryPath(category)} · ${rows.size}",
-                    Modifier.padding(start = 20.dp, end = 20.dp, top = 16.dp, bottom = 4.dp),
-                )
-            }
-            rows.forEach { row ->
-                item(key = "item:$category:${row.itemId}") {
-                    com.d365fo.mobileops.presentation.common.focus.FocusListRow(
-                        title = row.itemName.ifBlank { row.itemId },
-                        subtitle = listOfNotNull(
-                            row.itemId.takeIf { row.itemName.isNotBlank() },
-                            row.reserved.takeIf { it != 0.0 }?.let { "${plainQty(it)} reserved" },
-                        ).joinToString(" · ").ifEmpty { null },
-                        count = "${plainQty(row.onHand)} ${row.unit}".trim(),
+                if (state.categoryPath.isNotEmpty()) {
+                    Text(
+                        if (state.categoryPath == NO_CATEGORY) "No category" else displayCategoryPath(state.categoryPath),
+                        style = type.bandDetail,
+                        color = colors.navy,
+                        modifier = Modifier.padding(top = 4.dp),
                     )
                 }
+            }
+        }
+        if (categories.isNotEmpty() && items.isNotEmpty()) {
+            item(key = "cap-cat") {
+                com.d365fo.mobileops.presentation.common.focus.FocusCaption("Categories", Modifier.padding(start = 20.dp, top = 12.dp, bottom = 4.dp))
+            }
+        }
+        categories.forEach { node ->
+            item(key = "c:" + node.path) {
+                com.d365fo.mobileops.presentation.common.focus.FocusListRow(
+                    title = node.name,
+                    count = node.itemCount.toString(),
+                    chevron = true,
+                    onClick = { onCategory(node.path) },
+                )
+            }
+        }
+        if (categories.isNotEmpty() && items.isNotEmpty()) {
+            item(key = "cap-items") {
+                com.d365fo.mobileops.presentation.common.focus.FocusCaption("Items", Modifier.padding(start = 20.dp, top = 16.dp, bottom = 4.dp))
+            }
+        }
+        items.forEach { row ->
+            item(key = "i:" + row.itemId) {
+                com.d365fo.mobileops.presentation.common.focus.FocusListRow(
+                    title = row.itemName.ifBlank { row.itemId },
+                    subtitle = listOfNotNull(
+                        row.itemId.takeIf { row.itemName.isNotBlank() },
+                        row.reserved.takeIf { it != 0.0 }?.let { "${plainQty(it)} reserved" },
+                    ).joinToString(" · ").ifEmpty { null },
+                    count = "${plainQty(row.onHand)} ${row.unit}".trim(),
+                )
             }
         }
     }
