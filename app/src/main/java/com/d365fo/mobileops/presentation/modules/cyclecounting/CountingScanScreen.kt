@@ -59,7 +59,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Switch
 import com.d365fo.mobileops.presentation.common.components.SquareTextButton as TextButton
 import androidx.compose.material3.Text
@@ -821,16 +820,12 @@ private fun CountingLists(
                     modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 20.dp),
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
-                    FilterChip(
-                        selected = state.typeFilter == null, onClick = { onTypeFilter(null) }, label = { Text("All") },
-                        modifier = Modifier.heightIn(min = 56.dp),
-                    )
+                    com.d365fo.mobileops.presentation.common.focus.FocusChip("All", selected = state.typeFilter == null, onClick = { onTypeFilter(null) })
                     state.locationTypes.forEach { type ->
-                        FilterChip(
+                        com.d365fo.mobileops.presentation.common.focus.FocusChip(
+                            com.d365fo.mobileops.domain.model.locationTypeLabel(type) ?: "Physical",
                             selected = state.typeFilter == type,
                             onClick = { onTypeFilter(type) },
-                            label = { Text(com.d365fo.mobileops.domain.model.locationTypeLabel(type) ?: "Physical") },
-                            modifier = Modifier.heightIn(min = 56.dp),
                         )
                     }
                 }

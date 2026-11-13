@@ -51,7 +51,6 @@ import androidx.compose.runtime.LaunchedEffect
 import com.d365fo.mobileops.presentation.common.components.AppCard as Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -683,7 +682,7 @@ private fun LogEntry.toLogLine(): String =
     "$timestamp $levelLabel/$tag: $message"
 
 /**
- * The saved connection profiles (Dev / UAT / Prod, or any custom name), one [FilterChip] each -
+ * The saved connection profiles (Dev / UAT / Prod, or any custom name), one chip each -
  * selected = the currently active one. Tapping a different one asks to confirm before switching,
  * since a switch wipes local data; tapping the active one does nothing, there is nothing to
  * confirm about staying put. A trailing "+" chip opens a small dialog to name and add a new

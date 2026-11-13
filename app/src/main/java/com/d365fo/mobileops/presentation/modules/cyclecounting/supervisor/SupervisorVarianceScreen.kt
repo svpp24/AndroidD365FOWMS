@@ -23,7 +23,6 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -420,10 +419,10 @@ private fun DecisionDialog(
                     } else {
                         androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             reasonCodes.forEach { code ->
-                                FilterChip(
+                                com.d365fo.mobileops.presentation.common.focus.FocusChip(
+                                    label(code),
                                     selected = reason == code.code,
                                     onClick = { reason = code.code.takeIf { reason != it } },
-                                    label = { Text(label(code)) },
                                 )
                             }
                         }

@@ -21,7 +21,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -116,7 +115,7 @@ fun FeedbackScreen(onBack: () -> Unit, viewModel: FeedbackViewModel = hiltViewMo
                     item {
                         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             FeedbackType.entries.forEach { type ->
-                                FilterChip(selected = state.type == type, onClick = { viewModel.setType(type) }, label = { Text(type.label) })
+                                com.d365fo.mobileops.presentation.common.focus.FocusChip(type.label, selected = state.type == type, onClick = { viewModel.setType(type) })
                             }
                         }
                     }
@@ -208,7 +207,7 @@ private fun EditFeedbackDialog(state: FeedbackState, viewModel: FeedbackViewMode
                 )
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     FeedbackType.entries.forEach { type ->
-                        FilterChip(selected = state.editType == type, onClick = { viewModel.setEditType(type) }, label = { Text(type.label) })
+                        com.d365fo.mobileops.presentation.common.focus.FocusChip(type.label, selected = state.editType == type, onClick = { viewModel.setEditType(type) })
                     }
                 }
                 MessageField(value = state.editMessage, onValueChange = viewModel::setEditMessage, placeholder = "Your feedback")

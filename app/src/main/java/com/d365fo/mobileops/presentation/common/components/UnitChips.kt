@@ -3,7 +3,6 @@ package com.d365fo.mobileops.presentation.common.components
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.unit.dp
@@ -42,10 +41,10 @@ fun UnitChips(
     }
     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         ordered.forEach { unit ->
-            FilterChip(
+            com.d365fo.mobileops.presentation.common.focus.FocusChip(
+                label(unit),
                 selected = unit.unitId.equals(selected, ignoreCase = true),
                 onClick = { onSelect(unit.unitId) },
-                label = { Text(label(unit)) },
             )
         }
     }
