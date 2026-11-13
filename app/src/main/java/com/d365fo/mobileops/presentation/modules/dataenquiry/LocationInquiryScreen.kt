@@ -68,8 +68,9 @@ fun LocationInquiryScreen(
     var showCamera by remember { mutableStateOf(false) }
     val facts = state.result
 
-    // Focus design: the answer in the band (open or blocked for put-away), the location in the
-    // centre, the warehouse it is checked in under it; scan or type the next location in the pill.
+    // Focus design: the location's available stock by category (user, 13 Nov: not whether it is
+    // open for put-away); a band only when the location can't be found or read. Scan or type the
+    // next location in the pill.
     com.d365fo.mobileops.presentation.common.focus.FocusScreen(
         title = "Location inquiry",
         // In the location's category tree the arrow goes up a level, as the system Back does.
@@ -79,15 +80,7 @@ fun LocationInquiryScreen(
             state.error != null -> com.d365fo.mobileops.presentation.modules.stepflow.bandOf(
                 com.d365fo.mobileops.presentation.common.focus.BandKind.Bad, state.error.orEmpty(),
             )
-            facts == null -> null
-            facts.canReceiveInto -> com.d365fo.mobileops.presentation.common.focus.BandState(
-                com.d365fo.mobileops.presentation.common.focus.BandKind.Ok, "Open for put-away", "${facts.warehouseId} · ${facts.locationId}",
-            )
-            else -> com.d365fo.mobileops.presentation.common.focus.BandState(
-                com.d365fo.mobileops.presentation.common.focus.BandKind.Bad,
-                facts.blockingCause ?: "Blocked for put-away",
-                "${facts.warehouseId} · ${facts.locationId}",
-            )
+            else -> null
         },
         scanPill = { com.d365fo.mobileops.presentation.common.focus.ScanPillField(enabled = !state.busy) },
         topBarTrailing = {
@@ -152,8 +145,9 @@ fun LocationEntryScreen(
 }
 
 /**
- * What is on the scanned location as a category tree (user, 13 Nov: like Items by category) - the
- * categories holding its items with how many, then the items of the open category with quantities.
+ * The scanned location's available stock as a category tree (user, 13 Nov: like Items by
+ * category) - the categories holding its available items with how many, then the items of the
+ * open category with their available quantity; reserved stock is noted under the item.
  */
 @Composable
 private fun LocationStockList(state: LocationInquiryState, onCategory: (String) -> Unit, modifier: Modifier = Modifier) {
@@ -169,9 +163,9 @@ private fun LocationStockList(state: LocationInquiryState, onCategory: (String) 
                     when {
                         state.stockLoading -> "Asking D365FO what is here"
                         state.stockError != null -> "Couldn't list the items: ${state.stockError}"
-                        count == 0 -> "Nothing on this location"
-                        count == 1 -> "1 item"
-                        else -> "$count items"
+                        count == 0 -> "Nothing available on this location"
+                        count == 1 -> "1 item available"
+                        else -> "$count items available"
                     },
                     style = type.rowDetail,
                     color = if (state.stockError != null) colors.badText else colors.muted,
@@ -214,7 +208,7 @@ private fun LocationStockList(state: LocationInquiryState, onCategory: (String) 
                         row.itemId.takeIf { row.itemName.isNotBlank() },
                         row.reserved.takeIf { it != 0.0 }?.let { "${plainQty(it)} reserved" },
                     ).joinToString(" · ").ifEmpty { null },
-                    count = "${plainQty(row.onHand)} ${row.unit}".trim(),
+                    count = "${plainQty(row.available)} ${row.unit}".trim(),
                 )
             }
         }

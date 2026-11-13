@@ -84,7 +84,8 @@ class ItemCategoryTest {
             item("C", "Gamma", null),
         ).associateBy { it.itemId }
         val rows = locationRows(
-            listOf("C", "B", "A", "D", "X").map { LocationStock(it, 1.0, 1.0, 0.0) },
+            listOf("C", "B", "A", "D", "X").map { LocationStock(it, 1.0, 1.0, 0.0) } +
+                LocationStock("R", 2.0, 0.0, 2.0),
             items,
         )
         val (top, topItems) = locationLevel(rows, "")
@@ -95,6 +96,8 @@ class ItemCategoryTest {
         assertEquals(listOf("D"), here.map { it.itemId })
         assertEquals(listOf("A", "B"), locationLevel(rows, "Health Care > Health Care.Gsl").second.map { it.itemId })
         assertEquals(listOf("C", "X"), locationLevel(rows, NO_CATEGORY).second.map { it.itemId })
+        // R is all reserved: nothing available, so not listed.
+        assertEquals(false, rows.any { it.itemId == "R" })
     }
 
     @Test

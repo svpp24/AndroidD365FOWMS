@@ -142,20 +142,25 @@ data class LocationItemRow(
     val itemId: String,
     val itemName: String,
     val onHand: Double,
+    /** On hand less what is reserved - what can be picked or sold from the location. */
+    val available: Double,
     val reserved: Double,
     val unit: String,
     /** Stored category path; "" when the item has none (or is not on the device). */
     val category: String,
 )
 
-/** The location's items with names, units and categories from the device's item list, by name. */
+/**
+ * The location's available stock (user, 13 Nov), with names, units and categories from the
+ * device's item list, by name. An item with nothing available - all of it reserved - is left out.
+ */
 internal fun locationRows(
     stock: List<com.d365fo.mobileops.data.repository.LocationStock>,
     items: Map<String, com.d365fo.mobileops.data.local.entity.ItemEntity>,
 ): List<LocationItemRow> =
-    stock.map { s ->
+    stock.filter { it.available > 0.0 }.map { s ->
         val item = items[s.itemId]
-        LocationItemRow(s.itemId, item?.itemName.orEmpty(), s.onHand, s.reserved, item?.inventoryUnit.orEmpty(), item?.category.orEmpty())
+        LocationItemRow(s.itemId, item?.itemName.orEmpty(), s.onHand, s.available, s.reserved, item?.inventoryUnit.orEmpty(), item?.category.orEmpty())
     }.sortedWith(compareBy({ it.itemName.ifBlank { it.itemId }.lowercase() }, { it.itemId }))
 
 /**
