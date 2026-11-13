@@ -1053,14 +1053,15 @@ private fun OfflineSection(warehouseId: String?, viewModel: OfflineReadyViewMode
         )
         Text(
             text = when {
-                readiness.running -> "Saving today's orders..."
+                readiness.running -> "Saving open orders and counts..."
                 readiness.savedAt != null && readiness.warehouseId == warehouseId ->
                     "Saved for offline: ${readiness.purchaseOrders} purchase " +
                         (if (readiness.purchaseOrders == 1) "order" else "orders") +
-                        " for today, ${readiness.transferOrders} transfer " +
+                        ", ${readiness.transferOrders} transfer " +
                         (if (readiness.transferOrders == 1) "order" else "orders") +
+                        ", ${readiness.counts} " + (if (readiness.counts == 1) "count" else "counts") +
                         " · ${com.d365fo.mobileops.util.Formatters.clockTime(readiness.savedAt!!)}"
-                else -> "Today's orders save while online."
+                else -> "Open orders and counts save while online."
             },
             style = MaterialTheme.typography.bodyMedium,
             color = WarehouseStatusColors.text3,
@@ -1136,7 +1137,7 @@ private fun OfflineSection(warehouseId: String?, viewModel: OfflineReadyViewMode
                 onClick = { viewModel.saveNow(warehouseId) },
                 enabled = !readiness.running && online,
                 modifier = Modifier.fillMaxWidth(),
-            ) { Text(if (online) "Save today's orders now" else "Saving needs a connection") }
+            ) { Text(if (online) "Save open orders and counts now" else "Saving needs a connection") }
         }
     }
 }

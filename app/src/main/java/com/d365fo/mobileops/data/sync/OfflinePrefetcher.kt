@@ -23,27 +23,33 @@ data class OfflineReadiness(
     val warehouseId: String? = null,
     val purchaseOrders: Int = 0,
     val transferOrders: Int = 0,
+    /** Open counts (hazard, wall to wall, blind) whose item lists were saved. */
+    val counts: Int = 0,
     val savedAt: Long? = null,
     val running: Boolean = false,
     val error: String? = null,
 )
 
 /**
- * Opens today's purchase orders and this warehouse's open transfer orders ahead of time, so the
- * offline read cache holds them before the connection drops. Each lookup here is the same call
+ * Opens everything this warehouse's processes work from ahead of time (user, 13 Nov: "every
+ * process to have full data load") - every open purchase order with its lines, every open
+ * transfer order with its lines, and every open count with its items - so the offline read cache
+ * holds them before the connection drops. Each lookup here is the same call
  * the receiving and transfer flows make, with the same arguments, so the saved answer is the
  * one those flows find when they look the order up offline.
  *
- * Kept small on purpose: headers and inline lines of at most [MAX_ORDERS] of each, at most once
- * per [MIN_INTERVAL_MS] per warehouse, after [SETTLE_MS] and a random delay of up to [JITTER_MS]. A fleet
- * signing in at shift start then spreads its calls over a minute instead of hitting D365FO's
- * service protection limits all at once.
+ * One call at a time with [PACE_MS] between them, at most once per [MIN_INTERVAL_MS] per
+ * warehouse, after [SETTLE_MS] and a random delay of up to [JITTER_MS]. A fleet signing in at shift
+ * start then spreads its calls instead of hitting D365FO's service protection limits all at once.
+ * [MAX_PER_KIND] is only a backstop against a runaway list.
  */
 @Singleton
 class OfflinePrefetcher @Inject constructor(
     private val lookups: OnDemandLookupRepository,
     private val transferList: TransferListRepository,
     private val transferLookup: TransferLookupRepository,
+    private val enquiry: com.d365fo.mobileops.data.repository.EnquiryRepository,
+    private val countRequests: com.d365fo.mobileops.data.counting.CountRequestRepository,
     ioDispatcher: CoroutineDispatcher,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + ioDispatcher)
@@ -84,18 +90,23 @@ class OfflinePrefetcher @Inject constructor(
     private suspend fun save(warehouseId: String): OfflineReadiness {
         var purchaseOrders = 0
         var transferOrders = 0
+        var counts = 0
         var error: String? = null
 
-        when (val today = lookups.lookupOrdersForToday(warehouseId)) {
-            is NetworkResult.Success -> today.data.filter { it.receivable }.take(MAX_ORDERS).forEach { order ->
+        // Today's list as Home and PO receiving ask for it, then every open PO and its lines.
+        lookups.lookupOrdersForToday(warehouseId)
+        when (val open = enquiry.openOrders(warehouseId)) {
+            is NetworkResult.Success -> open.data.filter { it.receivable }.take(MAX_PER_KIND).forEach { order ->
+                delay(PACE_MS)
                 if (lookups.lookupOrder(order.purchId) is NetworkResult.Success) purchaseOrders++
             }
-            is NetworkResult.Error -> error = today.failure.message
+            is NetworkResult.Error -> error = open.failure.message
             NetworkResult.Loading -> Unit
         }
 
         when (val open = transferList.openTransferOrders(warehouseId)) {
-            is NetworkResult.Success -> open.data.take(MAX_ORDERS).forEach { order ->
+            is NetworkResult.Success -> open.data.take(MAX_PER_KIND).forEach { order ->
+                delay(PACE_MS)
                 val mode = if (order.outbound) TransferMode.SHIP else TransferMode.RECEIVE
                 if (transferLookup.lookupOrder(order.transferId, mode, warehouseId) is NetworkResult.Success) transferOrders++
             }
@@ -103,11 +114,22 @@ class OfflinePrefetcher @Inject constructor(
             NetworkResult.Loading -> Unit
         }
 
-        Timber.i("offline prefetch for %s: %d purchase orders, %d transfer orders", warehouseId, purchaseOrders, transferOrders)
+        // The Count lists and each open count's items, as the count screens ask for them.
+        when (val open = countRequests.counts(warehouseId)) {
+            is NetworkResult.Success -> open.data.filter { it.open }.take(MAX_PER_KIND).forEach { count ->
+                delay(PACE_MS)
+                if (countRequests.items(count.masterId) is NetworkResult.Success) counts++
+            }
+            is NetworkResult.Error -> error = error ?: open.failure.message
+            NetworkResult.Loading -> Unit
+        }
+
+        Timber.i("offline prefetch for %s: %d purchase orders, %d transfer orders, %d counts", warehouseId, purchaseOrders, transferOrders, counts)
         return OfflineReadiness(
             warehouseId = warehouseId,
             purchaseOrders = purchaseOrders,
             transferOrders = transferOrders,
+            counts = counts,
             savedAt = System.currentTimeMillis(),
             running = false,
             error = error,
@@ -115,7 +137,8 @@ class OfflinePrefetcher @Inject constructor(
     }
 
     private companion object {
-        const val MAX_ORDERS = 30
+        const val MAX_PER_KIND = 2_000
+        const val PACE_MS = 150L
         const val MIN_INTERVAL_MS = 30 * 60 * 1000L
         const val JITTER_MS = 60_000L
         const val SETTLE_MS = 20_000L

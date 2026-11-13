@@ -128,6 +128,8 @@ class OfflineReadCacheInterceptor internal constructor(
             "HSMobileOpsInquirySvc/getLocationOnHand",
             "HSMobileOpsPurchListSvc/getOpenOrders",
             "HSMobileOpsCountingSvc/listOpenJournals",
+            "HSMobileOpsCountRequestSvc/listCounts",
+            "HSMobileOpsCountRequestSvc/getCountItems",
             "HSMobileOpsPurchListSvc/getOrdersForDate",
             "HSMobileOpsTransferListSvc/listTransferOrders",
             "HSMobileOpsItemSvc/getItem",
