@@ -54,7 +54,10 @@ public class HSMobileOpsCountControlCenter extends FormRun
         {
             int ret = super();
 
-            boolean blindOpen = HSMobileOpsCountMaster.MasterType == HSMobileOpsCountMasterType::Blind
+            // Blind and hazard counts (user, 13 Nov: a hazard count can start here too) take their
+            // items on this tab while open.
+            boolean blindOpen = (HSMobileOpsCountMaster.MasterType == HSMobileOpsCountMasterType::Blind
+                              || HSMobileOpsCountMaster.MasterType == HSMobileOpsCountMasterType::Hazard)
                              && HSMobileOpsCountMaster.Status     == HSMobileOpsCountMasterStatus::Open;
 
             HSMobileOpsCountStage_ds.executeQuery();
@@ -261,6 +264,19 @@ public class HSMobileOpsCountControlCenter extends FormRun
 											<MenuItemType>Action</MenuItemType>
 											<NeedsRecord>No</NeedsRecord>
 											<Text>New blind count</Text>
+										</AxFormControl>
+									<AxFormControl xmlns=""
+											i:type="AxFormMenuFunctionButtonControl">
+											<Name>NewHazardButton</Name>
+											<HelpText>Start a hazard count in a warehouse - reference and due time as the outside system's request - then add the items to count on the Requested items tab.</HelpText>
+											<Type>MenuFunctionButton</Type>
+											<FormControlExtension
+												i:nil="true" />
+											<ButtonDisplay>TextOnly</ButtonDisplay>
+											<MenuItemName>HSMobileOpsCountNewHazard</MenuItemName>
+											<MenuItemType>Action</MenuItemType>
+											<NeedsRecord>No</NeedsRecord>
+											<Text>New hazard count</Text>
 										</AxFormControl>
 										<AxFormControl xmlns=""
 											i:type="AxFormMenuFunctionButtonControl">
@@ -614,7 +630,7 @@ public class HSMobileOpsCountControlCenter extends FormRun
 					<AxFormControl xmlns=""
 						i:type="AxFormTabPageControl">
 						<Name>ItemsPage</Name>
-						<HelpText>What a hazard or blind count asks to be counted. Hazard items come from the outside system; add a blind count's items or locations here while it is open.</HelpText>
+						<HelpText>What a hazard or blind count asks to be counted. Add or change them here while the count is open; a hazard count from the outside system arrives with its items.</HelpText>
 						<Type>TabPage</Type>
 						<FormControlExtension
 							i:nil="true" />

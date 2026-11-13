@@ -272,7 +272,9 @@ class HSMobileOpsCountRequestService
                 {
                     continue;
                 }
-                if (master.MasterType == HSMobileOpsCountMasterType::Blind && !master.RequestedItemCount)
+                // A blind or hazard count made in the control center shows once it has items.
+                if ((master.MasterType == HSMobileOpsCountMasterType::Blind || master.MasterType == HSMobileOpsCountMasterType::Hazard)
+                    && !master.RequestedItemCount)
                 {
                     continue;
                 }

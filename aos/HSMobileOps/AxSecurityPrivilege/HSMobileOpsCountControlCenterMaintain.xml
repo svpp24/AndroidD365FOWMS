@@ -90,6 +90,15 @@
 			<ObjectType>MenuItemAction</ObjectType>
 			<Forms />
 		</AxSecurityEntryPointReference>
+	<AxSecurityEntryPointReference>
+			<Name>HSMobileOpsCountNewHazard</Name>
+			<Grant>
+				<Invoke>Allow</Invoke>
+			</Grant>
+			<ObjectName>HSMobileOpsCountNewHazard</ObjectName>
+			<ObjectType>MenuItemAction</ObjectType>
+			<Forms />
+		</AxSecurityEntryPointReference>
 	</EntryPoints>
 	<FormControlOverrides />
 </AxSecurityPrivilege>

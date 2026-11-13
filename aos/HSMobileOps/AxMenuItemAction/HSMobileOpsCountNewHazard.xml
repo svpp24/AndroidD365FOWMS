@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxMenuItemAction xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsCountNewHazard</Name>
+	<Label>New hazard count</Label>
+	<HelpText>Start a hazard count in a warehouse, then add the items to count.</HelpText>
+	<Object>HSMobileOpsCountNewHazard</Object>
+	<ObjectType>Class</ObjectType>
+</AxMenuItemAction>
