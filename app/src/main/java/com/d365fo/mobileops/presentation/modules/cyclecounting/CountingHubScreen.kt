@@ -65,7 +65,8 @@ fun CountingHubScreen(
     onCountType: (com.d365fo.mobileops.data.counting.CountType) -> Unit = {},
 ) {
 
-    // The Count menu in the Focus design (brief section 9): one row per kind of count.
+    // The Count menu in the Focus design (brief section 9): one row per kind of count, its name only
+    // (user, 13 Nov: no description under each).
     com.d365fo.mobileops.presentation.common.focus.FocusScreen(title = "Count", onBack = onBack) {
         androidx.compose.foundation.layout.Column(
             Modifier.weight(1f).verticalScroll(androidx.compose.foundation.rememberScrollState()),
@@ -75,19 +76,16 @@ fun CountingHubScreen(
             // wall-to-wall count and Count accuracy are no longer on this menu.
             com.d365fo.mobileops.presentation.common.focus.FocusListRow(
                 title = com.d365fo.mobileops.data.counting.CountType.HAZARD.label,
-                subtitle = "Items an outside system asked to be counted",
                 icon = Icons.Default.ReportProblem, chevron = true,
                 onClick = { onCountType(com.d365fo.mobileops.data.counting.CountType.HAZARD) },
             )
             com.d365fo.mobileops.presentation.common.focus.FocusListRow(
                 title = com.d365fo.mobileops.data.counting.CountType.WALL_TO_WALL.label,
-                subtitle = "The whole warehouse, location by location",
                 icon = Icons.Default.GridView, chevron = true,
                 onClick = { onCountType(com.d365fo.mobileops.data.counting.CountType.WALL_TO_WALL) },
             )
             com.d365fo.mobileops.presentation.common.focus.FocusListRow(
                 title = com.d365fo.mobileops.data.counting.CountType.BLIND.label,
-                subtitle = "Items or locations your supervisor picked",
                 icon = Icons.Default.VisibilityOff, chevron = true,
                 onClick = { onCountType(com.d365fo.mobileops.data.counting.CountType.BLIND) },
             )
