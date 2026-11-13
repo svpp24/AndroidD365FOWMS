@@ -27,6 +27,10 @@ import javax.inject.Singleton
  * With several app registrations configured, [CredentialRouter] says which one this device uses
  * right now, and a token is cached per registration, so moving off a throttled one and back
  * needs no extra token requests.
+ *
+ * The token is also kept in the encrypted store until it expires (13 Nov, performance: every cold
+ * start waited 1-3 s for Azure AD before the first D365FO call). The key names the tenant, the
+ * D365FO URL and the client ID, so a changed connection never reuses another one's token.
  */
 @Singleton
 class ClientCredentialsTokenProvider @Inject constructor(
@@ -45,11 +49,31 @@ class ClientCredentialsTokenProvider @Inject constructor(
     private fun credential(): AppCredential =
         router.current(connectionSettings.tenant.value.credentials, secureStore.deviceId())
 
-    override fun cachedTokenOrNull(): AccessToken? = cached[credential().clientId]
+    override fun cachedTokenOrNull(): AccessToken? = credential().let { cached[it.clientId] ?: stored(it) }
+
+    /** Where this connection's token is kept between app starts - encrypted ("connection_" keys). */
+    private fun storeKey(app: AppCredential): String {
+        val config = connectionSettings.tenant.value
+        return "connection_aadtoken::${config.tenantId}|${config.resourceUrl.trimEnd('/').lowercase()}|${app.clientId}"
+    }
+
+    /** The token kept from an earlier app start, still good; it goes into the memory cache. */
+    private fun stored(app: AppCredential): AccessToken? {
+        val raw = secureStore.getString(storeKey(app)) ?: return null
+        val expiresAt = raw.substringBefore('|').toLongOrNull() ?: return null
+        val token = AccessToken(raw.substringAfter('|'), expiresAt, userObjectId = null, userPrincipalName = null)
+        if (token.value.isBlank() || token.isExpiring()) {
+            secureStore.remove(storeKey(app))
+            return null
+        }
+        cached[app.clientId] = token
+        return token
+    }
 
     override suspend fun acquireSilent(): NetworkResult<AccessToken> {
         val app = credential()
         cached[app.clientId]?.takeIf { !it.isExpiring() }?.let { return NetworkResult.Success(it) }
+        stored(app)?.let { return NetworkResult.Success(it) }
 
         return refreshMutex.withLock {
             cached[app.clientId]?.takeIf { !it.isExpiring() }?.let { return@withLock NetworkResult.Success(it) }
@@ -98,16 +122,26 @@ class ClientCredentialsTokenProvider @Inject constructor(
                 userPrincipalName = null,
             )
             cached[app.clientId] = token
+            secureStore.putString(storeKey(app), "${token.expiresAtEpochMs}|${token.value}")
             NetworkResult.Success(token)
         }
     }
 
     override suspend fun signOut() {
+        dropStored()
         cached.clear()
     }
 
     override fun invalidateCache() {
+        dropStored()
         cached.clear()
+    }
+
+    /** The kept tokens of every registration of this connection - a 401 or a new connection means start over. */
+    private fun dropStored() {
+        runCatching {
+            connectionSettings.tenant.value.credentials.forEach { secureStore.remove(storeKey(it)) }
+        }
     }
 
     /** Reads and parses the error body exactly once - a second read on the same response fails. */

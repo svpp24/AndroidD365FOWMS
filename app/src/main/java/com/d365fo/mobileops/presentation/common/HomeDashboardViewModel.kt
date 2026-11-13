@@ -29,6 +29,7 @@ class HomeDashboardViewModel @Inject constructor(
     private val lookup: OnDemandLookupRepository,
     private val transfers: TransferListRepository,
     private val countRequests: com.d365fo.mobileops.data.counting.CountRequestRepository,
+    private val listCache: com.d365fo.mobileops.data.repository.ListCache,
     private val workerSession: WorkerSessionRepository,
     syncStatusProvider: SyncStatusProvider,
 ) : ViewModel() {
@@ -56,7 +57,9 @@ class HomeDashboardViewModel @Inject constructor(
         // The open counts the Count lists show - hazard, wall to wall and blind together (user,
         // 12 Nov: Home said 20 from the old counting journals while the lists held 10).
         viewModelScope.launch {
-            val open = (countRequests.counts(wh) as? NetworkResult.Success)?.data?.count { it.open }
+            // Kept for a short while like the PO and transfer figures (ListCache) - Home showed again
+            // on every return, and asked each time (13 Nov, performance). The Count lists ask fresh.
+            val open = (listCache.get("counts:${wh.uppercase()}") { countRequests.counts(wh) } as? NetworkResult.Success)?.data?.count { it.open }
             if (open != null) _figures.update { it.copy(countsInProgress = open) }
         }
         viewModelScope.launch {

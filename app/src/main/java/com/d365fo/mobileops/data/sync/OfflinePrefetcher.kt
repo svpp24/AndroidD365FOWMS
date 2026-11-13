@@ -29,14 +29,13 @@ data class OfflineReadiness(
 )
 
 /**
- * Opens today's purchase orders, this warehouse's open transfer orders and its picked serials
- * ahead of time, so the
+ * Opens today's purchase orders and this warehouse's open transfer orders ahead of time, so the
  * offline read cache holds them before the connection drops. Each lookup here is the same call
  * the receiving and transfer flows make, with the same arguments, so the saved answer is the
  * one those flows find when they look the order up offline.
  *
  * Kept small on purpose: headers and inline lines of at most [MAX_ORDERS] of each, at most once
- * per [MIN_INTERVAL_MS] per warehouse, after a random delay of up to [JITTER_MS]. A fleet
+ * per [MIN_INTERVAL_MS] per warehouse, after [SETTLE_MS] and a random delay of up to [JITTER_MS]. A fleet
  * signing in at shift start then spreads its calls over a minute instead of hitting D365FO's
  * service protection limits all at once.
  */
@@ -70,7 +69,9 @@ class OfflinePrefetcher @Inject constructor(
 
     private fun start(warehouseId: String, jitter: Boolean) {
         job = scope.launch {
-            if (jitter) delay(FleetJitter.millisUpTo(JITTER_MS))
+            // Never in the first seconds after Home opens (13 Nov, performance: 11 order lookups in a
+            // row competed with what the worker opened first), then spread over the fleet as before.
+            if (jitter) delay(SETTLE_MS + FleetJitter.millisUpTo(JITTER_MS))
             _readiness.value = _readiness.value.copy(running = true, error = null)
             _readiness.value = runCatching { save(warehouseId) }
                 .getOrElse { e ->
@@ -102,8 +103,6 @@ class OfflinePrefetcher @Inject constructor(
             NetworkResult.Loading -> Unit
         }
 
-        // Picked serials, as the screen first opens it (30 days, no search) - one call.
-
         Timber.i("offline prefetch for %s: %d purchase orders, %d transfer orders", warehouseId, purchaseOrders, transferOrders)
         return OfflineReadiness(
             warehouseId = warehouseId,
@@ -119,5 +118,6 @@ class OfflinePrefetcher @Inject constructor(
         const val MAX_ORDERS = 30
         const val MIN_INTERVAL_MS = 30 * 60 * 1000L
         const val JITTER_MS = 60_000L
+        const val SETTLE_MS = 20_000L
     }
 }

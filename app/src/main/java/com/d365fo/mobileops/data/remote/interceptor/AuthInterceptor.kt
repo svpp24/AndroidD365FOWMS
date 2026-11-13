@@ -66,7 +66,9 @@ class AuthInterceptor @Inject constructor(
 
         // A 401 here means the token was rejected rather than merely stale. Retrying with
         // the same silent token would loop, so surface it and let the session layer force
-        // re-authentication.
+        // re-authentication. The token is dropped - memory and the copy kept between app
+        // starts - so the next call asks Azure AD for a new one.
+        if (response.code == 401) tokenProvider.invalidateCache()
         return response
     }
 }

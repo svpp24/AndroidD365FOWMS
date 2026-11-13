@@ -14,10 +14,8 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -46,37 +44,51 @@ class HomeAccessViewModel @Inject constructor(
 
     init {
         // Sign-in's own permission list predates PO / TO creation and PO confirmation, and
-        // sign-in replaces the cached rows with it - so ask the order service too, for every
-        // worker who signs in while this screen exists. The pause lets sign-in's own write
-        // (WorkerSessionRepository.signIn publishes the session first, then replaces the rows)
-        // land before this one, instead of wiping it.
+        // sign-in replaces the cached rows with it - so ask the order service too, once per
+        // sign-in. The pause lets sign-in's own write (WorkerSessionRepository.signIn publishes
+        // the session first, then replaces the rows) land before this one, instead of wiping it.
+        // Once per sign-in, not once per screen (13 Nov, performance: every screen holding this
+        // model sent getMenu and getModulePermissions again).
         viewModelScope.launch {
-            sessionRepository.session.map { it?.userName }.distinctUntilChanged().collect { userName ->
-                if (!userName.isNullOrBlank()) {
-                    menuRepository.load(userName)
-                    // Before the pause: Home's refresh() in that gap sent both calls again (calls, 10 Nov).
-                    lastRefresh = System.currentTimeMillis()
-                    launch { menuRepository.refresh(userName) }
-                    delay(1_500)
-                    orderCreationRepository.refreshPermissions(userName)
-                }
+            sessionRepository.session.collect { session ->
+                val userName = session?.userName
+                if (userName.isNullOrBlank()) return@collect
+                menuRepository.load(userName)
+                if (!claim(session, force = session !== refreshedFor)) return@collect
+                launch { menuRepository.refresh(userName) }
+                delay(1_500)
+                orderCreationRepository.refreshPermissions(userName)
             }
         }
     }
 
-    private var lastRefresh = 0L
-
     /**
-     * Re-reads Menu access and the handheld menus from D365FO - called each time Home shows, so a change made on
-     * Mobile device users reaches the worker without signing out. At most every 30 seconds.
+     * Re-reads Menu access and the handheld menus from D365FO - called each time Home shows, so a
+     * change made on Mobile device users reaches the worker without signing out. At most every
+     * [REFRESH_MS] for the whole app, whichever screen asks.
      */
     fun refresh() {
-        val userName = sessionRepository.session.value?.userName
-        val now = System.currentTimeMillis()
-        if (userName.isNullOrBlank() || now - lastRefresh < 30_000) return
-        lastRefresh = now
+        val session = sessionRepository.session.value ?: return
+        val userName = session.userName
+        if (userName.isNullOrBlank() || !claim(session, force = false)) return
         viewModelScope.launch { orderCreationRepository.refreshPermissions(userName) }
         viewModelScope.launch { menuRepository.refresh(userName) }
+    }
+
+    /** Whether this caller does the refresh: a new sign-in always, otherwise once per [REFRESH_MS]. */
+    private fun claim(session: Any, force: Boolean): Boolean = synchronized(Companion) {
+        val now = System.currentTimeMillis()
+        if (!force && session === refreshedFor && now - refreshedAt < REFRESH_MS) return false
+        refreshedFor = session
+        refreshedAt = now
+        true
+    }
+
+    private companion object {
+        /** The sign-in (session object) last refreshed, and when - shared by every screen. */
+        @Volatile var refreshedFor: Any? = null
+        @Volatile var refreshedAt = 0L
+        const val REFRESH_MS = 5 * 60 * 1000L
     }
 
     val blockedWorkflows: StateFlow<Set<WarehouseWorkflow>> = sessionRepository.session
