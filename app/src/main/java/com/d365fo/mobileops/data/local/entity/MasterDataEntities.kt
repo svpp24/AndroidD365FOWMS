@@ -26,7 +26,8 @@ enum class TrackingRequirement {
         Index("itemName"),
         Index("active"),
         Index("modifiedAt"),
-        Index("category"),
+        // Covering index (load test, 13 Nov): Items by category counts and lists 1M items from it alone.
+        Index("category", "active"),
     ],
 )
 data class ItemEntity(
@@ -220,4 +221,15 @@ data class WarehouseEntity(
      */
     val wmsEnabled: Boolean,
     val cachedAt: Long,
+)
+
+/**
+ * Active items per category path ("" = none), rebuilt from the item list after each SKU sync
+ * (load test, 13 Nov: counting 1M items on every opened level took 3-11 s; this table is read in
+ * milliseconds). Items by category builds its whole tree from it.
+ */
+@Entity(tableName = "category_count")
+data class CategoryCountEntity(
+    @PrimaryKey val category: String,
+    val items: Int,
 )

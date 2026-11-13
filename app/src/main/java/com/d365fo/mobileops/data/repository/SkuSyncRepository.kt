@@ -136,6 +136,8 @@ class SkuSyncRepository @Inject constructor(
                 val variants = itemDao.deleteVariantsNotSeenSince(cycleStarted)
                 Timber.i("SKU sync: removed %d items, %d barcodes, %d variants no longer in D365FO", items, barcodes, variants)
             }
+            // Items by category reads these counts instead of recounting the list on every level.
+            itemDao.rebuildCategoryCounts()
             notePeakMemory()
             val summary = SkuSyncSummary(
                 itemCount = prefs.getInt(countKey(FEED_ITEMS), 0),

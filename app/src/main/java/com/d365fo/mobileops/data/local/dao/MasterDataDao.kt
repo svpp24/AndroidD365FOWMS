@@ -92,13 +92,70 @@ interface ItemDao {
     @Query("SELECT COUNT(*) FROM item")
     suspend fun itemCount(): Int
 
-    /** Active items per category path ("" = none) - Items by category builds its tree from this. */
-    @Query("SELECT IFNULL(category, '') AS category, COUNT(*) AS items FROM item WHERE active = 1 GROUP BY IFNULL(category, '')")
-    suspend fun categoryCounts(): List<CategoryCount>
+    /** Active items per category path ("" = none), from the stored counts - see [rebuildCategoryCounts]. */
+    @Query("SELECT category, items FROM category_count")
+    suspend fun storedCategoryCounts(): List<CategoryCount>
 
-    /** Active items whose category is exactly [path] ("" = items with none). */
-    @Query("SELECT * FROM item WHERE active = 1 AND IFNULL(category, '') = :path ORDER BY itemName, itemId")
-    suspend fun itemsInCategory(path: String): List<ItemEntity>
+    @Query("DELETE FROM category_count")
+    suspend fun clearCategoryCounts()
+
+    @Query(
+        """
+        INSERT INTO category_count (category, items)
+        SELECT IFNULL(category, ''), COUNT(*) FROM item WHERE active = 1 GROUP BY IFNULL(category, '')
+        """,
+    )
+    suspend fun insertCategoryCounts()
+
+    /** Recounts the item list into category_count - once per SKU sync, not per screen. */
+    @androidx.room.Transaction
+    suspend fun rebuildCategoryCounts() {
+        clearCategoryCounts()
+        insertCategoryCounts()
+    }
+
+    /**
+     * Active items per category path ("" = none) - Items by category builds its tree from this.
+     * Counted once and kept; an empty store with items on the device (first open after the
+     * update) is filled here.
+     */
+    @androidx.room.Transaction
+    suspend fun categoryCounts(): List<CategoryCount> {
+        val stored = storedCategoryCounts()
+        if (stored.isNotEmpty() || itemCount() == 0) return stored
+        rebuildCategoryCounts()
+        return storedCategoryCounts()
+    }
+
+    /** Active items whose category is exactly [path] ("" = items with none); uses the category index. */
+    suspend fun itemsInCategory(path: String): List<ItemEntity> =
+        if (path.isEmpty()) itemsWithoutCategory() else itemsWithCategory(path)
+
+    /**
+     * Items by category's search (user, 13 Nov): active items in the category or below it whose
+     * number or name contains [query], or with [query] as a barcode. [all] searches every item,
+     * [none] the items without a category; otherwise [path] and [below] ("path > %", LIKE-escaped).
+     */
+    @Query(
+        """
+        SELECT * FROM item
+        WHERE active = 1
+          AND (:all OR (:none AND (category IS NULL OR category = ''))
+               OR category = :path OR category LIKE :below ESCAPE '\')
+          AND (itemId LIKE '%' || :query || '%' OR itemName LIKE '%' || :query || '%'
+               OR searchName LIKE '%' || :query || '%'
+               OR itemId IN (SELECT itemId FROM barcode WHERE barcode = :query))
+        ORDER BY CASE WHEN itemId LIKE :query || '%' THEN 0 ELSE 1 END, itemName, itemId
+        LIMIT :limit
+        """,
+    )
+    suspend fun searchInCategory(all: Boolean, none: Boolean, path: String, below: String, query: String, limit: Int): List<ItemEntity>
+
+    @Query("SELECT * FROM item WHERE category = :path AND active = 1 ORDER BY itemName, itemId")
+    suspend fun itemsWithCategory(path: String): List<ItemEntity>
+
+    @Query("SELECT * FROM item WHERE (category IS NULL OR category = '') AND active = 1 ORDER BY itemName, itemId")
+    suspend fun itemsWithoutCategory(): List<ItemEntity>
 
     /** The CATEGORIES feed's change - the item's category only, nothing else on the row. */
     @Query("UPDATE item SET category = :category WHERE itemId = :itemId")

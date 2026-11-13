@@ -80,7 +80,16 @@ data class ItemCategoryState(
     /** The device's item list has items, but none carries a category yet. */
     val noCategoriesYet: Boolean = false,
     val noItems: Boolean = false,
-)
+    /** The search box: items of this category and below matching it, instead of the tree. */
+    val query: String = "",
+    val searching: Boolean = false,
+    val results: List<ItemEntity> = emptyList(),
+) {
+    val searchActive: Boolean get() = query.trim().isNotEmpty()
+}
+
+/** Most search results shown; a fuller list means typing more. */
+internal const val CATEGORY_SEARCH_LIMIT = 200
 
 @HiltViewModel
 class ItemCategoryViewModel @Inject constructor(
@@ -91,6 +100,32 @@ class ItemCategoryViewModel @Inject constructor(
     private val _state = MutableStateFlow(ItemCategoryState(path = path))
     val state = _state.asStateFlow()
 
+    private var searchJob: kotlinx.coroutines.Job? = null
+
+    /** Searches this category and its sub-categories (the whole list at the first level). */
+    fun setQuery(query: String) {
+        _state.value = _state.value.copy(query = query, searching = query.isNotBlank())
+        searchJob?.cancel()
+        val q = query.trim()
+        if (q.isEmpty()) {
+            _state.value = _state.value.copy(results = emptyList(), searching = false)
+            return
+        }
+        searchJob = viewModelScope.launch {
+            kotlinx.coroutines.delay(300)
+            val escaped = path.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+            val results = itemDao.searchInCategory(
+                all = path.isEmpty(),
+                none = path == NO_CATEGORY,
+                path = path,
+                below = escaped + CATEGORY_SEPARATOR + "%",
+                query = q,
+                limit = CATEGORY_SEARCH_LIMIT,
+            )
+            _state.value = _state.value.copy(results = results, searching = false)
+        }
+    }
+
     init {
         viewModelScope.launch {
             val counts = itemDao.categoryCounts()
@@ -99,7 +134,7 @@ class ItemCategoryViewModel @Inject constructor(
                 path.isNotEmpty() -> itemDao.itemsInCategory(path)
                 else -> emptyList()
             }
-            _state.value = ItemCategoryState(
+            _state.value = _state.value.copy(
                 path = path,
                 loading = false,
                 categories = if (path == NO_CATEGORY) emptyList() else childCategories(counts, path),
@@ -132,15 +167,48 @@ fun ItemCategoryScreen(
     FocusScreen(
         title = title,
         onBack = onBack,
-        counter = state.items.size.takeIf { !state.loading && it > 0 }?.toString(),
+        counter = (if (state.searchActive) state.results.size else state.items.size)
+            .takeIf { !state.loading && !state.searching && it > 0 }?.toString(),
         band = when {
             state.loading -> null
+            state.searchActive -> when {
+                state.searching -> null
+                state.results.isEmpty() -> BandState(BandKind.Info, "No items match \"${state.query.trim()}\"", if (state.path.isEmpty()) null else "Only this category and its sub-categories are searched.")
+                state.results.size >= CATEGORY_SEARCH_LIMIT -> BandState(BandKind.Info, "First $CATEGORY_SEARCH_LIMIT matches", "Type more to narrow the list.")
+                else -> null
+            }
             state.noItems -> BandState(BandKind.Info, "No items on this device yet", "They arrive with the item list download.")
             state.noCategoriesYet -> BandState(BandKind.Info, "Categories not on this device yet", "They arrive with the next full item list download.")
             state.categories.isEmpty() && state.items.isEmpty() -> BandState(BandKind.Info, "Nothing in this category", null)
             else -> null
         },
     ) {
+        if (!state.noItems && !state.noCategoriesYet) {
+            com.d365fo.mobileops.presentation.common.focus.FocusSearchField(
+                value = state.query,
+                onValueChange = viewModel::setQuery,
+                placeholder = if (state.path.isEmpty()) "Search items or barcode" else "Search in this category",
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+            )
+        }
+        if (state.searchActive) {
+            LazyColumn(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                items(state.results, key = { "r:" + it.itemId }) { item ->
+                    FocusListRow(
+                        title = item.itemName.ifBlank { item.itemId },
+                        subtitle = listOfNotNull(
+                            item.itemId.takeIf { item.itemName.isNotBlank() },
+                            item.category?.takeIf { it.isNotBlank() && it != state.path }?.let {
+                                displayCategoryPath(it).substringAfterLast(CATEGORY_SEPARATOR)
+                            },
+                        ).joinToString(" · ").ifBlank { null },
+                        chevron = true,
+                        onClick = { onItem(item.itemId) },
+                    )
+                }
+            }
+            return@FocusScreen
+        }
         LazyColumn(modifier = Modifier.weight(1f).fillMaxWidth()) {
             if (state.path.isNotEmpty() && state.path != NO_CATEGORY) {
                 item(key = "path") {
