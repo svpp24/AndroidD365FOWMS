@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxMenuItemAction xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsSkuSnapshotRebuild</Name>
+	<Label>Rebuild snapshot now</Label>
+	<HelpText>Builds a new item snapshot for this company as a batch job, and schedules the nightly build if there is none.</HelpText>
+	<Object>HSMobileOpsSkuSnapshotBuild</Object>
+	<ObjectType>Class</ObjectType>
+</AxMenuItemAction>

@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxTable xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsSkuSnapshotFile</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// One file of a Mobile item snapshot - an area (ITEMS, BARCODES, VARIANTS) as gzip, one
+/// getSkuPage page of rows per line, attached to this record (document management, File type).
+/// </summary>
+public class HSMobileOpsSkuSnapshotFile extends common
+{
+}
+]]></Declaration>
+		<Methods />
+	</SourceCode>
+	<Label>Mobile item snapshot file</Label>
+	<TitleField1>Area</TitleField1>
+	<TitleField2>RowCount</TitleField2>
+	<CacheLookup>NotInTTS</CacheLookup>
+	<Fields>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldInt64">
+			<Name>SnapshotRecId</Name>
+			<AllowEdit>No</AllowEdit>
+			<ExtendedDataType>RefRecId</ExtendedDataType>
+			<Label>Snapshot</Label>
+			<Mandatory>Yes</Mandatory>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>Area</Name>
+			<AllowEdit>No</AllowEdit>
+			<Label>Area</Label>
+			<StringSize>20</StringSize>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldInt64">
+			<Name>RowCount</Name>
+			<AllowEdit>No</AllowEdit>
+			<Label>Rows</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldInt64">
+			<Name>Bytes</Name>
+			<AllowEdit>No</AllowEdit>
+			<HelpText>Size of the gzip file.</HelpText>
+			<Label>Bytes</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>Sha256</Name>
+			<AllowEdit>No</AllowEdit>
+			<HelpText>Checksum of the gzip file - the device checks it after downloading.</HelpText>
+			<Label>SHA-256</Label>
+			<StringSize>64</StringSize>
+		</AxTableField>
+	</Fields>
+	<FullTextIndexes />
+	<Indexes>
+		<AxTableIndex>
+			<Name>SnapshotAreaIdx</Name>
+			<AllowDuplicates>No</AllowDuplicates>
+			<Fields>
+				<AxTableIndexField>
+					<DataField>SnapshotRecId</DataField>
+				</AxTableIndexField>
+				<AxTableIndexField>
+					<DataField>Area</DataField>
+				</AxTableIndexField>
+			</Fields>
+		</AxTableIndex>
+	</Indexes>
+	<Mappings />
+	<Relations>
+		<AxTableRelation xmlns=""
+			i:type="AxTableRelationForeignKey">
+			<Name>HSMobileOpsSkuSnapshot</Name>
+			<Cardinality>ZeroMore</Cardinality>
+			<RelatedTable>HSMobileOpsSkuSnapshot</RelatedTable>
+			<RelatedTableCardinality>ExactlyOne</RelatedTableCardinality>
+			<RelationshipType>Association</RelationshipType>
+			<Constraints>
+				<AxTableRelationConstraint xmlns=""
+					i:type="AxTableRelationConstraintField">
+					<Name>SnapshotRecId</Name>
+					<Field>SnapshotRecId</Field>
+					<RelatedField>RecId</RelatedField>
+				</AxTableRelationConstraint>
+			</Constraints>
+		</AxTableRelation>
+	</Relations>
+	<StateMachines />
+</AxTable>

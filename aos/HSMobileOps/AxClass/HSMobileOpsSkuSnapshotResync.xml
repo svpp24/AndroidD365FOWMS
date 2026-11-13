@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsSkuSnapshotResync</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Ask all devices to full re-sync (Mobile item snapshot) - after a confirmation.
+/// </summary>
+class HSMobileOpsSkuSnapshotResync
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>main</Name>
+				<Source><![CDATA[
+
+    public static void main(Args _args)
+    {
+        utcdatetime asked;
+
+        if (Box::yesNo('Every handheld downloads the whole item list again the next time it is online. Ask all devices now?',
+                DialogButton::No, 'Ask all devices to full re-sync') != DialogButton::Yes)
+        {
+            return;
+        }
+        asked = HSMobileOpsSkuSnapshotSetup::requestResync();
+        info(strFmt('All devices asked to full re-sync (%1 UTC). Each does it the next time it is online.', asked));
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

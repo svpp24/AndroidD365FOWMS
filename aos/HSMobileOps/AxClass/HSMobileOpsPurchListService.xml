@@ -57,6 +57,8 @@ class HSMobileOpsPurchListService
                 order by PurchId
                 where purchTable.DeliveryDate == deliveryDate
                    && (!warehouseId || purchTable.InventLocationId == warehouseId)
+                   // Confirmed orders only (user, 14 Nov) - the receiving rule: a confirmation was posted.
+                   && purchTable.DocumentStatus != DocumentStatus::None
             {
                 row = new HSMobileOpsOrderSummaryRow();
                 row.parmPurchId(purchTable.PurchId);
@@ -136,6 +138,8 @@ class HSMobileOpsPurchListService
                 where purchTable.InventLocationId == warehouseId
                    && purchTable.PurchStatus      == PurchStatus::Backorder
                    && purchTable.PurchaseType     == PurchaseType::Purch
+                   // Confirmed orders only (user, 14 Nov) - the receiving rule: a confirmation was posted.
+                   && purchTable.DocumentStatus   != DocumentStatus::None
                 exists join purchLine
                     where purchLine.PurchId     == purchTable.PurchId
                        && purchLine.PurchStatus != PurchStatus::Canceled

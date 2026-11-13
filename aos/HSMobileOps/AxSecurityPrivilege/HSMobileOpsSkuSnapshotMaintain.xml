@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxSecurityPrivilege xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsSkuSnapshotMaintain</Name>
+	<Description>See the handheld item snapshot, rebuild it, and ask all devices to full re-sync.</Description>
+	<Label>Maintain mobile item snapshot</Label>
+	<DirectAccessPermissions />
+	<EntryPoints>
+		<AxSecurityEntryPointReference>
+			<Name>HSMobileOpsSkuSnapshot</Name>
+			<Grant>
+				<Read>Allow</Read>
+				<Update>Allow</Update>
+				<Create>Allow</Create>
+				<Delete>Allow</Delete>
+			</Grant>
+			<ObjectName>HSMobileOpsSkuSnapshot</ObjectName>
+			<ObjectType>MenuItemDisplay</ObjectType>
+			<Forms />
+		</AxSecurityEntryPointReference>
+		<AxSecurityEntryPointReference>
+			<Name>HSMobileOpsSkuSnapshotRebuild</Name>
+			<Grant>
+				<Read>Allow</Read>
+			</Grant>
+			<ObjectName>HSMobileOpsSkuSnapshotRebuild</ObjectName>
+			<ObjectType>MenuItemAction</ObjectType>
+			<Forms />
+		</AxSecurityEntryPointReference>
+		<AxSecurityEntryPointReference>
+			<Name>HSMobileOpsSkuSnapshotResync</Name>
+			<Grant>
+				<Read>Allow</Read>
+			</Grant>
+			<ObjectName>HSMobileOpsSkuSnapshotResync</ObjectName>
+			<ObjectType>MenuItemAction</ObjectType>
+			<Forms />
+		</AxSecurityEntryPointReference>
+	</EntryPoints>
+	<FormControlOverrides />
+</AxSecurityPrivilege>

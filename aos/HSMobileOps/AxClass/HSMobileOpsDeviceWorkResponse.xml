@@ -17,6 +17,7 @@ class HSMobileOpsDeviceWorkResponse
     int        finishedJournalDays;
     int        orderHistoryDays;
     int        oldWorkDays;
+    str        fullResyncAfterUtc;
     List       items;
     List       disabledModules;
 }
@@ -103,6 +104,22 @@ class HSMobileOpsDeviceWorkResponse
     {
         orderHistoryDays = _value;
         return orderHistoryDays;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmFullResyncAfterUtc</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Mobile item snapshot, Ask all devices to full re-sync: a device whose last full download
+    /// is older does one. Blank when never asked.
+    /// </summary>
+    [DataMemberAttribute('FullResyncAfterUtc')]
+    public str parmFullResyncAfterUtc(str _value = fullResyncAfterUtc)
+    {
+        fullResyncAfterUtc = _value;
+        return fullResyncAfterUtc;
     }
 ]]></Source>
 			</Method>

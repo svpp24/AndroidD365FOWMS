@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxTable xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsSkuSnapshot</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// One build of the handheld item snapshot (Mobile item snapshot): the item list as gzip files a
+/// device downloads on a full re-sync instead of paging through getSkuPage (load test, 13 Nov: 86
+/// minutes for 1M items). Its files are HSMobileOpsSkuSnapshotFile rows with the file attached.
+/// Only the newest Ready build is offered; a new one replaces it once all its files are written.
+/// </summary>
+public class HSMobileOpsSkuSnapshot extends common
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>statusBuilding</Name>
+				<Source><![CDATA[
+    public static str statusBuilding() { return 'Building'; }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>statusReady</Name>
+				<Source><![CDATA[
+    public static str statusReady() { return 'Ready'; }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>statusFailed</Name>
+				<Source><![CDATA[
+    public static str statusFailed() { return 'Failed'; }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>current</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The snapshot devices get: the newest Ready build of the current company.
+    /// </summary>
+    public static HSMobileOpsSkuSnapshot current()
+    {
+        HSMobileOpsSkuSnapshot snapshot;
+
+        select firstOnly snapshot
+            order by snapshot.BuiltAtUtc desc
+            where snapshot.Status == HSMobileOpsSkuSnapshot::statusReady();
+        return snapshot;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+	<Label>Mobile item snapshot</Label>
+	<TitleField1>BuiltAtUtc</TitleField1>
+	<TitleField2>Status</TitleField2>
+	<CacheLookup>NotInTTS</CacheLookup>
+	<Fields>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldUtcDateTime">
+			<Name>BuiltAtUtc</Name>
+			<AllowEdit>No</AllowEdit>
+			<HelpText>When the build started. A device runs the delta from this time after loading the files.</HelpText>
+			<Label>Built at</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>Status</Name>
+			<AllowEdit>No</AllowEdit>
+			<HelpText>Building, Ready or Failed. Devices get the newest Ready build.</HelpText>
+			<Label>Status</Label>
+			<StringSize>20</StringSize>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldInt">
+			<Name>BuildSeconds</Name>
+			<AllowEdit>No</AllowEdit>
+			<Label>Build seconds</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>Result</Name>
+			<AllowEdit>No</AllowEdit>
+			<Label>Result</Label>
+			<StringSize>250</StringSize>
+		</AxTableField>
+	</Fields>
+	<FullTextIndexes />
+	<Indexes>
+		<AxTableIndex>
+			<Name>BuiltAtIdx</Name>
+			<Fields>
+				<AxTableIndexField>
+					<DataField>BuiltAtUtc</DataField>
+				</AxTableIndexField>
+			</Fields>
+		</AxTableIndex>
+	</Indexes>
+	<Mappings />
+	<Relations />
+	<StateMachines />
+</AxTable>

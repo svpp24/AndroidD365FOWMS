@@ -697,7 +697,7 @@ class HSMobileOpsCountRequestService
                     HSMobileOpsCountRequestService::hasChildCategory(category.RecId) ? 'true' : 'false');
                 // Released items of the company in it and its sub-categories (user, 11 Nov).
                 HSMobileOpsCountRequestService::put(row, 'ItemCount',
-                    int642Str(HSMobileOpsCountRequestService::categoryItemCount(category, hierarchy)));
+                    int642Str(HSMobileOpsCountRequestService::cachedCategoryItemCount(category, hierarchy)));
                 rows.Add(row);
             }
         }
@@ -897,6 +897,119 @@ class HSMobileOpsCountRequestService
             response.parmMessage(strFmt('%1 is not a cycle count supervisor.', _request.parmUserName()));
         }
         return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>cachedCategoryItemCount</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Released items of the company in the category or below it, from per-category counts taken
+    /// in one grouped query and kept for 30 minutes (load test, 13 Nov: one counting query per
+    /// listed category took 19 s for a level at 1M items). The tree roll-up uses the nested set:
+    /// a sub-category's NestedSetLeft lies inside its ancestor's Left..Right.
+    /// </summary>
+    private static int64 cachedCategoryItemCount(Common _category, RefRecId _hierarchy)
+    {
+        TableId    categoryTable = tableName2Id('EcoResCategory');
+        container  data = HSMobileOpsCountRequestService::categoryCountData(_hierarchy);
+        Map        direct = Map::create(conPeek(data, 2));
+        container  lefts = conPeek(data, 3);
+        int64      left = _category.(fieldName2Id(categoryTable, 'NestedSetLeft'));
+        int64      right = _category.(fieldName2Id(categoryTable, 'NestedSetRight'));
+        int64      total;
+        int64      recId;
+        int64      nodeLeft;
+        int        i;
+
+        for (i = 1; i <= conLen(lefts); i += 2)
+        {
+            recId = conPeek(lefts, i);
+            nodeLeft = conPeek(lefts, i + 1);
+            if (nodeLeft >= left && nodeLeft <= right && direct.exists(recId))
+            {
+                total += direct.lookup(recId);
+            }
+        }
+        return total;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>categoryCountData</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// [taken at, packed Map category RecId -> released items placed directly in it, container of
+    /// RecId/NestedSetLeft pairs of the hierarchy's categories] for the current company - from the
+    /// global object cache while under 30 minutes old, else counted again.
+    /// </summary>
+    private static container categoryCountData(RefRecId _hierarchy)
+    {
+        const str            CacheScope = 'HSMobileOpsCategoryCounts';
+        const int            MaxAgeSeconds = 1800;
+        SysGlobalObjectCache cache = classFactory.globalObjectCache();
+        container            key = [curExt(), _hierarchy];
+        container            data = cache.find(CacheScope, key);
+        TableId              categoryTable = tableName2Id('EcoResCategory');
+        TableId              productCategoryTable = tableName2Id('EcoResProductCategory');
+        Map                  direct = new Map(Types::Int64, Types::Int64);
+        container            lefts;
+        Query                query;
+        QueryBuildDataSource dsProduct;
+        QueryBuildDataSource dsItem;
+        QueryBuildDataSource dsCategory;
+        QueryRun             queryRun;
+        Common               productCategory;
+        Common               category;
+        InventTable          inventTable;
+
+        if (conLen(data) == 3
+            && DateTimeUtil::getDifference(DateTimeUtil::utcNow(), conPeek(data, 1)) < MaxAgeSeconds)
+        {
+            return data;
+        }
+
+        // Released items of this company per category, one grouped query.
+        query = new Query();
+        dsProduct = query.addDataSource(productCategoryTable);
+        dsProduct.fields().dynamic(NoYes::No);
+        dsProduct.fields().clearFieldList();
+        dsProduct.addRange(fieldName2Id(productCategoryTable, 'CategoryHierarchy')).value(queryValue(_hierarchy));
+        dsProduct.addGroupByField(fieldName2Id(productCategoryTable, 'Category'));
+        dsItem = dsProduct.addDataSource(tableNum(InventTable));
+        dsItem.joinMode(JoinMode::InnerJoin);
+        dsItem.fields().dynamic(NoYes::No);
+        dsItem.fields().clearFieldList();
+        dsItem.addLink(fieldName2Id(productCategoryTable, 'Product'), fieldNum(InventTable, Product));
+        dsItem.addSelectionField(fieldNum(InventTable, RecId), SelectionField::Count);
+        queryRun = new QueryRun(query);
+        while (queryRun.next())
+        {
+            productCategory = queryRun.get(productCategoryTable);
+            inventTable = queryRun.get(tableNum(InventTable));
+            direct.insert(productCategory.(fieldName2Id(productCategoryTable, 'Category')), inventTable.RecId);
+        }
+
+        // Every category of the hierarchy with its place in the tree.
+        query = new Query();
+        dsCategory = query.addDataSource(categoryTable);
+        dsCategory.fields().dynamic(NoYes::No);
+        dsCategory.fields().clearFieldList();
+        dsCategory.addSelectionField(fieldName2Id(categoryTable, 'RecId'));
+        dsCategory.addSelectionField(fieldName2Id(categoryTable, 'NestedSetLeft'));
+        dsCategory.addRange(fieldName2Id(categoryTable, 'CategoryHierarchy')).value(queryValue(_hierarchy));
+        queryRun = new QueryRun(query);
+        while (queryRun.next())
+        {
+            category = queryRun.get(categoryTable);
+            lefts += [category.RecId, category.(fieldName2Id(categoryTable, 'NestedSetLeft'))];
+        }
+
+        data = [DateTimeUtil::utcNow(), direct.pack(), lefts];
+        cache.insert(CacheScope, key, data);
+        return data;
     }
 ]]></Source>
 			</Method>

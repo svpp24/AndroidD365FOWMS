@@ -129,6 +129,8 @@ class HSMobileOpsSearchService
                            && inventDim.InventLocationId == warehouseId
                     join PurchName from purchTable
                         where purchTable.PurchId == purchLine.PurchId
+                           // Confirmed orders only (user, 14 Nov), as receiving.
+                           && purchTable.DocumentStatus != DocumentStatus::None
                 {
                     // What receiving offers: still Ordered, less what devices have queued.
                     remaining = HSMobileOpsSearchService::remainingOnLine(purchLine.PurchId, purchLine.LineNumber, ordered, staged);

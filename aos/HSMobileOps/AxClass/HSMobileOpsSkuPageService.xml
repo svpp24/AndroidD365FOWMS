@@ -96,10 +96,93 @@ class HSMobileOpsSkuPageService
 ]]></Source>
 			</Method>
 			<Method>
+				<Name>getSkuSnapshot</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The company's current item snapshot for a device's full re-sync: RowsJson is
+    /// {"builtAtUtc":..., "files":[{"area","url","bytes","rows","sha256"}]} - each url a short-lived
+    /// download link (no D365FO sign-in needed). ErrorCode NO_SNAPSHOT when there is no Ready
+    /// build yet: the device then pages through getSkuPage as before.
+    /// </summary>
+    public HSMobileOpsSkuPageResponse getSkuSnapshot(HSMobileOpsSkuPageRequest _request)
+    {
+        HSMobileOpsSkuPageResponse response = new HSMobileOpsSkuPageResponse();
+        HSMobileOpsSkuSnapshot     snapshot;
+        HSMobileOpsSkuSnapshotFile file;
+        DocuRef                    docuRef;
+        System.Text.StringBuilder  json = new System.Text.StringBuilder();
+        int                        files;
+
+        response.parmSuccess(false);
+        response.parmServerUtc(DateTimeUtil::toStr(DateTimeUtil::utcNow()));
+        if (!_request || !_request.parmDataAreaId() || !CompanyInfo::findDataArea(_request.parmDataAreaId()).RecId)
+        {
+            response.parmErrorCode('INVALID_REQUEST');
+            return response;
+        }
+        changecompany (_request.parmDataAreaId())
+        {
+            snapshot = HSMobileOpsSkuSnapshot::current();
+            if (!snapshot.RecId)
+            {
+                response.parmErrorCode('NO_SNAPSHOT');
+                response.parmMessage('No item snapshot is ready - Mobile item snapshot, Rebuild snapshot now.');
+                return response;
+            }
+            json.Append('{"builtAtUtc":');
+            json.Append(HSMobileOpsSkuPageService::jsonStr(DateTimeUtil::toStr(snapshot.BuiltAtUtc)));
+            json.Append(',"files":[');
+            while select file
+                where file.SnapshotRecId == snapshot.RecId
+                join docuRef
+                    where docuRef.RefTableId   == tableNum(HSMobileOpsSkuSnapshotFile)
+                       && docuRef.RefRecId     == file.RecId
+                       && docuRef.RefCompanyId == file.DataAreaId
+            {
+                if (files)
+                {
+                    json.Append(',');
+                }
+                json.Append('{"area":');   json.Append(HSMobileOpsSkuPageService::jsonStr(file.Area));
+                json.Append(',"url":');    json.Append(HSMobileOpsSkuPageService::jsonStr(HSMobileOpsSkuPageService::downloadLink(docuRef)));
+                json.Append(',"bytes":');  json.Append(int642Str(file.Bytes));
+                json.Append(',"rows":');   json.Append(int642Str(file.RowCount));
+                json.Append(',"sha256":'); json.Append(HSMobileOpsSkuPageService::jsonStr(file.Sha256));
+                json.Append('}');
+                files++;
+            }
+            json.Append(']}');
+        }
+        response.parmRowsJson(json.ToString());
+        response.parmRowCount(files);
+        response.parmSuccess(true);
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>downloadLink</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The attachment's download link, as D365FO's own Open of an attachment makes it
+    /// (DocuActionFile.getPublicUrl): it carries its own access token, so no D365FO sign-in is
+    /// needed, and it runs out after a short time.
+    /// </summary>
+    private static str downloadLink(DocuRef _docuRef)
+    {
+        DocuAction action = DocuAction::newDocuRef(_docuRef);
+
+        return action ? action.getPublicUrl(_docuRef) : '';
+    }
+]]></Source>
+			</Method>
+			<Method>
 				<Name>itemPage</Name>
 				<Source><![CDATA[
 
-    private static void itemPage(HSMobileOpsSkuPageResponse _response, ItemId _after, utcdatetime _since, int _pageSize)
+    internal static void itemPage(HSMobileOpsSkuPageResponse _response, ItemId _after, utcdatetime _since, int _pageSize)
     {
         InventTable                         inventTable;
         InventTableModule                   inventModule;
@@ -184,7 +267,7 @@ class HSMobileOpsSkuPageService
 				<Name>barcodePage</Name>
 				<Source><![CDATA[
 
-    private static void barcodePage(HSMobileOpsSkuPageResponse _response, RecId _after, utcdatetime _since, int _pageSize)
+    internal static void barcodePage(HSMobileOpsSkuPageResponse _response, RecId _after, utcdatetime _since, int _pageSize)
     {
         InventItemBarcode           barcode;
         InventDim                   inventDim;
@@ -244,7 +327,7 @@ class HSMobileOpsSkuPageService
 				<Name>variantPage</Name>
 				<Source><![CDATA[
 
-    private static void variantPage(HSMobileOpsSkuPageResponse _response, RecId _after, int _pageSize)
+    internal static void variantPage(HSMobileOpsSkuPageResponse _response, RecId _after, int _pageSize)
     {
         InventDimCombination        combination;
         InventDim                   inventDim;
@@ -484,7 +567,7 @@ class HSMobileOpsSkuPageService
 				<Name>jsonStr</Name>
 				<Source><![CDATA[
 
-    private static str jsonStr(str _value)
+    internal static str jsonStr(str _value)
     {
         str value = _value;
 

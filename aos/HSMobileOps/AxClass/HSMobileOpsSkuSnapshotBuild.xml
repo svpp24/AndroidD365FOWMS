@@ -1,0 +1,404 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsSkuSnapshotBuild</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Builds the Mobile item snapshot of the company it runs in - nightly, and on "Rebuild snapshot
+/// now". The files are the getSkuPage feeds of a full refresh, gzip, one page of rows per line.
+/// A deploy restarts batch: an interrupted build stays Building and is ignored after 4 hours.
+/// </summary>
+class HSMobileOpsSkuSnapshotBuild extends RunBaseBatch
+{
+    #define.CurrentVersion(1)
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>main</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Rebuild snapshot now: a one-off batch job for this company (a 1M-item build runs about an
+    /// hour), plus the nightly job if this company has none.
+    /// </summary>
+    public static void main(Args _args)
+    {
+        BatchHeader batchHeader;
+        boolean     scheduled = HSMobileOpsSkuSnapshotBuild::ensureScheduled();
+
+        batchHeader = BatchHeader::construct();
+        batchHeader.parmCaption(HSMobileOpsSkuSnapshotBuild::caption() + ' (now)');
+        batchHeader.addTask(new HSMobileOpsSkuSnapshotBuild());
+        batchHeader.save();
+        info(strFmt('Snapshot build for %1 started as a batch job. It shows here as Building, then Ready.', curExt()));
+        if (scheduled)
+        {
+            info(strFmt('Batch job "%1" scheduled: nightly at 01:00 UTC.', HSMobileOpsSkuSnapshotBuild::caption()));
+        }
+        if (_args && _args.record() && _args.record().isFormDataSource())
+        {
+            FormDataUtil::getFormDataSource(_args.record()).research(true);
+        }
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>build</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// One build for the current company. The new snapshot becomes the current one only once all
+    /// its files are written; the older ones and their files are removed afterwards.
+    /// </summary>
+    public static str build()
+    {
+        HSMobileOpsSkuSnapshot snapshot;
+        utcdatetime            started = DateTimeUtil::utcNow();
+        str                    result;
+        str                    failure;
+        int64                  items;
+        int64                  barcodes;
+        int64                  variants;
+
+        select firstOnly RecId from snapshot
+            where snapshot.Status     == HSMobileOpsSkuSnapshot::statusBuilding()
+               && snapshot.BuiltAtUtc >  DateTimeUtil::addHours(started, -4);
+        if (snapshot.RecId)
+        {
+            return 'Another snapshot build of this company is still running - not started.';
+        }
+
+        snapshot.clear();
+        ttsbegin;
+        snapshot.BuiltAtUtc = started;
+        snapshot.Status     = HSMobileOpsSkuSnapshot::statusBuilding();
+        snapshot.insert();
+        ttscommit;
+
+        try
+        {
+            items    = HSMobileOpsSkuSnapshotBuild::writeArea(snapshot.RecId, 'ITEMS');
+            barcodes = HSMobileOpsSkuSnapshotBuild::writeArea(snapshot.RecId, 'BARCODES');
+            variants = HSMobileOpsSkuSnapshotBuild::writeArea(snapshot.RecId, 'VARIANTS');
+            result = strFmt('%1 items, %2 barcodes, %3 variants.', items, barcodes, variants);
+            HSMobileOpsSkuSnapshotBuild::finish(snapshot.RecId, HSMobileOpsSkuSnapshot::statusReady(), started, result);
+            HSMobileOpsSkuSnapshotBuild::removeOlder(snapshot.RecId);
+            return result;
+        }
+        catch (Exception::CLRError)
+        {
+            System.Exception clrError = CLRInterop::getLastException();
+            failure = clrError ? clrError.get_Message() : 'CLR error';
+        }
+        catch
+        {
+            failure = HSMobileOpsSkuSnapshotBuild::lastInfo();
+        }
+        HSMobileOpsSkuSnapshotBuild::finish(snapshot.RecId, HSMobileOpsSkuSnapshot::statusFailed(), started,
+            'Failed: ' + (failure ? failure : 'see the batch job log'));
+        HSMobileOpsSkuSnapshotBuild::removeSnapshot(snapshot.RecId, false);
+        return 'Failed: ' + failure;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>writeArea</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The whole feed of an area as gzip - each line one getSkuPage page of rows, exactly what the
+    /// paged sync sends - attached to a new HSMobileOpsSkuSnapshotFile row. Returns the rows.
+    /// </summary>
+    private static int64 writeArea(RefRecId _snapshot, str _area)
+    {
+        const int                           PageSize = 5000;
+        System.IO.MemoryStream              memory = new System.IO.MemoryStream();
+        System.IO.Compression.GZipStream    gzip = new System.IO.Compression.GZipStream(memory, System.IO.Compression.CompressionLevel::Optimal, true);
+        System.IO.StreamWriter              writer = new System.IO.StreamWriter(gzip, new System.Text.UTF8Encoding(false));
+        System.Security.Cryptography.SHA256 sha = System.Security.Cryptography.SHA256::Create();
+        HSMobileOpsSkuPageResponse          page;
+        HSMobileOpsSkuSnapshotFile          file;
+        utcdatetime                         full = DateTimeUtil::minValue();
+        str                                 after;
+        str                                 fileName;
+        int64                               rows;
+        boolean                             more = true;
+
+        while (more)
+        {
+            page = new HSMobileOpsSkuPageResponse();
+            switch (_area)
+            {
+                case 'ITEMS':
+                    HSMobileOpsSkuPageService::itemPage(page, after, full, PageSize);
+                    break;
+                case 'BARCODES':
+                    HSMobileOpsSkuPageService::barcodePage(page, str2Int64(after), full, PageSize);
+                    break;
+                case 'VARIANTS':
+                    HSMobileOpsSkuPageService::variantPage(page, str2Int64(after), PageSize);
+                    break;
+                default:
+                    throw error(strFmt('Unknown snapshot area %1', _area));
+            }
+            if (page.parmRowCount() > 0)
+            {
+                writer.Write(page.parmRowsJson());
+                writer.Write("\n");
+            }
+            rows += page.parmRowCount();
+            after = page.parmNextKey();
+            more  = page.parmHasMore();
+        }
+        writer.Flush();
+        writer.Dispose();
+
+        memory.set_Position(0);
+        file.Sha256 = strLwr(strReplace(System.BitConverter::ToString(sha.ComputeHash(memory)), '-', ''));
+        memory.set_Position(0);
+
+        fileName = strFmt('%1-%2-%3.jsonl.gz', curExt(), strLwr(_area), _snapshot);
+        ttsbegin;
+        file.SnapshotRecId = _snapshot;
+        file.Area          = _area;
+        file.RowCount      = rows;
+        file.Bytes         = memory.get_Length();
+        file.insert();
+        DocumentManagement::attachFile(tableNum(HSMobileOpsSkuSnapshotFile), file.RecId, curExt(),
+            DocuType::typeFile(), memory, fileName, 'application/gzip', fileName);
+        ttscommit;
+        memory.Dispose();
+        return rows;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>finish</Name>
+				<Source><![CDATA[
+
+    private static void finish(RefRecId _snapshot, str _status, utcdatetime _started, str _result)
+    {
+        HSMobileOpsSkuSnapshot snapshot;
+
+        ttsbegin;
+        select forUpdate firstOnly snapshot where snapshot.RecId == _snapshot;
+        if (snapshot.RecId)
+        {
+            snapshot.Status       = _status;
+            snapshot.BuildSeconds = any2Int(DateTimeUtil::getDifference(DateTimeUtil::utcNow(), _started));
+            snapshot.Result       = subStr(_result, 1, 250);
+            snapshot.update();
+        }
+        ttscommit;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>removeOlder</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Every other snapshot of the company that is not still building, with its files. A device
+    /// that took a link a moment ago keeps reading it until the link runs out.
+    /// </summary>
+    private static void removeOlder(RefRecId _keep)
+    {
+        HSMobileOpsSkuSnapshot snapshot;
+
+        while select RecId from snapshot
+            where snapshot.RecId  != _keep
+               && snapshot.Status != HSMobileOpsSkuSnapshot::statusBuilding()
+        {
+            HSMobileOpsSkuSnapshotBuild::removeSnapshot(snapshot.RecId, true);
+        }
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>removeSnapshot</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// A snapshot's files and their attachments; the snapshot row too when _row (a failed build
+    /// keeps its row, with the reason).
+    /// </summary>
+    private static void removeSnapshot(RefRecId _snapshot, boolean _row)
+    {
+        HSMobileOpsSkuSnapshot     snapshot;
+        HSMobileOpsSkuSnapshotFile file;
+        DocuRef                    docuRef;
+
+        ttsbegin;
+        while select forUpdate file
+            where file.SnapshotRecId == _snapshot
+        {
+            while select forUpdate docuRef
+                where docuRef.RefTableId   == tableNum(HSMobileOpsSkuSnapshotFile)
+                   && docuRef.RefRecId     == file.RecId
+                   && docuRef.RefCompanyId == file.DataAreaId
+            {
+                docuRef.delete();
+            }
+            file.delete();
+        }
+        if (_row)
+        {
+            delete_from snapshot where snapshot.RecId == _snapshot;
+        }
+        ttscommit;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>lastInfo</Name>
+				<Source><![CDATA[
+
+    private static str lastInfo()
+    {
+        int line = infologLine();
+
+        return line ? infolog.text(line) : '';
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>caption</Name>
+				<Source><![CDATA[
+
+    public static str caption()
+    {
+        return 'Mobile ops: item snapshot';
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>isScheduled</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Whether this company has the nightly snapshot job (its caption; the one-off jobs end in "(now)") that is not finished or cancelled.
+    /// </summary>
+    public static boolean isScheduled()
+    {
+        Batch    batch;
+        BatchJob batchJob;
+
+        select firstOnly RecId from batch
+            where batch.ClassNumber == classNum(HSMobileOpsSkuSnapshotBuild)
+               && batch.Company     == curExt()
+            exists join batchJob
+                where batchJob.RecId          == batch.BatchJobId
+                   && batchJob.Status         != BatchStatus::Canceled
+                   && batchJob.Status         != BatchStatus::Finished
+                   && batchJob.Caption        == HSMobileOpsSkuSnapshotBuild::caption();
+
+        return batch.RecId != 0;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>ensureScheduled</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The nightly job for this company - from tonight 01:00 UTC, no end - unless one exists.
+    /// True when this call created it.
+    /// </summary>
+    public static boolean ensureScheduled()
+    {
+        BatchHeader       batchHeader;
+        SysRecurrenceData recurrence;
+
+        if (HSMobileOpsSkuSnapshotBuild::isScheduled())
+        {
+            return false;
+        }
+        recurrence = SysRecurrence::defaultRecurrence();
+        recurrence = SysRecurrence::setRecurrenceStartDateTime(recurrence,
+            DateTimeUtil::newDateTime(DateTimeUtil::date(DateTimeUtil::utcNow()) + 1, 3600));
+        recurrence = SysRecurrence::setRecurrenceNoEnd(recurrence);
+        recurrence = SysRecurrence::setRecurrenceUnit(recurrence, SysRecurrenceUnit::Day, 1);
+
+        batchHeader = BatchHeader::construct();
+        batchHeader.parmCaption(HSMobileOpsSkuSnapshotBuild::caption());
+        batchHeader.parmRecurrenceData(recurrence);
+        batchHeader.addTask(new HSMobileOpsSkuSnapshotBuild());
+        batchHeader.save();
+        return true;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>run</Name>
+				<Source><![CDATA[
+
+    public void run()
+    {
+        info(HSMobileOpsSkuSnapshotBuild::build());
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>pack</Name>
+				<Source><![CDATA[
+
+    public container pack()
+    {
+        return [#CurrentVersion];
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>unpack</Name>
+				<Source><![CDATA[
+
+    public boolean unpack(container _packedClass)
+    {
+        return RunBase::getVersion(_packedClass) == #CurrentVersion;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>canGoBatch</Name>
+				<Source><![CDATA[
+
+    public boolean canGoBatch()
+    {
+        return true;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>canRunInNewSession</Name>
+				<Source><![CDATA[
+
+    public boolean canRunInNewSession()
+    {
+        return true;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>runsImpersonated</Name>
+				<Source><![CDATA[
+
+    public boolean runsImpersonated()
+    {
+        return true;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>description</Name>
+				<Source><![CDATA[
+
+    public static ClassDescription description()
+    {
+        return HSMobileOpsSkuSnapshotBuild::caption();
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

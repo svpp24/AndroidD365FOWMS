@@ -1,0 +1,215 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxForm xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns="Microsoft.Dynamics.AX.Metadata.V6">
+	<Name>HSMobileOpsSkuSnapshot</Name>
+	<SourceCode>
+		<Methods xmlns="">
+			<Method>
+				<Name>classDeclaration</Name>
+				<Source><![CDATA[
+/// <summary>
+/// Mobile item snapshot (Setup): the builds of this company's handheld item snapshot, newest
+/// first, and the files of the selected one. Rebuild snapshot now; Ask all devices to full re-sync.
+/// </summary>
+[Form]
+public class HSMobileOpsSkuSnapshot extends FormRun
+{
+}
+]]></Source>
+			</Method>
+		</Methods>
+		<DataSources xmlns="" />
+		<DataControls xmlns="" />
+		<Members xmlns="" />
+	</SourceCode>
+	<DataSources>
+		<AxFormDataSource xmlns="">
+			<Name>HSMobileOpsSkuSnapshot</Name>
+			<Table>HSMobileOpsSkuSnapshot</Table>
+			<Fields />
+			<ReferencedDataSources />
+			<AllowCreate>No</AllowCreate>
+			<AllowEdit>No</AllowEdit>
+			<AllowDelete>No</AllowDelete>
+			<DataSourceLinks />
+			<DerivedDataSources />
+			<Index>BuiltAtIdx</Index>
+		</AxFormDataSource>
+		<AxFormDataSource xmlns="">
+			<Name>HSMobileOpsSkuSnapshotFile</Name>
+			<Table>HSMobileOpsSkuSnapshotFile</Table>
+			<Fields />
+			<ReferencedDataSources />
+			<JoinSource>HSMobileOpsSkuSnapshot</JoinSource>
+			<LinkType>Delayed</LinkType>
+			<AllowCreate>No</AllowCreate>
+			<AllowEdit>No</AllowEdit>
+			<AllowDelete>No</AllowDelete>
+			<DataSourceLinks />
+			<DerivedDataSources />
+		</AxFormDataSource>
+	</DataSources>
+	<Design>
+		<Caption xmlns="">Mobile item snapshot</Caption>
+		<DataSource xmlns="">HSMobileOpsSkuSnapshot</DataSource>
+		<ShowNewButton xmlns="">No</ShowNewButton>
+		<ShowDeleteButton xmlns="">No</ShowDeleteButton>
+		<UseCaptionFromMenuItem xmlns="">Yes</UseCaptionFromMenuItem>
+		<Controls xmlns="">
+			<AxFormControl xmlns=""
+				i:type="AxFormActionPaneControl">
+				<Name>ActionPane</Name>
+				<Type>ActionPane</Type>
+				<FormControlExtension
+					i:nil="true" />
+				<Controls>
+					<AxFormControl xmlns=""
+						i:type="AxFormButtonGroupControl">
+						<Name>SnapshotGroup</Name>
+						<Type>ButtonGroup</Type>
+						<FormControlExtension
+							i:nil="true" />
+						<Controls>
+							<AxFormControl xmlns=""
+								i:type="AxFormMenuFunctionButtonControl">
+								<Name>RebuildButton</Name>
+								<HelpText>Builds a new snapshot as a batch job (about an hour for a million items). Devices keep the current one until it is Ready.</HelpText>
+								<Type>MenuFunctionButton</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<ButtonDisplay>TextOnly</ButtonDisplay>
+								<DataSource>HSMobileOpsSkuSnapshot</DataSource>
+								<MenuItemName>HSMobileOpsSkuSnapshotRebuild</MenuItemName>
+								<MenuItemType>Action</MenuItemType>
+								<Text>Rebuild snapshot now</Text>
+							</AxFormControl>
+							<AxFormControl xmlns=""
+								i:type="AxFormMenuFunctionButtonControl">
+								<Name>ResyncButton</Name>
+								<HelpText>Every handheld downloads the whole item list again the next time it is online.</HelpText>
+								<Type>MenuFunctionButton</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<ButtonDisplay>TextOnly</ButtonDisplay>
+								<DataSource>HSMobileOpsSkuSnapshot</DataSource>
+								<MenuItemName>HSMobileOpsSkuSnapshotResync</MenuItemName>
+								<MenuItemType>Action</MenuItemType>
+								<Text>Ask all devices to full re-sync</Text>
+							</AxFormControl>
+						</Controls>
+						<ArrangeMethod>Vertical</ArrangeMethod>
+						<Caption>Snapshot</Caption>
+						<DataSource>HSMobileOpsSkuSnapshot</DataSource>
+					</AxFormControl>
+				</Controls>
+				<AlignChild>No</AlignChild>
+				<AlignChildren>No</AlignChildren>
+				<ArrangeMethod>Vertical</ArrangeMethod>
+			</AxFormControl>
+			<AxFormControl xmlns=""
+				i:type="AxFormGridControl">
+				<Name>SnapshotGrid</Name>
+				<Type>Grid</Type>
+				<FormControlExtension
+					i:nil="true" />
+				<Controls>
+							<AxFormControl xmlns=""
+								i:type="AxFormDateTimeControl">
+								<Name>HSMobileOpsSkuSnapshot_BuiltAtUtc</Name>
+								<Type>DateTime</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<DataField>BuiltAtUtc</DataField>
+								<DataSource>HSMobileOpsSkuSnapshot</DataSource>
+							</AxFormControl>
+							<AxFormControl xmlns=""
+								i:type="AxFormStringControl">
+								<Name>HSMobileOpsSkuSnapshot_Status</Name>
+								<Type>String</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<DataField>Status</DataField>
+								<DataSource>HSMobileOpsSkuSnapshot</DataSource>
+							</AxFormControl>
+							<AxFormControl xmlns=""
+								i:type="AxFormIntegerControl">
+								<Name>HSMobileOpsSkuSnapshot_BuildSeconds</Name>
+								<Type>Integer</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<DataField>BuildSeconds</DataField>
+								<DataSource>HSMobileOpsSkuSnapshot</DataSource>
+							</AxFormControl>
+							<AxFormControl xmlns=""
+								i:type="AxFormStringControl">
+								<Name>HSMobileOpsSkuSnapshot_Result</Name>
+								<Type>String</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<DataField>Result</DataField>
+								<DataSource>HSMobileOpsSkuSnapshot</DataSource>
+							</AxFormControl>
+				</Controls>
+				<DataSource>HSMobileOpsSkuSnapshot</DataSource>
+			</AxFormControl>
+			<AxFormControl xmlns=""
+				i:type="AxFormGroupControl">
+				<Name>FilesGroup</Name>
+				<Caption>Files</Caption>
+				<Type>Group</Type>
+				<WidthMode>SizeToAvailable</WidthMode>
+				<FormControlExtension
+					i:nil="true" />
+				<Controls>
+					<AxFormControl xmlns=""
+						i:type="AxFormGridControl">
+						<Name>FileGrid</Name>
+						<Type>Grid</Type>
+						<FormControlExtension
+							i:nil="true" />
+						<Controls>
+							<AxFormControl xmlns=""
+								i:type="AxFormStringControl">
+								<Name>HSMobileOpsSkuSnapshotFile_Area</Name>
+								<Type>String</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<DataField>Area</DataField>
+								<DataSource>HSMobileOpsSkuSnapshotFile</DataSource>
+							</AxFormControl>
+							<AxFormControl xmlns=""
+								i:type="AxFormInt64Control">
+								<Name>HSMobileOpsSkuSnapshotFile_RowCount</Name>
+								<Type>Int64</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<DataField>RowCount</DataField>
+								<DataSource>HSMobileOpsSkuSnapshotFile</DataSource>
+							</AxFormControl>
+							<AxFormControl xmlns=""
+								i:type="AxFormInt64Control">
+								<Name>HSMobileOpsSkuSnapshotFile_Bytes</Name>
+								<Type>Int64</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<DataField>Bytes</DataField>
+								<DataSource>HSMobileOpsSkuSnapshotFile</DataSource>
+							</AxFormControl>
+							<AxFormControl xmlns=""
+								i:type="AxFormStringControl">
+								<Name>HSMobileOpsSkuSnapshotFile_Sha256</Name>
+								<Type>String</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<DataField>Sha256</DataField>
+								<DataSource>HSMobileOpsSkuSnapshotFile</DataSource>
+							</AxFormControl>
+						</Controls>
+						<DataSource>HSMobileOpsSkuSnapshotFile</DataSource>
+					</AxFormControl>
+				</Controls>
+				<FrameType>None</FrameType>
+			</AxFormControl>
+		</Controls>
+	</Design>
+	<Parts />
+</AxForm>

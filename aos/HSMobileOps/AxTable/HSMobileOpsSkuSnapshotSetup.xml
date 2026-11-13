@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxTable xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsSkuSnapshotSetup</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Environment-wide item snapshot settings - one row. ResyncRequestedUtc: "Ask all devices to full
+/// re-sync"; every handheld whose last full download is older does one (via getAppControl).
+/// </summary>
+public class HSMobileOpsSkuSnapshotSetup extends common
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>find</Name>
+				<Source><![CDATA[
+
+    public static HSMobileOpsSkuSnapshotSetup find(boolean _forUpdate = false)
+    {
+        HSMobileOpsSkuSnapshotSetup setup;
+
+        setup.selectForUpdate(_forUpdate);
+        select firstOnly setup;
+        return setup;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>requestResync</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Asks every handheld for a full re-sync from now.
+    /// </summary>
+    public static utcdatetime requestResync()
+    {
+        HSMobileOpsSkuSnapshotSetup setup;
+        utcdatetime                 now = DateTimeUtil::utcNow();
+
+        ttsbegin;
+        select forUpdate firstOnly setup;
+        setup.ResyncRequestedUtc = now;
+        if (setup.RecId)
+        {
+            setup.update();
+        }
+        else
+        {
+            setup.insert();
+        }
+        ttscommit;
+        return now;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+	<Label>Mobile item snapshot setup</Label>
+	<CacheLookup>Found</CacheLookup>
+	<SaveDataPerCompany>No</SaveDataPerCompany>
+	<Fields>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldUtcDateTime">
+			<Name>ResyncRequestedUtc</Name>
+			<AllowEdit>No</AllowEdit>
+			<HelpText>Handhelds whose last full download is older than this do a full re-sync.</HelpText>
+			<Label>All devices asked to re-sync</Label>
+		</AxTableField>
+	</Fields>
+	<FullTextIndexes />
+	<Indexes />
+	<Mappings />
+	<Relations />
+	<StateMachines />
+</AxTable>

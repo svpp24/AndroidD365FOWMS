@@ -53,8 +53,10 @@ data class CountCreateState(
     val warehouseId: String = "",
     /** Categories chosen: all their items (and sub-categories') go into the count. */
     val categories: List<CategoryChoice> = emptyList(),
-    /** Item numbers scanned or typed. */
+    /** Item numbers scanned or typed - a barcode is turned into its item number first. */
     val items: List<String> = emptyList(),
+    /** Names of the items above, from the device's item list (missing = not on the device). */
+    val itemNames: Map<String, String> = emptyMap(),
     /** The category browser: the path opened so far; null = not browsing. */
     val path: List<CategoryChoice>? = null,
     val rows: List<CategoryChoice> = emptyList(),
@@ -73,6 +75,7 @@ data class CountCreateState(
 class CountCreateViewModel @Inject constructor(
     private val requests: CountRequestRepository,
     private val scannerBridge: HidScannerBridge,
+    private val itemDao: com.d365fo.mobileops.data.local.dao.ItemDao,
     workerSession: WorkerSessionRepository,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
@@ -90,8 +93,23 @@ class CountCreateViewModel @Inject constructor(
             scannerBridge.scans.collect { scan ->
                 val s = _state.value
                 if (s.browsing || s.created != null || s.type == CountType.WALL_TO_WALL) return@collect
-                val id = scan.value.trim().uppercase()
-                if (id.isNotBlank() && id !in s.items) _state.update { it.copy(items = it.items + id, error = null) }
+                val raw = scan.value.trim()
+                if (raw.isBlank()) return@collect
+                // D365FO takes item numbers only: a barcode becomes its item here (user, 14 Nov).
+                // Unknown to the device: sent as typed - D365FO names it if it is no item there either.
+                val byBarcode = itemDao.resolveBarcode(raw)
+                val item = byBarcode?.let { it.itemId to it.itemName }
+                    ?: itemDao.getItem(raw.uppercase())?.let { it.itemId to it.itemName }
+                val id = item?.first ?: raw.uppercase()
+                if (id !in s.items) {
+                    _state.update {
+                        it.copy(
+                            items = it.items + id,
+                            itemNames = if (item != null) it.itemNames + (id to item.second) else it.itemNames,
+                            error = null,
+                        )
+                    }
+                }
             }
         }
     }
@@ -205,7 +223,13 @@ fun CountCreateScreen(onBack: () -> Unit, viewModel: CountCreateViewModel = hilt
                 item(key = "item-caption") { FocusCaption("Items", Modifier.padding(start = 16.dp, top = 12.dp, bottom = 4.dp)) }
                 items(state.items, key = { "item-$it" }) { id ->
                     Removable(enabled = state.created == null, onRemove = { viewModel.removeItem(id) }) {
-                        FocusListRow(title = id, titleIsCode = true, state = RowState.Open, modifier = Modifier.weight(1f))
+                        FocusListRow(
+                            title = id,
+                            titleIsCode = true,
+                            subtitle = state.itemNames[id]?.ifBlank { null } ?: "Not in this device's item list",
+                            state = RowState.Open,
+                            modifier = Modifier.weight(1f),
+                        )
                     }
                 }
             }

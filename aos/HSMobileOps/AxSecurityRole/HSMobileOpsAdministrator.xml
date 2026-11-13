@@ -38,6 +38,9 @@
 			<Name>HSMobileOpsCleanupSetupMaintain</Name>
 		</AxSecurityPrivilegeReference>
 		<AxSecurityPrivilegeReference>
+			<Name>HSMobileOpsSkuSnapshotMaintain</Name>
+		</AxSecurityPrivilegeReference>
+		<AxSecurityPrivilegeReference>
 			<Name>HSMobileOpsProcessSetupMaintain</Name>
 		</AxSecurityPrivilegeReference>
 		<AxSecurityPrivilegeReference>

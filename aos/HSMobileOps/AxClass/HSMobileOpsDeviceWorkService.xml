@@ -229,6 +229,7 @@ class HSMobileOpsDeviceWorkService
     {
         HSMobileOpsDeviceWorkResponse response = new HSMobileOpsDeviceWorkResponse();
         HSMobileOpsCleanupSetup       cleanup = HSMobileOpsCleanupSetup::find();
+        utcdatetime                   resync;
 
         response.parmSuccess(false);
         response.parmStored(0);
@@ -237,6 +238,9 @@ class HSMobileOpsDeviceWorkService
         response.parmFinishedJournalDays(cleanup.DeviceFinishedJournalDays);
         response.parmOrderHistoryDays(cleanup.DeviceOrderHistoryDays);
         response.parmOldWorkDays(cleanup.DeviceOldWorkDays);
+        // Mobile item snapshot, Ask all devices to full re-sync.
+        resync = HSMobileOpsSkuSnapshotSetup::find().ResyncRequestedUtc;
+        response.parmFullResyncAfterUtc(resync ? DateTimeUtil::toStr(resync) : '');
         response.parmItems(new List(Types::Class));
         response.parmDisabledModules(HSMobileOpsModuleSwitch::disabledFor(_request ? _request.parmAppVersion() : ''));
         return response;

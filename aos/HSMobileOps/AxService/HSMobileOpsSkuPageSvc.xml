@@ -9,5 +9,9 @@
 			<Name>getSkuPage</Name>
 			<Method>getSkuPage</Method>
 		</AxServiceOperation>
+		<AxServiceOperation>
+			<Name>getSkuSnapshot</Name>
+			<Method>getSkuSnapshot</Method>
+		</AxServiceOperation>
 	</ServiceOperations>
 </AxService>
