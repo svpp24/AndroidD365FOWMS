@@ -488,6 +488,7 @@ private fun SettingsMenu(
             val sync by offline.mastersSync.collectAsStateWithLifecycle()
             com.d365fo.mobileops.presentation.modules.cyclecounting.ItemMasterOnDevice(
                 onSync = { offline.syncMastersNow(full = false) },
+                onFullSync = { offline.syncMastersNow(full = true) },
                 syncing = sync is com.d365fo.mobileops.data.sync.MasterSyncState.Running,
                 syncError = (sync as? com.d365fo.mobileops.data.sync.MasterSyncState.Failed)?.let { "Sync failed: ${it.reason}" },
             )
@@ -1102,36 +1103,12 @@ private fun OfflineSection(warehouseId: String?, viewModel: OfflineReadyViewMode
             )
             com.d365fo.mobileops.data.sync.MasterSyncState.Idle -> Unit
         }
-        var confirmFull by androidx.compose.runtime.remember { mutableStateOf(false) }
+        // Full re-sync moved to the item list card on Settings (user, 13 Nov: in the app's own look).
         com.d365fo.mobileops.presentation.common.components.SquareOutlinedButton(
             onClick = { viewModel.syncMastersNow(full = false) },
             enabled = !syncing && online,
             modifier = Modifier.fillMaxWidth(),
         ) { Text(if (online) "Sync masters now" else "Syncing needs a connection") }
-        TextButton(
-            onClick = { confirmFull = true },
-            enabled = !syncing && online,
-            modifier = Modifier.fillMaxWidth(),
-        ) { Text("Full re-sync of all items") }
-        if (confirmFull) {
-            AlertDialog(
-                onDismissRequest = { confirmFull = false },
-                title = { Text("Full re-sync?") },
-                text = {
-                    Text(
-                        "Downloads every item, barcode and variant again, not only the changes. " +
-                            "It can take a long time and a lot of data - use Wi-Fi.",
-                    )
-                },
-                confirmButton = {
-                    TextButton(onClick = {
-                        confirmFull = false
-                        viewModel.syncMastersNow(full = true)
-                    }) { Text("Re-sync all") }
-                },
-                dismissButton = { TextButton(onClick = { confirmFull = false }) { Text("Cancel") } },
-            )
-        }
         if (warehouseId != null) {
             com.d365fo.mobileops.presentation.common.components.SquareOutlinedButton(
                 onClick = { viewModel.saveNow(warehouseId) },

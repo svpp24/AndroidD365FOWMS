@@ -1,7 +1,9 @@
 package com.d365fo.mobileops.presentation.modules.cyclecounting
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
@@ -16,6 +18,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
@@ -36,7 +39,7 @@ import java.text.NumberFormat
 import javax.inject.Inject
 
 /** What the device holds of D365FO's item master - what counting offline looks items up in. */
-data class ItemMasterCounts(val items: Int, val barcodes: Int, val syncedAt: Long?)
+data class ItemMasterCounts(val items: Int, val barcodes: Int, val syncedAt: Long?, val fullAt: Long? = null)
 
 @HiltViewModel
 class ItemMasterViewModel @Inject constructor(
@@ -55,6 +58,7 @@ class ItemMasterViewModel @Inject constructor(
                 items = runCatching { itemDao.itemCount() }.getOrDefault(0),
                 barcodes = runCatching { itemDao.barcodeCount() }.getOrDefault(0),
                 syncedAt = skuSync.lastSummary()?.finishedAt,
+                fullAt = skuSync.lastFullAt(),
             )
         }
     }
@@ -69,6 +73,11 @@ fun ItemMasterOnDevice(
     modifier: Modifier = Modifier,
     /** Settings' manual Sync (user, 9 Nov) - null shows no button. */
     onSync: (() -> Unit)? = null,
+    /**
+     * Settings' Full re-sync (user, 13 Nov): the whole item list again, after a confirmation - for
+     * one device whose list looks wrong. Null shows no action.
+     */
+    onFullSync: (() -> Unit)? = null,
     syncing: Boolean = false,
     /** A failed sync's reason, shown under the counts. */
     syncError: String? = null,
@@ -129,7 +138,15 @@ fun ItemMasterOnDevice(
                     color = WarehouseStatusColors.text3,
                 )
             }
+            if (!missing) c.fullAt?.let {
+                Text(
+                    "Last full sync ${Formatters.shortDate(it)}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = WarehouseStatusColors.text3,
+                )
+            }
             syncError?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = WarehouseStatusColors.red) }
+            if (onFullSync != null) FullResyncAction(onFullSync, enabled = !syncing)
         }
         // The manual Sync (user, 9 Nov): items, barcodes and variants changed since the last one.
         if (onSync != null) {
@@ -141,5 +158,50 @@ fun ItemMasterOnDevice(
                 modifier = Modifier.align(androidx.compose.ui.Alignment.CenterVertically).padding(end = 10.dp),
             )
         }
+    }
+}
+
+/**
+ * The card's quieter second action: a navy text link, then the app's own confirmation (as Sign
+ * out). A full re-sync is heavy - every item, barcode and variant again - so it is asked for.
+ */
+@Composable
+private fun FullResyncAction(onFullSync: () -> Unit, enabled: Boolean) {
+    var confirm by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+    Text(
+        "Full re-sync",
+        style = com.d365fo.mobileops.presentation.common.theme.FocusType.rowDetail.copy(fontWeight = FontWeight.Bold),
+        color = if (enabled) com.d365fo.mobileops.presentation.common.theme.FocusColors.navy
+        else com.d365fo.mobileops.presentation.common.theme.FocusColors.iconMuted,
+        modifier = Modifier
+            .padding(top = 4.dp)
+            .heightIn(min = 48.dp)
+            .clickable(enabled = enabled, role = androidx.compose.ui.semantics.Role.Button) { confirm = true }
+            .padding(vertical = 12.dp),
+    )
+    if (confirm) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { confirm = false },
+            title = { Text("Full re-sync?") },
+            text = { Text("Downloads the whole item list again - every item, barcode and variant. It takes longer and uses more data than Sync; use Wi-Fi.") },
+            confirmButton = {
+                com.d365fo.mobileops.presentation.common.components.DialogButtonRow(
+                    dismiss = {
+                        com.d365fo.mobileops.presentation.common.components.CancelOutlinedButton(
+                            onClick = { confirm = false },
+                            modifier = Modifier.weight(1f).heightIn(min = 48.dp),
+                        ) { Text("Cancel") }
+                    },
+                    confirm = {
+                        com.d365fo.mobileops.presentation.common.focus.FocusButton(
+                            "Re-sync all",
+                            onClick = { confirm = false; onFullSync() },
+                            primary = true,
+                            modifier = Modifier.weight(1f),
+                        )
+                    },
+                )
+            },
+        )
     }
 }

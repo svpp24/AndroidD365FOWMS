@@ -177,6 +177,9 @@ class SkuSyncRepository @Inject constructor(
         }
     }
 
+    /** When the last full download of the item list finished; null for never. */
+    fun lastFullAt(): Long? = prefs.getLong(KEY_LAST_FULL, 0L).takeIf { it > 0L }
+
     /** Never synced, or stopped part way: worth a run soon after start rather than the daily one. */
     fun needsCatchUp(): Boolean =
         prefs.getLong(KEY_LAST_SUCCESS, 0L) == 0L || prefs.getLong(KEY_CYCLE_STARTED, 0L) != 0L ||
