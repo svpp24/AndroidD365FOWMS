@@ -72,7 +72,8 @@ fun LocationInquiryScreen(
     // centre, the warehouse it is checked in under it; scan or type the next location in the pill.
     com.d365fo.mobileops.presentation.common.focus.FocusScreen(
         title = "Location inquiry",
-        onBack = onBack,
+        // In the location's category tree the arrow goes up a level, as the system Back does.
+        onBack = { if (!viewModel.categoryUp()) onBack() },
         counter = state.warehouseId.takeIf { it.isNotBlank() },
         band = when {
             state.error != null -> com.d365fo.mobileops.presentation.modules.stepflow.bandOf(
