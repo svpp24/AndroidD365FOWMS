@@ -64,6 +64,12 @@ internal object SkuRows {
         )
     }
 
+    /** CATEGORIES feed: [itemId, category path]; a blank path clears the item's category. */
+    fun category(row: JsonArray): Pair<String, String?>? = with(row) {
+        val itemId = text(0).trim().takeIf { it.isNotEmpty() } ?: return@with null
+        itemId to text(1).trim().ifBlank { null }
+    }
+
     /** [itemId, configId, sizeId, colorId, styleId] */
     fun variant(row: JsonArray, now: Long): ItemVariantEntity? = with(row) {
         val itemId = text(0).trim().takeIf { it.isNotEmpty() } ?: return@with null

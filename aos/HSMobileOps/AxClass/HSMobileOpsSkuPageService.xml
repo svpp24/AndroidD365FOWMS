@@ -32,6 +32,10 @@ class HSMobileOpsSkuPageService
     ///   BARCODES - key RecId:   [barcode, itemId, qty, unit, configId, sizeId, colorId, styleId, blocked(0/1)]
     ///              ChangedSinceUtc: InventItemBarcode.ModifiedDateTime.
     ///   VARIANTS - key RecId:   [itemId, configId, sizeId, colorId, styleId]
+    ///   CATEGORIES - key EcoResProductCategory RecId: [itemId, category]
+    ///              Delta only (a full ITEMS page carries the category): the items whose retail
+    ///              category assignment changed since ChangedSinceUtc - or every assignment when a
+    ///              category of the hierarchy itself changed (renamed, moved), since paths change.
     ///              No modified date on InventDimCombination - a delta is "RecId after AfterKey";
     ///              the device's weekly full refresh catches the rest.
     ///
@@ -77,6 +81,9 @@ class HSMobileOpsSkuPageService
                 case 'VARIANTS':
                     HSMobileOpsSkuPageService::variantPage(response, str2Int64(_request.parmAfterKey()), pageSize);
                     break;
+                case 'CATEGORIES':
+                    HSMobileOpsSkuPageService::categoryPage(response, str2Int64(_request.parmAfterKey()), since, pageSize);
+                    break;
                 default:
                     response.parmErrorCode('INVALID_REQUEST');
                     response.parmMessage(strFmt('Unknown feed %1', _request.parmFeed()));
@@ -100,6 +107,7 @@ class HSMobileOpsSkuPageService
         InventTableModule                   salesModule;
         EcoResTrackingDimensionGroupItem    trackingItem;
         EcoResStorageDimensionGroupItem     storageItem;
+        EcoResProductCategory               productCategory;
         Map                                 trackingCache = new Map(Types::Int64, Types::Container);
         Map                                 locationCache = new Map(Types::Int64, Types::Integer);
         Map                                 categoryPaths = new Map(Types::Int64, Types::String);
@@ -134,6 +142,10 @@ class HSMobileOpsSkuPageService
             outer join StorageDimensionGroup from storageItem
                 where storageItem.ItemId         == inventTable.ItemId
                    && storageItem.ItemDataAreaId == inventTable.DataAreaId
+            // In the same query (13 Nov): two queries per item were too slow for a million items.
+            outer join Category from productCategory
+                where productCategory.Product           == inventTable.Product
+                   && productCategory.CategoryHierarchy == hierarchy
         {
             if (rows >= _pageSize)
             {
@@ -155,7 +167,7 @@ class HSMobileOpsSkuPageService
             json.Append(conPeek(tracking, 2) ? '1' : '0'); json.Append(',');
             json.Append(HSMobileOpsSkuPageService::locationActive(storageItem.StorageDimensionGroup, locationCache) ? '1' : '0'); json.Append(',');
             json.Append(!inventTable.ProductLifecycleStateId || inventTable.ProductLifecycleStateId == 'Active' ? '1' : '0'); json.Append(',');
-            json.Append(HSMobileOpsSkuPageService::jsonStr(HSMobileOpsSkuPageService::categoryPath(inventTable.Product, hierarchy, categoryPaths)));
+            json.Append(HSMobileOpsSkuPageService::jsonStr(HSMobileOpsSkuPageService::pathOf(productCategory.Category, categoryPaths)));
             json.Append(']');
             last = inventTable.ItemId;
             rows++;
@@ -364,78 +376,107 @@ class HSMobileOpsSkuPageService
 ]]></Source>
 			</Method>
 			<Method>
-				<Name>categoryPath</Name>
+				<Name>pathOf</Name>
 				<Source><![CDATA[
 
     /// <summary>
-    /// The product's category in the hierarchy as a path from the first level down
-    /// ("Health Care > Vitamins"); blank when it has none. Each category's path is worked out
-    /// once per page. EcoResProductCategory and EcoResCategory are read by name, as in
-    /// HSMobileOpsCountRequestService: Retail extends both tables.
+    /// A category of the hierarchy as a path from the first level down ("Health Care > Vitamins");
+    /// blank for none. Worked out once per category per page.
     /// </summary>
-    private static str categoryPath(RefRecId _product, RefRecId _hierarchy, Map _paths)
+    private static str pathOf(RefRecId _category, Map _paths)
     {
-        TableId              productCategoryTable = tableName2Id('EcoResProductCategory');
-        TableId              categoryTable = tableName2Id('EcoResCategory');
-        Query                query;
-        QueryBuildDataSource ds;
-        QueryRun             queryRun;
-        Common               productCategory;
-        Common               category;
-        RefRecId             categoryId;
-        RefRecId             current;
-        str                  path;
-        str                  name;
-        int                  depth;
+        EcoResCategory category;
+        RefRecId       current = _category;
+        str            path;
+        int            depth;
 
-        if (!_product || !_hierarchy || !productCategoryTable || !categoryTable)
+        if (!_category)
         {
             return '';
         }
-        query = new Query();
-        ds = query.addDataSource(productCategoryTable);
-        ds.firstOnly(true);
-        ds.addRange(fieldName2Id(productCategoryTable, 'Product')).value(queryValue(_product));
-        ds.addRange(fieldName2Id(productCategoryTable, 'CategoryHierarchy')).value(queryValue(_hierarchy));
-        queryRun = new QueryRun(query);
-        if (!queryRun.next())
+        if (_paths.exists(_category))
         {
-            return '';
+            return _paths.lookup(_category);
         }
-        productCategory = queryRun.get(productCategoryTable);
-        categoryId = productCategory.(fieldName2Id(productCategoryTable, 'Category'));
-        if (!categoryId)
-        {
-            return '';
-        }
-        if (_paths.exists(categoryId))
-        {
-            return _paths.lookup(categoryId);
-        }
-        current = categoryId;
         while (current && depth < 10)
         {
             depth++;
-            query = new Query();
-            ds = query.addDataSource(categoryTable);
-            ds.addRange(fieldName2Id(categoryTable, 'RecId')).value(queryValue(current));
-            queryRun = new QueryRun(query);
-            if (!queryRun.next())
-            {
-                break;
-            }
-            category = queryRun.get(categoryTable);
+            select firstonly RecId, Name, Level, ParentCategory from category
+                where category.RecId == current;
             // Level 1 is the hierarchy's root, which names the hierarchy, not a category.
-            if (category.(fieldName2Id(categoryTable, 'Level')) < 2)
+            if (!category.RecId || category.Level < 2)
             {
                 break;
             }
-            name = category.(fieldName2Id(categoryTable, 'Name'));
-            path = path ? name + ' > ' + path : name;
-            current = category.(fieldName2Id(categoryTable, 'ParentCategory'));
+            path = path ? category.Name + ' > ' + path : category.Name;
+            current = category.ParentCategory;
         }
-        _paths.insert(categoryId, path);
+        _paths.insert(_category, path);
         return path;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>categoryPage</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The CATEGORIES feed - see getSkuPage. Category changes do not touch InventTable, so a
+    /// delta of ITEMS missed them (user, 13 Nov).
+    /// </summary>
+    private static void categoryPage(HSMobileOpsSkuPageResponse _response, RecId _after, utcdatetime _since, int _pageSize)
+    {
+        EcoResProductCategory     productCategory;
+        EcoResCategory            changedCategory;
+        InventTable               inventTable;
+        Map                       paths = new Map(Types::Int64, Types::String);
+        RefRecId                  hierarchy = HSMobileOpsSkuPageService::retailHierarchy();
+        System.Text.StringBuilder json = new System.Text.StringBuilder();
+        boolean                   treeChanged;
+        int                       rows;
+        RecId                     last;
+        boolean                   more;
+
+        json.Append('[');
+        // A full sync gets the category with each item; nothing to add.
+        if (_since != DateTimeUtil::minValue() && hierarchy)
+        {
+            select firstonly RecId from changedCategory
+                where changedCategory.CategoryHierarchy == hierarchy
+                   && changedCategory.ModifiedDateTime  >= _since;
+            treeChanged = changedCategory.RecId != 0;
+
+            while select RecId, Category from productCategory
+                order by productCategory.RecId
+                where productCategory.RecId             > _after
+                   && productCategory.CategoryHierarchy == hierarchy
+                   && (treeChanged || productCategory.ModifiedDateTime >= _since)
+                join ItemId from inventTable
+                    where inventTable.Product  == productCategory.Product
+                       && inventTable.ItemType != ItemType::Service
+            {
+                if (rows >= _pageSize)
+                {
+                    more = true;
+                    break;
+                }
+                if (rows)
+                {
+                    json.Append(',');
+                }
+                json.Append('[');
+                json.Append(HSMobileOpsSkuPageService::jsonStr(inventTable.ItemId)); json.Append(',');
+                json.Append(HSMobileOpsSkuPageService::jsonStr(HSMobileOpsSkuPageService::pathOf(productCategory.Category, paths)));
+                json.Append(']');
+                last = productCategory.RecId;
+                rows++;
+            }
+        }
+        json.Append(']');
+        _response.parmRowsJson(json.ToString());
+        _response.parmRowCount(rows);
+        _response.parmNextKey(int642Str(last ? last : _after));
+        _response.parmHasMore(more);
     }
 ]]></Source>
 			</Method>

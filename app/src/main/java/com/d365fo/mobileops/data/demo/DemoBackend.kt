@@ -830,6 +830,8 @@ object DemoBackend {
         val rows: List<List<String>> = when (r.s("Feed").uppercase()) {
             "ITEMS" -> items.map { listOf(it.id, it.name, UNIT, UNIT, UNIT, if (it.batch) "1" else "0", "0", "1", "1", categoryPath(it.category)) }
             "BARCODES" -> items.map { listOf(it.barcode, it.id, "1", UNIT, "", "", "", "", "0") }
+            // Demo categories never change: nothing for a delta.
+            "CATEGORIES" -> emptyList()
             else -> emptyList()
         }
         // Everything fits in the first page; a later page (AfterKey set) is empty.

@@ -100,6 +100,10 @@ interface ItemDao {
     @Query("SELECT * FROM item WHERE active = 1 AND IFNULL(category, '') = :path ORDER BY itemName, itemId")
     suspend fun itemsInCategory(path: String): List<ItemEntity>
 
+    /** The CATEGORIES feed's change - the item's category only, nothing else on the row. */
+    @Query("UPDATE item SET category = :category WHERE itemId = :itemId")
+    suspend fun setCategory(itemId: String, category: String?)
+
     @Query("SELECT * FROM item WHERE itemId IN (:itemIds)")
     suspend fun itemsByIds(itemIds: List<String>): List<ItemEntity>
 

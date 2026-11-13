@@ -215,6 +215,8 @@ class SkuSyncRepository @Inject constructor(
     }
 
     private suspend fun pageThrough(feed: String, full: Boolean, deadline: Long): FeedResult {
+        // A full ITEMS download already carries each item's category.
+        if (feed == FEED_CATEGORIES && full) return FeedResult.Finished
         // Variants ignore the date - see initialKey.
         val since = if (full || feed == FEED_VARIANTS) "" else prefs.getString(KEY_CHANGED_SINCE, "").orEmpty()
         while (true) {
@@ -233,6 +235,9 @@ class SkuSyncRepository @Inject constructor(
                 is NetworkResult.Error -> return FeedResult.Failed(result.failure.message, result.failure.retryable)
                 NetworkResult.Loading -> return FeedResult.Failed("unexpected Loading", true)
             }
+            // A D365FO package older than the CATEGORIES feed answers it as an unknown feed: the delta
+            // then just leaves categories to the weekly full sync, as before.
+            if (!page.success && feed == FEED_CATEGORIES && page.errorCode == "INVALID_REQUEST") return FeedResult.Finished
             if (!page.success) {
                 return FeedResult.Failed(page.message.ifBlank { "D365FO refused the $feed page (${page.errorCode})" }, retryable = false)
             }
@@ -246,6 +251,7 @@ class SkuSyncRepository @Inject constructor(
                 FEED_ITEMS -> itemDao.upsertItems(rows.mapNotNull { SkuRows.item(it, now) })
                 FEED_BARCODES -> itemDao.upsertBarcodes(rows.mapNotNull { SkuRows.barcode(it, now) })
                 FEED_VARIANTS -> itemDao.upsertVariants(rows.mapNotNull { SkuRows.variant(it, now) })
+                FEED_CATEGORIES -> rows.mapNotNull { SkuRows.category(it) }.forEach { (itemId, path) -> itemDao.setCategory(itemId, path) }
             }
             prefs.edit()
                 .putString(KEY_AFTER, page.nextKey.ifBlank { after })
@@ -267,7 +273,9 @@ class SkuSyncRepository @Inject constructor(
         const val FEED_ITEMS = "ITEMS"
         const val FEED_BARCODES = "BARCODES"
         const val FEED_VARIANTS = "VARIANTS"
-        val FEEDS = listOf(FEED_ITEMS, FEED_BARCODES, FEED_VARIANTS)
+        // Category changes do not touch the item, so a delta of ITEMS misses them (13 Nov).
+        const val FEED_CATEGORIES = "CATEGORIES"
+        val FEEDS = listOf(FEED_ITEMS, FEED_BARCODES, FEED_VARIANTS, FEED_CATEGORIES)
 
         // The server's maximum. 50k items + 65k barcodes is ~24 pages instead of ~60 - fewer round
         // trips; a page in memory is a few MB more, which a handheld does not notice.
