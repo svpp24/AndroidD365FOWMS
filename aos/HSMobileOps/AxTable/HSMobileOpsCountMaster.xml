@@ -63,7 +63,7 @@ public class HSMobileOpsCountMaster extends common
 			i:type="AxTableFieldString">
 			<Name>ExternalRef</Name>
 			<AllowEdit>No</AllowEdit>
-			<HelpText>The outside system's reference for a hazard count.</HelpText>
+			<HelpText>A hazard count's reference: the outside system's request, or the one entered with New hazard count.</HelpText>
 			<Label>Reference</Label>
 			<StringSize>50</StringSize>
 		</AxTableField>

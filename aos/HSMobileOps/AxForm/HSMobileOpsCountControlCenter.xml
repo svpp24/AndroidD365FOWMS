@@ -652,7 +652,7 @@ public class HSMobileOpsCountControlCenter extends FormRun
 									<AxFormControl xmlns=""
 										i:type="AxFormCommandButtonControl">
 										<Name>ItemAddButton</Name>
-										<HelpText>Add an item, a location, or an item at a location to this blind count.</HelpText>
+										<HelpText>Add an item, a location, or an item at a location to this blind or hazard count.</HelpText>
 										<Type>CommandButton</Type>
 										<FormControlExtension
 											i:nil="true" />
@@ -663,7 +663,7 @@ public class HSMobileOpsCountControlCenter extends FormRun
 									<AxFormControl xmlns=""
 										i:type="AxFormCommandButtonControl">
 										<Name>ItemRemoveButton</Name>
-										<HelpText>Remove the selected row from this blind count.</HelpText>
+										<HelpText>Remove the selected row from this blind or hazard count.</HelpText>
 										<Type>CommandButton</Type>
 										<FormControlExtension
 											i:nil="true" />
