@@ -30,7 +30,7 @@ public class HSMobileOpsCountBin extends FormRun
 		</AxFormDataSource>
 	</DataSources>
 	<Design>
-		<Caption xmlns="">Count bins</Caption>
+		<Caption xmlns="">Mobile count bins</Caption>
 		<DataSource xmlns="">HSMobileOpsCountBin</DataSource>
 		<ViewEditMode xmlns="">Edit</ViewEditMode>
 		<Controls xmlns="">

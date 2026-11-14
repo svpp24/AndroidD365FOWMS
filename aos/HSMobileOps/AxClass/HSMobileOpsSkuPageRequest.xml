@@ -14,6 +14,7 @@ class HSMobileOpsSkuPageRequest
     str afterKey;
     str changedSinceUtc;
     int pageSize;
+    str warehouse;
 }
 ]]></Declaration>
 		<Methods>
@@ -62,6 +63,22 @@ class HSMobileOpsSkuPageRequest
     {
         changedSinceUtc = _value;
         return changedSinceUtc;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmWarehouse</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The handheld's selected warehouse. A warehouse that syncs by assortment gets only its store's
+    /// items (HSMobileOpsWarehouseControl::itemScope); blank or any other, every item.
+    /// </summary>
+    [DataMemberAttribute('Warehouse')]
+    public str parmWarehouse(str _value = warehouse)
+    {
+        warehouse = _value;
+        return warehouse;
     }
 ]]></Source>
 			</Method>

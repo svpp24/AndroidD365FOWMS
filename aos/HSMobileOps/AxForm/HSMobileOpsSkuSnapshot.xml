@@ -131,6 +131,15 @@ public class HSMobileOpsSkuSnapshot extends FormRun
 								<DataSource>HSMobileOpsSkuSnapshot</DataSource>
 							</AxFormControl>
 							<AxFormControl xmlns=""
+								i:type="AxFormStringControl">
+								<Name>HSMobileOpsSkuSnapshot_Scope</Name>
+								<Type>String</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<DataField>Scope</DataField>
+								<DataSource>HSMobileOpsSkuSnapshot</DataSource>
+							</AxFormControl>
+							<AxFormControl xmlns=""
 								i:type="AxFormIntegerControl">
 								<Name>HSMobileOpsSkuSnapshot_BuildSeconds</Name>
 								<Type>Integer</Type>

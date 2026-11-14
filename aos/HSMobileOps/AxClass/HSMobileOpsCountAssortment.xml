@@ -78,7 +78,7 @@ class HSMobileOpsCountAssortment
     /// The store's retail channel. By name at runtime: naming the table in code would make this
     /// model depend on the Retail package, for this one lookup.
     /// </summary>
-    private static RefRecId channelOperatingUnit(InventLocationId _warehouse)
+    internal static RefRecId channelOperatingUnit(InventLocationId _warehouse)
     {
         TableId              channelTable = tableName2Id('RetailChannelTable');
         Query                query = new Query();

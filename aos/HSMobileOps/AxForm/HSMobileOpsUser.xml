@@ -96,7 +96,7 @@ public class HSMobileOpsUser extends FormRun
 		</AxFormDataSource>
 	</DataSources>
 	<Design>
-		<Caption xmlns="">Mobile device users</Caption>
+		<Caption xmlns="">Mobile users</Caption>
 		<DataSource xmlns="">HSMobileOpsUser</DataSource>
 		<Pattern xmlns="">SimpleListDetails</Pattern>
 		<PatternVersion xmlns="">1.3</PatternVersion>

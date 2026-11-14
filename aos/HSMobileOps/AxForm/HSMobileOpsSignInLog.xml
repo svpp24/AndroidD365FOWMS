@@ -116,7 +116,7 @@ public class HSMobileOpsSignInLog extends FormRun
 		</AxFormDataSource>
 	</DataSources>
 	<Design>
-		<Caption xmlns="">Worker sign-in history</Caption>
+		<Caption xmlns="">Mobile sign-in history</Caption>
 		<DataSource xmlns="">HSMobileOpsSignInLog</DataSource>
 		<Pattern xmlns="">SimpleList</Pattern>
 		<PatternVersion xmlns="">1.1</PatternVersion>

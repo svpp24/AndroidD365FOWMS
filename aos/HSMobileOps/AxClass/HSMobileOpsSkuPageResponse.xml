@@ -18,6 +18,7 @@ class HSMobileOpsSkuPageResponse
     str nextKey;
     boolean hasMore;
     str serverUtc;
+    str scope;
 }
 ]]></Declaration>
 		<Methods>
@@ -102,6 +103,22 @@ class HSMobileOpsSkuPageResponse
     {
         hasMore = _value;
         return hasMore;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmScope</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Which items the answer is for: '' every item, a warehouse its store's assortment. A device
+    /// whose cache is for another scope starts a full sync.
+    /// </summary>
+    [DataMemberAttribute('Scope')]
+    public str parmScope(str _value = scope)
+    {
+        scope = _value;
+        return scope;
     }
 ]]></Source>
 			</Method>

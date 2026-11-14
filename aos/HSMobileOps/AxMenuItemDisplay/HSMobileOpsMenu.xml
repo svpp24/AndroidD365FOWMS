@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <AxMenuItemDisplay xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
 	<Name>HSMobileOpsMenu</Name>
-	<Label>Mobile device menus</Label>
+	<Label>Mobile menus</Label>
 	<HelpText>Organise the handheld's Home into menus and sub-menus, such as Inbound, Outbound and Inventory management.</HelpText>
 	<Object>HSMobileOpsMenu</Object>
 	<ObjectType>Form</ObjectType>

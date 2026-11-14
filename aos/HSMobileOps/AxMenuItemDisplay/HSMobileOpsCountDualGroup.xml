@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <AxMenuItemDisplay xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
 	<Name>HSMobileOpsCountDualGroup</Name>
-	<Label>Dual count groups</Label>
+	<Label>Mobile dual count groups</Label>
 	<HelpText>Which counting groups are counted twice, blind, by two people.</HelpText>
 	<Object>HSMobileOpsCountDualGroup</Object>
 	<ObjectType>Form</ObjectType>

@@ -1,0 +1,134 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxTable xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsSyncAssortItem</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// A store's item list for the handhelds' item sync: the items of its retail assortment, for a
+/// warehouse with Sync by assortment on (HSMobileOpsWarehouseControl). The item feeds and the
+/// store's snapshot join it on (Warehouse, ItemId), so a store's sync reads only its own items.
+/// </summary>
+public class HSMobileOpsSyncAssortItem extends common
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>refresh</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Makes the warehouse's list the store's assortment today: adds what is new, removes what
+    /// left it; empties it when _on is false. Returns the items in the list.
+    /// </summary>
+    public static int refresh(InventLocationId _warehouse, boolean _on)
+    {
+        HSMobileOpsSyncAssortItem row;
+        HSMobileOpsSyncAssortItem newRow;
+        Set                       assorted;
+        Set                       kept = new Set(Types::String);
+        SetEnumerator             itemEnum;
+        RecordInsertList          rows;
+
+        if (!_warehouse)
+        {
+            return 0;
+        }
+        if (!_on)
+        {
+            ttsbegin;
+            delete_from row where row.Warehouse == _warehouse;
+            ttscommit;
+            return 0;
+        }
+        assorted = HSMobileOpsCountAssortment::assortedItems(_warehouse);
+        rows = new RecordInsertList(tableNum(HSMobileOpsSyncAssortItem));
+        ttsbegin;
+        while select forUpdate row
+            where row.Warehouse == _warehouse
+        {
+            if (assorted.in(row.ItemId))
+            {
+                kept.add(row.ItemId);
+            }
+            else
+            {
+                row.delete();
+            }
+        }
+        itemEnum = assorted.getEnumerator();
+        while (itemEnum.moveNext())
+        {
+            if (!kept.in(itemEnum.current()))
+            {
+                newRow.clear();
+                newRow.Warehouse = _warehouse;
+                newRow.ItemId    = itemEnum.current();
+                rows.add(newRow);
+            }
+        }
+        rows.insertDatabase();
+        ttscommit;
+        return assorted.elements();
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>exist</Name>
+				<Source><![CDATA[
+
+    public static boolean exist(InventLocationId _warehouse, ItemId _itemId)
+    {
+        HSMobileOpsSyncAssortItem row;
+
+        select firstOnly RecId from row
+            where row.Warehouse == _warehouse
+               && row.ItemId    == _itemId;
+        return row.RecId != 0;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+	<Label>Mobile store item list</Label>
+	<TitleField1>Warehouse</TitleField1>
+	<TitleField2>ItemId</TitleField2>
+	<CacheLookup>None</CacheLookup>
+	<ClusteredIndex>WarehouseItemIdx</ClusteredIndex>
+	<PrimaryIndex>WarehouseItemIdx</PrimaryIndex>
+	<ReplacementKey>WarehouseItemIdx</ReplacementKey>
+	<Fields>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>Warehouse</Name>
+			<AllowEdit>No</AllowEdit>
+			<ExtendedDataType>InventLocationId</ExtendedDataType>
+			<Mandatory>Yes</Mandatory>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>ItemId</Name>
+			<AllowEdit>No</AllowEdit>
+			<ExtendedDataType>ItemId</ExtendedDataType>
+			<Mandatory>Yes</Mandatory>
+		</AxTableField>
+	</Fields>
+	<FullTextIndexes />
+	<Indexes>
+		<AxTableIndex>
+			<Name>WarehouseItemIdx</Name>
+			<AlternateKey>Yes</AlternateKey>
+			<Fields>
+				<AxTableIndexField>
+					<DataField>Warehouse</DataField>
+				</AxTableIndexField>
+				<AxTableIndexField>
+					<DataField>ItemId</DataField>
+				</AxTableIndexField>
+			</Fields>
+		</AxTableIndex>
+	</Indexes>
+	<Mappings />
+	<Relations />
+	<StateMachines />
+</AxTable>

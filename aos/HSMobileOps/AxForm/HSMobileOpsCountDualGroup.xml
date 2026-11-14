@@ -32,7 +32,7 @@ public class HSMobileOpsCountDualGroup extends FormRun
 		</AxFormDataSource>
 	</DataSources>
 	<Design>
-		<Caption xmlns="">Dual count groups</Caption>
+		<Caption xmlns="">Mobile dual count groups</Caption>
 		<DataSource xmlns="">InventCountGroup</DataSource>
 		<ViewEditMode xmlns="">Edit</ViewEditMode>
 		<Controls xmlns="">

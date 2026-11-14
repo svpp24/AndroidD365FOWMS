@@ -212,7 +212,7 @@ public class HSMobileOpsMenu extends FormRun
 		</AxFormDataSource>
 	</DataSources>
 	<Design>
-		<Caption xmlns="">Mobile device menus</Caption>
+		<Caption xmlns="">Mobile menus</Caption>
 		<DataSource xmlns="">HSMobileOpsMenu</DataSource>
 		<Pattern xmlns="">SimpleListDetails</Pattern>
 		<PatternVersion xmlns="">1.3</PatternVersion>

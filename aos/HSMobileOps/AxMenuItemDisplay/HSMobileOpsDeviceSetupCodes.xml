@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <AxMenuItemDisplay xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
 	<Name>HSMobileOpsDeviceSetupCodes</Name>
-	<Label>Device setup codes</Label>
+	<Label>Mobile device setup codes</Label>
 	<HelpText>Codes new handhelds scan to join, without a client secret on the device.</HelpText>
 	<Object>HSMobileOpsDeviceSetupCode</Object>
 	<ObjectType>Form</ObjectType>

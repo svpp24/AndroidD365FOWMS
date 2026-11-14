@@ -110,6 +110,11 @@
 				</AxMenuElement>
 				<AxMenuElement xmlns=""
 					i:type="AxMenuElementMenuItem">
+					<Name>HSMobileOpsWarehouseControl</Name>
+					<MenuItemName>HSMobileOpsWarehouseControl</MenuItemName>
+				</AxMenuElement>
+				<AxMenuElement xmlns=""
+					i:type="AxMenuElementMenuItem">
 					<Name>HSMobileOpsProcessSetup</Name>
 					<MenuItemName>HSMobileOpsProcessSetup</MenuItemName>
 				</AxMenuElement>

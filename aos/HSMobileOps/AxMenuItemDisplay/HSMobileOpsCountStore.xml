@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <AxMenuItemDisplay xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
 	<Name>HSMobileOpsCountStore</Name>
-	<Label>Stock count stores</Label>
+	<Label>Mobile count stores</Label>
 	<HelpText>Which stores each supervisor manages in the Stock count control center.</HelpText>
 	<Object>HSMobileOpsCountStore</Object>
 	<ObjectType>Form</ObjectType>

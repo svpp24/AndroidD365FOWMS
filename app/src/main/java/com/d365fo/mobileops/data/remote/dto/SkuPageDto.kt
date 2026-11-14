@@ -16,6 +16,8 @@ data class SkuPageRequestBody(
     /** Only rows changed since (D365FO's own clock, from ServerUtc); blank for all. */
     @SerialName("ChangedSinceUtc") val changedSinceUtc: String = "",
     @SerialName("PageSize") val pageSize: Int = 2000,
+    /** The selected warehouse: one that syncs by assortment gets only its store's items. */
+    @SerialName("Warehouse") val warehouse: String = "",
 )
 
 @Serializable
@@ -29,6 +31,8 @@ data class SkuPageServiceResponse(
     @SerialName("NextKey") val nextKey: String = "",
     @SerialName("HasMore") val hasMore: Boolean = false,
     @SerialName("ServerUtc") val serverUtc: String = "",
+    /** Which items the answer is for: blank every item, a warehouse its store's assortment. */
+    @SerialName("Scope") val scope: String = "",
 )
 
 /**

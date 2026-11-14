@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxMenuItemDisplay xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsWarehouseControl</Name>
+	<Label>Mobile warehouse control</Label>
+	<HelpText>Per warehouse: whether its handhelds sync every item or only the store's assortment.</HelpText>
+	<Object>HSMobileOpsWarehouseControl</Object>
+	<ObjectType>Form</ObjectType>
+</AxMenuItemDisplay>

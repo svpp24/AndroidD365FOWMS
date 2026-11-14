@@ -12,6 +12,8 @@ import com.d365fo.mobileops.data.sync.SyncNotifier
 import com.d365fo.mobileops.data.sync.SyncScheduler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import dagger.hilt.android.HiltAndroidApp
 import timber.log.Timber
 import javax.inject.Inject
@@ -22,6 +24,7 @@ class D365MobileApp : Application(), Configuration.Provider {
     @Inject lateinit var workerFactory: HiltWorkerFactory
     @Inject lateinit var syncScheduler: SyncScheduler
     @Inject lateinit var skuSync: com.d365fo.mobileops.data.repository.SkuSyncRepository
+    @Inject lateinit var sessions: com.d365fo.mobileops.data.repository.WorkerSessionRepository
     @Inject lateinit var syncNotifier: SyncNotifier
     @Inject lateinit var applicationScope: CoroutineScope
     @Inject lateinit var logStore: LogStore
@@ -118,6 +121,20 @@ class D365MobileApp : Application(), Configuration.Provider {
                     TimeUnit.MINUTES.toMillis(1) + com.d365fo.mobileops.data.sync.FleetJitter.millisUpTo(TimeUnit.MINUTES.toMillis(4)),
                     replace = true,
                 )
+            }
+            // Another warehouse chosen (sign-in, warehouse switch): sync now - it may be a store
+            // that syncs by assortment in D365FO, with other items. The old items stay usable
+            // until the new ones are all here.
+            applicationScope.launch {
+                sessions.session
+                    .map { it?.selected?.warehouseId.orEmpty() }
+                    .distinctUntilChanged()
+                    .collect { warehouse ->
+                        if (skuSync.warehouseChosen(warehouse)) {
+                            Timber.i("warehouse %s chosen - syncing its items", warehouse)
+                            syncScheduler.syncMastersNow(com.d365fo.mobileops.data.repository.ManualSync.CHANGES)
+                        }
+                    }
             }
             // Counting: keep claims alive, and give every unfinished End count a job again.
             claimHeartbeat.start()

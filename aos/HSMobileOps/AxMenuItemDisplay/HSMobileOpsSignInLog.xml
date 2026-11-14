@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <AxMenuItemDisplay xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
 	<Name>HSMobileOpsSignInLog</Name>
-	<Label>Worker sign-in history</Label>
+	<Label>Mobile sign-in history</Label>
 	<HelpText>When each worker signed in and out on the handhelds, and for how long.</HelpText>
 	<Object>HSMobileOpsSignInLog</Object>
 	<ObjectType>Form</ObjectType>

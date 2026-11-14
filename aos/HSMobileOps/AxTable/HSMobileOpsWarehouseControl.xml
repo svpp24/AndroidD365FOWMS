@@ -1,0 +1,201 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxTable xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsWarehouseControl</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Mobile warehouse control: one row per warehouse of the company (the form adds the missing ones
+/// when it opens), the starting point for per-warehouse settings of the handhelds.
+///
+/// Sync by assortment: off (the default), a handheld working in the warehouse keeps every item of
+/// the company. On, it keeps only the items of the store's retail assortment - the store's item
+/// list (HSMobileOpsSyncAssortItem), filled when the switch is saved and again each night, and its
+/// own nightly snapshot. A warehouse whose list is empty (not a store, no assortment today) gives
+/// its handhelds every item, so a device never waits for, or loses items to, back-office setup.
+/// </summary>
+public class HSMobileOpsWarehouseControl extends common
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>find</Name>
+				<Source><![CDATA[
+
+    public static HSMobileOpsWarehouseControl find(InventLocationId _warehouse, boolean _forUpdate = false)
+    {
+        HSMobileOpsWarehouseControl row;
+
+        if (_warehouse)
+        {
+            row.selectForUpdate(_forUpdate);
+            select firstOnly row
+                where row.Warehouse == _warehouse;
+        }
+        return row;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>itemScope</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Which items a handheld in this warehouse keeps: the warehouse (its store's item list) when
+    /// it syncs by assortment and the list has items; otherwise '' - every item of the company.
+    /// </summary>
+    public static InventLocationId itemScope(InventLocationId _warehouse)
+    {
+        HSMobileOpsWarehouseControl row = HSMobileOpsWarehouseControl::find(_warehouse);
+
+        return row.SyncByAssortment && row.AssortmentItems > 0 ? row.Warehouse : '';
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>fillWarehouses</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// A row for each warehouse of the company that has none - the form's base is the warehouses.
+    /// </summary>
+    public static void fillWarehouses()
+    {
+        InventLocation              inventLocation;
+        HSMobileOpsWarehouseControl existing;
+        HSMobileOpsWarehouseControl row;
+        RecordInsertList            rows = new RecordInsertList(tableNum(HSMobileOpsWarehouseControl));
+
+        while select InventLocationId from inventLocation
+            notexists join existing
+                where existing.Warehouse == inventLocation.InventLocationId
+        {
+            row.clear();
+            row.Warehouse = inventLocation.InventLocationId;
+            rows.add(row);
+        }
+        ttsbegin;
+        rows.insertDatabase();
+        ttscommit;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>refreshItems</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Fills the store's item list from its assortment today (or empties it when the switch is
+    /// off) and notes the count. The caller saves the row.
+    /// </summary>
+    public void refreshItems()
+    {
+        this.AssortmentItems       = HSMobileOpsSyncAssortItem::refresh(this.Warehouse, this.SyncByAssortment == NoYes::Yes);
+        this.AssortmentRefreshedUtc = DateTimeUtil::utcNow();
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>update</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Switching sync by assortment fills (or empties) the store's item list at once: handhelds
+    /// get the store's items from their next sync, without waiting for the nightly job.
+    /// </summary>
+    public void update()
+    {
+        if (this.SyncByAssortment != this.orig().SyncByAssortment)
+        {
+            this.refreshItems();
+            if (this.SyncByAssortment && !this.AssortmentItems)
+            {
+                warning(strFmt('Store %1 has no items in its assortment today. Its handhelds keep every item until it has.', this.Warehouse));
+            }
+        }
+        super();
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>validateField</Name>
+				<Source><![CDATA[
+
+    public boolean validateField(FieldId _fieldIdToCheck)
+    {
+        boolean ret = super(_fieldIdToCheck);
+
+        if (ret && _fieldIdToCheck == fieldNum(HSMobileOpsWarehouseControl, SyncByAssortment)
+            && this.SyncByAssortment
+            && !HSMobileOpsCountAssortment::channelOperatingUnit(this.Warehouse))
+        {
+            ret = checkFailed(strFmt('Warehouse %1 is not the warehouse of a retail store, so it has no assortment.', this.Warehouse));
+        }
+        return ret;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>warehouseName</Name>
+				<Source><![CDATA[
+
+    public display Name warehouseName()
+    {
+        return InventLocation::find(this.Warehouse).Name;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+	<Label>Mobile warehouse control</Label>
+	<TitleField1>Warehouse</TitleField1>
+	<TitleField2>SyncByAssortment</TitleField2>
+	<CacheLookup>Found</CacheLookup>
+	<ClusteredIndex>WarehouseIdx</ClusteredIndex>
+	<PrimaryIndex>WarehouseIdx</PrimaryIndex>
+	<ReplacementKey>WarehouseIdx</ReplacementKey>
+	<Fields>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>Warehouse</Name>
+			<AllowEdit>No</AllowEdit>
+			<ExtendedDataType>InventLocationId</ExtendedDataType>
+			<Mandatory>Yes</Mandatory>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldEnum">
+			<Name>SyncByAssortment</Name>
+			<HelpText>On: handhelds in this warehouse keep only the items of the store's retail assortment. Off: every item of the company.</HelpText>
+			<Label>Sync by assortment</Label>
+			<EnumType>NoYes</EnumType>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldInt">
+			<Name>AssortmentItems</Name>
+			<AllowEdit>No</AllowEdit>
+			<HelpText>Items in the store's item list at its last refresh: when the switch was saved, then each night with the item snapshot.</HelpText>
+			<Label>Assortment items</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldUtcDateTime">
+			<Name>AssortmentRefreshedUtc</Name>
+			<AllowEdit>No</AllowEdit>
+			<Label>Item list refreshed</Label>
+		</AxTableField>
+	</Fields>
+	<FullTextIndexes />
+	<Indexes>
+		<AxTableIndex>
+			<Name>WarehouseIdx</Name>
+			<AlternateKey>Yes</AlternateKey>
+			<Fields>
+				<AxTableIndexField>
+					<DataField>Warehouse</DataField>
+				</AxTableIndexField>
+			</Fields>
+		</AxTableIndex>
+	</Indexes>
+	<Mappings />
+	<Relations />
+	<StateMachines />
+</AxTable>

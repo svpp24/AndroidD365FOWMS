@@ -52,8 +52,53 @@ class SkuSyncRepository @Inject constructor(
     private val itemDao: ItemDao,
     private val ioDispatcher: CoroutineDispatcher,
     @ApplicationContext private val context: Context,
+    private val sessions: WorkerSessionRepository,
 ) {
     private val prefs = context.getSharedPreferences("sku_sync", Context.MODE_PRIVATE)
+
+    /**
+     * The warehouse the items are for - the signed-in worker's selected one, kept so a sync in the
+     * background with nobody signed in asks for the same items. A warehouse that syncs by
+     * assortment in D365FO (Mobile warehouse control) gets only its store's items.
+     */
+    private fun warehouse(): String {
+        val selected = sessions.session.value?.selected?.warehouseId?.takeIf { it.isNotBlank() }
+        if (selected != null) {
+            if (prefs.getString(KEY_WAREHOUSE, null) != selected) prefs.edit().putString(KEY_WAREHOUSE, selected).apply()
+            return selected
+        }
+        return prefs.getString(KEY_WAREHOUSE, "").orEmpty()
+    }
+
+    /**
+     * The warehouse a worker chose. Answers true when it differs from the one the item cache was
+     * last asked for - a sync is then worth running now, since the store's items may differ.
+     */
+    fun warehouseChosen(warehouseId: String): Boolean {
+        if (warehouseId.isBlank()) return false
+        val before = prefs.getString(KEY_WAREHOUSE, null)
+        if (before == warehouseId) return false
+        prefs.edit().putString(KEY_WAREHOUSE, warehouseId).apply()
+        // Never synced: the catch-up sync at start takes care of it.
+        return before != null && prefs.getLong(KEY_LAST_SUCCESS, 0L) > 0L
+    }
+
+    /**
+     * Whether an answer is for other items than this cycle expects (the worker changed warehouse,
+     * or D365FO switched the warehouse to or from its store's assortment). The first answer of a
+     * full sync sets what it expects.
+     */
+    private fun scopeChanged(serverScope: String): Boolean {
+        if (!prefs.contains(KEY_CYCLE_SCOPE)) {
+            prefs.edit().putString(KEY_CYCLE_SCOPE, serverScope).apply()
+            return false
+        }
+        if (prefs.getString(KEY_CYCLE_SCOPE, "") == serverScope) return false
+        Timber.w("SKU sync: the items are now for '%s' (was '%s') - starting a full sync", serverScope, prefs.getString(KEY_CYCLE_SCOPE, ""))
+        // Rows already here stay until the new full sync has every row of the new scope.
+        startCycle(forceFull = true)
+        return true
+    }
 
     /** The app's memory in use now (Java heap + native), in bytes - sampled after each page. */
     private fun memoryInUse(): Long {
@@ -116,6 +161,8 @@ class SkuSyncRepository @Inject constructor(
             if (full && prefs.getString(KEY_SNAP_STATE, "") != SNAP_SKIPPED && prefs.getString(KEY_SNAP_STATE, "") != SNAP_LOADED) {
                 when (snapshotStep(deadline)) {
                     SnapshotResult.Pending -> { addActive(); return@withLock SkuSyncStep.Pending }
+                    // A new full sync for the new items was started: the next step runs it.
+                    SnapshotResult.ScopeChanged -> { addActive(); return@withLock SkuSyncStep.Pending }
                     SnapshotResult.Skipped -> prefs.edit().putString(KEY_SNAP_STATE, SNAP_SKIPPED).apply()
                     SnapshotResult.Loaded -> {
                         // The rest is a delta from when the snapshot was built.
@@ -141,7 +188,7 @@ class SkuSyncRepository @Inject constructor(
                         prefs.edit().putInt(KEY_FEED, next)
                             .putString(KEY_AFTER, FEEDS.getOrNull(next)?.let { initialKey(it, feedsFull) }.orEmpty()).apply()
                     }
-                    FeedResult.OutOfTime -> { addActive(); return@withLock SkuSyncStep.Pending }
+                    FeedResult.OutOfTime, FeedResult.ScopeChanged -> { addActive(); return@withLock SkuSyncStep.Pending }
                     // The position is kept either way; a failure waits out WorkManager's backoff
                     // rather than knocking on an AOS that is down every couple of minutes.
                     is FeedResult.Failed -> { addActive(); return@withLock SkuSyncStep.Failed(r.message) }
@@ -182,7 +229,12 @@ class SkuSyncRepository @Inject constructor(
             val watermark = prefs.getString(KEY_CYCLE_SERVER_UTC, null)
             val variantMax = prefs.getString(KEY_VARIANT_MAX, "0")
             val lastFull = if (full) System.currentTimeMillis() else prefs.getLong(KEY_LAST_FULL, 0L)
+            // The cache now holds the items of the scope this cycle was answered for.
+            val scope = prefs.getString(KEY_CYCLE_SCOPE, null) ?: prefs.getString(KEY_SCOPE, "").orEmpty()
+            val warehouse = prefs.getString(KEY_WAREHOUSE, null)
             prefs.edit().clear()
+                .putString(KEY_SCOPE, scope)
+                .putString(KEY_WAREHOUSE, warehouse)
                 .putLong(KEY_LAST_SUCCESS, System.currentTimeMillis())
                 .putLong(KEY_LAST_FULL, lastFull)
                 .putString(KEY_WATERMARK, watermark)
@@ -213,9 +265,15 @@ class SkuSyncRepository @Inject constructor(
         val now = System.currentTimeMillis()
         val watermark = prefs.getString(KEY_WATERMARK, null)
         // A new column on a feed (variant names SCHEMA 2, item category 3) needs every row again, not a delta.
-        val full = forceFull || watermark.isNullOrBlank() || now - prefs.getLong(KEY_LAST_FULL, 0L) >= FULL_REFRESH_INTERVAL_MS ||
+        // A store's assortment changes reach it by a full sync - of the store's items only, so
+        // a small download - daily; every item of the company, weekly.
+        val scope = prefs.getString(KEY_SCOPE, "").orEmpty()
+        val fullInterval = if (scope.isBlank()) FULL_REFRESH_INTERVAL_MS else SCOPED_FULL_REFRESH_INTERVAL_MS
+        val full = forceFull || watermark.isNullOrBlank() || now - prefs.getLong(KEY_LAST_FULL, 0L) >= fullInterval ||
             prefs.getInt(KEY_SCHEMA, 0) < SCHEMA
         prefs.edit()
+            // A delta must be for the items the cache holds; a full sync takes the first answer's.
+            .apply { if (full) remove(KEY_CYCLE_SCOPE) else putString(KEY_CYCLE_SCOPE, scope) }
             .putLong(KEY_CYCLE_STARTED, now)
             .putString(KEY_MODE, if (full) MODE_FULL else MODE_DELTA)
             .putString(KEY_CHANGED_SINCE, if (full) "" else withOverlap(watermark.orEmpty()))
@@ -240,6 +298,8 @@ class SkuSyncRepository @Inject constructor(
     private sealed interface FeedResult {
         data object Finished : FeedResult
         data object OutOfTime : FeedResult
+        /** The answer was for other items: a new full sync was started. */
+        data object ScopeChanged : FeedResult
         data class Failed(val message: String, val retryable: Boolean) : FeedResult
     }
 
@@ -255,7 +315,7 @@ class SkuSyncRepository @Inject constructor(
             val result = errorMapper.safeCall {
                 service.getSkuPage(
                     SkuPageServiceRequest(
-                        SkuPageRequestBody(dataAreaId = company(), feed = feed, afterKey = after, changedSinceUtc = since, pageSize = PAGE_SIZE),
+                        SkuPageRequestBody(dataAreaId = company(), feed = feed, afterKey = after, changedSinceUtc = since, pageSize = PAGE_SIZE, warehouse = warehouse()),
                     ),
                 )
             }
@@ -270,6 +330,7 @@ class SkuSyncRepository @Inject constructor(
             if (!page.success) {
                 return FeedResult.Failed(page.message.ifBlank { "D365FO refused the $feed page (${page.errorCode})" }, retryable = false)
             }
+            if (scopeChanged(page.scope)) return FeedResult.ScopeChanged
             if (prefs.getString(KEY_CYCLE_SERVER_UTC, null) == null && page.serverUtc.isNotBlank()) {
                 prefs.edit().putString(KEY_CYCLE_SERVER_UTC, page.serverUtc).apply()
             }
@@ -297,7 +358,10 @@ class SkuSyncRepository @Inject constructor(
 
     private fun countKey(feed: String) = "count_$feed"
 
-    private enum class SnapshotResult { Loaded, Skipped, Pending }
+    private enum class SnapshotResult { Loaded, Skipped, Pending, ScopeChanged }
+
+    /** Set by [fetchManifest] when the answer was for other items than this cycle's. */
+    private var manifestScopeChanged = false
 
     private val snapshotDir: java.io.File get() = java.io.File(context.cacheDir, "sku_snapshot")
 
@@ -309,7 +373,7 @@ class SkuSyncRepository @Inject constructor(
     private suspend fun snapshotStep(deadline: Long): SnapshotResult {
         var state = prefs.getString(KEY_SNAP_STATE, "").orEmpty()
         if (state.isEmpty()) {
-            val manifest = fetchManifest() ?: return SnapshotResult.Skipped
+            val manifest = fetchManifest() ?: return if (manifestScopeChanged) SnapshotResult.ScopeChanged else SnapshotResult.Skipped
             snapshotDir.deleteRecursively()
             snapshotDir.mkdirs()
             prefs.edit().putString(KEY_SNAP_MANIFEST, Json.encodeToString(com.d365fo.mobileops.data.remote.dto.SkuSnapshotManifest.serializer(), manifest))
@@ -328,6 +392,10 @@ class SkuSyncRepository @Inject constructor(
                 if (!ok) {
                     // A newer snapshot may have replaced this one: ask which is current, once.
                     val fresh = fetchManifest()
+                    if (manifestScopeChanged) {
+                        snapshotDir.deleteRecursively()
+                        return SnapshotResult.ScopeChanged
+                    }
                     if (fresh == null || fresh.builtAtUtc != manifest.builtAtUtc) {
                         Timber.w("SKU snapshot: %s download failed and the snapshot changed - paging instead", file.area)
                         snapshotDir.deleteRecursively()
@@ -390,10 +458,17 @@ class SkuSyncRepository @Inject constructor(
 
     /** The current snapshot, or null - none ready, a D365FO without it, or not reachable. */
     private suspend fun fetchManifest(): com.d365fo.mobileops.data.remote.dto.SkuSnapshotManifest? {
+        manifestScopeChanged = false
         val result = errorMapper.safeCall {
-            service.getSkuSnapshot(SkuPageServiceRequest(SkuPageRequestBody(dataAreaId = company(), feed = "")))
+            service.getSkuSnapshot(SkuPageServiceRequest(SkuPageRequestBody(dataAreaId = company(), feed = "", warehouse = warehouse())))
         }
         val answer = (result as? NetworkResult.Success)?.data
+        // NO_SNAPSHOT says for which items too: a store whose snapshot is not built yet pages
+        // through its own items now.
+        if (answer != null && scopeChanged(answer.scope)) {
+            manifestScopeChanged = true
+            return null
+        }
         if (answer == null || !answer.success) {
             Timber.w("SKU snapshot: none (%s) - paging", answer?.errorCode?.ifBlank { null } ?: (result as? NetworkResult.Error)?.failure?.message ?: "no answer")
             return null
@@ -454,6 +529,14 @@ class SkuSyncRepository @Inject constructor(
         const val OVERLAP_MINUTES = 10L
         const val MIN_CYCLE_INTERVAL_MS = 20 * 60 * 60 * 1000L
         const val FULL_REFRESH_INTERVAL_MS = 7 * 24 * 60 * 60 * 1000L
+        /** A store that syncs by assortment: its (small) item list again each day, for assortment changes. */
+        const val SCOPED_FULL_REFRESH_INTERVAL_MS = 20 * 60 * 60 * 1000L
+        /** The scope of the cache's items: blank every item, a warehouse its store's assortment. */
+        const val KEY_SCOPE = "scope"
+        /** The scope this cycle's answers must be for. */
+        const val KEY_CYCLE_SCOPE = "cycle_scope"
+        /** The warehouse the items are asked for - see warehouse(). */
+        const val KEY_WAREHOUSE = "warehouse"
 
         const val MODE_FULL = "FULL"
         const val MODE_DELTA = "DELTA"

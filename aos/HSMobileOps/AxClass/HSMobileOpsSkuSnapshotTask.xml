@@ -15,14 +15,16 @@ class HSMobileOpsSkuSnapshotTask extends RunBaseBatch
     int      taskIndex;
     str      after;
     str      upTo;
+    str      scope;
 
-    #define.CurrentVersion(1)
+    #define.CurrentVersion(2)
     #localmacro.CurrentList
         snapshot,
         area,
         taskIndex,
         after,
-        upTo
+        upTo,
+        scope
     #endmacro
 }
 ]]></Declaration>
@@ -31,7 +33,7 @@ class HSMobileOpsSkuSnapshotTask extends RunBaseBatch
 				<Name>newTask</Name>
 				<Source><![CDATA[
 
-    public static HSMobileOpsSkuSnapshotTask newTask(RefRecId _snapshot, str _area, int _index, str _after, str _upTo)
+    public static HSMobileOpsSkuSnapshotTask newTask(RefRecId _snapshot, str _area, int _index, str _after, str _upTo, str _scope = '')
     {
         HSMobileOpsSkuSnapshotTask task = new HSMobileOpsSkuSnapshotTask();
 
@@ -40,7 +42,10 @@ class HSMobileOpsSkuSnapshotTask extends RunBaseBatch
         task.parmIndex(_index);
         task.parmAfter(_after);
         task.parmUpTo(_upTo);
-        task.batchInfo().parmCaption(strFmt('Mobile ops: item snapshot %1 %2', _area, _index));
+        task.parmScope(_scope);
+        task.batchInfo().parmCaption(_scope
+            ? strFmt('Mobile ops: item snapshot of store %1 %2', _scope, _area)
+            : strFmt('Mobile ops: item snapshot %1 %2', _area, _index));
         return task;
     }
 ]]></Source>
@@ -101,6 +106,18 @@ class HSMobileOpsSkuSnapshotTask extends RunBaseBatch
 ]]></Source>
 			</Method>
 			<Method>
+				<Name>parmScope</Name>
+				<Source><![CDATA[
+
+    /// <summary>'' for every item; a warehouse for its store's assortment.</summary>
+    public str parmScope(str _scope = scope)
+    {
+        scope = _scope;
+        return scope;
+    }
+]]></Source>
+			</Method>
+			<Method>
 				<Name>run</Name>
 				<Source><![CDATA[
 
@@ -115,7 +132,7 @@ class HSMobileOpsSkuSnapshotTask extends RunBaseBatch
 
         try
         {
-            HSMobileOpsSkuSnapshotBuild::writeArea(snapshot, area, after, upTo, taskIndex * 10000);
+            HSMobileOpsSkuSnapshotBuild::writeArea(snapshot, area, after, upTo, taskIndex * 10000, scope);
         }
         catch (Exception::CLRError)
         {

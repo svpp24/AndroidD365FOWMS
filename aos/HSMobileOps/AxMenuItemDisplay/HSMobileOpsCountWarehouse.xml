@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <AxMenuItemDisplay xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
 	<Name>HSMobileOpsCountWarehouse</Name>
-	<Label>Count warehouses</Label>
+	<Label>Mobile count warehouses</Label>
 	<HelpText>Which warehouses the nightly job makes cycle counting journals for.</HelpText>
 	<Object>HSMobileOpsCountWarehouse</Object>
 	<ObjectType>Form</ObjectType>

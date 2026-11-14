@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxSecurityPrivilege xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsWarehouseControlMaintain</Name>
+	<Description>Set, per warehouse, whether its handhelds sync every item or only the store's assortment.</Description>
+	<Label>Maintain mobile warehouse control</Label>
+	<DirectAccessPermissions />
+	<EntryPoints>
+		<AxSecurityEntryPointReference>
+			<Name>HSMobileOpsWarehouseControl</Name>
+			<Grant>
+				<Read>Allow</Read>
+				<Update>Allow</Update>
+				<Create>Allow</Create>
+				<Delete>Allow</Delete>
+			</Grant>
+			<ObjectName>HSMobileOpsWarehouseControl</ObjectName>
+			<ObjectType>MenuItemDisplay</ObjectType>
+			<Forms />
+		</AxSecurityEntryPointReference>
+	</EntryPoints>
+	<FormControlOverrides />
+</AxSecurityPrivilege>

@@ -30,7 +30,7 @@ public class HSMobileOpsCountDualTolerance extends FormRun
 		</AxFormDataSource>
 	</DataSources>
 	<Design>
-		<Caption xmlns="">Dual count tolerance</Caption>
+		<Caption xmlns="">Mobile dual count tolerance</Caption>
 		<DataSource xmlns="">HSMobileOpsCountDualTolerance</DataSource>
 		<ViewEditMode xmlns="">Edit</ViewEditMode>
 		<Controls xmlns="">

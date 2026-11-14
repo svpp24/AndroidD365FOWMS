@@ -37,15 +37,17 @@ public class HSMobileOpsSkuSnapshot extends common
 				<Source><![CDATA[
 
     /// <summary>
-    /// The snapshot devices get: the newest Ready build of the current company.
+    /// The snapshot devices get: the newest Ready build of the current company for the item scope -
+    /// '' every item, a warehouse its store's assortment (HSMobileOpsWarehouseControl::itemScope).
     /// </summary>
-    public static HSMobileOpsSkuSnapshot current()
+    public static HSMobileOpsSkuSnapshot current(InventLocationId _scope = '')
     {
         HSMobileOpsSkuSnapshot snapshot;
 
         select firstOnly snapshot
             order by snapshot.BuiltAtUtc desc
-            where snapshot.Status == HSMobileOpsSkuSnapshot::statusReady();
+            where snapshot.Status == HSMobileOpsSkuSnapshot::statusReady()
+               && snapshot.Scope  == _scope;
         return snapshot;
     }
 ]]></Source>
@@ -86,6 +88,14 @@ public class HSMobileOpsSkuSnapshot extends common
 			<StringSize>250</StringSize>
 		</AxTableField>
 		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>Scope</Name>
+			<AllowEdit>No</AllowEdit>
+			<ExtendedDataType>InventLocationId</ExtendedDataType>
+			<HelpText>Blank: every item, for the warehouses that sync all items. A warehouse: only its store's assortment (Mobile warehouse control).</HelpText>
+			<Label>Assortment of warehouse</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
 			i:type="AxTableFieldInt">
 			<Name>TasksTotal</Name>
 			<AllowEdit>No</AllowEdit>
@@ -109,6 +119,17 @@ public class HSMobileOpsSkuSnapshot extends common
 	</Fields>
 	<FullTextIndexes />
 	<Indexes>
+		<AxTableIndex>
+			<Name>ScopeBuiltAtIdx</Name>
+			<Fields>
+				<AxTableIndexField>
+					<DataField>Scope</DataField>
+				</AxTableIndexField>
+				<AxTableIndexField>
+					<DataField>BuiltAtUtc</DataField>
+				</AxTableIndexField>
+			</Fields>
+		</AxTableIndex>
 		<AxTableIndex>
 			<Name>BuiltAtIdx</Name>
 			<Fields>

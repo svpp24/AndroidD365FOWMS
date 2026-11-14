@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <AxMenuItemDisplay xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
 	<Name>HSMobileOpsCountDualTolerance</Name>
-	<Label>Dual count tolerance</Label>
+	<Label>Mobile dual count tolerance</Label>
 	<HelpText>How far apart two counts may be and still match.</HelpText>
 	<Object>HSMobileOpsCountDualTolerance</Object>
 	<ObjectType>Form</ObjectType>

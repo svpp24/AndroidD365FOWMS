@@ -44,7 +44,7 @@ public class HSMobileOpsCountTypeSetup extends FormRun
 		</AxFormDataSource>
 	</DataSources>
 	<Design>
-		<Caption xmlns="">Count type setup</Caption>
+		<Caption xmlns="">Mobile count types</Caption>
 		<DataSource xmlns="">HSMobileOpsCountTypeSetup</DataSource>
 		<ShowNewButton xmlns="">No</ShowNewButton>
 		<UseCaptionFromMenuItem xmlns="">Yes</UseCaptionFromMenuItem>

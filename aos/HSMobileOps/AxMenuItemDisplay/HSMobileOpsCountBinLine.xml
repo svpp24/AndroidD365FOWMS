@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <AxMenuItemDisplay xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
 	<Name>HSMobileOpsCountBinLine</Name>
-	<Label>Counted by bin</Label>
+	<Label>Mobile counted by bin</Label>
 	<HelpText>What each counter counted in each bin.</HelpText>
 	<Object>HSMobileOpsCountBinLine</Object>
 	<ObjectType>Form</ObjectType>

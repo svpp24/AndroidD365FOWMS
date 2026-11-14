@@ -231,7 +231,7 @@ public class HSMobileOpsCountControlCenter extends FormRun
 		</AxFormDataSource>
 	</DataSources>
 	<Design>
-		<Caption xmlns="">Stock count control center</Caption>
+		<Caption xmlns="">Mobile count control center</Caption>
 		<DataSource xmlns="">HSMobileOpsCountMaster</DataSource>
 		<Pattern xmlns="">SimpleListDetails</Pattern>
 		<PatternVersion xmlns="">1.3</PatternVersion>

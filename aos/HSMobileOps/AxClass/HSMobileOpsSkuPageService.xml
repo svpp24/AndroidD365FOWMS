@@ -50,6 +50,10 @@ class HSMobileOpsSkuPageService
     /// ChangedSinceUtc) also leaves out items whose lifecycle state is not Active and blocked
     /// barcodes - the device drops what a full refresh did not send. A delta still sends a change
     /// to stopped or blocked, so the device marks it inactive the same day.
+    ///
+    /// Warehouse: a warehouse that syncs by assortment (Mobile warehouse control) gets only the
+    /// items of its store's item list, and their barcodes, variants, units and categories; Scope
+    /// says which. Every other warehouse runs the company-wide queries, unchanged.
     /// </summary>
     public HSMobileOpsSkuPageResponse getSkuPage(HSMobileOpsSkuPageRequest _request)
     {
@@ -77,22 +81,25 @@ class HSMobileOpsSkuPageService
 
         changecompany (_request.parmDataAreaId())
         {
+            // The warehouse's store assortment, or '' for every item - Mobile warehouse control.
+            InventLocationId scope = HSMobileOpsWarehouseControl::itemScope(_request.parmWarehouse());
+            response.parmScope(scope);
             switch (_request.parmFeed())
             {
                 case 'ITEMS':
-                    HSMobileOpsSkuPageService::itemPage(response, _request.parmAfterKey(), since, pageSize);
+                    HSMobileOpsSkuPageService::itemPage(response, _request.parmAfterKey(), since, pageSize, '', scope);
                     break;
                 case 'BARCODES':
-                    HSMobileOpsSkuPageService::barcodePage(response, str2Int64(_request.parmAfterKey()), since, pageSize);
+                    HSMobileOpsSkuPageService::barcodePage(response, str2Int64(_request.parmAfterKey()), since, pageSize, 0, scope);
                     break;
                 case 'VARIANTS':
-                    HSMobileOpsSkuPageService::variantPage(response, str2Int64(_request.parmAfterKey()), pageSize);
+                    HSMobileOpsSkuPageService::variantPage(response, str2Int64(_request.parmAfterKey()), pageSize, scope);
                     break;
                 case 'CATEGORIES':
-                    HSMobileOpsSkuPageService::categoryPage(response, str2Int64(_request.parmAfterKey()), since, pageSize);
+                    HSMobileOpsSkuPageService::categoryPage(response, str2Int64(_request.parmAfterKey()), since, pageSize, scope);
                     break;
                 case 'UNITS':
-                    HSMobileOpsSkuPageService::unitPage(response, _request.parmAfterKey(), since, pageSize);
+                    HSMobileOpsSkuPageService::unitPage(response, _request.parmAfterKey(), since, pageSize, '', scope);
                     break;
                 default:
                     response.parmErrorCode('INVALID_REQUEST');
@@ -131,7 +138,11 @@ class HSMobileOpsSkuPageService
         }
         changecompany (_request.parmDataAreaId())
         {
-            snapshot = HSMobileOpsSkuSnapshot::current();
+            InventLocationId scope = HSMobileOpsWarehouseControl::itemScope(_request.parmWarehouse());
+            response.parmScope(scope);
+            // A store whose own snapshot is not built yet: NO_SNAPSHOT, and the device pages
+            // through the store's (small) item list at once - it never waits for the nightly job.
+            snapshot = HSMobileOpsSkuSnapshot::current(scope);
             if (!snapshot.RecId)
             {
                 response.parmErrorCode('NO_SNAPSHOT');
@@ -140,6 +151,8 @@ class HSMobileOpsSkuPageService
             }
             json.Append('{"builtAtUtc":');
             json.Append(HSMobileOpsSkuPageService::jsonStr(DateTimeUtil::toStr(snapshot.BuiltAtUtc)));
+            json.Append(',"scope":');
+            json.Append(HSMobileOpsSkuPageService::jsonStr(scope));
             json.Append(',"files":[');
             // Area by area, ITEMS first, each in part order (the parts are written side by side,
             // so RecId order is not the order). Not the data itself.
@@ -246,8 +259,9 @@ class HSMobileOpsSkuPageService
 				<Name>itemPage</Name>
 				<Source><![CDATA[
 
-    internal static void itemPage(HSMobileOpsSkuPageResponse _response, ItemId _after, utcdatetime _since, int _pageSize, ItemId _upTo = '')
+    internal static void itemPage(HSMobileOpsSkuPageResponse _response, ItemId _after, utcdatetime _since, int _pageSize, ItemId _upTo = '', InventLocationId _scope = '')
     {
+        HSMobileOpsSyncAssortItem           scopeItem;
         InventTable                         inventTable;
         InventTableModule                   inventModule;
         InventTableModule                   purchModule;
@@ -269,6 +283,63 @@ class HSMobileOpsSkuPageService
         boolean full = _since == DateTimeUtil::minValue();
         // A snapshot task reads only its own range (_after, _upTo]; a plain bound keeps the index seek.
         ItemId upTo = _upTo ? _upTo : HSMobileOpsSkuPageService::lastItemId();
+
+        // A store that syncs by assortment: its item list drives the query, so the store's sync
+        // reads only its own items. The same joins and columns as below.
+        if (_scope)
+        {
+            while select ItemId from scopeItem
+                order by scopeItem.ItemId
+                where scopeItem.Warehouse == _scope
+                   && scopeItem.ItemId    >  _after
+                   && scopeItem.ItemId    <= upTo
+                join ItemId, NameAlias, ProductLifecycleStateId, Product from inventTable
+                    where inventTable.ItemId           == scopeItem.ItemId
+                       && inventTable.ModifiedDateTime >= _since
+                       && inventTable.ItemType         != ItemType::Service
+                       && (!full || !inventTable.ProductLifecycleStateId || inventTable.ProductLifecycleStateId == 'Active')
+                outer join UnitId from inventModule
+                    where inventModule.ItemId     == inventTable.ItemId
+                       && inventModule.ModuleType == ModuleInventPurchSales::Invent
+                outer join UnitId from purchModule
+                    where purchModule.ItemId     == inventTable.ItemId
+                       && purchModule.ModuleType == ModuleInventPurchSales::Purch
+                outer join UnitId from salesModule
+                    where salesModule.ItemId     == inventTable.ItemId
+                       && salesModule.ModuleType == ModuleInventPurchSales::Sales
+                outer join TrackingDimensionGroup from trackingItem
+                    where trackingItem.ItemId         == inventTable.ItemId
+                       && trackingItem.ItemDataAreaId == inventTable.DataAreaId
+                outer join StorageDimensionGroup from storageItem
+                    where storageItem.ItemId         == inventTable.ItemId
+                       && storageItem.ItemDataAreaId == inventTable.DataAreaId
+                outer join Category from productCategory
+                    where productCategory.Product           == inventTable.Product
+                       && productCategory.CategoryHierarchy == hierarchy
+            {
+                if (rows >= _pageSize)
+                {
+                    more = true;
+                    break;
+                }
+                if (rows)
+                {
+                    json.Append(',');
+                }
+                HSMobileOpsSkuPageService::itemRow(json, inventTable, inventModule.UnitId, purchModule.UnitId, salesModule.UnitId,
+                    HSMobileOpsSkuPageService::trackingFlags(trackingItem.TrackingDimensionGroup, trackingCache),
+                    HSMobileOpsSkuPageService::locationActive(storageItem.StorageDimensionGroup, locationCache),
+                    HSMobileOpsSkuPageService::pathOf(productCategory.Category, categoryPaths));
+                last = inventTable.ItemId;
+                rows++;
+            }
+            json.Append(']');
+            _response.parmRowsJson(json.ToString());
+            _response.parmRowCount(rows);
+            _response.parmNextKey(last ? last : _after);
+            _response.parmHasMore(more);
+            return;
+        }
 
         while select ItemId, NameAlias, ProductLifecycleStateId, Product from inventTable
             order by inventTable.ItemId
@@ -331,11 +402,35 @@ class HSMobileOpsSkuPageService
 ]]></Source>
 			</Method>
 			<Method>
+				<Name>itemRow</Name>
+				<Source><![CDATA[
+
+    /// <summary>One row of the ITEMS feed of a store that syncs by assortment - the columns of itemPage.</summary>
+    private static void itemRow(System.Text.StringBuilder _json, InventTable _inventTable, UnitOfMeasureSymbol _inventUnit,
+        UnitOfMeasureSymbol _purchUnit, UnitOfMeasureSymbol _salesUnit, container _tracking, boolean _location, str _category)
+    {
+        _json.Append('[');
+        _json.Append(HSMobileOpsSkuPageService::jsonStr(_inventTable.ItemId)); _json.Append(',');
+        _json.Append(HSMobileOpsSkuPageService::jsonStr(_inventTable.NameAlias)); _json.Append(',');
+        _json.Append(HSMobileOpsSkuPageService::jsonStr(_inventUnit)); _json.Append(',');
+        _json.Append(HSMobileOpsSkuPageService::jsonStr(_purchUnit)); _json.Append(',');
+        _json.Append(HSMobileOpsSkuPageService::jsonStr(_salesUnit)); _json.Append(',');
+        _json.Append(conPeek(_tracking, 1) ? '1' : '0'); _json.Append(',');
+        _json.Append(conPeek(_tracking, 2) ? '1' : '0'); _json.Append(',');
+        _json.Append(_location ? '1' : '0'); _json.Append(',');
+        _json.Append(!_inventTable.ProductLifecycleStateId || _inventTable.ProductLifecycleStateId == 'Active' ? '1' : '0'); _json.Append(',');
+        _json.Append(HSMobileOpsSkuPageService::jsonStr(_category));
+        _json.Append(']');
+    }
+]]></Source>
+			</Method>
+			<Method>
 				<Name>barcodePage</Name>
 				<Source><![CDATA[
 
-    internal static void barcodePage(HSMobileOpsSkuPageResponse _response, RecId _after, utcdatetime _since, int _pageSize, RecId _upTo = 0)
+    internal static void barcodePage(HSMobileOpsSkuPageResponse _response, RecId _after, utcdatetime _since, int _pageSize, RecId _upTo = 0, InventLocationId _scope = '')
     {
+        HSMobileOpsSyncAssortItem   scopeItem;
         InventItemBarcode           barcode;
         InventDim                   inventDim;
         InventTable                 inventTable;
@@ -347,6 +442,40 @@ class HSMobileOpsSkuPageService
         RecId                       upTo = _upTo ? _upTo : 0x7FFFFFFFFFFFFFFF;
 
         json.Append('[');
+        if (_scope)
+        {
+            // A store that syncs by assortment: only its items' barcodes.
+            while select itemBarCode, ItemId, Qty, UnitID, Blocked, RecId from barcode
+                order by barcode.RecId
+                where barcode.RecId            > _after
+                   && barcode.RecId            <= upTo
+                   && barcode.ModifiedDateTime >= _since
+                   && (!full || !barcode.Blocked)
+                outer join configId, InventSizeId, InventColorId, InventStyleId from inventDim
+                    where inventDim.inventDimId == barcode.inventDimId
+                exists join inventTable
+                    where inventTable.ItemId   == barcode.ItemId
+                       && inventTable.ItemType != ItemType::Service
+                       && (!full || !inventTable.ProductLifecycleStateId || inventTable.ProductLifecycleStateId == 'Active')
+                exists join scopeItem
+                    where scopeItem.Warehouse == _scope
+                       && scopeItem.ItemId    == barcode.ItemId
+            {
+                if (rows >= _pageSize)
+                {
+                    more = true;
+                    break;
+                }
+                if (rows)
+                {
+                    json.Append(',');
+                }
+                json.Append(HSMobileOpsSkuPageService::barcodeRow(barcode, inventDim));
+                last = barcode.RecId;
+                rows++;
+            }
+        }
+        else
         while select itemBarCode, ItemId, Qty, UnitID, Blocked, RecId from barcode
             order by barcode.RecId
             where barcode.RecId            > _after
@@ -393,11 +522,36 @@ class HSMobileOpsSkuPageService
 ]]></Source>
 			</Method>
 			<Method>
+				<Name>barcodeRow</Name>
+				<Source><![CDATA[
+
+    /// <summary>One row of the BARCODES feed of a store that syncs by assortment - the columns of barcodePage.</summary>
+    private static str barcodeRow(InventItemBarcode _barcode, InventDim _inventDim)
+    {
+        System.Text.StringBuilder json = new System.Text.StringBuilder();
+
+        json.Append('[');
+        json.Append(HSMobileOpsSkuPageService::jsonStr(_barcode.itemBarCode)); json.Append(',');
+        json.Append(HSMobileOpsSkuPageService::jsonStr(_barcode.ItemId)); json.Append(',');
+        json.Append(num2Str(_barcode.Qty, 0, 6, 1, 0)); json.Append(',');
+        json.Append(HSMobileOpsSkuPageService::jsonStr(_barcode.UnitID)); json.Append(',');
+        json.Append(HSMobileOpsSkuPageService::jsonStr(_inventDim.configId)); json.Append(',');
+        json.Append(HSMobileOpsSkuPageService::jsonStr(_inventDim.InventSizeId)); json.Append(',');
+        json.Append(HSMobileOpsSkuPageService::jsonStr(_inventDim.InventColorId)); json.Append(',');
+        json.Append(HSMobileOpsSkuPageService::jsonStr(_inventDim.InventStyleId)); json.Append(',');
+        json.Append(_barcode.Blocked ? '1' : '0');
+        json.Append(']');
+        return json.ToString();
+    }
+]]></Source>
+			</Method>
+			<Method>
 				<Name>variantPage</Name>
 				<Source><![CDATA[
 
-    internal static void variantPage(HSMobileOpsSkuPageResponse _response, RecId _after, int _pageSize)
+    internal static void variantPage(HSMobileOpsSkuPageResponse _response, RecId _after, int _pageSize, InventLocationId _scope = '')
     {
+        HSMobileOpsSyncAssortItem   scopeItem;
         InventDimCombination        combination;
         InventDim                   inventDim;
         EcoResProductTranslation    translation;
@@ -408,6 +562,36 @@ class HSMobileOpsSkuPageService
         boolean                     more;
 
         json.Append('[');
+        if (_scope)
+        {
+            // A store that syncs by assortment: only its items' variants.
+            while select ItemId, RecId, DistinctProductVariant from combination
+                order by combination.RecId
+                where combination.RecId > _after
+                join configId, InventSizeId, InventColorId, InventStyleId from inventDim
+                    where inventDim.inventDimId == combination.InventDimId
+                outer join Name from translation
+                    where translation.Product    == combination.DistinctProductVariant
+                       && translation.LanguageId == language
+                exists join scopeItem
+                    where scopeItem.Warehouse == _scope
+                       && scopeItem.ItemId    == combination.ItemId
+            {
+                if (rows >= _pageSize)
+                {
+                    more = true;
+                    break;
+                }
+                if (rows)
+                {
+                    json.Append(',');
+                }
+                json.Append(HSMobileOpsSkuPageService::variantRow(combination, inventDim, translation));
+                last = combination.RecId;
+                rows++;
+            }
+        }
+        else
         while select ItemId, RecId, DistinctProductVariant from combination
             order by combination.RecId
             where combination.RecId > _after
@@ -448,6 +632,27 @@ class HSMobileOpsSkuPageService
 ]]></Source>
 			</Method>
 			<Method>
+				<Name>variantRow</Name>
+				<Source><![CDATA[
+
+    /// <summary>One row of the VARIANTS feed of a store that syncs by assortment - the columns of variantPage.</summary>
+    private static str variantRow(InventDimCombination _combination, InventDim _inventDim, EcoResProductTranslation _translation)
+    {
+        System.Text.StringBuilder json = new System.Text.StringBuilder();
+
+        json.Append('[');
+        json.Append(HSMobileOpsSkuPageService::jsonStr(_combination.ItemId)); json.Append(',');
+        json.Append(HSMobileOpsSkuPageService::jsonStr(_inventDim.configId)); json.Append(',');
+        json.Append(HSMobileOpsSkuPageService::jsonStr(_inventDim.InventSizeId)); json.Append(',');
+        json.Append(HSMobileOpsSkuPageService::jsonStr(_inventDim.InventColorId)); json.Append(',');
+        json.Append(HSMobileOpsSkuPageService::jsonStr(_inventDim.InventStyleId)); json.Append(',');
+        json.Append(HSMobileOpsSkuPageService::jsonStr(_translation.Name));
+        json.Append(']');
+        return json.ToString();
+    }
+]]></Source>
+			</Method>
+			<Method>
 				<Name>unitPage</Name>
 				<Source><![CDATA[
 
@@ -455,8 +660,9 @@ class HSMobileOpsSkuPageService
     /// The UNITS feed - see getSkuPage. A full refresh walks the released items as ITEMS does; a
     /// delta walks only the items whose unit setup changed since _since.
     /// </summary>
-    internal static void unitPage(HSMobileOpsSkuPageResponse _response, ItemId _after, utcdatetime _since, int _pageSize, ItemId _upTo = '')
+    internal static void unitPage(HSMobileOpsSkuPageResponse _response, ItemId _after, utcdatetime _since, int _pageSize, ItemId _upTo = '', InventLocationId _scope = '')
     {
+        HSMobileOpsSyncAssortItem   scopeItem;
         InventTable                 inventTable;
         Map                         factors = new Map(Types::String, Types::Real);
         Map                         decimals = new Map(Types::String, Types::Integer);
@@ -469,7 +675,36 @@ class HSMobileOpsSkuPageService
         boolean                     more;
 
         json.Append('[');
-        if (full)
+        if (full && _scope)
+        {
+            ItemId scopeUpTo = _upTo ? _upTo : HSMobileOpsSkuPageService::lastItemId();
+
+            // A store that syncs by assortment: its item list drives the query.
+            while select ItemId from scopeItem
+                order by scopeItem.ItemId
+                where scopeItem.Warehouse == _scope
+                   && scopeItem.ItemId    >  _after
+                   && scopeItem.ItemId    <= scopeUpTo
+                join ItemId, Product from inventTable
+                    where inventTable.ItemId   == scopeItem.ItemId
+                       && inventTable.ItemType != ItemType::Service
+                       && (!inventTable.ProductLifecycleStateId || inventTable.ProductLifecycleStateId == 'Active')
+            {
+                if (rows >= _pageSize)
+                {
+                    more = true;
+                    break;
+                }
+                if (rows)
+                {
+                    json.Append(',');
+                }
+                json.Append(HSMobileOpsSkuPageService::unitRow(inventTable, factors, decimals));
+                last = inventTable.ItemId;
+                rows++;
+            }
+        }
+        else if (full)
         {
             ItemId upTo = _upTo ? _upTo : HSMobileOpsSkuPageService::lastItemId();
 
@@ -509,6 +744,10 @@ class HSMobileOpsSkuPageService
                 {
                     more = true;
                     break;
+                }
+                if (_scope && !HSMobileOpsSyncAssortItem::exist(_scope, itemEnum.current()))
+                {
+                    continue;
                 }
                 inventTable = InventTable::find(itemEnum.current());
                 if (!inventTable.RecId || inventTable.ItemType == ItemType::Service)
@@ -824,8 +1063,9 @@ class HSMobileOpsSkuPageService
     /// The CATEGORIES feed - see getSkuPage. Category changes do not touch InventTable, so a
     /// delta of ITEMS missed them (user, 13 Nov).
     /// </summary>
-    private static void categoryPage(HSMobileOpsSkuPageResponse _response, RecId _after, utcdatetime _since, int _pageSize)
+    private static void categoryPage(HSMobileOpsSkuPageResponse _response, RecId _after, utcdatetime _since, int _pageSize, InventLocationId _scope = '')
     {
+        HSMobileOpsSyncAssortItem scopeItem;
         EcoResProductCategory     productCategory;
         EcoResCategory            changedCategory;
         InventTable               inventTable;
@@ -846,6 +1086,39 @@ class HSMobileOpsSkuPageService
                    && changedCategory.ModifiedDateTime  >= _since;
             treeChanged = changedCategory.RecId != 0;
 
+            if (_scope)
+            {
+                // A store that syncs by assortment: only its items.
+                while select RecId, Category from productCategory
+                    order by productCategory.RecId
+                    where productCategory.RecId             > _after
+                       && productCategory.CategoryHierarchy == hierarchy
+                       && (treeChanged || productCategory.ModifiedDateTime >= _since)
+                    join ItemId from inventTable
+                        where inventTable.Product  == productCategory.Product
+                           && inventTable.ItemType != ItemType::Service
+                    exists join scopeItem
+                        where scopeItem.Warehouse == _scope
+                           && scopeItem.ItemId    == inventTable.ItemId
+                {
+                    if (rows >= _pageSize)
+                    {
+                        more = true;
+                        break;
+                    }
+                    if (rows)
+                    {
+                        json.Append(',');
+                    }
+                    json.Append('[');
+                    json.Append(HSMobileOpsSkuPageService::jsonStr(inventTable.ItemId)); json.Append(',');
+                    json.Append(HSMobileOpsSkuPageService::jsonStr(HSMobileOpsSkuPageService::pathOf(productCategory.Category, paths)));
+                    json.Append(']');
+                    last = productCategory.RecId;
+                    rows++;
+                }
+            }
+            else
             while select RecId, Category from productCategory
                 order by productCategory.RecId
                 where productCategory.RecId             > _after

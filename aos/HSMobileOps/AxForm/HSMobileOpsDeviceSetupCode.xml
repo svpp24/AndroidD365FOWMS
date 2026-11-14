@@ -35,7 +35,7 @@ public class HSMobileOpsDeviceSetupCode extends FormRun
 		</AxFormDataSource>
 	</DataSources>
 	<Design>
-		<Caption xmlns="">Device setup codes</Caption>
+		<Caption xmlns="">Mobile device setup codes</Caption>
 		<DataSource xmlns="">HSMobileOpsDeviceSetupCode</DataSource>
 		<ShowNewButton xmlns="">No</ShowNewButton>
 		<ShowDeleteButton xmlns="">No</ShowDeleteButton>
