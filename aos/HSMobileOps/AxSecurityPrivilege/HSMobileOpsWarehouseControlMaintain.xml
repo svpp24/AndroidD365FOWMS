@@ -17,6 +17,15 @@
 			<ObjectType>MenuItemDisplay</ObjectType>
 			<Forms />
 		</AxSecurityEntryPointReference>
+		<AxSecurityEntryPointReference>
+			<Name>HSMobileOpsWarehouseControlAllStores</Name>
+			<Grant>
+				<Invoke>Allow</Invoke>
+			</Grant>
+			<ObjectName>HSMobileOpsWarehouseControlAllStores</ObjectName>
+			<ObjectType>MenuItemAction</ObjectType>
+			<Forms />
+		</AxSecurityEntryPointReference>
 	</EntryPoints>
 	<FormControlOverrides />
 </AxSecurityPrivilege>

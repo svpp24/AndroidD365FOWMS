@@ -156,6 +156,7 @@ public class HSMobileOpsSkuSnapshot extends common
 		</AxTableIndex>
 		<AxTableIndex>
 			<Name>BuiltAtIdx</Name>
+			<AllowDuplicates>Yes</AllowDuplicates>
 			<Fields>
 				<AxTableIndexField>
 					<DataField>BuiltAtUtc</DataField>

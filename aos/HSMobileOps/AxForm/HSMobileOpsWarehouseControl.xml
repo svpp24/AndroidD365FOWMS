@@ -49,6 +49,38 @@ public class HSMobileOpsWarehouseControl extends FormRun
 		<ViewEditMode xmlns="">Edit</ViewEditMode>
 		<Controls xmlns="">
 			<AxFormControl xmlns=""
+				i:type="AxFormActionPaneControl">
+				<Name>ActionPane</Name>
+				<Type>ActionPane</Type>
+				<FormControlExtension
+					i:nil="true" />
+				<Controls>
+					<AxFormControl xmlns=""
+						i:type="AxFormButtonGroupControl">
+						<Name>StoreGroup</Name>
+						<Type>ButtonGroup</Type>
+						<FormControlExtension
+							i:nil="true" />
+						<Controls>
+							<AxFormControl xmlns=""
+								i:type="AxFormMenuFunctionButtonControl">
+								<Name>AllStoresButton</Name>
+								<Type>MenuFunctionButton</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<ButtonDisplay>TextOnly</ButtonDisplay>
+								<MenuItemName>HSMobileOpsWarehouseControlAllStores</MenuItemName>
+								<MenuItemType>Action</MenuItemType>
+								<Text>Sync all stores by assortment</Text>
+							</AxFormControl>
+						</Controls>
+					</AxFormControl>
+				</Controls>
+				<AlignChild>No</AlignChild>
+				<AlignChildren>No</AlignChildren>
+				<ArrangeMethod>Vertical</ArrangeMethod>
+			</AxFormControl>
+			<AxFormControl xmlns=""
 				i:type="AxFormGridControl">
 				<Name>Grid</Name>
 				<Type>Grid</Type>

@@ -1,0 +1,133 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsWarehouseControlAllStores</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Mobile warehouse control, "Sync all stores by assortment": a batch job that switches Sync by
+/// assortment on for every warehouse of a retail store, filling each store's item list, and logs
+/// how long each store took. Warehouses that are not a store's are left as they are.
+/// </summary>
+class HSMobileOpsWarehouseControlAllStores extends RunBaseBatch
+{
+    #define.CurrentVersion(1)
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>main</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// From the form: runs as a batch job at once (a store's assortment takes seconds to read, so
+    /// many stores take minutes).
+    /// </summary>
+    public static void main(Args _args)
+    {
+        BatchHeader batchHeader = BatchHeader::construct();
+
+        batchHeader.parmCaption(HSMobileOpsWarehouseControlAllStores::description());
+        batchHeader.addTask(new HSMobileOpsWarehouseControlAllStores());
+        batchHeader.save();
+        info('Started as a batch job. Each store shows its assortment items here when it is done; the batch job log has the time each one took.');
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>run</Name>
+				<Source><![CDATA[
+
+    public void run()
+    {
+        HSMobileOpsWarehouseControl control;
+        HSMobileOpsWarehouseControl row;
+        utcdatetime                 started = DateTimeUtil::utcNow();
+        utcdatetime                 storeStarted;
+        int                         stores;
+        int64                       items;
+
+        HSMobileOpsWarehouseControl::fillWarehouses();
+        while select Warehouse from control
+            order by Warehouse
+            where control.SyncByAssortment == NoYes::No
+        {
+            if (!HSMobileOpsCountAssortment::channelOperatingUnit(control.Warehouse))
+            {
+                continue;
+            }
+            storeStarted = DateTimeUtil::utcNow();
+            try
+            {
+                ttsbegin;
+                row = HSMobileOpsWarehouseControl::find(control.Warehouse, true);
+                row.SyncByAssortment = NoYes::Yes;
+                row.update();
+                ttscommit;
+                stores++;
+                items += row.AssortmentItems;
+                info(strFmt('%1: %2 items in %3 s', row.Warehouse, row.AssortmentItems,
+                    DateTimeUtil::getDifference(DateTimeUtil::utcNow(), storeStarted)));
+            }
+            catch
+            {
+                warning(strFmt('%1: not switched on - see the message above.', control.Warehouse));
+            }
+        }
+        info(strFmt('%1 stores switched to sync by assortment, %2 items in their lists, in %3 s.',
+            stores, items, DateTimeUtil::getDifference(DateTimeUtil::utcNow(), started)));
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>pack</Name>
+				<Source><![CDATA[
+
+    public container pack()
+    {
+        return [#CurrentVersion];
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>unpack</Name>
+				<Source><![CDATA[
+
+    public boolean unpack(container _packedClass)
+    {
+        return RunBase::getVersion(_packedClass) == #CurrentVersion;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>canGoBatch</Name>
+				<Source><![CDATA[
+
+    public boolean canGoBatch()
+    {
+        return true;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>runsImpersonated</Name>
+				<Source><![CDATA[
+
+    public boolean runsImpersonated()
+    {
+        return true;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>description</Name>
+				<Source><![CDATA[
+
+    public static ClassDescription description()
+    {
+        return 'Mobile ops: sync all stores by assortment';
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>
