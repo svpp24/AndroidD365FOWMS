@@ -53,8 +53,80 @@ class SkuSyncRepository @Inject constructor(
     private val ioDispatcher: CoroutineDispatcher,
     @ApplicationContext private val context: Context,
     private val sessions: WorkerSessionRepository,
+    private val secureStore: com.d365fo.mobileops.data.security.SecureStore,
 ) {
     private val prefs = context.getSharedPreferences("sku_sync", Context.MODE_PRIVATE)
+
+    private val _staleDays = kotlinx.coroutines.flow.MutableStateFlow(staleDaysNow())
+
+    /**
+     * Days since the item list last finished syncing, once that is [STALE_HOURS] or more; null
+     * while it is fresh (or before the first sync). The app shows a banner for it, and D365FO's
+     * Mobile sync health shows the device as stale by the same rule.
+     */
+    val staleDays: kotlinx.coroutines.flow.StateFlow<Int?> = _staleDays
+
+    private fun staleDaysNow(): Int? {
+        val last = prefs.getLong(KEY_LAST_SUCCESS, 0L).takeIf { it > 0L } ?: return null
+        val hours = (System.currentTimeMillis() - last) / (60 * 60 * 1000L)
+        return if (hours >= STALE_HOURS) (hours / 24).toInt() else null
+    }
+
+    private val _progress = kotlinx.coroutines.flow.MutableStateFlow<SkuSyncProgress?>(null)
+
+    /**
+     * What the item sync is doing right now - manual or the nightly one - for the sync animation
+     * on Settings; null when no sync is running.
+     */
+    val progress: kotlinx.coroutines.flow.StateFlow<SkuSyncProgress?> = _progress
+
+    private fun progress(stage: String, done: Long = 0L, total: Long = 0L) {
+        _progress.value = SkuSyncProgress(stage, done, total)
+    }
+
+    private fun areaName(feed: String) = when (feed) {
+        FEED_ITEMS -> "items"
+        FEED_BARCODES -> "barcodes"
+        FEED_VARIANTS -> "variants"
+        FEED_UNITS -> "units"
+        else -> "categories"
+    }
+
+    /** Checks again - time passes while the app stays open. */
+    fun refreshStale() {
+        _staleDays.value = staleDaysNow()
+    }
+
+    /**
+     * Tells D365FO how the sync ended (Mobile sync health). Best effort: a D365FO without the
+     * call, or no connection, changes nothing for the device.
+     */
+    private suspend fun report(step: SkuSyncStep) {
+        val summary = (step as? SkuSyncStep.Done)?.summary
+        val failure = (step as? SkuSyncStep.Failed)?.message
+        if (summary == null && failure == null) return
+        val company = company().ifBlank { return }
+        val result = errorMapper.safeCall {
+            service.reportSkuSync(
+                com.d365fo.mobileops.data.remote.dto.SkuSyncReportServiceRequest(
+                    com.d365fo.mobileops.data.remote.dto.SkuSyncReportBody(
+                        dataAreaId = company,
+                        deviceId = secureStore.deviceId(),
+                        warehouse = prefs.getString(KEY_WAREHOUSE, "").orEmpty(),
+                        scope = prefs.getString(KEY_CYCLE_SCOPE, null) ?: prefs.getString(KEY_SCOPE, "").orEmpty(),
+                        succeeded = summary != null,
+                        full = summary?.full ?: false,
+                        items = summary?.itemCount ?: 0,
+                        barcodes = summary?.barcodeCount ?: 0,
+                        seconds = summary?.activeSeconds ?: 0,
+                        message = failure.orEmpty().take(250),
+                        appVersion = com.d365fo.mobileops.BuildConfig.VERSION_NAME,
+                    ),
+                ),
+            )
+        }
+        if (result is NetworkResult.Error) Timber.i("SKU sync report not sent: %s", result.failure.message)
+    }
 
     /**
      * The warehouse the items are for - the signed-in worker's selected one, kept so a sync in the
@@ -139,6 +211,21 @@ class SkuSyncRepository @Inject constructor(
      * stopped part way - the position is kept and the worker comes back for the rest.
      */
     suspend fun runStep(budgetMs: Long, manual: ManualSync? = null): SkuSyncStep = withContext(ioDispatcher) {
+        val step = try {
+            runStepLocked(budgetMs, manual)
+        } catch (e: Throwable) {
+            _progress.value = null
+            throw e
+        }
+        // A sync stopped part way carries on in a moment: the animation stays on meanwhile.
+        _progress.value = if (step is SkuSyncStep.Pending) SkuSyncProgress("Continuing in a moment") else null
+        _staleDays.value = staleDaysNow()
+        // Outside the lock: a slow answer must not hold up the next step.
+        report(step)
+        step
+    }
+
+    private suspend fun runStepLocked(budgetMs: Long, manual: ManualSync?): SkuSyncStep =
         lock.withLock {
             val stepStarted = System.currentTimeMillis()
             val deadline = stepStarted + budgetMs
@@ -157,6 +244,7 @@ class SkuSyncRepository @Inject constructor(
                 }
                 startCycle(forceFull = manual == ManualSync.FULL)
             }
+            progress("Checking for changes")
             val full = prefs.getString(KEY_MODE, MODE_FULL) == MODE_FULL
             if (full && prefs.getString(KEY_SNAP_STATE, "") != SNAP_SKIPPED && prefs.getString(KEY_SNAP_STATE, "") != SNAP_LOADED) {
                 when (snapshotStep(deadline)) {
@@ -197,6 +285,7 @@ class SkuSyncRepository @Inject constructor(
 
             val cycleStarted = prefs.getLong(KEY_CYCLE_STARTED, 0L)
             if (full) {
+                progress("Removing items no longer sent")
                 // Everything D365FO has was just written with a newer stamp; older rows are gone there.
                 val items = itemDao.deleteItemsNotSeenSince(cycleStarted)
                 val barcodes = itemDao.deleteBarcodesNotSeenSince(cycleStarted)
@@ -251,7 +340,6 @@ class SkuSyncRepository @Inject constructor(
                 .apply()
             SkuSyncStep.Done(summary)
         }
-    }
 
     /** When the last full download of the item list finished; null for never. */
     fun lastFullAt(): Long? = prefs.getLong(KEY_LAST_FULL, 0L).takeIf { it > 0L }
@@ -310,6 +398,7 @@ class SkuSyncRepository @Inject constructor(
         val since = if (full || feed == FEED_VARIANTS) "" else prefs.getString(KEY_CHANGED_SINCE, "").orEmpty()
         while (true) {
             if (System.currentTimeMillis() >= deadline) return FeedResult.OutOfTime
+            progress(if (full) "Downloading ${areaName(feed)}" else "Fetching changed ${areaName(feed)}", prefs.getInt(countKey(feed), 0).toLong())
             val after = prefs.getString(KEY_AFTER, initialKey(feed, full)).orEmpty()
             val started = System.currentTimeMillis()
             val result = errorMapper.safeCall {
@@ -387,6 +476,7 @@ class SkuSyncRepository @Inject constructor(
                 val index = prefs.getInt(KEY_SNAP_FILE, 0)
                 val file = manifest.files.getOrNull(index) ?: break
                 if (System.currentTimeMillis() >= deadline) return SnapshotResult.Pending
+                progress("Downloading the item list (file ${index + 1} of ${manifest.files.size})", index.toLong(), manifest.files.size.toLong())
                 val started = System.currentTimeMillis()
                 var ok = download(file, index)
                 if (!ok) {
@@ -421,6 +511,8 @@ class SkuSyncRepository @Inject constructor(
             val file = manifest.files.getOrNull(index) ?: break
             val feed = file.area
             val skip = prefs.getInt(KEY_SNAP_LINE, 0)
+            val areaRows = manifest.files.filter { it.area == feed }.sumOf { it.rows }
+            progress("Loading ${areaName(feed)}", prefs.getInt(countKey(feed), 0).toLong(), areaRows)
             var line = 0
             val started = System.currentTimeMillis()
             // A ZIP with one .jsonl entry (D365FO attaches only its listed file types).
@@ -441,6 +533,7 @@ class SkuSyncRepository @Inject constructor(
                     }
                     prefs.edit().putInt(KEY_SNAP_LINE, line)
                         .putInt(countKey(feed), prefs.getInt(countKey(feed), 0) + rows.size).apply()
+                    progress("Loading ${areaName(feed)}", prefs.getInt(countKey(feed), 0).toLong(), areaRows)
                     notePeakMemory()
                 }
             }
@@ -531,6 +624,8 @@ class SkuSyncRepository @Inject constructor(
         const val FULL_REFRESH_INTERVAL_MS = 7 * 24 * 60 * 60 * 1000L
         /** A store that syncs by assortment: its (small) item list again each day, for assortment changes. */
         const val SCOPED_FULL_REFRESH_INTERVAL_MS = 20 * 60 * 60 * 1000L
+        /** Same as HSMobileOpsDeviceSync::staleHours in D365FO: the sync runs nightly, so two days allows a missed night. */
+        const val STALE_HOURS = 48L
         /** The scope of the cache's items: blank every item, a warehouse its store's assortment. */
         const val KEY_SCOPE = "scope"
         /** The scope this cycle's answers must be for. */
@@ -590,6 +685,9 @@ data class SkuSyncSummary(
     val storedBytes: Long = 0L,
     val finishedAt: Long = 0L,
 )
+
+/** What a running item sync is doing: [done] of [total] (0 total: no known end, e.g. changes). */
+data class SkuSyncProgress(val stage: String, val done: Long = 0L, val total: Long = 0L)
 
 /** What one [SkuSyncRepository.runStep] got to. */
 sealed interface SkuSyncStep {

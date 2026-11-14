@@ -148,6 +148,90 @@ public class HSMobileOpsWarehouseControl extends common
     }
 ]]></Source>
 			</Method>
+			<Method>
+				<Name>itemsSent</Name>
+				<Source><![CDATA[
+
+    /// <summary>What the warehouse's handhelds get now - see itemScope.</summary>
+    public display str itemsSent()
+    {
+        if (!this.SyncByAssortment)
+        {
+            return 'All items';
+        }
+        return this.AssortmentItems > 0
+            ? strFmt('Store assortment (%1 items)', this.AssortmentItems)
+            : 'All items (the store has no assortment today)';
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>snapshotState</Name>
+				<Source><![CDATA[
+
+    /// <summary>The snapshot the warehouse's handhelds download on a full sync, and how old it is.</summary>
+    public display str snapshotState()
+    {
+        InventLocationId       scope = HSMobileOpsWarehouseControl::itemScope(this.Warehouse);
+        HSMobileOpsSkuSnapshot ready = HSMobileOpsSkuSnapshot::current(scope);
+        HSMobileOpsSkuSnapshot latest;
+        str                    text;
+
+        select firstOnly Status, BuiltAtUtc from latest
+            order by latest.BuiltAtUtc desc
+            where latest.Scope == scope;
+        if (ready.RecId)
+        {
+            text = strFmt('%1 snapshot, %2 hours old', scope ? 'Store' : 'Company',
+                DateTimeUtil::getDifference(DateTimeUtil::utcNow(), ready.BuiltAtUtc) div 3600);
+        }
+        else
+        {
+            text = 'No snapshot: devices page through the items';
+        }
+        if (latest.RecId && latest.Status != HSMobileOpsSkuSnapshot::statusReady())
+        {
+            text += strFmt('. Newest build: %1', latest.Status);
+        }
+        return text;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>deviceState</Name>
+				<Source><![CDATA[
+
+    /// <summary>The handhelds that last synced in this warehouse: how many, and how many need a look.</summary>
+    public display str deviceState()
+    {
+        HSMobileOpsDeviceSync device;
+        int                   total;
+        int                   failing;
+        int                   stale;
+
+        while select device
+            where device.Warehouse == this.Warehouse
+        {
+            total++;
+            if (device.isFailing())
+            {
+                failing++;
+            }
+            else if (device.isStale())
+            {
+                stale++;
+            }
+        }
+        if (!total)
+        {
+            return '';
+        }
+        return strFmt('%1 devices', total)
+            + (failing ? strFmt(', %1 failing', failing) : '')
+            + (stale ? strFmt(', %1 stale', stale) : '');
+    }
+]]></Source>
+			</Method>
 		</Methods>
 	</SourceCode>
 	<Label>Mobile warehouse control</Label>

@@ -457,6 +457,12 @@ interface MobileOpsServiceApi {
         @Body body: com.d365fo.mobileops.data.remote.dto.SkuPageServiceRequest,
     ): Response<com.d365fo.mobileops.data.remote.dto.SkuPageServiceResponse>
 
+    /** The end of an item sync, finished or failed - Mobile sync health in D365FO. */
+    @POST("HSMobileOpsServiceGroup/HSMobileOpsSkuPageSvc/reportSync")
+    suspend fun reportSkuSync(
+        @Body body: com.d365fo.mobileops.data.remote.dto.SkuSyncReportServiceRequest,
+    ): Response<com.d365fo.mobileops.data.remote.dto.SkuPageServiceResponse>
+
     /** One page of the offline item / barcode / variant cache - see SkuSyncRepository. */
     @POST("HSMobileOpsServiceGroup/HSMobileOpsSkuPageSvc/getSkuPage")
     suspend fun getSkuPage(

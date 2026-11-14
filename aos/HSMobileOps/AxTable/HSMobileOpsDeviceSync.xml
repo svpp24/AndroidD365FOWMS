@@ -1,0 +1,285 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxTable xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsDeviceSync</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Each handheld's item sync as it last reported it (HSMobileOpsSkuPageSvc/reportSync): sent by
+/// the app at the end of every item sync, finished or failed. Mobile sync health reads it to show
+/// which devices are up to date, which are failing and which have gone quiet.
+///
+/// One row per device and company. A device that cannot reach D365FO cannot report; it shows up
+/// as stale once its last successful sync is older than staleHours().
+/// </summary>
+public class HSMobileOpsDeviceSync extends common
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>staleHours</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// A device whose last successful item sync is older than this is stale. The item sync runs
+    /// once a day, on Wi-Fi while charging, so two days allows for a missed night.
+    /// </summary>
+    public static int staleHours()
+    {
+        return 48;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>report</Name>
+				<Source><![CDATA[
+
+    /// <summary>Records one device's report; the caller has checked the company and the device id.</summary>
+    public static void report(HSMobileOpsSkuSyncReport _report)
+    {
+        HSMobileOpsDeviceSync row;
+        utcdatetime           now = DateTimeUtil::utcNow();
+
+        ttsbegin;
+        select forUpdate firstOnly row
+            where row.DeviceId == _report.parmDeviceId();
+        row.DeviceId      = _report.parmDeviceId();
+        row.Warehouse     = _report.parmWarehouse();
+        row.Scope         = _report.parmScope();
+        row.AppVersion    = subStr(_report.parmAppVersion(), 1, 32);
+        row.LastReportUtc = now;
+        if (_report.parmSucceeded())
+        {
+            row.LastSuccessUtc = now;
+            row.LastFull       = _report.parmFull() ? NoYes::Yes : NoYes::No;
+            row.Items          = _report.parmItems();
+            row.Barcodes       = _report.parmBarcodes();
+            row.SyncSeconds    = _report.parmSeconds();
+        }
+        else
+        {
+            row.LastErrorUtc = now;
+            row.LastError    = subStr(_report.parmMessage(), 1, 250);
+        }
+        if (row.RecId)
+        {
+            row.update();
+        }
+        else
+        {
+            row.insert();
+        }
+        ttscommit;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>isFailing</Name>
+				<Source><![CDATA[
+
+    /// <summary>Its last sync failed (an error after the last success).</summary>
+    public boolean isFailing()
+    {
+        return this.LastErrorUtc && this.LastErrorUtc > this.LastSuccessUtc;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>isStale</Name>
+				<Source><![CDATA[
+
+    /// <summary>No successful item sync for staleHours().</summary>
+    public boolean isStale()
+    {
+        return !this.LastSuccessUtc
+            || DateTimeUtil::getDifference(DateTimeUtil::utcNow(), this.LastSuccessUtc) > HSMobileOpsDeviceSync::staleHours() * 3600;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>health</Name>
+				<Source><![CDATA[
+
+    /// <summary>What an administrator needs first: OK, failing (with why) or stale (since when).</summary>
+    public display str health()
+    {
+        str  text;
+        int64 hours;
+
+        if (this.isFailing())
+        {
+            text = 'Failing: ' + this.LastError;
+        }
+        else if (!this.LastSuccessUtc)
+        {
+            text = 'Never finished a sync';
+        }
+        else if (this.isStale())
+        {
+            hours = DateTimeUtil::getDifference(DateTimeUtil::utcNow(), this.LastSuccessUtc) div 3600;
+            text  = hours >= 48 ? strFmt('Stale: last sync %1 days ago', hours div 24) : strFmt('Stale: last sync %1 hours ago', hours);
+        }
+        else
+        {
+            text = 'OK';
+        }
+        return text;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>deviceName</Name>
+				<Source><![CDATA[
+
+    public display Name deviceName()
+    {
+        HSMobileOpsDevice device;
+
+        select firstOnly FriendlyName from device where device.DeviceId == this.DeviceId;
+        return device.FriendlyName;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>lastUser</Name>
+				<Source><![CDATA[
+
+    public display HSMobileOpsUserName lastUser()
+    {
+        HSMobileOpsDevice device;
+
+        select firstOnly LastUserName from device where device.DeviceId == this.DeviceId;
+        return device.LastUserName;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>itemsOf</Name>
+				<Source><![CDATA[
+
+    /// <summary>Which items the device holds: every item, or the store's assortment.</summary>
+    public display str itemsOf()
+    {
+        return this.Scope ? 'Store assortment' : 'All items';
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+	<Label>Mobile device sync</Label>
+	<TitleField1>DeviceId</TitleField1>
+	<TitleField2>Warehouse</TitleField2>
+	<CacheLookup>None</CacheLookup>
+	<ClusteredIndex>DeviceIdx</ClusteredIndex>
+	<PrimaryIndex>DeviceIdx</PrimaryIndex>
+	<ReplacementKey>DeviceIdx</ReplacementKey>
+	<Fields>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>DeviceId</Name>
+			<AllowEdit>No</AllowEdit>
+			<Label>Device ID</Label>
+			<Mandatory>Yes</Mandatory>
+			<StringSize>64</StringSize>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>Warehouse</Name>
+			<AllowEdit>No</AllowEdit>
+			<ExtendedDataType>InventLocationId</ExtendedDataType>
+			<HelpText>The warehouse selected on the device at its last sync.</HelpText>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>Scope</Name>
+			<AllowEdit>No</AllowEdit>
+			<ExtendedDataType>InventLocationId</ExtendedDataType>
+			<HelpText>Blank: the device holds every item. A warehouse: only that store's assortment.</HelpText>
+			<Label>Assortment of warehouse</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldUtcDateTime">
+			<Name>LastSuccessUtc</Name>
+			<AllowEdit>No</AllowEdit>
+			<Label>Last successful sync</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldEnum">
+			<Name>LastFull</Name>
+			<AllowEdit>No</AllowEdit>
+			<EnumType>NoYes</EnumType>
+			<HelpText>Yes: the last successful sync downloaded every item again. No: only the changes.</HelpText>
+			<Label>Full sync</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldInt">
+			<Name>Items</Name>
+			<AllowEdit>No</AllowEdit>
+			<HelpText>Items received in the last successful sync (a full sync: every item the device holds).</HelpText>
+			<Label>Items</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldInt">
+			<Name>Barcodes</Name>
+			<AllowEdit>No</AllowEdit>
+			<Label>Barcodes</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldInt">
+			<Name>SyncSeconds</Name>
+			<AllowEdit>No</AllowEdit>
+			<HelpText>Time the device spent on the last successful sync.</HelpText>
+			<Label>Sync seconds</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>LastError</Name>
+			<AllowEdit>No</AllowEdit>
+			<Label>Last error</Label>
+			<StringSize>250</StringSize>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldUtcDateTime">
+			<Name>LastErrorUtc</Name>
+			<AllowEdit>No</AllowEdit>
+			<Label>Last error at</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldUtcDateTime">
+			<Name>LastReportUtc</Name>
+			<AllowEdit>No</AllowEdit>
+			<Label>Last report</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>AppVersion</Name>
+			<AllowEdit>No</AllowEdit>
+			<Label>App version</Label>
+			<StringSize>32</StringSize>
+		</AxTableField>
+	</Fields>
+	<FullTextIndexes />
+	<Indexes>
+		<AxTableIndex>
+			<Name>DeviceIdx</Name>
+			<AlternateKey>Yes</AlternateKey>
+			<Fields>
+				<AxTableIndexField>
+					<DataField>DeviceId</DataField>
+				</AxTableIndexField>
+			</Fields>
+		</AxTableIndex>
+		<AxTableIndex>
+			<Name>WarehouseIdx</Name>
+			<AllowDuplicates>Yes</AllowDuplicates>
+			<Fields>
+				<AxTableIndexField>
+					<DataField>Warehouse</DataField>
+				</AxTableIndexField>
+			</Fields>
+		</AxTableIndex>
+	</Indexes>
+	<Mappings />
+	<Relations />
+	<StateMachines />
+</AxTable>

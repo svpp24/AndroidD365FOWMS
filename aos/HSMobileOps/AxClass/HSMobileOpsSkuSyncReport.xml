@@ -1,0 +1,161 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsSkuSyncReport</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// A handheld's report at the end of an item sync - see HSMobileOpsSkuPageService::reportSync.
+/// Succeeded with the counts, or not with the error Message.
+/// </summary>
+[DataContractAttribute]
+class HSMobileOpsSkuSyncReport
+{
+    str dataAreaId;
+    str deviceId;
+    str warehouse;
+    str scope;
+    boolean succeeded;
+    boolean full;
+    int items;
+    int barcodes;
+    int seconds;
+    str message;
+    str appVersion;
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmDataAreaId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('DataAreaId')]
+    public str parmDataAreaId(str _value = dataAreaId)
+    {
+        dataAreaId = _value;
+        return dataAreaId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmDeviceId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('DeviceId')]
+    public str parmDeviceId(str _value = deviceId)
+    {
+        deviceId = _value;
+        return deviceId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmWarehouse</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Warehouse')]
+    public str parmWarehouse(str _value = warehouse)
+    {
+        warehouse = _value;
+        return warehouse;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmScope</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Scope')]
+    public str parmScope(str _value = scope)
+    {
+        scope = _value;
+        return scope;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmSucceeded</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Succeeded')]
+    public boolean parmSucceeded(boolean _value = succeeded)
+    {
+        succeeded = _value;
+        return succeeded;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmFull</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Full')]
+    public boolean parmFull(boolean _value = full)
+    {
+        full = _value;
+        return full;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmItems</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Items')]
+    public int parmItems(int _value = items)
+    {
+        items = _value;
+        return items;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmBarcodes</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Barcodes')]
+    public int parmBarcodes(int _value = barcodes)
+    {
+        barcodes = _value;
+        return barcodes;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmSeconds</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Seconds')]
+    public int parmSeconds(int _value = seconds)
+    {
+        seconds = _value;
+        return seconds;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmMessage</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Message')]
+    public str parmMessage(str _value = message)
+    {
+        message = _value;
+        return message;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmAppVersion</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('AppVersion')]
+    public str parmAppVersion(str _value = appVersion)
+    {
+        appVersion = _value;
+        return appVersion;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

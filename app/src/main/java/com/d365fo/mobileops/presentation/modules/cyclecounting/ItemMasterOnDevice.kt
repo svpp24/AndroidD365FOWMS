@@ -9,6 +9,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.size
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Refresh
@@ -49,6 +52,9 @@ class ItemMasterViewModel @Inject constructor(
     private val _counts = MutableStateFlow<ItemMasterCounts?>(null)
     val counts = _counts.asStateFlow()
 
+    /** The running item sync - manual or nightly - for the sync animation; null when idle. */
+    val progress = skuSync.progress
+
     init { reload() }
 
     /** Counts again - after a manual sync finishes. */
@@ -83,14 +89,23 @@ fun ItemMasterOnDevice(
     syncError: String? = null,
     viewModel: ItemMasterViewModel = hiltViewModel(),
 ) {
+    val progress by viewModel.progress.collectAsStateWithLifecycle()
+    // Any item sync running - the one asked for here, or the nightly one (user, 14 Nov: syncing
+    // should show the sync animation).
+    val busy = syncing || progress != null
     // A sync that just finished changes the counts.
-    androidx.compose.runtime.LaunchedEffect(syncing) { if (!syncing) viewModel.reload() }
+    androidx.compose.runtime.LaunchedEffect(busy) { if (!busy) viewModel.reload() }
     val counts by viewModel.counts.collectAsStateWithLifecycle()
     val c = counts ?: return
     val n = NumberFormat.getIntegerInstance()
     val missing = c.items == 0
-    // Harbour: a white card with a coloured edge - green "Data up to date", amber when missing.
-    val edge = if (missing) WarehouseStatusColors.amber else WarehouseStatusColors.green
+    // Harbour: a white card with a coloured edge - green "Data up to date", amber when missing,
+    // the app's accent while syncing.
+    val edge = when {
+        busy -> WarehouseStatusColors.accent
+        missing -> WarehouseStatusColors.amber
+        else -> WarehouseStatusColors.green
+    }
     androidx.compose.foundation.layout.Row(
         modifier = modifier
             .fillMaxWidth()
@@ -109,19 +124,28 @@ fun ItemMasterOnDevice(
                 verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
                 horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(5.dp),
             ) {
-                androidx.compose.material3.Icon(
-                    if (missing) androidx.compose.material.icons.Icons.Filled.Warning else androidx.compose.material.icons.Icons.Filled.CheckCircle,
-                    contentDescription = null,
-                    tint = edge,
-                    modifier = Modifier.size(18.dp),
-                )
+                if (busy) {
+                    SpinningSyncIcon(tint = edge)
+                } else {
+                    androidx.compose.material3.Icon(
+                        if (missing) androidx.compose.material.icons.Icons.Filled.Warning else androidx.compose.material.icons.Icons.Filled.CheckCircle,
+                        contentDescription = null,
+                        tint = edge,
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
                 Text(
-                    if (missing) "Item master not on this device" else "Data up to date",
+                    when {
+                        busy -> "Syncing items"
+                        missing -> "Item master not on this device"
+                        else -> "Data up to date"
+                    },
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.ExtraBold,
                     color = edge,
                 )
             }
+            if (busy) SyncProgressLine(progress, edge)
             Text(
                 text = if (missing) {
                     "Counting offline can't look items up - sync now."
@@ -146,15 +170,15 @@ fun ItemMasterOnDevice(
                 )
             }
             syncError?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = WarehouseStatusColors.red) }
-            if (onFullSync != null) FullResyncAction(onFullSync, enabled = !syncing)
+            if (onFullSync != null) FullResyncAction(onFullSync, enabled = !busy)
         }
         // The manual Sync (user, 9 Nov): items, barcodes and variants changed since the last one.
         if (onSync != null) {
             com.d365fo.mobileops.presentation.common.components.DockOutlinedButton(
                 onClick = onSync,
-                enabled = !syncing,
+                enabled = !busy,
                 icon = androidx.compose.material.icons.Icons.Filled.Refresh,
-                text = if (syncing) "Syncing…" else "Sync",
+                text = if (busy) "Syncing…" else "Sync",
                 modifier = Modifier.align(androidx.compose.ui.Alignment.CenterVertically).padding(end = 10.dp),
             )
         }
@@ -203,5 +227,54 @@ private fun FullResyncAction(onFullSync: () -> Unit, enabled: Boolean) {
                 )
             },
         )
+    }
+}
+
+/** The sync arrows, turning while an item sync runs. */
+@Composable
+private fun SpinningSyncIcon(tint: Color) {
+    val turn = androidx.compose.animation.core.rememberInfiniteTransition(label = "sync")
+    val angle by turn.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = androidx.compose.animation.core.infiniteRepeatable(
+            androidx.compose.animation.core.tween(1100, easing = androidx.compose.animation.core.LinearEasing),
+        ),
+        label = "syncAngle",
+    )
+    androidx.compose.material3.Icon(
+        androidx.compose.material.icons.Icons.Filled.Sync,
+        contentDescription = "Syncing",
+        tint = tint,
+        modifier = Modifier.size(18.dp).graphicsLayer { rotationZ = -angle },
+    )
+}
+
+/**
+ * What the sync is doing, "Loading items - 340,000 of 1,000,000", over a bar: filling when the
+ * end is known, moving when not (changes, or between steps).
+ */
+@Composable
+private fun SyncProgressLine(progress: com.d365fo.mobileops.data.repository.SkuSyncProgress?, color: Color) {
+    val n = NumberFormat.getIntegerInstance()
+    val p = progress
+    val label = when {
+        p == null -> "Starting"
+        p.total > 0 && p.stage.startsWith("Downloading the item list") -> p.stage
+        p.total > 0 -> "${p.stage} - ${n.format(p.done)} of ${n.format(p.total)}"
+        p.done > 0 -> "${p.stage} - ${n.format(p.done)}"
+        else -> p.stage
+    }
+    Text(label, style = MaterialTheme.typography.bodySmall, color = WarehouseStatusColors.text3)
+    val bar = Modifier.fillMaxWidth().padding(vertical = 3.dp).height(4.dp).clip(RoundedCornerShape(2.dp))
+    if (p != null && p.total > 0) {
+        androidx.compose.material3.LinearProgressIndicator(
+            progress = { (p.done.toFloat() / p.total.toFloat()).coerceIn(0f, 1f) },
+            modifier = bar,
+            color = color,
+            trackColor = WarehouseStatusColors.border,
+        )
+    } else {
+        androidx.compose.material3.LinearProgressIndicator(modifier = bar, color = color, trackColor = WarehouseStatusColors.border)
     }
 }

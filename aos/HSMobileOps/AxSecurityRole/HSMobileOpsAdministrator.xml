@@ -44,6 +44,9 @@
 			<Name>HSMobileOpsWarehouseControlMaintain</Name>
 		</AxSecurityPrivilegeReference>
 		<AxSecurityPrivilegeReference>
+			<Name>HSMobileOpsSyncHealthView</Name>
+		</AxSecurityPrivilegeReference>
+		<AxSecurityPrivilegeReference>
 			<Name>HSMobileOpsDeviceSetupCodeMaintain</Name>
 		</AxSecurityPrivilegeReference>
 		<AxSecurityPrivilegeReference>

@@ -31,6 +31,11 @@ class OfflineReadyViewModel @Inject constructor(
     /** The last finished item / barcode / variant sync - counts, time, memory, size. */
     fun lastSkuSync(): com.d365fo.mobileops.data.repository.SkuSyncSummary? = skuSync.lastSummary()
 
+    /** Days since the item list last synced, once it is two days or more; null while fresh. */
+    val staleDays: StateFlow<Int?> = skuSync.staleDays
+
+    fun refreshStale() = skuSync.refreshStale()
+
     val readiness: StateFlow<OfflineReadiness> = prefetcher.readiness
 
     val offlineSignInDays: Int = OfflineSignIn.VALID_DAYS

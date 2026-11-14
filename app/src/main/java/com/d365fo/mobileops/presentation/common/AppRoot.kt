@@ -177,6 +177,18 @@ fun AppRoot(
                     onDismiss = workerSessionViewModel::dismissLicenseWarning,
                 )
             }
+            // The item list has not synced for two days (D365FO's Mobile sync health calls the
+            // device stale by the same rule): scans may miss new items and barcodes.
+            val offlineReady: OfflineReadyViewModel = hiltViewModel()
+            val staleDays by offlineReady.staleDays.collectAsStateWithLifecycle()
+            var staleDismissed by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
+            LaunchedEffect(Unit) { offlineReady.refreshStale() }
+            staleDays?.takeIf { !staleDismissed }?.let { days ->
+                WarningBanner(
+                    message = "The item list on this device was last updated $days days ago. Leave it on Wi-Fi and charging tonight, or sync now in Settings.",
+                    onDismiss = { staleDismissed = true },
+                )
+            }
             // weight(1f), not left to wrap-content - AppNavGraph's own Scaffold expects to fill
             // whatever space it's given, and an unbounded Column would otherwise hand it zero.
             //

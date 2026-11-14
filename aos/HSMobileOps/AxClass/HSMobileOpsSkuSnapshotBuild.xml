@@ -442,6 +442,10 @@ class HSMobileOpsSkuSnapshotBuild extends RunBaseBatch
                 HSMobileOpsSkuSnapshotBuild::removeOlder(other);
             }
         }
+        if (failure)
+        {
+            HSMobileOpsSkuSnapshotBuild::alertFailed(strFmt('The store item snapshot of %1 (and %2 stores with the same assortment)', _scope, conLen(_others)), failure);
+        }
     }
 ]]></Source>
 			</Method>
@@ -838,9 +842,63 @@ class HSMobileOpsSkuSnapshotBuild extends RunBaseBatch
             snapshot.Status       = _status;
             snapshot.BuildSeconds = any2Int(DateTimeUtil::getDifference(DateTimeUtil::utcNow(), _started));
             snapshot.Result       = subStr(_result, 1, 250);
+            if (_status == HSMobileOpsSkuSnapshot::statusReady())
+            {
+                // A store snapshot is one task (its cut, or a copy of its group's).
+                snapshot.TasksDone = snapshot.TasksTotal;
+            }
             snapshot.update();
         }
         ttscommit;
+        // The company snapshot alerts here; a store group alerts once, in buildStoreGroup.
+        if (snapshot.RecId && _status == HSMobileOpsSkuSnapshot::statusFailed() && !snapshot.Scope)
+        {
+            HSMobileOpsSkuSnapshotBuild::alertFailed('The item snapshot', _result);
+        }
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>alertFailed</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// An Action center notification to every user with the Mobile administrator role: a failed
+    /// snapshot means devices fall back to paging, which is slow for a full sync. Never fails the build.
+    /// </summary>
+    internal static void alertFailed(str _what, str _result)
+    {
+        SecurityRole                   role;
+        SecurityUserRole               userRole;
+        SystemNotificationDataContract notification;
+        int                            n;
+
+        try
+        {
+            notification = new SystemNotificationDataContract();
+            while select User from userRole
+                group by userRole.User
+                exists join role
+                    where role.RecId   == userRole.SecurityRole
+                       && role.AotName == 'HSMobileOpsAdministrator'
+            {
+                n++;
+                notification.Users().value(n, userRole.User);
+            }
+            if (!n)
+            {
+                return;
+            }
+            notification.Title(strFmt('%1 failed (%2)', _what, curExt()));
+            notification.Message(strFmt('%1. Devices page through the items until the next build succeeds. See Mobile sync health.', subStr(_result, 1, 200)));
+            notification.RuleId('ExcelStaticExport');
+            notification.ExpirationDateTime(DateTimeUtil::addHours(DateTimeUtil::utcNow(), 72));
+            SystemNotificationsManager::AddSystemNotification(notification);
+        }
+        catch
+        {
+            // An alert that cannot be sent must not fail the snapshot build.
+        }
     }
 ]]></Source>
 			</Method>

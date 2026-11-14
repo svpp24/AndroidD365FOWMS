@@ -115,6 +115,11 @@
 				</AxMenuElement>
 				<AxMenuElement xmlns=""
 					i:type="AxMenuElementMenuItem">
+					<Name>HSMobileOpsSyncHealth</Name>
+					<MenuItemName>HSMobileOpsSyncHealth</MenuItemName>
+				</AxMenuElement>
+				<AxMenuElement xmlns=""
+					i:type="AxMenuElementMenuItem">
 					<Name>HSMobileOpsProcessSetup</Name>
 					<MenuItemName>HSMobileOpsProcessSetup</MenuItemName>
 				</AxMenuElement>

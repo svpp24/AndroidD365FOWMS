@@ -1,0 +1,590 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxForm xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns="Microsoft.Dynamics.AX.Metadata.V6">
+	<Name>HSMobileOpsSyncHealth</Name>
+	<SourceCode>
+		<Methods xmlns="">
+			<Method>
+				<Name>classDeclaration</Name>
+				<Source><![CDATA[
+/// <summary>
+/// Mobile sync health: one screen for the handhelds' item sync - a summary on top, then every
+/// warehouse (what its devices get, its snapshot, its devices), every device (oldest successful
+/// sync first) and every item snapshot build.
+/// </summary>
+[Form]
+public class HSMobileOpsSyncHealth extends FormRun
+{
+}
+]]></Source>
+			</Method>
+			<Method>
+				<Name>init</Name>
+				<Source><![CDATA[
+
+    public void init()
+    {
+        HSMobileOpsWarehouseControl::fillWarehouses();
+        super();
+        // The devices that need a look first: oldest successful sync on top.
+        HSMobileOpsDeviceSync_ds.queryBuildDataSource().addSortField(fieldNum(HSMobileOpsDeviceSync, LastSuccessUtc), SortOrder::Ascending);
+        HSMobileOpsSkuSnapshot_ds.queryBuildDataSource().addSortField(fieldNum(HSMobileOpsSkuSnapshot, BuiltAtUtc), SortOrder::Descending);
+        this.showSummary();
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>showSummary</Name>
+				<Source><![CDATA[
+
+    /// <summary>The company snapshot, the stores, the devices - three lines.</summary>
+    public void showSummary()
+    {
+        HSMobileOpsSkuSnapshot      snapshot;
+        HSMobileOpsSkuSnapshot      company = HSMobileOpsSkuSnapshot::current('');
+        HSMobileOpsDeviceSync       device;
+        HSMobileOpsWarehouseControl control;
+        int                         ready;
+        int                         building;
+        int                         failed;
+        int                         devices;
+        int                         failing;
+        int                         stale;
+        str                         line1;
+        str                         line2;
+        str                         line3;
+
+        select firstOnly snapshot
+            order by snapshot.BuiltAtUtc desc
+            where snapshot.Scope == '';
+        if (company.RecId)
+        {
+            line1 = strFmt('Company item snapshot: Ready, built %1 (%2 hours ago) in %3 seconds.', company.BuiltAtUtc,
+                DateTimeUtil::getDifference(DateTimeUtil::utcNow(), company.BuiltAtUtc) div 3600, company.BuildSeconds);
+        }
+        else
+        {
+            line1 = 'Company item snapshot: none ready, so a full sync pages through the items.';
+        }
+        if (snapshot.RecId && snapshot.RecId != company.RecId)
+        {
+            line1 += strFmt(' Newest build: %1. %2', snapshot.Status,
+                snapshot.Status == HSMobileOpsSkuSnapshot::statusFailed() ? snapshot.Result : '');
+        }
+
+        select count(RecId) from control
+            where control.SyncByAssortment == NoYes::Yes;
+        while select Status from snapshot
+            where snapshot.Scope != ''
+        {
+            if (snapshot.Status == HSMobileOpsSkuSnapshot::statusReady())
+            {
+                ready++;
+            }
+            else if (snapshot.Status == HSMobileOpsSkuSnapshot::statusBuilding())
+            {
+                building++;
+            }
+            else
+            {
+                failed++;
+            }
+        }
+        line2 = strFmt('Warehouses syncing by store assortment: %1. Store snapshots: %2 ready, %3 building, %4 failed.',
+            control.RecId, ready, building, failed);
+
+        while select device
+        {
+            devices++;
+            if (device.isFailing())
+            {
+                failing++;
+            }
+            else if (device.isStale())
+            {
+                stale++;
+            }
+        }
+        line3 = strFmt('Devices that reported an item sync: %1. OK: %2, failing: %3, stale (no successful sync for %4 hours): %5.',
+            devices, devices - failing - stale, failing, HSMobileOpsDeviceSync::staleHours(), stale);
+
+        Summary.text(line1 + '\n' + line2 + '\n' + line3);
+    }
+]]></Source>
+			</Method>
+		</Methods>
+		<DataSources xmlns="" />
+		<DataControls xmlns="">
+			<Control>
+				<Name>RefreshButton</Name>
+				<Type>Button</Type>
+				<Methods>
+					<Method>
+						<Name>clicked</Name>
+						<Source><![CDATA[
+        public void clicked()
+        {
+            super();
+            HSMobileOpsWarehouseControl_ds.research(true);
+            HSMobileOpsDeviceSync_ds.research(true);
+            HSMobileOpsSkuSnapshot_ds.research(true);
+            element.showSummary();
+        }
+
+]]></Source>
+					</Method>
+				</Methods>
+			</Control>
+		</DataControls>
+		<Members xmlns="" />
+	</SourceCode>
+	<DataSources>
+		<AxFormDataSource xmlns="">
+			<Name>HSMobileOpsWarehouseControl</Name>
+			<Table>HSMobileOpsWarehouseControl</Table>
+			<Fields />
+			<ReferencedDataSources />
+			<AllowCreate>No</AllowCreate>
+			<AllowDelete>No</AllowDelete>
+			<AllowEdit>No</AllowEdit>
+			<InsertIfEmpty>No</InsertIfEmpty>
+			<DataSourceLinks />
+			<DerivedDataSources />
+		</AxFormDataSource>
+		<AxFormDataSource xmlns="">
+			<Name>HSMobileOpsDeviceSync</Name>
+			<Table>HSMobileOpsDeviceSync</Table>
+			<Fields />
+			<ReferencedDataSources />
+			<AllowCreate>No</AllowCreate>
+			<AllowDelete>No</AllowDelete>
+			<AllowEdit>No</AllowEdit>
+			<InsertIfEmpty>No</InsertIfEmpty>
+			<DataSourceLinks />
+			<DerivedDataSources />
+		</AxFormDataSource>
+		<AxFormDataSource xmlns="">
+			<Name>HSMobileOpsSkuSnapshot</Name>
+			<Table>HSMobileOpsSkuSnapshot</Table>
+			<Fields />
+			<ReferencedDataSources />
+			<AllowCreate>No</AllowCreate>
+			<AllowDelete>No</AllowDelete>
+			<AllowEdit>No</AllowEdit>
+			<InsertIfEmpty>No</InsertIfEmpty>
+			<DataSourceLinks />
+			<DerivedDataSources />
+		</AxFormDataSource>
+	</DataSources>
+	<Design>
+		<Caption xmlns="">Mobile sync health</Caption>
+		<DataSource xmlns="">HSMobileOpsWarehouseControl</DataSource>
+		<Controls xmlns="">
+			<AxFormControl xmlns=""
+				i:type="AxFormActionPaneControl">
+				<Name>ActionPane</Name>
+				<Type>ActionPane</Type>
+				<FormControlExtension
+					i:nil="true" />
+				<Controls>
+					<AxFormControl xmlns=""
+						i:type="AxFormButtonGroupControl">
+						<Name>HealthGroup</Name>
+						<Type>ButtonGroup</Type>
+						<FormControlExtension
+							i:nil="true" />
+						<Controls>
+							<AxFormControl xmlns=""
+								i:type="AxFormButtonControl">
+								<Name>RefreshButton</Name>
+								<Type>Button</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<ButtonDisplay>TextOnly</ButtonDisplay>
+								<Text>Refresh</Text>
+							</AxFormControl>
+							<AxFormControl xmlns=""
+								i:type="AxFormMenuFunctionButtonControl">
+								<Name>WarehouseControlButton</Name>
+								<Type>MenuFunctionButton</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<ButtonDisplay>TextOnly</ButtonDisplay>
+								<MenuItemName>HSMobileOpsWarehouseControl</MenuItemName>
+								<Text>Mobile warehouse control</Text>
+							</AxFormControl>
+							<AxFormControl xmlns=""
+								i:type="AxFormMenuFunctionButtonControl">
+								<Name>SnapshotButton</Name>
+								<Type>MenuFunctionButton</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<ButtonDisplay>TextOnly</ButtonDisplay>
+								<MenuItemName>HSMobileOpsSkuSnapshot</MenuItemName>
+								<Text>Mobile item snapshot</Text>
+							</AxFormControl>
+						</Controls>
+					</AxFormControl>
+				</Controls>
+				<AlignChild>No</AlignChild>
+				<AlignChildren>No</AlignChildren>
+				<ArrangeMethod>Vertical</ArrangeMethod>
+			</AxFormControl>
+			<AxFormControl xmlns=""
+				i:type="AxFormStaticTextControl">
+				<Name>Summary</Name>
+				<AutoDeclaration>Yes</AutoDeclaration>
+				<Type>StaticText</Type>
+				<WidthMode>SizeToAvailable</WidthMode>
+				<FormControlExtension
+					i:nil="true" />
+				<Text></Text>
+			</AxFormControl>
+			<AxFormControl xmlns=""
+				i:type="AxFormTabControl">
+				<Name>Tab</Name>
+				<AlignControl>No</AlignControl>
+				<Type>Tab</Type>
+				<FormControlExtension
+					i:nil="true" />
+				<Controls>
+					<AxFormControl xmlns=""
+						i:type="AxFormTabPageControl">
+						<Name>WarehousesPage</Name>
+						<HelpText>Every warehouse: which items its handhelds get, the snapshot they download on a full sync, and its devices.</HelpText>
+						<Type>TabPage</Type>
+						<FormControlExtension
+							i:nil="true" />
+						<Controls>
+							<AxFormControl xmlns=""
+								i:type="AxFormGridControl">
+								<Name>WarehouseGrid</Name>
+								<Type>Grid</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<Controls>
+								<AxFormControl xmlns=""
+									i:type="AxFormStringControl">
+									<Name>W_Warehouse</Name>
+									<Type>String</Type>
+									<FormControlExtension
+										i:nil="true" />
+									<DataField>Warehouse</DataField>
+									<DataSource>HSMobileOpsWarehouseControl</DataSource>
+								</AxFormControl>
+								<AxFormControl xmlns=""
+									i:type="AxFormStringControl">
+									<Name>W_Name</Name>
+									<Type>String</Type>
+									<FormControlExtension
+										i:nil="true" />
+									<DataMethod>warehouseName</DataMethod>
+									<DataSource>HSMobileOpsWarehouseControl</DataSource>
+									<Label>Name</Label>
+								</AxFormControl>
+								<AxFormControl xmlns=""
+									i:type="AxFormStringControl">
+									<Name>W_ItemsSent</Name>
+									<Type>String</Type>
+									<FormControlExtension
+										i:nil="true" />
+									<DataMethod>itemsSent</DataMethod>
+									<DataSource>HSMobileOpsWarehouseControl</DataSource>
+									<Label>Devices get</Label>
+								</AxFormControl>
+								<AxFormControl xmlns=""
+									i:type="AxFormStringControl">
+									<Name>W_Snapshot</Name>
+									<Type>String</Type>
+									<FormControlExtension
+										i:nil="true" />
+									<DataMethod>snapshotState</DataMethod>
+									<DataSource>HSMobileOpsWarehouseControl</DataSource>
+									<Label>Item snapshot</Label>
+								</AxFormControl>
+								<AxFormControl xmlns=""
+									i:type="AxFormStringControl">
+									<Name>W_Devices</Name>
+									<Type>String</Type>
+									<FormControlExtension
+										i:nil="true" />
+									<DataMethod>deviceState</DataMethod>
+									<DataSource>HSMobileOpsWarehouseControl</DataSource>
+									<Label>Devices</Label>
+								</AxFormControl>
+								<AxFormControl xmlns=""
+									i:type="AxFormDateTimeControl">
+									<Name>W_Refreshed</Name>
+									<Type>DateTime</Type>
+									<FormControlExtension
+										i:nil="true" />
+									<DataField>AssortmentRefreshedUtc</DataField>
+									<DataSource>HSMobileOpsWarehouseControl</DataSource>
+								</AxFormControl>
+								</Controls>
+								<DataSource>HSMobileOpsWarehouseControl</DataSource>
+								<Style>Tabular</Style>
+							</AxFormControl>
+						</Controls>
+						<Caption>Warehouses</Caption>
+					</AxFormControl>
+					<AxFormControl xmlns=""
+						i:type="AxFormTabPageControl">
+						<Name>DevicesPage</Name>
+						<HelpText>Every handheld that reported an item sync, the oldest successful sync first. Stale: no successful sync for 48 hours.</HelpText>
+						<Type>TabPage</Type>
+						<FormControlExtension
+							i:nil="true" />
+						<Controls>
+							<AxFormControl xmlns=""
+								i:type="AxFormGridControl">
+								<Name>DeviceGrid</Name>
+								<Type>Grid</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<Controls>
+								<AxFormControl xmlns=""
+									i:type="AxFormStringControl">
+									<Name>D_Health</Name>
+									<Type>String</Type>
+									<FormControlExtension
+										i:nil="true" />
+									<DataMethod>health</DataMethod>
+									<DataSource>HSMobileOpsDeviceSync</DataSource>
+									<Label>Health</Label>
+								</AxFormControl>
+								<AxFormControl xmlns=""
+									i:type="AxFormStringControl">
+									<Name>D_Name</Name>
+									<Type>String</Type>
+									<FormControlExtension
+										i:nil="true" />
+									<DataMethod>deviceName</DataMethod>
+									<DataSource>HSMobileOpsDeviceSync</DataSource>
+									<Label>Device</Label>
+								</AxFormControl>
+								<AxFormControl xmlns=""
+									i:type="AxFormStringControl">
+									<Name>D_User</Name>
+									<Type>String</Type>
+									<FormControlExtension
+										i:nil="true" />
+									<DataMethod>lastUser</DataMethod>
+									<DataSource>HSMobileOpsDeviceSync</DataSource>
+									<Label>Last user</Label>
+								</AxFormControl>
+								<AxFormControl xmlns=""
+									i:type="AxFormStringControl">
+									<Name>D_Warehouse</Name>
+									<Type>String</Type>
+									<FormControlExtension
+										i:nil="true" />
+									<DataField>Warehouse</DataField>
+									<DataSource>HSMobileOpsDeviceSync</DataSource>
+								</AxFormControl>
+								<AxFormControl xmlns=""
+									i:type="AxFormStringControl">
+									<Name>D_ItemsOf</Name>
+									<Type>String</Type>
+									<FormControlExtension
+										i:nil="true" />
+									<DataMethod>itemsOf</DataMethod>
+									<DataSource>HSMobileOpsDeviceSync</DataSource>
+									<Label>Holds</Label>
+								</AxFormControl>
+								<AxFormControl xmlns=""
+									i:type="AxFormDateTimeControl">
+									<Name>D_LastSuccess</Name>
+									<Type>DateTime</Type>
+									<FormControlExtension
+										i:nil="true" />
+									<DataField>LastSuccessUtc</DataField>
+									<DataSource>HSMobileOpsDeviceSync</DataSource>
+								</AxFormControl>
+								<AxFormControl xmlns=""
+									i:type="AxFormCheckBoxControl">
+									<Name>D_Full</Name>
+									<Type>CheckBox</Type>
+									<FormControlExtension
+										i:nil="true" />
+									<DataField>LastFull</DataField>
+									<DataSource>HSMobileOpsDeviceSync</DataSource>
+								</AxFormControl>
+								<AxFormControl xmlns=""
+									i:type="AxFormIntegerControl">
+									<Name>D_Items</Name>
+									<Type>Integer</Type>
+									<FormControlExtension
+										i:nil="true" />
+									<DataField>Items</DataField>
+									<DataSource>HSMobileOpsDeviceSync</DataSource>
+								</AxFormControl>
+								<AxFormControl xmlns=""
+									i:type="AxFormIntegerControl">
+									<Name>D_Barcodes</Name>
+									<Type>Integer</Type>
+									<FormControlExtension
+										i:nil="true" />
+									<DataField>Barcodes</DataField>
+									<DataSource>HSMobileOpsDeviceSync</DataSource>
+								</AxFormControl>
+								<AxFormControl xmlns=""
+									i:type="AxFormIntegerControl">
+									<Name>D_Seconds</Name>
+									<Type>Integer</Type>
+									<FormControlExtension
+										i:nil="true" />
+									<DataField>SyncSeconds</DataField>
+									<DataSource>HSMobileOpsDeviceSync</DataSource>
+								</AxFormControl>
+								<AxFormControl xmlns=""
+									i:type="AxFormStringControl">
+									<Name>D_LastError</Name>
+									<Type>String</Type>
+									<FormControlExtension
+										i:nil="true" />
+									<DataField>LastError</DataField>
+									<DataSource>HSMobileOpsDeviceSync</DataSource>
+								</AxFormControl>
+								<AxFormControl xmlns=""
+									i:type="AxFormDateTimeControl">
+									<Name>D_LastErrorAt</Name>
+									<Type>DateTime</Type>
+									<FormControlExtension
+										i:nil="true" />
+									<DataField>LastErrorUtc</DataField>
+									<DataSource>HSMobileOpsDeviceSync</DataSource>
+								</AxFormControl>
+								<AxFormControl xmlns=""
+									i:type="AxFormDateTimeControl">
+									<Name>D_LastReport</Name>
+									<Type>DateTime</Type>
+									<FormControlExtension
+										i:nil="true" />
+									<DataField>LastReportUtc</DataField>
+									<DataSource>HSMobileOpsDeviceSync</DataSource>
+								</AxFormControl>
+								<AxFormControl xmlns=""
+									i:type="AxFormStringControl">
+									<Name>D_AppVersion</Name>
+									<Type>String</Type>
+									<FormControlExtension
+										i:nil="true" />
+									<DataField>AppVersion</DataField>
+									<DataSource>HSMobileOpsDeviceSync</DataSource>
+								</AxFormControl>
+								<AxFormControl xmlns=""
+									i:type="AxFormStringControl">
+									<Name>D_DeviceId</Name>
+									<Type>String</Type>
+									<FormControlExtension
+										i:nil="true" />
+									<DataField>DeviceId</DataField>
+									<DataSource>HSMobileOpsDeviceSync</DataSource>
+								</AxFormControl>
+								</Controls>
+								<DataSource>HSMobileOpsDeviceSync</DataSource>
+								<Style>Tabular</Style>
+							</AxFormControl>
+						</Controls>
+						<Caption>Devices</Caption>
+					</AxFormControl>
+					<AxFormControl xmlns=""
+						i:type="AxFormTabPageControl">
+						<Name>SnapshotsPage</Name>
+						<HelpText>Every item snapshot build: the company's and each store's.</HelpText>
+						<Type>TabPage</Type>
+						<FormControlExtension
+							i:nil="true" />
+						<Controls>
+							<AxFormControl xmlns=""
+								i:type="AxFormGridControl">
+								<Name>SnapshotGrid</Name>
+								<Type>Grid</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<Controls>
+								<AxFormControl xmlns=""
+									i:type="AxFormStringControl">
+									<Name>N_Scope</Name>
+									<Type>String</Type>
+									<FormControlExtension
+										i:nil="true" />
+									<DataField>Scope</DataField>
+									<DataSource>HSMobileOpsSkuSnapshot</DataSource>
+								</AxFormControl>
+								<AxFormControl xmlns=""
+									i:type="AxFormStringControl">
+									<Name>N_Status</Name>
+									<Type>String</Type>
+									<FormControlExtension
+										i:nil="true" />
+									<DataField>Status</DataField>
+									<DataSource>HSMobileOpsSkuSnapshot</DataSource>
+								</AxFormControl>
+								<AxFormControl xmlns=""
+									i:type="AxFormDateTimeControl">
+									<Name>N_Built</Name>
+									<Type>DateTime</Type>
+									<FormControlExtension
+										i:nil="true" />
+									<DataField>BuiltAtUtc</DataField>
+									<DataSource>HSMobileOpsSkuSnapshot</DataSource>
+								</AxFormControl>
+								<AxFormControl xmlns=""
+									i:type="AxFormIntegerControl">
+									<Name>N_Seconds</Name>
+									<Type>Integer</Type>
+									<FormControlExtension
+										i:nil="true" />
+									<DataField>BuildSeconds</DataField>
+									<DataSource>HSMobileOpsSkuSnapshot</DataSource>
+								</AxFormControl>
+								<AxFormControl xmlns=""
+									i:type="AxFormIntegerControl">
+									<Name>N_Tasks</Name>
+									<Type>Integer</Type>
+									<FormControlExtension
+										i:nil="true" />
+									<DataField>TasksTotal</DataField>
+									<DataSource>HSMobileOpsSkuSnapshot</DataSource>
+								</AxFormControl>
+								<AxFormControl xmlns=""
+									i:type="AxFormIntegerControl">
+									<Name>N_Done</Name>
+									<Type>Integer</Type>
+									<FormControlExtension
+										i:nil="true" />
+									<DataField>TasksDone</DataField>
+									<DataSource>HSMobileOpsSkuSnapshot</DataSource>
+								</AxFormControl>
+								<AxFormControl xmlns=""
+									i:type="AxFormIntegerControl">
+									<Name>N_Failed</Name>
+									<Type>Integer</Type>
+									<FormControlExtension
+										i:nil="true" />
+									<DataField>TasksFailed</DataField>
+									<DataSource>HSMobileOpsSkuSnapshot</DataSource>
+								</AxFormControl>
+								<AxFormControl xmlns=""
+									i:type="AxFormStringControl">
+									<Name>N_Result</Name>
+									<Type>String</Type>
+									<FormControlExtension
+										i:nil="true" />
+									<DataField>Result</DataField>
+									<DataSource>HSMobileOpsSkuSnapshot</DataSource>
+								</AxFormControl>
+								</Controls>
+								<DataSource>HSMobileOpsSkuSnapshot</DataSource>
+								<Style>Tabular</Style>
+							</AxFormControl>
+						</Controls>
+						<Caption>Snapshots</Caption>
+					</AxFormControl>
+				</Controls>
+			</AxFormControl>
+		</Controls>
+	</Design>
+	<Parts />
+</AxForm>

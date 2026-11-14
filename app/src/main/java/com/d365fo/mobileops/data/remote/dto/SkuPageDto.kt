@@ -35,6 +35,27 @@ data class SkuPageServiceResponse(
     @SerialName("Scope") val scope: String = "",
 )
 
+/** HSMobileOpsSkuPageSvc/reportSync - the end of an item sync, for Mobile sync health in D365FO. */
+@Serializable
+data class SkuSyncReportServiceRequest(@SerialName("_request") val request: SkuSyncReportBody)
+
+@Serializable
+data class SkuSyncReportBody(
+    @SerialName("DataAreaId") val dataAreaId: String,
+    @SerialName("DeviceId") val deviceId: String,
+    @SerialName("Warehouse") val warehouse: String = "",
+    /** The items the device holds: blank every item, a warehouse its store's assortment. */
+    @SerialName("Scope") val scope: String = "",
+    @SerialName("Succeeded") val succeeded: Boolean,
+    @SerialName("Full") val full: Boolean = false,
+    @SerialName("Items") val items: Int = 0,
+    @SerialName("Barcodes") val barcodes: Int = 0,
+    @SerialName("Seconds") val seconds: Int = 0,
+    /** Why it failed; blank when it succeeded. */
+    @SerialName("Message") val message: String = "",
+    @SerialName("AppVersion") val appVersion: String = "",
+)
+
 /**
  * getSkuSnapshot's RowsJson: the company's current item snapshot (Mobile item snapshot in D365FO) -
  * each area's whole feed as one gzip file, one getSkuPage page of rows per line.
