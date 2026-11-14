@@ -1,0 +1,213 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsSkuStoreFilter</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// One area of a store's item snapshot, cut from the company snapshot just built: each company
+/// part is read and only the rows of the store's items are kept (the item is column 1, for
+/// BARCODES column 2). No database queries and no unit conversions again - the slow part of a
+/// store build was working out every item's units once more (about 3 minutes a store).
+/// The parts it writes are what the company build writes: ZIPs of one .jsonl entry, one page of
+/// up to 5000 rows per line, closed at about 4 MB.
+/// </summary>
+class HSMobileOpsSkuStoreFilter
+{
+    RefRecId                            snapshot;
+    str                                 area;
+    int64                               partLimit;
+    System.IO.MemoryStream              memory;
+    System.IO.Compression.ZipArchive    zip;
+    System.IO.StreamWriter              writer;
+    System.Text.StringBuilder           page;
+    int                                 pageRows;
+    int64                               partRows;
+    int                                 part;
+    int64                               rowsTotal;
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>filterArea</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Writes the store snapshot's parts of _area from the company snapshot's; returns its rows.
+    /// </summary>
+    public static int64 filterArea(RefRecId _company, RefRecId _snapshot, str _area, Set _items)
+    {
+        HSMobileOpsSkuStoreFilter           filter = new HSMobileOpsSkuStoreFilter();
+        HSMobileOpsSkuSnapshotFile          file;
+        System.IO.Compression.ZipArchive    source;
+        System.IO.StreamReader              reader;
+        Newtonsoft.Json.Linq.JArray         rows;
+        Newtonsoft.Json.Linq.JArray         row;
+        Newtonsoft.Json.Linq.JToken         key;
+        int                                 keyColumn = _area == 'BARCODES' ? 1 : 0;
+        int                                 n;
+        int                                 i;
+        str                                 line;
+
+        filter.init(_snapshot, _area);
+        while select Data from file
+            order by file.Part
+            where file.SnapshotRecId == _company
+               && file.Area          == _area
+        {
+            source = new System.IO.Compression.ZipArchive(Binary::constructFromContainer(file.Data).getMemoryStream(),
+                System.IO.Compression.ZipArchiveMode::Read);
+            reader = new System.IO.StreamReader(source.get_Entries().get_Item(0).Open(), new System.Text.UTF8Encoding(false));
+            while (!reader.get_EndOfStream())
+            {
+                line = reader.ReadLine();
+                if (!line)
+                {
+                    continue;
+                }
+                rows = Newtonsoft.Json.Linq.JArray::Parse(line);
+                n = rows.get_Count();
+                for (i = 0; i < n; i++)
+                {
+                    row = rows.get_Item(i);
+                    key = row.get_Item(keyColumn);
+                    if (key != null && _items.in(key.ToString()))
+                    {
+                        filter.add(Newtonsoft.Json.JsonConvert::SerializeObject(row));
+                    }
+                }
+            }
+            reader.Dispose();
+            source.Dispose();
+        }
+        filter.finish();
+        return filter.total();
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>init</Name>
+				<Source><![CDATA[
+
+    private void init(RefRecId _snapshot, str _area)
+    {
+        snapshot  = _snapshot;
+        area      = _area;
+        partLimit = HSMobileOpsSkuSnapshotBuild::partLimitBytes();
+        page      = new System.Text.StringBuilder();
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>add</Name>
+				<Source><![CDATA[
+
+    private void add(str _row)
+    {
+        const int PageSize = 5000;
+
+        if (pageRows)
+        {
+            page.Append(',');
+        }
+        page.Append(_row);
+        pageRows++;
+        if (pageRows >= PageSize)
+        {
+            this.flushPage();
+        }
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>flushPage</Name>
+				<Source><![CDATA[
+
+    /// <summary>The page as one line of the current part; the part closes at about 4 MB.</summary>
+    private void flushPage()
+    {
+        if (!pageRows)
+        {
+            return;
+        }
+        this.openPart();
+        writer.Write('[');
+        writer.Write(page.ToString());
+        writer.Write("]\n");
+        writer.Flush();
+        partRows += pageRows;
+        rowsTotal += pageRows;
+        page      = new System.Text.StringBuilder();
+        pageRows  = 0;
+        if (memory.get_Length() >= partLimit)
+        {
+            this.closePart();
+        }
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>openPart</Name>
+				<Source><![CDATA[
+
+    private void openPart()
+    {
+        if (memory)
+        {
+            return;
+        }
+        part++;
+        partRows = 0;
+        memory   = new System.IO.MemoryStream();
+        zip      = new System.IO.Compression.ZipArchive(memory, System.IO.Compression.ZipArchiveMode::Create, true);
+        writer   = new System.IO.StreamWriter(
+            zip.CreateEntry(strLwr(area) + '.jsonl', System.IO.Compression.CompressionLevel::Optimal).Open(),
+            new System.Text.UTF8Encoding(false));
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>closePart</Name>
+				<Source><![CDATA[
+
+    private void closePart()
+    {
+        if (!memory)
+        {
+            return;
+        }
+        writer.Dispose();
+        zip.Dispose();
+        HSMobileOpsSkuSnapshotBuild::attachPart(snapshot, area, part, partRows, memory);
+        memory = null;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>finish</Name>
+				<Source><![CDATA[
+
+    /// <summary>The last page and part; an area with no rows still gets one (empty) part, as in the company build.</summary>
+    private void finish()
+    {
+        this.flushPage();
+        if (!part)
+        {
+            this.openPart();
+        }
+        this.closePart();
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>total</Name>
+				<Source><![CDATA[
+
+    public int64 total()
+    {
+        return rowsTotal;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

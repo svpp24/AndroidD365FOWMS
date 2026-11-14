@@ -43,9 +43,11 @@ class HSMobileOpsSkuSnapshotTask extends RunBaseBatch
         task.parmAfter(_after);
         task.parmUpTo(_upTo);
         task.parmScope(_scope);
-        task.batchInfo().parmCaption(_scope
-            ? strFmt('Mobile ops: item snapshot of store %1 %2', _scope, _area)
-            : strFmt('Mobile ops: item snapshot %1 %2', _area, _index));
+        task.batchInfo().parmCaption(_area == 'STORE'
+            ? strFmt('Mobile ops: item snapshot of store %1 (%2 with this assortment)', _scope, _index)
+            : (_scope
+                ? strFmt('Mobile ops: item snapshot of store %1 %2', _scope, _area)
+                : strFmt('Mobile ops: item snapshot %1 %2', _area, _index)));
         return task;
     }
 ]]></Source>
@@ -130,6 +132,14 @@ class HSMobileOpsSkuSnapshotTask extends RunBaseBatch
     {
         str failure;
 
+        // A store's snapshot cut from the company's: after = the company snapshot, upTo = the
+        // snapshot rows of the other stores with the same assortment.
+        if (area == 'STORE')
+        {
+            HSMobileOpsSkuSnapshotBuild::buildStoreGroup(snapshot, str2Int64(after), upTo ? str2Con(upTo, ',') : conNull(), scope);
+            return;
+        }
+
         try
         {
             HSMobileOpsSkuSnapshotBuild::writeArea(snapshot, area, after, upTo, taskIndex * 10000, scope);
@@ -146,7 +156,7 @@ class HSMobileOpsSkuSnapshotTask extends RunBaseBatch
                 failure = 'error';
             }
         }
-        HSMobileOpsSkuSnapshotBuild::taskEnded(snapshot, failure ? strFmt('%1 %2: %3', area, taskIndex, failure) : '');
+        HSMobileOpsSkuSnapshotBuild::taskEnded(snapshot, failure ? strFmt('%1 %2: %3', area, taskIndex, failure) : '', this.parmCurrentBatch());
     }
 ]]></Source>
 			</Method>

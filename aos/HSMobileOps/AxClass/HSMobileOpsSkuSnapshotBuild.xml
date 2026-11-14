@@ -12,9 +12,11 @@
 /// job no longer runs as Failed (interrupted) and removes its files, so it never blocks a rebuild.
 ///
 /// Stores that sync by assortment (Mobile warehouse control) get a snapshot of their own, of their
-/// item list only: the company's tasks are queued first, then the stores' lists are refreshed and
-/// each store's snapshot is added as four small tasks. A store's devices use its snapshot once it
-/// is Ready and page through the store's items until then - they never wait for the build.
+/// item list only. The company's tasks are queued first and the stores' item lists refreshed
+/// meanwhile; once the company snapshot is Ready, each store's is cut from its files
+/// (HSMobileOpsSkuStoreFilter) - no queries or unit conversions again. Stores with the same
+/// assortment share one cut: it is made once and copied. A store's devices page through the
+/// store's items until its snapshot is Ready - they never wait for the build.
 /// </summary>
 class HSMobileOpsSkuSnapshotBuild extends RunBaseBatch
 {
@@ -61,19 +63,20 @@ class HSMobileOpsSkuSnapshotBuild extends RunBaseBatch
     /// </summary>
     public static str build()
     {
-        str       result;
-        container scopes;
-        int       i;
+        HSMobileOpsSkuSnapshot company;
+        utcdatetime            started = DateTimeUtil::utcNow();
+        str                    result;
 
         if (HSMobileOpsSkuSnapshotBuild::isBuilding(DateTimeUtil::utcNow()))
         {
             return 'Another snapshot build of this company is still running - not started.';
         }
         result = HSMobileOpsSkuSnapshotBuild::buildScope('');
-        scopes = HSMobileOpsSkuSnapshotBuild::refreshScopes();
-        for (i = 1; i <= conLen(scopes); i++)
+        HSMobileOpsSkuSnapshotBuild::refreshScopes();
+        company = HSMobileOpsSkuSnapshot::current('');
+        if (company.RecId && company.BuiltAtUtc >= started)
         {
-            result += strFmt(' Store %1: %2', conPeek(scopes, i), HSMobileOpsSkuSnapshotBuild::buildScope(conPeek(scopes, i)));
+            result += HSMobileOpsSkuSnapshotBuild::startStoreSnapshots(company.RecId, null);
         }
         return result;
     }
@@ -269,64 +272,176 @@ class HSMobileOpsSkuSnapshotBuild extends RunBaseBatch
                 'Failed: the tasks could not be added - ' + HSMobileOpsSkuSnapshotBuild::lastInfo());
             return 'Failed: the tasks could not be added.';
         }
-        // The company's tasks are queued and running: now the stores' lists and snapshots.
-        return strFmt('Snapshot build for %1 split into %2 tasks.', curExt(), tasks.elements())
-            + HSMobileOpsSkuSnapshotBuild::startScopeTasks(_current);
+        // The company's tasks are queued and running: meanwhile the stores' item lists. The
+        // stores' snapshots are cut from the company's once it is Ready (completeTasks).
+        HSMobileOpsSkuSnapshotBuild::refreshScopes();
+        return strFmt('Snapshot build for %1 split into %2 tasks; store item lists refreshed.', curExt(), tasks.elements());
     }
 ]]></Source>
 			</Method>
 			<Method>
-				<Name>startScopeTasks</Name>
+				<Name>startStoreSnapshots</Name>
 				<Source><![CDATA[
 
     /// <summary>
-    /// The stores that sync by assortment: their item lists refreshed, then a snapshot of each as
-    /// four tasks of this batch job (a store's list is small - one task per area is enough).
+    /// After the company snapshot is Ready: a snapshot row for each store that syncs by assortment,
+    /// and one task per distinct assortment (stores with the same item list share it) that cuts
+    /// the store's files from the company's. Outside batch (_current null) the cuts run in turn.
     /// </summary>
-    private static str startScopeTasks(Batch _current)
+    internal static str startStoreSnapshots(RefRecId _company, Batch _current)
     {
-        container               scopes = HSMobileOpsSkuSnapshotBuild::refreshScopes();
-        container               areas = HSMobileOpsSkuPageService::snapshotAreas();
-        HSMobileOpsSkuSnapshot  snapshot;
-        BatchHeader             batchHeader;
-        InventLocationId        scope;
-        utcdatetime             started;
-        int                     i;
-        int                     a;
+        HSMobileOpsWarehouseControl control;
+        HSMobileOpsSkuSnapshot      snapshot;
+        Map                         groups = new Map(Types::String, Types::Container);
+        MapEnumerator               groupEnum;
+        BatchHeader                 batchHeader;
+        container                   members;
+        container                   memberRecs;
+        str                         key;
+        RefRecId                    leader;
+        int                         stores;
+        int                         i;
 
-        if (!conLen(scopes))
+        while select Warehouse, AssortmentHash from control
+            order by Warehouse
+            where control.SyncByAssortment == NoYes::Yes
+               && control.AssortmentItems  >  0
+        {
+            key = control.AssortmentHash ? control.AssortmentHash : control.Warehouse;
+            members = groups.exists(key) ? groups.lookup(key) : conNull();
+            members += control.Warehouse;
+            groups.insert(key, members);
+            stores++;
+        }
+        if (!stores)
         {
             return '';
         }
         try
         {
-            batchHeader = BatchHeader::construct(_current.BatchJobId);
-            for (i = 1; i <= conLen(scopes); i++)
+            if (_current)
             {
-                scope   = conPeek(scopes, i);
-                started = DateTimeUtil::utcNow();
+                batchHeader = BatchHeader::construct(_current.BatchJobId);
+            }
+            groupEnum = groups.getEnumerator();
+            while (groupEnum.moveNext())
+            {
+                members    = groupEnum.currentValue();
+                memberRecs = conNull();
                 ttsbegin;
-                snapshot.clear();
-                snapshot.BuiltAtUtc = started;
-                snapshot.Status     = HSMobileOpsSkuSnapshot::statusBuilding();
-                snapshot.Scope      = scope;
-                snapshot.TasksTotal = conLen(areas);
-                snapshot.BatchJobId = _current.BatchJobId;
-                snapshot.insert();
-                ttscommit;
-                for (a = 1; a <= conLen(areas); a++)
+                for (i = 1; i <= conLen(members); i++)
                 {
-                    batchHeader.addRuntimeTask(HSMobileOpsSkuSnapshotTask::newTask(snapshot.RecId,
-                        conPeek(areas, a), a, '', '', scope), _current.RecId);
+                    snapshot.clear();
+                    snapshot.BuiltAtUtc = DateTimeUtil::utcNow();
+                    snapshot.Status     = HSMobileOpsSkuSnapshot::statusBuilding();
+                    snapshot.Scope      = conPeek(members, i);
+                    snapshot.TasksTotal = 1;
+                    snapshot.BatchJobId = _current ? _current.BatchJobId : 0;
+                    snapshot.insert();
+                    memberRecs += snapshot.RecId;
+                }
+                ttscommit;
+                leader = conPeek(memberRecs, 1);
+                if (_current)
+                {
+                    batchHeader.addRuntimeTask(HSMobileOpsSkuSnapshotTask::newTask(leader, 'STORE', conLen(members),
+                        int642Str(_company), con2Str(conDel(memberRecs, 1, 1), ','), conPeek(members, 1)), _current.RecId);
+                }
+                else
+                {
+                    HSMobileOpsSkuSnapshotBuild::buildStoreGroup(leader, _company, conDel(memberRecs, 1, 1), conPeek(members, 1));
                 }
             }
-            batchHeader.save();
+            if (_current)
+            {
+                batchHeader.save();
+            }
         }
         catch
         {
-            return strFmt(' The stores\' snapshots could not be added - %1', HSMobileOpsSkuSnapshotBuild::lastInfo());
+            return strFmt(' The stores\' snapshots could not be started - %1', HSMobileOpsSkuSnapshotBuild::lastInfo());
         }
-        return strFmt(' %1 store snapshot(s) by assortment.', conLen(scopes));
+        return strFmt(' %1 store snapshot(s) by assortment, %2 distinct assortment(s).', stores, groups.elements());
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>buildStoreGroup</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// One task: the store snapshot _leader cut from the company snapshot, then its files copied to
+    /// the other stores with the same assortment (_others: their snapshot rows). Each becomes Ready
+    /// and replaces that store's older snapshot.
+    /// </summary>
+    internal static void buildStoreGroup(RefRecId _leader, RefRecId _company, container _others, InventLocationId _scope)
+    {
+        HSMobileOpsSkuSnapshot     leader;
+        HSMobileOpsSkuSnapshotFile file;
+        HSMobileOpsSkuSnapshotFile copy;
+        container                  areas = HSMobileOpsSkuPageService::snapshotAreas();
+        container                  rows;
+        Set                        items;
+        RecordInsertList           copies;
+        RefRecId                   other;
+        str                        result;
+        str                        failure;
+        int                        a;
+        int                        i;
+
+        select firstOnly BuiltAtUtc from leader where leader.RecId == _leader;
+        try
+        {
+            items = HSMobileOpsSyncAssortItem::itemSet(_scope);
+            for (a = 1; a <= conLen(areas); a++)
+            {
+                rows += HSMobileOpsSkuStoreFilter::filterArea(_company, _leader, conPeek(areas, a), items);
+            }
+            result = strFmt('%1 items, %2 barcodes, %3 variants, units of %4 items. Cut from the company snapshot%5.',
+                conPeek(rows, 1), conPeek(rows, 2), conPeek(rows, 3), conPeek(rows, 4),
+                conLen(_others) ? strFmt(', shared by %1 stores with the same assortment', conLen(_others) + 1) : '');
+            for (i = 1; i <= conLen(_others); i++)
+            {
+                other  = conPeek(_others, i);
+                copies = new RecordInsertList(tableNum(HSMobileOpsSkuSnapshotFile));
+                while select file
+                    where file.SnapshotRecId == _leader
+                {
+                    copy.data(file);
+                    copy.SnapshotRecId = other;
+                    copies.add(copy);
+                }
+                ttsbegin;
+                copies.insertDatabase();
+                ttscommit;
+            }
+        }
+        catch (Exception::CLRError)
+        {
+            failure = HSMobileOpsSkuSnapshotBuild::clrFailure();
+        }
+        catch
+        {
+            failure = HSMobileOpsSkuSnapshotBuild::lastInfo();
+            if (!failure)
+            {
+                failure = 'error';
+            }
+        }
+        for (i = 0; i <= conLen(_others); i++)
+        {
+            other = i ? conPeek(_others, i) : _leader;
+            if (failure)
+            {
+                HSMobileOpsSkuSnapshotBuild::finish(other, HSMobileOpsSkuSnapshot::statusFailed(), leader.BuiltAtUtc, 'Failed: ' + failure);
+                HSMobileOpsSkuSnapshotBuild::removeSnapshot(other, false);
+            }
+            else
+            {
+                HSMobileOpsSkuSnapshotBuild::finish(other, HSMobileOpsSkuSnapshot::statusReady(), leader.BuiltAtUtc, result);
+                HSMobileOpsSkuSnapshotBuild::removeOlder(other);
+            }
+        }
     }
 ]]></Source>
 			</Method>
@@ -471,7 +586,7 @@ class HSMobileOpsSkuSnapshotBuild extends RunBaseBatch
     /// <summary>
     /// A task's end, counted on the snapshot row under a lock; the last one completes the build.
     /// </summary>
-    internal static void taskEnded(RefRecId _snapshot, str _failure)
+    internal static void taskEnded(RefRecId _snapshot, str _failure, Batch _current = null)
     {
         HSMobileOpsSkuSnapshot snapshot;
         boolean                last;
@@ -498,7 +613,7 @@ class HSMobileOpsSkuSnapshotBuild extends RunBaseBatch
         ttscommit;
         if (last)
         {
-            HSMobileOpsSkuSnapshotBuild::completeTasks(_snapshot);
+            HSMobileOpsSkuSnapshotBuild::completeTasks(_snapshot, _current);
         }
     }
 ]]></Source>
@@ -511,7 +626,7 @@ class HSMobileOpsSkuSnapshotBuild extends RunBaseBatch
     /// After the last task: Failed if any task failed; otherwise each area's parts numbered
     /// 1..n in key order, the snapshot Ready and the older ones removed.
     /// </summary>
-    private static void completeTasks(RefRecId _snapshot)
+    private static void completeTasks(RefRecId _snapshot, Batch _current)
     {
         HSMobileOpsSkuSnapshot     snapshot;
         HSMobileOpsSkuSnapshotFile file;
@@ -560,6 +675,11 @@ class HSMobileOpsSkuSnapshotBuild extends RunBaseBatch
                 conPeek(rows, 1), conPeek(rows, 2), conPeek(rows, 3), conPeek(rows, 4), snapshot.TasksTotal)
             + (snapshot.Scope ? strFmt(' Assortment of store %1.', snapshot.Scope) : ''));
         HSMobileOpsSkuSnapshotBuild::removeOlder(_snapshot);
+        // The company snapshot is Ready: the stores' are cut from it now.
+        if (!snapshot.Scope && _current)
+        {
+            info(HSMobileOpsSkuSnapshotBuild::startStoreSnapshots(_snapshot, _current));
+        }
     }
 ]]></Source>
 			</Method>
@@ -670,7 +790,7 @@ class HSMobileOpsSkuSnapshotBuild extends RunBaseBatch
     /// batch on the dev VM - "clientSecret cannot be null" - and are limited by file type and
     /// size per company; a row needs neither). Devices read it with getSkuSnapshotPart.
     /// </summary>
-    private static void attachPart(RefRecId _snapshot, str _area, int _part, int64 _rows, System.IO.MemoryStream _memory)
+    internal static void attachPart(RefRecId _snapshot, str _area, int _part, int64 _rows, System.IO.MemoryStream _memory)
     {
         System.Security.Cryptography.SHA256 sha = System.Security.Cryptography.SHA256::Create();
         HSMobileOpsSkuSnapshotFile          file;
@@ -697,7 +817,7 @@ class HSMobileOpsSkuSnapshotBuild extends RunBaseBatch
     /// <summary>
     /// A part closes at about 4 MB of ZIP - one getSkuSnapshotPart answer stays a few MB.
     /// </summary>
-    private static int64 partLimitBytes()
+    internal static int64 partLimitBytes()
     {
         return 4 * 1024 * 1024;
     }

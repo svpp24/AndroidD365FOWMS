@@ -90,7 +90,10 @@ public class HSMobileOpsWarehouseControl extends common
     /// </summary>
     public void refreshItems()
     {
-        this.AssortmentItems       = HSMobileOpsSyncAssortItem::refresh(this.Warehouse, this.SyncByAssortment == NoYes::Yes);
+        container itemList = HSMobileOpsSyncAssortItem::refresh(this.Warehouse, this.SyncByAssortment == NoYes::Yes);
+
+        this.AssortmentItems        = conPeek(itemList, 1);
+        this.AssortmentHash         = conPeek(itemList, 2);
         this.AssortmentRefreshedUtc = DateTimeUtil::utcNow();
     }
 ]]></Source>
@@ -175,6 +178,14 @@ public class HSMobileOpsWarehouseControl extends common
 			<AllowEdit>No</AllowEdit>
 			<HelpText>Items in the store's item list at its last refresh: when the switch was saved, then each night with the item snapshot.</HelpText>
 			<Label>Assortment items</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>AssortmentHash</Name>
+			<AllowEdit>No</AllowEdit>
+			<HelpText>Signature of the store's item list. Stores with the same one share one snapshot cut.</HelpText>
+			<Label>Assortment signature</Label>
+			<StringSize>64</StringSize>
 		</AxTableField>
 		<AxTableField xmlns=""
 			i:type="AxTableFieldUtcDateTime">
