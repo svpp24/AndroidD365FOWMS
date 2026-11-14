@@ -109,29 +109,39 @@ class HSMobileOpsSkuSnapshotBuild extends RunBaseBatch
 				<Source><![CDATA[
 
     /// <summary>
-    /// The whole feed of an area as a ZIP (one .jsonl entry) - each line one getSkuPage page of rows, exactly what the
-    /// paged sync sends - attached to a new HSMobileOpsSkuSnapshotFile row. Returns the rows.
+    /// The whole feed of an area - each line one getSkuPage page of rows, exactly what the paged
+    /// sync sends - as ZIP files of one .jsonl entry, attached to HSMobileOpsSkuSnapshotFile rows.
+    /// A part is closed at 80% of the company's attachment size limit (Document management
+    /// parameters; BSP allows 2 MB), so an area of a million rows becomes several parts.
+    /// Returns the rows.
     /// </summary>
     private static int64 writeArea(RefRecId _snapshot, str _area)
     {
         const int                           PageSize = 5000;
-        System.IO.MemoryStream              memory = new System.IO.MemoryStream();
-        // ZIP with one entry: document management attaches only its listed file types (14 Nov:
-        // .gz was refused - "Files with this file type cannot be attached"); ZIP is a standard one.
-        System.IO.Compression.ZipArchive    zip = new System.IO.Compression.ZipArchive(memory, System.IO.Compression.ZipArchiveMode::Create, true);
-        System.IO.Compression.ZipArchiveEntry entry = zip.CreateEntry(strLwr(_area) + '.jsonl', System.IO.Compression.CompressionLevel::Optimal);
-        System.IO.StreamWriter              writer = new System.IO.StreamWriter(entry.Open(), new System.Text.UTF8Encoding(false));
-        System.Security.Cryptography.SHA256 sha = System.Security.Cryptography.SHA256::Create();
+        System.IO.MemoryStream              memory;
+        System.IO.Compression.ZipArchive    zip;
+        System.IO.StreamWriter              writer;
         HSMobileOpsSkuPageResponse          page;
-        HSMobileOpsSkuSnapshotFile          file;
         utcdatetime                         full = DateTimeUtil::minValue();
+        int64                               partLimit = HSMobileOpsSkuSnapshotBuild::partLimitBytes();
         str                                 after;
-        str                                 fileName;
         int64                               rows;
+        int64                               partRows;
+        int                                 part;
         boolean                             more = true;
 
         while (more)
         {
+            if (!memory)
+            {
+                part++;
+                partRows = 0;
+                memory = new System.IO.MemoryStream();
+                zip    = new System.IO.Compression.ZipArchive(memory, System.IO.Compression.ZipArchiveMode::Create, true);
+                writer = new System.IO.StreamWriter(
+                    zip.CreateEntry(strLwr(_area) + '.jsonl', System.IO.Compression.CompressionLevel::Optimal).Open(),
+                    new System.Text.UTF8Encoding(false));
+            }
             page = new HSMobileOpsSkuPageResponse();
             switch (_area)
             {
@@ -154,31 +164,74 @@ class HSMobileOpsSkuSnapshotBuild extends RunBaseBatch
             {
                 writer.Write(page.parmRowsJson());
                 writer.Write("\n");
+                writer.Flush();
             }
-            rows += page.parmRowCount();
+            rows     += page.parmRowCount();
+            partRows += page.parmRowCount();
             after = page.parmNextKey();
             more  = page.parmHasMore();
+            // The compressed bytes so far; deflate holds back little, so 80% leaves room for it.
+            if (!more || memory.get_Length() >= partLimit)
+            {
+                writer.Dispose();
+                zip.Dispose();
+                HSMobileOpsSkuSnapshotBuild::attachPart(_snapshot, _area, part, partRows, memory);
+                memory = null;
+            }
         }
-        writer.Flush();
-        writer.Dispose();
-        zip.Dispose();
+        return rows;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>attachPart</Name>
+				<Source><![CDATA[
 
-        memory.set_Position(0);
-        file.Sha256 = strLwr(strReplace(System.BitConverter::ToString(sha.ComputeHash(memory)), '-', ''));
-        memory.set_Position(0);
+    private static void attachPart(RefRecId _snapshot, str _area, int _part, int64 _rows, System.IO.MemoryStream _memory)
+    {
+        System.Security.Cryptography.SHA256 sha = System.Security.Cryptography.SHA256::Create();
+        HSMobileOpsSkuSnapshotFile          file;
+        str                                 fileName = strFmt('%1-%2-%3-%4.zip', curExt(), strLwr(_area), _snapshot, _part);
 
-        fileName = strFmt('%1-%2-%3.zip', curExt(), strLwr(_area), _snapshot);
+        _memory.set_Position(0);
+        file.Sha256 = strLwr(strReplace(System.BitConverter::ToString(sha.ComputeHash(_memory)), '-', ''));
+        _memory.set_Position(0);
         ttsbegin;
         file.SnapshotRecId = _snapshot;
         file.Area          = _area;
-        file.RowCount      = rows;
-        file.Bytes         = memory.get_Length();
+        file.Part          = _part;
+        file.RowCount      = _rows;
+        file.Bytes         = _memory.get_Length();
         file.insert();
         DocumentManagement::attachFile(tableNum(HSMobileOpsSkuSnapshotFile), file.RecId, curExt(),
-            DocuType::typeFile(), memory, fileName, 'application/zip', fileName);
+            DocuType::typeFile(), _memory, fileName, 'application/zip', fileName);
         ttscommit;
-        memory.Dispose();
-        return rows;
+        _memory.Dispose();
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>partLimitBytes</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// 80% of the smallest attachment size limit of the company (MB, Document management
+    /// parameters) - 50 MB when none is set.
+    /// </summary>
+    private static int64 partLimitBytes()
+    {
+        DocuParameters parameters = DocuParameters::find();
+        int            mb = 50;
+
+        if (parameters.MaxFileSizeInFileSystem > 0)
+        {
+            mb = min(mb, parameters.MaxFileSizeInFileSystem);
+        }
+        if (parameters.MaxFileSizeInDatabase > 0)
+        {
+            mb = min(mb, parameters.MaxFileSizeInDatabase);
+        }
+        return mb * 1024 * 1024 * 8 / 10;
     }
 ]]></Source>
 			</Method>

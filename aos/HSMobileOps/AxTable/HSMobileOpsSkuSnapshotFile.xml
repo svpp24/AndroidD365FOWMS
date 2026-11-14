@@ -34,6 +34,13 @@ public class HSMobileOpsSkuSnapshotFile extends common
 			<StringSize>20</StringSize>
 		</AxTableField>
 		<AxTableField xmlns=""
+			i:type="AxTableFieldInt">
+			<Name>Part</Name>
+			<AllowEdit>No</AllowEdit>
+			<HelpText>An area is split into parts below the company's attachment size limit.</HelpText>
+			<Label>Part</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
 			i:type="AxTableFieldInt64">
 			<Name>RowCount</Name>
 			<AllowEdit>No</AllowEdit>
@@ -66,6 +73,9 @@ public class HSMobileOpsSkuSnapshotFile extends common
 				</AxTableIndexField>
 				<AxTableIndexField>
 					<DataField>Area</DataField>
+				</AxTableIndexField>
+				<AxTableIndexField>
+					<DataField>Part</DataField>
 				</AxTableIndexField>
 			</Fields>
 		</AxTableIndex>

@@ -143,7 +143,9 @@ class HSMobileOpsSkuPageService
             json.Append('{"builtAtUtc":');
             json.Append(HSMobileOpsSkuPageService::jsonStr(DateTimeUtil::toStr(snapshot.BuiltAtUtc)));
             json.Append(',"files":[');
+            // In build order: an area's parts follow each other, ITEMS first.
             while select file
+                order by file.RecId
                 where file.SnapshotRecId == snapshot.RecId
                 join docuRef
                     where docuRef.RefTableId   == tableNum(HSMobileOpsSkuSnapshotFile)
@@ -155,6 +157,7 @@ class HSMobileOpsSkuPageService
                     json.Append(',');
                 }
                 json.Append('{"area":');   json.Append(HSMobileOpsSkuPageService::jsonStr(file.Area));
+                json.Append(',"part":');   json.Append(int2Str(file.Part));
                 json.Append(',"url":');    json.Append(HSMobileOpsSkuPageService::jsonStr(HSMobileOpsSkuPageService::downloadLink(docuRef)));
                 json.Append(',"bytes":');  json.Append(int642Str(file.Bytes));
                 json.Append(',"rows":');   json.Append(int642Str(file.RowCount));

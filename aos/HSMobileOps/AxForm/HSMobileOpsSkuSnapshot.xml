@@ -177,6 +177,15 @@ public class HSMobileOpsSkuSnapshot extends FormRun
 								<DataSource>HSMobileOpsSkuSnapshotFile</DataSource>
 							</AxFormControl>
 							<AxFormControl xmlns=""
+								i:type="AxFormIntegerControl">
+								<Name>HSMobileOpsSkuSnapshotFile_Part</Name>
+								<Type>Integer</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<DataField>Part</DataField>
+								<DataSource>HSMobileOpsSkuSnapshotFile</DataSource>
+							</AxFormControl>
+							<AxFormControl xmlns=""
 								i:type="AxFormInt64Control">
 								<Name>HSMobileOpsSkuSnapshotFile_RowCount</Name>
 								<Type>Int64</Type>

@@ -333,7 +333,7 @@ class SkuSyncRepository @Inject constructor(
                 val file = manifest.files.getOrNull(index) ?: break
                 if (System.currentTimeMillis() >= deadline) return SnapshotResult.Pending
                 val started = System.currentTimeMillis()
-                var ok = download(file)
+                var ok = download(file, index)
                 if (!ok) {
                     // The links last minutes - after a pause they may have run out: fresh ones, once.
                     val fresh = fetchManifest()
@@ -344,7 +344,7 @@ class SkuSyncRepository @Inject constructor(
                     }
                     manifest = fresh
                     prefs.edit().putString(KEY_SNAP_MANIFEST, Json.encodeToString(com.d365fo.mobileops.data.remote.dto.SkuSnapshotManifest.serializer(), fresh)).apply()
-                    ok = download(fresh.files.getOrNull(index) ?: file)
+                    ok = download(fresh.files.getOrNull(index) ?: file, index)
                 }
                 if (!ok) {
                     Timber.w("SKU snapshot: %s could not be downloaded intact - paging instead", file.area)
@@ -365,7 +365,7 @@ class SkuSyncRepository @Inject constructor(
             var line = 0
             val started = System.currentTimeMillis()
             // A ZIP with one .jsonl entry (D365FO attaches only its listed file types).
-            java.util.zip.ZipInputStream(java.io.BufferedInputStream(java.io.FileInputStream(fileFor(feed)), 64 * 1024)).also { it.nextEntry }
+            java.util.zip.ZipInputStream(java.io.BufferedInputStream(java.io.FileInputStream(fileFor(index)), 64 * 1024)).also { it.nextEntry }
                 .bufferedReader(Charsets.UTF_8).use { reader ->
                 while (true) {
                     val text = reader.readLine() ?: break
@@ -414,11 +414,12 @@ class SkuSyncRepository @Inject constructor(
         return manifest?.takeIf { m -> m.builtAtUtc.isNotBlank() && m.files.isNotEmpty() && m.files.all { it.area in known && it.url.isNotBlank() } }
     }
 
-    private fun fileFor(area: String) = java.io.File(snapshotDir, area.lowercase() + ".zip")
+    /** The manifest's [index]th file - an area comes in parts, in order. */
+    private fun fileFor(index: Int) = java.io.File(snapshotDir, "part-$index.zip")
 
     /** Downloads one file and checks its size and SHA-256; false (file removed) when not intact. */
-    private fun download(file: com.d365fo.mobileops.data.remote.dto.SkuSnapshotFile): Boolean {
-        val target = fileFor(file.area)
+    private fun download(file: com.d365fo.mobileops.data.remote.dto.SkuSnapshotFile, index: Int): Boolean {
+        val target = fileFor(index)
         return runCatching {
             downloader.newCall(okhttp3.Request.Builder().url(file.url).build()).execute().use { response ->
                 if (!response.isSuccessful) error("HTTP ${response.code}")
