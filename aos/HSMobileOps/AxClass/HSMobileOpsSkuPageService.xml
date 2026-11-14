@@ -108,19 +108,17 @@ class HSMobileOpsSkuPageService
 			<Method>
 				<Name>getSkuSnapshot</Name>
 				<Source><![CDATA[
-
     /// <summary>
     /// The company's current item snapshot for a device's full re-sync: RowsJson is
-    /// {"builtAtUtc":..., "files":[{"area","url","bytes","rows","sha256"}]} - each url a short-lived
-    /// download link (no D365FO sign-in needed). ErrorCode NO_SNAPSHOT when there is no Ready
-    /// build yet: the device then pages through getSkuPage as before.
+    /// {"builtAtUtc":..., "files":[{"id","area","part","bytes","rows","sha256"}]}, the parts in
+    /// build order; each is read with getSkuSnapshotPart (AfterKey = id). ErrorCode NO_SNAPSHOT
+    /// when there is no Ready build yet: the device then pages through getSkuPage as before.
     /// </summary>
     public HSMobileOpsSkuPageResponse getSkuSnapshot(HSMobileOpsSkuPageRequest _request)
     {
         HSMobileOpsSkuPageResponse response = new HSMobileOpsSkuPageResponse();
         HSMobileOpsSkuSnapshot     snapshot;
         HSMobileOpsSkuSnapshotFile file;
-        DocuRef                    docuRef;
         System.Text.StringBuilder  json = new System.Text.StringBuilder();
         int                        files;
 
@@ -143,22 +141,18 @@ class HSMobileOpsSkuPageService
             json.Append('{"builtAtUtc":');
             json.Append(HSMobileOpsSkuPageService::jsonStr(DateTimeUtil::toStr(snapshot.BuiltAtUtc)));
             json.Append(',"files":[');
-            // In build order: an area's parts follow each other, ITEMS first.
-            while select file
+            // In build order: an area's parts follow each other, ITEMS first. Not the data itself.
+            while select RecId, Area, Part, Bytes, RowCount, Sha256 from file
                 order by file.RecId
                 where file.SnapshotRecId == snapshot.RecId
-                join docuRef
-                    where docuRef.RefTableId   == tableNum(HSMobileOpsSkuSnapshotFile)
-                       && docuRef.RefRecId     == file.RecId
-                       && docuRef.RefCompanyId == file.DataAreaId
             {
                 if (files)
                 {
                     json.Append(',');
                 }
-                json.Append('{"area":');   json.Append(HSMobileOpsSkuPageService::jsonStr(file.Area));
+                json.Append('{"id":');     json.Append(int642Str(file.RecId));
+                json.Append(',"area":');   json.Append(HSMobileOpsSkuPageService::jsonStr(file.Area));
                 json.Append(',"part":');   json.Append(int2Str(file.Part));
-                json.Append(',"url":');    json.Append(HSMobileOpsSkuPageService::jsonStr(HSMobileOpsSkuPageService::downloadLink(docuRef)));
                 json.Append(',"bytes":');  json.Append(int642Str(file.Bytes));
                 json.Append(',"rows":');   json.Append(int642Str(file.RowCount));
                 json.Append(',"sha256":'); json.Append(HSMobileOpsSkuPageService::jsonStr(file.Sha256));
@@ -175,19 +169,40 @@ class HSMobileOpsSkuPageService
 ]]></Source>
 			</Method>
 			<Method>
-				<Name>downloadLink</Name>
+				<Name>getSkuSnapshotPart</Name>
 				<Source><![CDATA[
 
     /// <summary>
-    /// The attachment's download link, as D365FO's own Open of an attachment makes it
-    /// (DocuActionFile.getPublicUrl): it carries its own access token, so no D365FO sign-in is
-    /// needed, and it runs out after a short time.
+    /// One part of the current item snapshot (AfterKey = its id from getSkuSnapshot): RowsJson
+    /// is the ZIP as base64. NOT_FOUND when it is gone - a newer snapshot replaced it; the device
+    /// then starts its download again.
     /// </summary>
-    private static str downloadLink(DocuRef _docuRef)
+    public HSMobileOpsSkuPageResponse getSkuSnapshotPart(HSMobileOpsSkuPageRequest _request)
     {
-        DocuAction action = DocuAction::newDocuRef(_docuRef);
+        HSMobileOpsSkuPageResponse response = new HSMobileOpsSkuPageResponse();
+        HSMobileOpsSkuSnapshotFile file;
 
-        return action ? action.getPublicUrl(_docuRef) : '';
+        response.parmSuccess(false);
+        response.parmServerUtc(DateTimeUtil::toStr(DateTimeUtil::utcNow()));
+        if (!_request || !_request.parmDataAreaId() || !CompanyInfo::findDataArea(_request.parmDataAreaId()).RecId)
+        {
+            response.parmErrorCode('INVALID_REQUEST');
+            return response;
+        }
+        changecompany (_request.parmDataAreaId())
+        {
+            select firstOnly file
+                where file.RecId == str2Int64(_request.parmAfterKey());
+            if (!file.RecId || !conLen(file.Data))
+            {
+                response.parmErrorCode('NOT_FOUND');
+                return response;
+            }
+            response.parmRowsJson(System.Convert::ToBase64String(Binary::constructFromContainer(file.Data).getMemoryStream().ToArray()));
+            response.parmRowCount(any2Int(file.RowCount));
+        }
+        response.parmSuccess(true);
+        return response;
     }
 ]]></Source>
 			</Method>

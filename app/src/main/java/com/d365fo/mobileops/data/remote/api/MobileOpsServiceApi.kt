@@ -451,6 +451,12 @@ interface MobileOpsServiceApi {
         @Body body: com.d365fo.mobileops.data.remote.dto.SkuPageServiceRequest,
     ): Response<com.d365fo.mobileops.data.remote.dto.SkuPageServiceResponse>
 
+    /** One part of the item snapshot (AfterKey = its id): RowsJson is the ZIP as base64. */
+    @POST("HSMobileOpsServiceGroup/HSMobileOpsSkuPageSvc/getSkuSnapshotPart")
+    suspend fun getSkuSnapshotPart(
+        @Body body: com.d365fo.mobileops.data.remote.dto.SkuPageServiceRequest,
+    ): Response<com.d365fo.mobileops.data.remote.dto.SkuPageServiceResponse>
+
     /** One page of the offline item / barcode / variant cache - see SkuSyncRepository. */
     @POST("HSMobileOpsServiceGroup/HSMobileOpsSkuPageSvc/getSkuPage")
     suspend fun getSkuPage(

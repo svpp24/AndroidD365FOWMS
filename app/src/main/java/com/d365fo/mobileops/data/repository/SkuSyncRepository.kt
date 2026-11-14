@@ -301,15 +301,6 @@ class SkuSyncRepository @Inject constructor(
 
     private val snapshotDir: java.io.File get() = java.io.File(context.cacheDir, "sku_snapshot")
 
-    /** Plain client for the download links: they carry their own token - no D365FO auth header. */
-    private val downloader: okhttp3.OkHttpClient by lazy {
-        okhttp3.OkHttpClient.Builder()
-            .followRedirects(true)
-            .connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
-            .readTimeout(120, java.util.concurrent.TimeUnit.SECONDS)
-            .build()
-    }
-
     /**
      * The snapshot part of a full sync, resumable: manifest, then every file downloaded and
      * checked, then loaded a line (one page of rows) at a time. Skipped - the pages instead -
@@ -335,7 +326,7 @@ class SkuSyncRepository @Inject constructor(
                 val started = System.currentTimeMillis()
                 var ok = download(file, index)
                 if (!ok) {
-                    // The links last minutes - after a pause they may have run out: fresh ones, once.
+                    // A newer snapshot may have replaced this one: ask which is current, once.
                     val fresh = fetchManifest()
                     if (fresh == null || fresh.builtAtUtc != manifest.builtAtUtc) {
                         Timber.w("SKU snapshot: %s download failed and the snapshot changed - paging instead", file.area)
@@ -351,7 +342,7 @@ class SkuSyncRepository @Inject constructor(
                     snapshotDir.deleteRecursively()
                     return SnapshotResult.Skipped
                 }
-                Timber.w("SKU snapshot: %s downloaded, %d KB in %d ms", file.area, file.bytes / 1024, System.currentTimeMillis() - started)
+                Timber.w("SKU snapshot: %s part %d downloaded, %d KB in %d ms", file.area, file.part, file.bytes / 1024, System.currentTimeMillis() - started)
                 prefs.edit().putInt(KEY_SNAP_FILE, index + 1).apply()
             }
             prefs.edit().putString(KEY_SNAP_STATE, SNAP_IMPORTING).putInt(KEY_SNAP_FILE, 0).putInt(KEY_SNAP_LINE, 0).apply()
@@ -411,40 +402,34 @@ class SkuSyncRepository @Inject constructor(
             Json { ignoreUnknownKeys = true }.decodeFromString(com.d365fo.mobileops.data.remote.dto.SkuSnapshotManifest.serializer(), answer.rowsJson)
         }.getOrNull()
         val known = setOf(FEED_ITEMS, FEED_BARCODES, FEED_VARIANTS, FEED_UNITS)
-        return manifest?.takeIf { m -> m.builtAtUtc.isNotBlank() && m.files.isNotEmpty() && m.files.all { it.area in known && it.url.isNotBlank() } }
+        return manifest?.takeIf { m -> m.builtAtUtc.isNotBlank() && m.files.isNotEmpty() && m.files.all { it.area in known && it.id > 0L } }
     }
 
     /** The manifest's [index]th file - an area comes in parts, in order. */
     private fun fileFor(index: Int) = java.io.File(snapshotDir, "part-$index.zip")
 
-    /** Downloads one file and checks its size and SHA-256; false (file removed) when not intact. */
-    private fun download(file: com.d365fo.mobileops.data.remote.dto.SkuSnapshotFile, index: Int): Boolean {
+    /** Reads one part from D365FO and checks its size and SHA-256; false (file removed) when not intact. */
+    private suspend fun download(file: com.d365fo.mobileops.data.remote.dto.SkuSnapshotFile, index: Int): Boolean {
         val target = fileFor(index)
+        val result = errorMapper.safeCall {
+            service.getSkuSnapshotPart(SkuPageServiceRequest(SkuPageRequestBody(dataAreaId = company(), feed = "", afterKey = file.id.toString())))
+        }
+        val answer = (result as? NetworkResult.Success)?.data?.takeIf { it.success }
+        if (answer == null) {
+            Timber.w("SKU snapshot: %s part %d not read - %s", file.area, file.part,
+                (result as? NetworkResult.Success)?.data?.errorCode ?: (result as? NetworkResult.Error)?.failure?.message)
+            return false
+        }
         return runCatching {
-            downloader.newCall(okhttp3.Request.Builder().url(file.url).build()).execute().use { response ->
-                if (!response.isSuccessful) error("HTTP ${response.code}")
-                val digest = java.security.MessageDigest.getInstance("SHA-256")
-                var size = 0L
-                response.body!!.byteStream().use { input ->
-                    java.io.FileOutputStream(target).use { output ->
-                        val buffer = ByteArray(64 * 1024)
-                        while (true) {
-                            val n = input.read(buffer)
-                            if (n < 0) break
-                            digest.update(buffer, 0, n)
-                            output.write(buffer, 0, n)
-                            size += n
-                        }
-                    }
-                }
-                val sha = digest.digest().joinToString("") { "%02x".format(it) }
-                if (size != file.bytes || !sha.equals(file.sha256, ignoreCase = true)) {
-                    error("size $size of ${file.bytes}, checksum ${if (sha.equals(file.sha256, true)) "ok" else "wrong"}")
-                }
-                true
+            val bytes = java.util.Base64.getDecoder().decode(answer.rowsJson)
+            val sha = java.security.MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
+            if (bytes.size.toLong() != file.bytes || !sha.equals(file.sha256, ignoreCase = true)) {
+                error("size ${bytes.size} of ${file.bytes}, checksum ${if (sha.equals(file.sha256, true)) "ok" else "wrong"}")
             }
+            target.writeBytes(bytes)
+            true
         }.getOrElse {
-            Timber.w("SKU snapshot: %s download failed: %s", file.area, it.message)
+            Timber.w("SKU snapshot: %s part %d not intact: %s", file.area, file.part, it.message)
             target.delete()
             false
         }

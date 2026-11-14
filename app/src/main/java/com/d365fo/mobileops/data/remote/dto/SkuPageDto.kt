@@ -43,12 +43,12 @@ data class SkuSnapshotManifest(
 
 @Serializable
 data class SkuSnapshotFile(
+    /** The part's id - read with getSkuSnapshotPart. */
+    val id: Long = 0L,
     /** ITEMS, BARCODES, VARIANTS or UNITS. */
     val area: String = "",
     /** An area comes in parts below D365FO's attachment size limit, listed in order. */
     val part: Int = 1,
-    /** A short-lived download link (its own access token, no D365FO sign-in). */
-    val url: String = "",
     val bytes: Long = 0L,
     val rows: Long = 0L,
     val sha256: String = "",

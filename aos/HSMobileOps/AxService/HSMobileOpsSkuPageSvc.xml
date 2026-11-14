@@ -13,5 +13,9 @@
 			<Name>getSkuSnapshot</Name>
 			<Method>getSkuSnapshot</Method>
 		</AxServiceOperation>
+		<AxServiceOperation>
+			<Name>getSkuSnapshotPart</Name>
+			<Method>getSkuSnapshotPart</Method>
+		</AxServiceOperation>
 	</ServiceOperations>
 </AxService>

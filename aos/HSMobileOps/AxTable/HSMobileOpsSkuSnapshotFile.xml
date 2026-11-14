@@ -4,8 +4,8 @@
 	<SourceCode>
 		<Declaration><![CDATA[
 /// <summary>
-/// One file of a Mobile item snapshot - an area (ITEMS, BARCODES, VARIANTS) as a ZIP, one
-/// getSkuPage page of rows per line, attached to this record (document management, File type).
+/// One part of a Mobile item snapshot - an area (ITEMS, BARCODES, VARIANTS, UNITS) as a ZIP of
+/// one .jsonl entry, one getSkuPage page of rows per line, kept in Data.
 /// </summary>
 public class HSMobileOpsSkuSnapshotFile extends common
 {
@@ -60,6 +60,14 @@ public class HSMobileOpsSkuSnapshotFile extends common
 			<HelpText>Checksum of the ZIP file - the device checks it after downloading.</HelpText>
 			<Label>SHA-256</Label>
 			<StringSize>64</StringSize>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldContainer">
+			<Name>Data</Name>
+			<AllowEdit>No</AllowEdit>
+			<HelpText>The part itself - a ZIP of one .jsonl entry. Devices read it with getSkuSnapshotPart.</HelpText>
+			<Label>Data</Label>
+			<Visible>No</Visible>
 		</AxTableField>
 	</Fields>
 	<FullTextIndexes />
