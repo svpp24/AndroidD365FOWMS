@@ -8,7 +8,8 @@
 /// now". The files are the getSkuPage feeds of a full refresh, ZIP (one .jsonl entry), one page of rows per line.
 /// In batch the build is split into tasks by key range (HSMobileOpsSkuSnapshotTask) that run side by
 /// side on the batch threads; the last one to end completes the build. Outside batch it runs in turn.
-/// A deploy restarts batch: an interrupted build stays Building and is ignored after 4 hours.
+/// A deploy or restart ends the batch job part way: the next build marks a Building snapshot whose
+/// job no longer runs as Failed (interrupted) and removes its files, so it never blocks a rebuild.
 ///
 /// Stores that sync by assortment (Mobile warehouse control) get a snapshot of their own, of their
 /// item list only: the company's tasks are queued first, then the stores' lists are refreshed and
@@ -136,14 +137,47 @@ class HSMobileOpsSkuSnapshotBuild extends RunBaseBatch
     /// <summary>
     /// Whether another build of this company started in the last 4 hours is still Building.
     /// </summary>
-    private static boolean isBuilding(utcdatetime _now)
+    private static boolean isBuilding(utcdatetime _now, RefRecId _currentJob = 0)
     {
         HSMobileOpsSkuSnapshot snapshot;
 
+        HSMobileOpsSkuSnapshotBuild::failInterrupted(_currentJob);
         select firstOnly RecId from snapshot
             where snapshot.Status     == HSMobileOpsSkuSnapshot::statusBuilding()
                && snapshot.BuiltAtUtc >  DateTimeUtil::addHours(_now, -4);
         return snapshot.RecId != 0;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>failInterrupted</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Building snapshots whose batch job is no longer running (a restart or deploy ended it part
+    /// way - its tasks do not run again), or of _currentJob, the job starting a new build now (a
+    /// recurring job keeps its record): Failed, with their files removed.
+    /// </summary>
+    internal static void failInterrupted(RefRecId _currentJob = 0)
+    {
+        HSMobileOpsSkuSnapshot snapshot;
+        BatchJob               batchJob;
+
+        while select RecId, BatchJobId, BuiltAtUtc from snapshot
+            where snapshot.Status     == HSMobileOpsSkuSnapshot::statusBuilding()
+               && snapshot.BatchJobId != 0
+        {
+            select firstOnly RecId, Status from batchJob
+                where batchJob.RecId == snapshot.BatchJobId;
+            if (!batchJob.RecId || snapshot.BatchJobId == _currentJob
+                || (batchJob.Status != BatchStatus::Executing && batchJob.Status != BatchStatus::Waiting
+                    && batchJob.Status != BatchStatus::Ready))
+            {
+                HSMobileOpsSkuSnapshotBuild::finish(snapshot.RecId, HSMobileOpsSkuSnapshot::statusFailed(), snapshot.BuiltAtUtc,
+                    'Interrupted: its batch job ended before the build finished (a restart or deploy).');
+                HSMobileOpsSkuSnapshotBuild::removeSnapshot(snapshot.RecId, false);
+            }
+        }
     }
 ]]></Source>
 			</Method>
@@ -182,7 +216,7 @@ class HSMobileOpsSkuSnapshotBuild extends RunBaseBatch
         container               task;
         int                     i;
 
-        if (HSMobileOpsSkuSnapshotBuild::isBuilding(started))
+        if (HSMobileOpsSkuSnapshotBuild::isBuilding(started, _current.BatchJobId))
         {
             return 'Another snapshot build of this company is still running - not started.';
         }
@@ -213,6 +247,7 @@ class HSMobileOpsSkuSnapshotBuild extends RunBaseBatch
         snapshot.BuiltAtUtc = started;
         snapshot.Status     = HSMobileOpsSkuSnapshot::statusBuilding();
         snapshot.TasksTotal = tasks.elements();
+        snapshot.BatchJobId = _current.BatchJobId;
         snapshot.insert();
         ttscommit;
 
@@ -276,6 +311,7 @@ class HSMobileOpsSkuSnapshotBuild extends RunBaseBatch
                 snapshot.Status     = HSMobileOpsSkuSnapshot::statusBuilding();
                 snapshot.Scope      = scope;
                 snapshot.TasksTotal = conLen(areas);
+                snapshot.BatchJobId = _current.BatchJobId;
                 snapshot.insert();
                 ttscommit;
                 for (a = 1; a <= conLen(areas); a++)

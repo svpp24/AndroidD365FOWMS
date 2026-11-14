@@ -203,7 +203,7 @@ class SkuSyncRepository @Inject constructor(
                 val variants = itemDao.deleteVariantsNotSeenSince(cycleStarted)
                 // Only once units came with this sync: a D365FO without the UNITS feed sends none.
                 if (prefs.getInt(countKey(FEED_UNITS), 0) > 0) itemDao.deleteUnitsNotSeenSince(cycleStarted)
-                Timber.i("SKU sync: removed %d items, %d barcodes, %d variants no longer in D365FO", items, barcodes, variants)
+                Timber.i("SKU sync: removed %d items, %d barcodes, %d variants no longer in D365FO or not in this warehouse's items", items, barcodes, variants)
             }
             // Items by category reads these counts instead of recounting the list on every level.
             itemDao.rebuildCategoryCounts()

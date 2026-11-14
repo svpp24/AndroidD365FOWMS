@@ -33,6 +33,22 @@ public class HSMobileOpsSkuSnapshot extends common
 ]]></Source>
 			</Method>
 			<Method>
+				<Name>delete</Name>
+				<Source><![CDATA[
+
+    /// <summary>A snapshot goes with its files.</summary>
+    public void delete()
+    {
+        HSMobileOpsSkuSnapshotFile file;
+
+        ttsbegin;
+        delete_from file where file.SnapshotRecId == this.RecId;
+        super();
+        ttscommit;
+    }
+]]></Source>
+			</Method>
+			<Method>
 				<Name>current</Name>
 				<Source><![CDATA[
 
@@ -94,6 +110,14 @@ public class HSMobileOpsSkuSnapshot extends common
 			<ExtendedDataType>InventLocationId</ExtendedDataType>
 			<HelpText>Blank: every item, for the warehouses that sync all items. A warehouse: only its store's assortment (Mobile warehouse control).</HelpText>
 			<Label>Assortment of warehouse</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldInt64">
+			<Name>BatchJobId</Name>
+			<AllowEdit>No</AllowEdit>
+			<ExtendedDataType>RefRecId</ExtendedDataType>
+			<HelpText>The batch job building it. A build whose job ended before it finished (a restart or deploy) is marked Failed by the next build.</HelpText>
+			<Label>Batch job</Label>
 		</AxTableField>
 		<AxTableField xmlns=""
 			i:type="AxTableFieldInt">
