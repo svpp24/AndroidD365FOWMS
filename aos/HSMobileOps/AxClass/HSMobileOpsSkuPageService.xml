@@ -141,23 +141,30 @@ class HSMobileOpsSkuPageService
             json.Append('{"builtAtUtc":');
             json.Append(HSMobileOpsSkuPageService::jsonStr(DateTimeUtil::toStr(snapshot.BuiltAtUtc)));
             json.Append(',"files":[');
-            // In build order: an area's parts follow each other, ITEMS first. Not the data itself.
-            while select RecId, Area, Part, Bytes, RowCount, Sha256 from file
-                order by file.RecId
-                where file.SnapshotRecId == snapshot.RecId
+            // Area by area, ITEMS first, each in part order (the parts are written side by side,
+            // so RecId order is not the order). Not the data itself.
+            container areas = HSMobileOpsSkuPageService::snapshotAreas();
+            for (int a = 1; a <= conLen(areas); a++)
             {
-                if (files)
+                str area = conPeek(areas, a);
+                while select RecId, Area, Part, Bytes, RowCount, Sha256 from file
+                    order by file.Part
+                    where file.SnapshotRecId == snapshot.RecId
+                       && file.Area          == area
                 {
-                    json.Append(',');
+                    if (files)
+                    {
+                        json.Append(',');
+                    }
+                    json.Append('{"id":');     json.Append(int642Str(file.RecId));
+                    json.Append(',"area":');   json.Append(HSMobileOpsSkuPageService::jsonStr(file.Area));
+                    json.Append(',"part":');   json.Append(int2Str(file.Part));
+                    json.Append(',"bytes":');  json.Append(int642Str(file.Bytes));
+                    json.Append(',"rows":');   json.Append(int642Str(file.RowCount));
+                    json.Append(',"sha256":'); json.Append(HSMobileOpsSkuPageService::jsonStr(file.Sha256));
+                    json.Append('}');
+                    files++;
                 }
-                json.Append('{"id":');     json.Append(int642Str(file.RecId));
-                json.Append(',"area":');   json.Append(HSMobileOpsSkuPageService::jsonStr(file.Area));
-                json.Append(',"part":');   json.Append(int2Str(file.Part));
-                json.Append(',"bytes":');  json.Append(int642Str(file.Bytes));
-                json.Append(',"rows":');   json.Append(int642Str(file.RowCount));
-                json.Append(',"sha256":'); json.Append(HSMobileOpsSkuPageService::jsonStr(file.Sha256));
-                json.Append('}');
-                files++;
             }
             json.Append(']}');
         }
@@ -207,10 +214,39 @@ class HSMobileOpsSkuPageService
 ]]></Source>
 			</Method>
 			<Method>
+				<Name>snapshotAreas</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The snapshot areas in the order a device loads them.
+    /// </summary>
+    internal static container snapshotAreas()
+    {
+        return ['ITEMS', 'BARCODES', 'VARIANTS', 'UNITS'];
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>lastItemId</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The highest item number of the company - the upper bound of a page with none given.
+    /// </summary>
+    internal static ItemId lastItemId()
+    {
+        InventTable inventTable;
+
+        select maxof(ItemId) from inventTable;
+        return inventTable.ItemId;
+    }
+]]></Source>
+			</Method>
+			<Method>
 				<Name>itemPage</Name>
 				<Source><![CDATA[
 
-    internal static void itemPage(HSMobileOpsSkuPageResponse _response, ItemId _after, utcdatetime _since, int _pageSize)
+    internal static void itemPage(HSMobileOpsSkuPageResponse _response, ItemId _after, utcdatetime _since, int _pageSize, ItemId _upTo = '')
     {
         InventTable                         inventTable;
         InventTableModule                   inventModule;
@@ -231,10 +267,13 @@ class HSMobileOpsSkuPageService
 
         json.Append('[');
         boolean full = _since == DateTimeUtil::minValue();
+        // A snapshot task reads only its own range (_after, _upTo]; a plain bound keeps the index seek.
+        ItemId upTo = _upTo ? _upTo : HSMobileOpsSkuPageService::lastItemId();
 
         while select ItemId, NameAlias, ProductLifecycleStateId, Product from inventTable
             order by inventTable.ItemId
             where inventTable.ItemId > _after
+               && inventTable.ItemId <= upTo
                && inventTable.ModifiedDateTime >= _since
                && inventTable.ItemType != ItemType::Service
                && (!full || !inventTable.ProductLifecycleStateId || inventTable.ProductLifecycleStateId == 'Active')
@@ -295,7 +334,7 @@ class HSMobileOpsSkuPageService
 				<Name>barcodePage</Name>
 				<Source><![CDATA[
 
-    internal static void barcodePage(HSMobileOpsSkuPageResponse _response, RecId _after, utcdatetime _since, int _pageSize)
+    internal static void barcodePage(HSMobileOpsSkuPageResponse _response, RecId _after, utcdatetime _since, int _pageSize, RecId _upTo = 0)
     {
         InventItemBarcode           barcode;
         InventDim                   inventDim;
@@ -305,11 +344,13 @@ class HSMobileOpsSkuPageService
         RecId                       last;
         boolean                     more;
         boolean                     full = _since == DateTimeUtil::minValue();
+        RecId                       upTo = _upTo ? _upTo : 0x7FFFFFFFFFFFFFFF;
 
         json.Append('[');
         while select itemBarCode, ItemId, Qty, UnitID, Blocked, RecId from barcode
             order by barcode.RecId
             where barcode.RecId            > _after
+               && barcode.RecId            <= upTo
                && barcode.ModifiedDateTime >= _since
                && (!full || !barcode.Blocked)
             outer join configId, InventSizeId, InventColorId, InventStyleId from inventDim
@@ -414,7 +455,7 @@ class HSMobileOpsSkuPageService
     /// The UNITS feed - see getSkuPage. A full refresh walks the released items as ITEMS does; a
     /// delta walks only the items whose unit setup changed since _since.
     /// </summary>
-    internal static void unitPage(HSMobileOpsSkuPageResponse _response, ItemId _after, utcdatetime _since, int _pageSize)
+    internal static void unitPage(HSMobileOpsSkuPageResponse _response, ItemId _after, utcdatetime _since, int _pageSize, ItemId _upTo = '')
     {
         InventTable                 inventTable;
         Map                         factors = new Map(Types::String, Types::Real);
@@ -430,9 +471,12 @@ class HSMobileOpsSkuPageService
         json.Append('[');
         if (full)
         {
+            ItemId upTo = _upTo ? _upTo : HSMobileOpsSkuPageService::lastItemId();
+
             while select ItemId, Product from inventTable
                 order by inventTable.ItemId
                 where inventTable.ItemId > _after
+                   && inventTable.ItemId <= upTo
                    && inventTable.ItemType != ItemType::Service
                    && (!inventTable.ProductLifecycleStateId || inventTable.ProductLifecycleStateId == 'Active')
             {

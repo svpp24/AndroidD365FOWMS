@@ -1,0 +1,212 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsSkuSnapshotTask</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// One key range of one area of an item snapshot build: a task HSMobileOpsSkuSnapshotBuild adds to
+/// its batch job, so the ranges are written side by side. Its end is counted on the snapshot row;
+/// the last task to end completes the build.
+/// </summary>
+class HSMobileOpsSkuSnapshotTask extends RunBaseBatch
+{
+    RefRecId snapshot;
+    str      area;
+    int      taskIndex;
+    str      after;
+    str      upTo;
+
+    #define.CurrentVersion(1)
+    #localmacro.CurrentList
+        snapshot,
+        area,
+        taskIndex,
+        after,
+        upTo
+    #endmacro
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>newTask</Name>
+				<Source><![CDATA[
+
+    public static HSMobileOpsSkuSnapshotTask newTask(RefRecId _snapshot, str _area, int _index, str _after, str _upTo)
+    {
+        HSMobileOpsSkuSnapshotTask task = new HSMobileOpsSkuSnapshotTask();
+
+        task.parmSnapshot(_snapshot);
+        task.parmArea(_area);
+        task.parmIndex(_index);
+        task.parmAfter(_after);
+        task.parmUpTo(_upTo);
+        task.batchInfo().parmCaption(strFmt('Mobile ops: item snapshot %1 %2', _area, _index));
+        return task;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmSnapshot</Name>
+				<Source><![CDATA[
+
+    public RefRecId parmSnapshot(RefRecId _snapshot = snapshot)
+    {
+        snapshot = _snapshot;
+        return snapshot;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmArea</Name>
+				<Source><![CDATA[
+
+    public str parmArea(str _area = area)
+    {
+        area = _area;
+        return area;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmIndex</Name>
+				<Source><![CDATA[
+
+    public int parmIndex(int _index = taskIndex)
+    {
+        taskIndex = _index;
+        return taskIndex;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmAfter</Name>
+				<Source><![CDATA[
+
+    public str parmAfter(str _after = after)
+    {
+        after = _after;
+        return after;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmUpTo</Name>
+				<Source><![CDATA[
+
+    public str parmUpTo(str _upTo = upTo)
+    {
+        upTo = _upTo;
+        return upTo;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>run</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The range's parts are numbered taskIndex * 10000 + 1, 2, ... so the ranges keep their order;
+    /// the build numbers them 1..n at the end. An error is recorded, not thrown: the build fails
+    /// once every task has ended.
+    /// </summary>
+    public void run()
+    {
+        str failure;
+
+        try
+        {
+            HSMobileOpsSkuSnapshotBuild::writeArea(snapshot, area, after, upTo, taskIndex * 10000);
+        }
+        catch (Exception::CLRError)
+        {
+            failure = HSMobileOpsSkuSnapshotBuild::clrFailure();
+        }
+        catch
+        {
+            failure = HSMobileOpsSkuSnapshotBuild::lastInfo();
+            if (!failure)
+            {
+                failure = 'error';
+            }
+        }
+        HSMobileOpsSkuSnapshotBuild::taskEnded(snapshot, failure ? strFmt('%1 %2: %3', area, taskIndex, failure) : '');
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>pack</Name>
+				<Source><![CDATA[
+
+    public container pack()
+    {
+        return [#CurrentVersion, #CurrentList];
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>unpack</Name>
+				<Source><![CDATA[
+
+    public boolean unpack(container _packedClass)
+    {
+        Version version = RunBase::getVersion(_packedClass);
+
+        switch (version)
+        {
+            case #CurrentVersion:
+                [version, #CurrentList] = _packedClass;
+                break;
+            default:
+                return false;
+        }
+        return true;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>canGoBatch</Name>
+				<Source><![CDATA[
+
+    public boolean canGoBatch()
+    {
+        return true;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>isRetryable</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// A rerun would write its parts again next to the first ones.
+    /// </summary>
+
+    public boolean isRetryable()
+    {
+        return false;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>runsImpersonated</Name>
+				<Source><![CDATA[
+
+    public boolean runsImpersonated()
+    {
+        return true;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>description</Name>
+				<Source><![CDATA[
+
+    public static ClassDescription description()
+    {
+        return 'Mobile ops: item snapshot task';
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

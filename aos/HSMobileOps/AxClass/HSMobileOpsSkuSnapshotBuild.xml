@@ -6,6 +6,8 @@
 /// <summary>
 /// Builds the Mobile item snapshot of the company it runs in - nightly, and on "Rebuild snapshot
 /// now". The files are the getSkuPage feeds of a full refresh, ZIP (one .jsonl entry), one page of rows per line.
+/// In batch the build is split into tasks by key range (HSMobileOpsSkuSnapshotTask) that run side by
+/// side on the batch threads; the last one to end completes the build. Outside batch it runs in turn.
 /// A deploy restarts batch: an interrupted build stays Building and is ignored after 4 hours.
 /// </summary>
 class HSMobileOpsSkuSnapshotBuild extends RunBaseBatch
@@ -62,15 +64,11 @@ class HSMobileOpsSkuSnapshotBuild extends RunBaseBatch
         int64                  variants;
         int64                  units;
 
-        select firstOnly RecId from snapshot
-            where snapshot.Status     == HSMobileOpsSkuSnapshot::statusBuilding()
-               && snapshot.BuiltAtUtc >  DateTimeUtil::addHours(started, -4);
-        if (snapshot.RecId)
+        if (HSMobileOpsSkuSnapshotBuild::isBuilding(started))
         {
             return 'Another snapshot build of this company is still running - not started.';
         }
 
-        snapshot.clear();
         ttsbegin;
         snapshot.BuiltAtUtc = started;
         snapshot.Status     = HSMobileOpsSkuSnapshot::statusBuilding();
@@ -79,10 +77,10 @@ class HSMobileOpsSkuSnapshotBuild extends RunBaseBatch
 
         try
         {
-            items    = HSMobileOpsSkuSnapshotBuild::writeArea(snapshot.RecId, 'ITEMS');
-            barcodes = HSMobileOpsSkuSnapshotBuild::writeArea(snapshot.RecId, 'BARCODES');
-            variants = HSMobileOpsSkuSnapshotBuild::writeArea(snapshot.RecId, 'VARIANTS');
-            units    = HSMobileOpsSkuSnapshotBuild::writeArea(snapshot.RecId, 'UNITS');
+            items    = HSMobileOpsSkuSnapshotBuild::writeArea(snapshot.RecId, 'ITEMS', '', '', 0);
+            barcodes = HSMobileOpsSkuSnapshotBuild::writeArea(snapshot.RecId, 'BARCODES', '', '', 0);
+            variants = HSMobileOpsSkuSnapshotBuild::writeArea(snapshot.RecId, 'VARIANTS', '', '', 0);
+            units    = HSMobileOpsSkuSnapshotBuild::writeArea(snapshot.RecId, 'UNITS', '', '', 0);
             result = strFmt('%1 items, %2 barcodes, %3 variants, units of %4 items.', items, barcodes, variants, units);
             HSMobileOpsSkuSnapshotBuild::finish(snapshot.RecId, HSMobileOpsSkuSnapshot::statusReady(), started, result);
             HSMobileOpsSkuSnapshotBuild::removeOlder(snapshot.RecId);
@@ -90,14 +88,7 @@ class HSMobileOpsSkuSnapshotBuild extends RunBaseBatch
         }
         catch (Exception::CLRError)
         {
-            System.Exception clrError = CLRInterop::getLastException();
-            // The reflection wrapper says only 'Exception has been thrown by the target of an
-            // invocation' - the inner exception is the real one.
-            while (clrError && clrError.get_InnerException())
-            {
-                clrError = clrError.get_InnerException();
-            }
-            failure = clrError ? clrError.GetType().get_Name() + ': ' + clrError.get_Message() : 'CLR error';
+            failure = HSMobileOpsSkuSnapshotBuild::clrFailure();
         }
         catch
         {
@@ -111,6 +102,316 @@ class HSMobileOpsSkuSnapshotBuild extends RunBaseBatch
 ]]></Source>
 			</Method>
 			<Method>
+				<Name>isBuilding</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Whether another build of this company started in the last 4 hours is still Building.
+    /// </summary>
+    private static boolean isBuilding(utcdatetime _now)
+    {
+        HSMobileOpsSkuSnapshot snapshot;
+
+        select firstOnly RecId from snapshot
+            where snapshot.Status     == HSMobileOpsSkuSnapshot::statusBuilding()
+               && snapshot.BuiltAtUtc >  DateTimeUtil::addHours(_now, -4);
+        return snapshot.RecId != 0;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>taskCount</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Tasks per large area (ITEMS, BARCODES, UNITS). The batch framework runs as many at once as
+    /// the batch server has threads; the rest wait their turn.
+    /// </summary>
+    private static int taskCount()
+    {
+        return 8;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>startTasks</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The build split into tasks of this batch job: ITEMS and UNITS by item number range,
+    /// BARCODES by RecId range, VARIANTS in one. The snapshot row counts them; the last task to
+    /// end completes it (taskEnded).
+    /// </summary>
+    internal static str startTasks(Batch _current)
+    {
+        HSMobileOpsSkuSnapshot  snapshot;
+        utcdatetime             started = DateTimeUtil::utcNow();
+        container               itemBounds;
+        container               barcodeBounds;
+        List                    tasks = new List(Types::Container);
+        ListEnumerator          taskEnum;
+        BatchHeader             batchHeader;
+        container               task;
+        int                     i;
+
+        if (HSMobileOpsSkuSnapshotBuild::isBuilding(started))
+        {
+            return 'Another snapshot build of this company is still running - not started.';
+        }
+        itemBounds    = HSMobileOpsSkuSnapshotBuild::itemBoundaries();
+        barcodeBounds = HSMobileOpsSkuSnapshotBuild::barcodeBoundaries();
+        // [area, index, after, upTo] - the ranges (bound i-1, bound i], open at both ends.
+        for (i = 1; i <= conLen(itemBounds) + 1; i++)
+        {
+            tasks.addEnd(['ITEMS', i,
+                i > 1 ? conPeek(itemBounds, i - 1) : '',
+                i <= conLen(itemBounds) ? conPeek(itemBounds, i) : '']);
+        }
+        for (i = 1; i <= conLen(barcodeBounds) + 1; i++)
+        {
+            tasks.addEnd(['BARCODES', i,
+                i > 1 ? int642Str(conPeek(barcodeBounds, i - 1)) : '',
+                i <= conLen(barcodeBounds) ? int642Str(conPeek(barcodeBounds, i)) : '']);
+        }
+        tasks.addEnd(['VARIANTS', 1, '', '']);
+        for (i = 1; i <= conLen(itemBounds) + 1; i++)
+        {
+            tasks.addEnd(['UNITS', i,
+                i > 1 ? conPeek(itemBounds, i - 1) : '',
+                i <= conLen(itemBounds) ? conPeek(itemBounds, i) : '']);
+        }
+
+        ttsbegin;
+        snapshot.BuiltAtUtc = started;
+        snapshot.Status     = HSMobileOpsSkuSnapshot::statusBuilding();
+        snapshot.TasksTotal = tasks.elements();
+        snapshot.insert();
+        ttscommit;
+
+        try
+        {
+            batchHeader = BatchHeader::construct(_current.BatchJobId);
+            taskEnum = tasks.getEnumerator();
+            while (taskEnum.moveNext())
+            {
+                task = taskEnum.current();
+                batchHeader.addRuntimeTask(HSMobileOpsSkuSnapshotTask::newTask(snapshot.RecId,
+                    conPeek(task, 1), conPeek(task, 2), conPeek(task, 3), conPeek(task, 4)), _current.RecId);
+            }
+            batchHeader.save();
+        }
+        catch
+        {
+            HSMobileOpsSkuSnapshotBuild::finish(snapshot.RecId, HSMobileOpsSkuSnapshot::statusFailed(), started,
+                'Failed: the tasks could not be added - ' + HSMobileOpsSkuSnapshotBuild::lastInfo());
+            return 'Failed: the tasks could not be added.';
+        }
+        return strFmt('Snapshot build for %1 split into %2 tasks.', curExt(), tasks.elements());
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>itemBoundaries</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// taskCount() - 1 item numbers that split the items of the ITEMS feed into equal ranges;
+    /// none for a small company (one task is enough).
+    /// </summary>
+    private static container itemBoundaries()
+    {
+        const int64  MinRowsPerTask = 20000;
+        InventTable  inventTable;
+        container    bounds;
+        int64        total;
+        int64        step;
+        int64        n;
+        int          tasks = HSMobileOpsSkuSnapshotBuild::taskCount();
+
+        select count(RecId) from inventTable
+            where inventTable.ItemType != ItemType::Service
+               && (!inventTable.ProductLifecycleStateId || inventTable.ProductLifecycleStateId == 'Active');
+        total = inventTable.RecId;
+        step  = max(total div tasks + 1, MinRowsPerTask);
+        if (total <= step)
+        {
+            return conNull();
+        }
+        inventTable.clear();
+        while select ItemId from inventTable
+            order by inventTable.ItemId
+            where inventTable.ItemType != ItemType::Service
+               && (!inventTable.ProductLifecycleStateId || inventTable.ProductLifecycleStateId == 'Active')
+        {
+            n++;
+            if (n mod step == 0)
+            {
+                bounds += inventTable.ItemId;
+                if (conLen(bounds) >= tasks - 1)
+                {
+                    break;
+                }
+            }
+        }
+        return bounds;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>barcodeBoundaries</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// taskCount() - 1 RecIds that split the barcodes into equal RecId ranges; none for a few.
+    /// </summary>
+    private static container barcodeBoundaries()
+    {
+        const int64         MinRowsPerTask = 20000;
+        InventItemBarcode   barcode;
+        container           bounds;
+        int64               total;
+        RecId               low;
+        RecId               high;
+        int                 tasks = HSMobileOpsSkuSnapshotBuild::taskCount();
+        int                 i;
+
+        select count(RecId) from barcode;
+        total = barcode.RecId;
+        if (total < 2 * MinRowsPerTask)
+        {
+            return conNull();
+        }
+        select minof(RecId) from barcode;
+        low = barcode.RecId;
+        select maxof(RecId) from barcode;
+        high = barcode.RecId;
+        for (i = 1; i < tasks; i++)
+        {
+            bounds += low + (high - low) * i div tasks;
+        }
+        return bounds;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>taskEnded</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// A task's end, counted on the snapshot row under a lock; the last one completes the build.
+    /// </summary>
+    internal static void taskEnded(RefRecId _snapshot, str _failure)
+    {
+        HSMobileOpsSkuSnapshot snapshot;
+        boolean                last;
+
+        ttsbegin;
+        select pessimisticLock firstOnly snapshot where snapshot.RecId == _snapshot;
+        if (snapshot.RecId && snapshot.Status == HSMobileOpsSkuSnapshot::statusBuilding())
+        {
+            if (_failure)
+            {
+                snapshot.TasksFailed++;
+                if (!snapshot.Result)
+                {
+                    snapshot.Result = subStr('Failed: ' + _failure, 1, 250);
+                }
+            }
+            else
+            {
+                snapshot.TasksDone++;
+            }
+            last = snapshot.TasksDone + snapshot.TasksFailed >= snapshot.TasksTotal;
+            snapshot.update();
+        }
+        ttscommit;
+        if (last)
+        {
+            HSMobileOpsSkuSnapshotBuild::completeTasks(_snapshot);
+        }
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>completeTasks</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// After the last task: Failed if any task failed; otherwise each area's parts numbered
+    /// 1..n in key order, the snapshot Ready and the older ones removed.
+    /// </summary>
+    private static void completeTasks(RefRecId _snapshot)
+    {
+        HSMobileOpsSkuSnapshot     snapshot;
+        HSMobileOpsSkuSnapshotFile file;
+        HSMobileOpsSkuSnapshotFile renumber;
+        container                  areas = HSMobileOpsSkuPageService::snapshotAreas();
+        container                  rows;
+        str                        area;
+        int                        a;
+        int                        part;
+
+        select firstOnly snapshot where snapshot.RecId == _snapshot;
+        if (snapshot.TasksFailed)
+        {
+            HSMobileOpsSkuSnapshotBuild::finish(_snapshot, HSMobileOpsSkuSnapshot::statusFailed(), snapshot.BuiltAtUtc,
+                snapshot.Result ? snapshot.Result : 'Failed: see the batch job log');
+            HSMobileOpsSkuSnapshotBuild::removeSnapshot(_snapshot, false);
+            return;
+        }
+        for (a = 1; a <= conLen(areas); a++)
+        {
+            area = conPeek(areas, a);
+            part = 0;
+            ttsbegin;
+            while select RecId, Part from file
+                order by file.Part
+                where file.SnapshotRecId == _snapshot
+                   && file.Area          == area
+            {
+                part++;
+                if (file.Part != part)
+                {
+                    update_recordset renumber
+                        setting Part = part
+                        where renumber.RecId == file.RecId;
+                }
+            }
+            ttscommit;
+            file.clear();
+            select sum(RowCount) from file
+                where file.SnapshotRecId == _snapshot
+                   && file.Area          == area;
+            rows += file.RowCount;
+        }
+        HSMobileOpsSkuSnapshotBuild::finish(_snapshot, HSMobileOpsSkuSnapshot::statusReady(), snapshot.BuiltAtUtc,
+            strFmt('%1 items, %2 barcodes, %3 variants, units of %4 items. %5 tasks side by side.',
+                conPeek(rows, 1), conPeek(rows, 2), conPeek(rows, 3), conPeek(rows, 4), snapshot.TasksTotal));
+        HSMobileOpsSkuSnapshotBuild::removeOlder(_snapshot);
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>clrFailure</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The last CLR error. The reflection wrapper says only 'Exception has been thrown by the
+    /// target of an invocation' - the inner exception is the real one.
+    /// </summary>
+    internal static str clrFailure()
+    {
+        System.Exception clrError = CLRInterop::getLastException();
+
+        while (clrError && clrError.get_InnerException())
+        {
+            clrError = clrError.get_InnerException();
+        }
+        return clrError ? clrError.GetType().get_Name() + ': ' + clrError.get_Message() : 'CLR error';
+    }
+]]></Source>
+			</Method>
+			<Method>
 				<Name>writeArea</Name>
 				<Source><![CDATA[
 
@@ -118,9 +419,10 @@ class HSMobileOpsSkuSnapshotBuild extends RunBaseBatch
     /// The whole feed of an area - each line one getSkuPage page of rows, exactly what the paged
     /// sync sends - as ZIPs of one .jsonl entry, stored in HSMobileOpsSkuSnapshotFile rows.
     /// A part closes at about 4 MB, so an area of a million rows becomes several parts.
-    /// Returns the rows.
+    /// A task writes only the keys (_after, _upTo] - '' is from the start / to the end - as parts
+    /// _partBase + 1, 2, ...; the build numbers them 1..n per area at the end. Returns the rows.
     /// </summary>
-    private static int64 writeArea(RefRecId _snapshot, str _area)
+    internal static int64 writeArea(RefRecId _snapshot, str _area, str _after, str _upTo, int _partBase)
     {
         const int                           PageSize = 5000;
         System.IO.MemoryStream              memory;
@@ -129,7 +431,7 @@ class HSMobileOpsSkuSnapshotBuild extends RunBaseBatch
         HSMobileOpsSkuPageResponse          page;
         utcdatetime                         full = DateTimeUtil::minValue();
         int64                               partLimit = HSMobileOpsSkuSnapshotBuild::partLimitBytes();
-        str                                 after;
+        str                                 after = _after;
         int64                               rows;
         int64                               partRows;
         int                                 part;
@@ -151,16 +453,16 @@ class HSMobileOpsSkuSnapshotBuild extends RunBaseBatch
             switch (_area)
             {
                 case 'ITEMS':
-                    HSMobileOpsSkuPageService::itemPage(page, after, full, PageSize);
+                    HSMobileOpsSkuPageService::itemPage(page, after, full, PageSize, _upTo);
                     break;
                 case 'BARCODES':
-                    HSMobileOpsSkuPageService::barcodePage(page, str2Int64(after), full, PageSize);
+                    HSMobileOpsSkuPageService::barcodePage(page, str2Int64(after), full, PageSize, str2Int64(_upTo));
                     break;
                 case 'VARIANTS':
                     HSMobileOpsSkuPageService::variantPage(page, str2Int64(after), PageSize);
                     break;
                 case 'UNITS':
-                    HSMobileOpsSkuPageService::unitPage(page, after, full, PageSize);
+                    HSMobileOpsSkuPageService::unitPage(page, after, full, PageSize, _upTo);
                     break;
                 default:
                     throw error(strFmt('Unknown snapshot area %1', _area));
@@ -180,7 +482,7 @@ class HSMobileOpsSkuSnapshotBuild extends RunBaseBatch
             {
                 writer.Dispose();
                 zip.Dispose();
-                HSMobileOpsSkuSnapshotBuild::attachPart(_snapshot, _area, part, partRows, memory);
+                HSMobileOpsSkuSnapshotBuild::attachPart(_snapshot, _area, _partBase + part, partRows, memory);
                 memory = null;
             }
         }
@@ -233,7 +535,7 @@ class HSMobileOpsSkuSnapshotBuild extends RunBaseBatch
 				<Name>finish</Name>
 				<Source><![CDATA[
 
-    private static void finish(RefRecId _snapshot, str _status, utcdatetime _started, str _result)
+    internal static void finish(RefRecId _snapshot, str _status, utcdatetime _started, str _result)
     {
         HSMobileOpsSkuSnapshot snapshot;
 
@@ -258,7 +560,7 @@ class HSMobileOpsSkuSnapshotBuild extends RunBaseBatch
     /// Every other snapshot of the company that is not still building, with its files. A device
     /// that took a link a moment ago keeps reading it until the link runs out.
     /// </summary>
-    private static void removeOlder(RefRecId _keep)
+    internal static void removeOlder(RefRecId _keep)
     {
         HSMobileOpsSkuSnapshot snapshot;
 
@@ -278,7 +580,7 @@ class HSMobileOpsSkuSnapshotBuild extends RunBaseBatch
     /// A snapshot's parts; the snapshot row too when _row (a failed build keeps its row, with
     /// the reason).
     /// </summary>
-    private static void removeSnapshot(RefRecId _snapshot, boolean _row)
+    internal static void removeSnapshot(RefRecId _snapshot, boolean _row)
     {
         HSMobileOpsSkuSnapshot     snapshot;
         HSMobileOpsSkuSnapshotFile file;
@@ -297,7 +599,7 @@ class HSMobileOpsSkuSnapshotBuild extends RunBaseBatch
 				<Name>lastInfo</Name>
 				<Source><![CDATA[
 
-    private static str lastInfo()
+    internal static str lastInfo()
     {
         int line = infologLine();
 
@@ -378,7 +680,14 @@ class HSMobileOpsSkuSnapshotBuild extends RunBaseBatch
 
     public void run()
     {
-        info(HSMobileOpsSkuSnapshotBuild::build());
+        if (this.isInBatch())
+        {
+            info(HSMobileOpsSkuSnapshotBuild::startTasks(this.parmCurrentBatch()));
+        }
+        else
+        {
+            info(HSMobileOpsSkuSnapshotBuild::build());
+        }
     }
 ]]></Source>
 			</Method>

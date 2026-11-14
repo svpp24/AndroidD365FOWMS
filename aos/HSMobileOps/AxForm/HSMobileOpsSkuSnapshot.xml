@@ -140,6 +140,33 @@ public class HSMobileOpsSkuSnapshot extends FormRun
 								<DataSource>HSMobileOpsSkuSnapshot</DataSource>
 							</AxFormControl>
 							<AxFormControl xmlns=""
+								i:type="AxFormIntegerControl">
+								<Name>HSMobileOpsSkuSnapshot_TasksTotal</Name>
+								<Type>Integer</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<DataField>TasksTotal</DataField>
+								<DataSource>HSMobileOpsSkuSnapshot</DataSource>
+							</AxFormControl>
+							<AxFormControl xmlns=""
+								i:type="AxFormIntegerControl">
+								<Name>HSMobileOpsSkuSnapshot_TasksDone</Name>
+								<Type>Integer</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<DataField>TasksDone</DataField>
+								<DataSource>HSMobileOpsSkuSnapshot</DataSource>
+							</AxFormControl>
+							<AxFormControl xmlns=""
+								i:type="AxFormIntegerControl">
+								<Name>HSMobileOpsSkuSnapshot_TasksFailed</Name>
+								<Type>Integer</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<DataField>TasksFailed</DataField>
+								<DataSource>HSMobileOpsSkuSnapshot</DataSource>
+							</AxFormControl>
+							<AxFormControl xmlns=""
 								i:type="AxFormStringControl">
 								<Name>HSMobileOpsSkuSnapshot_Result</Name>
 								<Type>String</Type>

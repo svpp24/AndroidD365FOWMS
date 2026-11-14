@@ -85,6 +85,27 @@ public class HSMobileOpsSkuSnapshot extends common
 			<Label>Result</Label>
 			<StringSize>250</StringSize>
 		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldInt">
+			<Name>TasksTotal</Name>
+			<AllowEdit>No</AllowEdit>
+			<HelpText>The batch tasks the build was split into, run side by side.</HelpText>
+			<Label>Tasks</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldInt">
+			<Name>TasksDone</Name>
+			<AllowEdit>No</AllowEdit>
+			<HelpText>Tasks finished without an error. The last task to finish completes the build.</HelpText>
+			<Label>Tasks done</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldInt">
+			<Name>TasksFailed</Name>
+			<AllowEdit>No</AllowEdit>
+			<HelpText>Tasks that stopped with an error - the build then fails.</HelpText>
+			<Label>Tasks failed</Label>
+		</AxTableField>
 	</Fields>
 	<FullTextIndexes />
 	<Indexes>
