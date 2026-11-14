@@ -819,11 +819,13 @@ class HSMobileOpsSkuSnapshotBuild extends RunBaseBatch
 				<Name>partLimitBytes</Name>
 				<Source><![CDATA[
     /// <summary>
-    /// A part closes at about 4 MB of ZIP - one getSkuSnapshotPart answer stays a few MB.
+    /// A part closes at about 512 KB of ZIP (written parts come out at about half the limit).
+    /// Measured on the emulator, 14 Nov: a 2 MB part took 41 s to download, a 319 KB one 0.7 s -
+    /// big answers got slower per KB - and each big answer briefly held several copies in the AOS.
     /// </summary>
     internal static int64 partLimitBytes()
     {
-        return 4 * 1024 * 1024;
+        return 512 * 1024;
     }
 ]]></Source>
 			</Method>
