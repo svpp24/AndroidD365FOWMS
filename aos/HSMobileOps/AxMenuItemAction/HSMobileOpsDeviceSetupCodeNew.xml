@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxMenuItemAction xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsDeviceSetupCodeNew</Name>
+	<Label>New device setup code</Label>
+	<HelpText>Makes a setup code and shows its QR code once.</HelpText>
+	<Object>HSMobileOpsDeviceSetupCodeNew</Object>
+	<ObjectType>Class</ObjectType>
+</AxMenuItemAction>

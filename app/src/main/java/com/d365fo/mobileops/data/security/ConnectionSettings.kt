@@ -31,7 +31,14 @@ data class TenantConfig(
      * saved before profiles carried one - the device's own company setting is used then.
      */
     val company: String = "",
+    /**
+     * The customer's token service, from a device setup code ([DeviceSetupQr]). Set, the device
+     * gets its tokens there with its own device key and holds no tenant, client ID or secret.
+     */
+    val tokenServiceUrl: String = "",
 ) {
+    val usesTokenService: Boolean get() = tokenServiceUrl.isNotBlank()
+
     /** Every registration a device may use: the main one first, then [extraCredentials]. */
     val credentials: List<AppCredential>
         get() = listOf(AppCredential(clientId.trim(), clientSecret.trim())) + extraCredentials
@@ -50,6 +57,8 @@ data class TenantConfig(
     fun validationError(): String? = when {
         resourceUrl.isBlank() -> "Environment URL is required"
         !resourceUrl.startsWith("https://") -> "Environment URL must start with https://"
+        usesTokenService && !tokenServiceUrl.startsWith("https://") -> "Token service address must start with https://"
+        usesTokenService -> null
         tenantId.isBlank() -> "Directory (tenant) ID is required"
         clientId.isBlank() -> "Application (client) ID is required"
         clientSecret.isBlank() -> "Client secret is required"
@@ -59,6 +68,7 @@ data class TenantConfig(
 
     /** Checked at token-request time. */
     fun credentialsError(): String? = when {
+        usesTokenService -> if (resourceUrl.isBlank()) "No environment URL configured" else null
         tenantId.isBlank() -> "No directory (tenant) ID configured"
         clientId.isBlank() -> "No application (client) ID configured"
         resourceUrl.isBlank() -> "No environment URL configured"
@@ -240,6 +250,7 @@ class ConnectionSettings @Inject constructor(
             secureStore.remove(clientSecretKey(label))
             secureStore.remove(poolKey(label))
             secureStore.remove(authTypeKey(label))
+            secureStore.remove(tokenServiceKey(label))
         }
         val label = _tenant.value.label
         _tenant.value = readProfile(label) ?: TenantConfig(label = label)
@@ -281,6 +292,7 @@ class ConnectionSettings @Inject constructor(
         secureStore.putString(clientSecretKey(label), config.clientSecret.trim())
         secureStore.putString(poolKey(label), CredentialPool.format(config.extraCredentials))
         if (config.company.isNotBlank()) secureStore.putString(companyKey(label), config.company.trim().uppercase())
+        secureStore.putString(tokenServiceKey(label), config.tokenServiceUrl.trim().trimEnd('/'))
     }
 
     private fun clearProfileFields(label: String) {
@@ -291,6 +303,7 @@ class ConnectionSettings @Inject constructor(
         secureStore.remove(authTypeKey(label))
         secureStore.remove(poolKey(label))
         secureStore.remove(companyKey(label))
+        secureStore.remove(tokenServiceKey(label))
     }
 
     private fun readProfile(label: String): TenantConfig? {
@@ -303,6 +316,7 @@ class ConnectionSettings @Inject constructor(
             clientSecret = secureStore.getString(clientSecretKey(label)) ?: "",
             extraCredentials = CredentialPool.parse(secureStore.getString(poolKey(label)).orEmpty()),
             company = secureStore.getString(companyKey(label)).orEmpty(),
+            tokenServiceUrl = secureStore.getString(tokenServiceKey(label)).orEmpty(),
         )
     }
 
@@ -364,6 +378,7 @@ class ConnectionSettings @Inject constructor(
     private fun authTypeKey(label: String) = "connection_profile_auth_type::$label"
     private fun poolKey(label: String) = "connection_profile_client_pool::$label"
     private fun companyKey(label: String) = "connection_profile_company::$label"
+    private fun tokenServiceKey(label: String) = "connection_profile_token_service::$label"
     private fun postingKey(label: String) = "connection_profile_posting_enabled::$label"
 
     private companion object {

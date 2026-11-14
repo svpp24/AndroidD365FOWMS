@@ -1,0 +1,114 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsDeviceSetupRequest</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// A device setup request, sent by the token service on behalf of a new device: the setup code
+/// from the QR code, the device and its public key. getDeviceKey uses DeviceId only.
+/// </summary>
+[DataContractAttribute]
+class HSMobileOpsDeviceSetupRequest
+{
+    str        code;
+    str        deviceId;
+    str        publicKey;
+    str        deviceBrand;
+    str        deviceModel;
+    str        platform;
+    str        platformVersion;
+    str        appVersionName;
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmCode</Name>
+				<Source><![CDATA[
+    [DataMemberAttribute('Code')]
+    public str parmCode(str _value = code)
+    {
+        code = _value;
+        return code;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmDeviceId</Name>
+				<Source><![CDATA[
+    [DataMemberAttribute('DeviceId')]
+    public str parmDeviceId(str _value = deviceId)
+    {
+        deviceId = _value;
+        return deviceId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmPublicKey</Name>
+				<Source><![CDATA[
+    [DataMemberAttribute('PublicKey')]
+    public str parmPublicKey(str _value = publicKey)
+    {
+        publicKey = _value;
+        return publicKey;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmDeviceBrand</Name>
+				<Source><![CDATA[
+    [DataMemberAttribute('DeviceBrand')]
+    public str parmDeviceBrand(str _value = deviceBrand)
+    {
+        deviceBrand = _value;
+        return deviceBrand;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmDeviceModel</Name>
+				<Source><![CDATA[
+    [DataMemberAttribute('DeviceModel')]
+    public str parmDeviceModel(str _value = deviceModel)
+    {
+        deviceModel = _value;
+        return deviceModel;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmPlatform</Name>
+				<Source><![CDATA[
+    [DataMemberAttribute('Platform')]
+    public str parmPlatform(str _value = platform)
+    {
+        platform = _value;
+        return platform;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmPlatformVersion</Name>
+				<Source><![CDATA[
+    [DataMemberAttribute('PlatformVersion')]
+    public str parmPlatformVersion(str _value = platformVersion)
+    {
+        platformVersion = _value;
+        return platformVersion;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmAppVersionName</Name>
+				<Source><![CDATA[
+    [DataMemberAttribute('AppVersionName')]
+    public str parmAppVersionName(str _value = appVersionName)
+    {
+        appVersionName = _value;
+        return appVersionName;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

@@ -1,0 +1,150 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsDeviceSetupResponse</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// The answer of HSMobileOpsDeviceSetupService. ErrorCode is one of INVALID_REQUEST, CODE_UNKNOWN,
+/// CODE_EXPIRED, CODE_USED_UP, DEVICE_LIMIT_REACHED, DEVICE_UNKNOWN or a license error code.
+/// </summary>
+[DataContractAttribute]
+class HSMobileOpsDeviceSetupResponse
+{
+    boolean    success;
+    str        errorCode;
+    str        message;
+    str        company;
+    str        deviceName;
+    int        activeDevices;
+    int        maxDevices;
+    str        publicKey;
+    boolean    isActive;
+    boolean    licenseValid;
+    str        serverUtc;
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmSuccess</Name>
+				<Source><![CDATA[
+    [DataMemberAttribute('Success')]
+    public boolean parmSuccess(boolean _value = success)
+    {
+        success = _value;
+        return success;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmErrorCode</Name>
+				<Source><![CDATA[
+    [DataMemberAttribute('ErrorCode')]
+    public str parmErrorCode(str _value = errorCode)
+    {
+        errorCode = _value;
+        return errorCode;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmMessage</Name>
+				<Source><![CDATA[
+    [DataMemberAttribute('Message')]
+    public str parmMessage(str _value = message)
+    {
+        message = _value;
+        return message;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmCompany</Name>
+				<Source><![CDATA[
+    [DataMemberAttribute('Company')]
+    public str parmCompany(str _value = company)
+    {
+        company = _value;
+        return company;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmDeviceName</Name>
+				<Source><![CDATA[
+    [DataMemberAttribute('DeviceName')]
+    public str parmDeviceName(str _value = deviceName)
+    {
+        deviceName = _value;
+        return deviceName;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmActiveDevices</Name>
+				<Source><![CDATA[
+    [DataMemberAttribute('ActiveDevices')]
+    public int parmActiveDevices(int _value = activeDevices)
+    {
+        activeDevices = _value;
+        return activeDevices;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmMaxDevices</Name>
+				<Source><![CDATA[
+    [DataMemberAttribute('MaxDevices')]
+    public int parmMaxDevices(int _value = maxDevices)
+    {
+        maxDevices = _value;
+        return maxDevices;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmPublicKey</Name>
+				<Source><![CDATA[
+    [DataMemberAttribute('PublicKey')]
+    public str parmPublicKey(str _value = publicKey)
+    {
+        publicKey = _value;
+        return publicKey;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmIsActive</Name>
+				<Source><![CDATA[
+    [DataMemberAttribute('IsActive')]
+    public boolean parmIsActive(boolean _value = isActive)
+    {
+        isActive = _value;
+        return isActive;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmLicenseValid</Name>
+				<Source><![CDATA[
+    [DataMemberAttribute('LicenseValid')]
+    public boolean parmLicenseValid(boolean _value = licenseValid)
+    {
+        licenseValid = _value;
+        return licenseValid;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmServerUtc</Name>
+				<Source><![CDATA[
+    [DataMemberAttribute('ServerUtc')]
+    public str parmServerUtc(str _value = serverUtc)
+    {
+        serverUtc = _value;
+        return serverUtc;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

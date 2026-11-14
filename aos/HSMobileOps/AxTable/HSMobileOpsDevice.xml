@@ -361,6 +361,21 @@ public class HSMobileOpsDevice extends common
 			<HelpText>Deactivate a device that has been retired or lost. It can still sign in - this is not a remote lock on that device itself - but it drops off the active-fleet view, and, unlike before licensing existed, deactivating it now also frees up one of the license's device slots for a replacement handheld. See HSMobileOpsLicense.</HelpText>
 			<Label>Active</Label>
 		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>PublicKey</Name>
+			<AllowEdit>No</AllowEdit>
+			<HelpText>The public key of the key pair the device made when it was set up with a setup code (EC P-256, base64 SubjectPublicKeyInfo). The token service checks the device's requests with it.</HelpText>
+			<Label>Device key</Label>
+			<StringSize>400</StringSize>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldUtcDateTime">
+			<Name>KeyRegisteredUtc</Name>
+			<AllowEdit>No</AllowEdit>
+			<HelpText>When the device was set up with a device setup code.</HelpText>
+			<Label>Set up with code</Label>
+		</AxTableField>
 	</Fields>
 	<FullTextIndexes />
 	<Indexes>

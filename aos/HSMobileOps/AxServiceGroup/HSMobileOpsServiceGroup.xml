@@ -4,6 +4,10 @@
 	<AutoDeploy>Yes</AutoDeploy>
 	<Services>
 		<AxServiceGroupService>
+			<Name>HSMobileOpsDeviceSetupSvc</Name>
+			<Service>HSMobileOpsDeviceSetupSvc</Service>
+		</AxServiceGroupService>
+		<AxServiceGroupService>
 			<Name>HSMobileOpsSkuPageSvc</Name>
 			<Service>HSMobileOpsSkuPageSvc</Service>
 		</AxServiceGroupService>

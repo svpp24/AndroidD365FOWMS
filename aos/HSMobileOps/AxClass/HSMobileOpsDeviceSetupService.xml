@@ -1,0 +1,181 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsDeviceSetupService</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Device setup without a client secret on the device (HSMobileOpsDeviceSetupSvc). Both
+/// operations are called by the token service in the customer's Azure tenant, never by the app:
+/// - registerDeviceKey: a new device scanned a setup code. Checks the code, the license and the
+///   device limit, keeps the device's public key, marks the device active and counts the use.
+/// - getDeviceKey: the token service checks a device's signed token request against this key
+///   and gives no token to an inactive device (Mobile devices, Activate / deactivate).
+/// See docs/device-setup.md.
+/// </summary>
+class HSMobileOpsDeviceSetupService
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>registerDeviceKey</Name>
+				<Source><![CDATA[
+    [Wrappable(false), Hookable(false)]
+    public final HSMobileOpsDeviceSetupResponse registerDeviceKey(HSMobileOpsDeviceSetupRequest _request)
+    {
+        HSMobileOpsDeviceSetupResponse response = HSMobileOpsDeviceSetupService::newResponse();
+        HSMobileOpsDeviceSetupCode     setupCode;
+        HSMobileOpsDevice              device;
+        HSMobileOpsLicenseStatus       license;
+        str                            deviceId;
+        str                            publicKey;
+
+        if (_request)
+        {
+            deviceId  = strLRTrim(_request.parmDeviceId());
+            publicKey = strLRTrim(_request.parmPublicKey());
+        }
+        if (!_request || !_request.parmCode() || !deviceId || !publicKey || strLen(publicKey) > 400)
+        {
+            return HSMobileOpsDeviceSetupService::fail(response, 'INVALID_REQUEST', 'Setup code, device and device key are required.');
+        }
+
+        ttsbegin;
+        select pessimisticLock firstOnly setupCode
+            where setupCode.CodeHash == HSMobileOpsDeviceSetupCode::hashOf(_request.parmCode());
+        if (!setupCode.RecId)
+        {
+            ttsabort;
+            return HSMobileOpsDeviceSetupService::fail(response, 'CODE_UNKNOWN',
+                'This setup code is not known. Ask your administrator for a new one.');
+        }
+        if (setupCode.ExpiresUtc <= DateTimeUtil::utcNow())
+        {
+            ttsabort;
+            return HSMobileOpsDeviceSetupService::fail(response, 'CODE_EXPIRED',
+                'This setup code has expired. Ask your administrator for a new one.');
+        }
+        if (setupCode.Uses >= setupCode.MaxUses)
+        {
+            ttsabort;
+            return HSMobileOpsDeviceSetupService::fail(response, 'CODE_USED_UP',
+                strFmt('This setup code has already set up %1 device(s). Ask your administrator for a new one.', setupCode.MaxUses));
+        }
+
+        license = HSMobileOpsLicense::verify();
+        if (!license.parmValid())
+        {
+            ttsabort;
+            return HSMobileOpsDeviceSetupService::fail(response, license.parmErrorCode(), license.parmMessage());
+        }
+        // A new device, or one that was deactivated, takes a free slot; an active one keeps its own.
+        select firstOnly IsActive from device where device.DeviceId == deviceId;
+        if ((!device.RecId || device.IsActive == NoYes::No)
+            && HSMobileOpsDevice::activeDeviceCount() >= license.parmMaxDevices())
+        {
+            ttsabort;
+            return HSMobileOpsDeviceSetupService::fail(response, 'DEVICE_LIMIT_REACHED', strFmt(
+                'This app is licensed for %1 device(s), and that many are already active. Deactivate one in Mobile devices first.',
+                license.parmMaxDevices()));
+        }
+
+        HSMobileOpsDevice::registerSignIn(deviceId, _request.parmDeviceBrand(), _request.parmDeviceModel(),
+            _request.parmPlatform(), _request.parmPlatformVersion(), _request.parmAppVersionName(), '', '', '');
+        select forUpdate device where device.DeviceId == deviceId;
+        device.PublicKey        = publicKey;
+        device.KeyRegisteredUtc = DateTimeUtil::utcNow();
+        device.IsActive         = NoYes::Yes;
+        device.update();
+
+        setupCode.selectForUpdate(true);
+        setupCode.Uses++;
+        setupCode.LastDeviceId = deviceId;
+        setupCode.update();
+        ttscommit;
+
+        response.parmSuccess(true);
+        response.parmCompany(setupCode.Company);
+        response.parmDeviceName(device.FriendlyName ? device.FriendlyName : deviceId);
+        response.parmIsActive(true);
+        response.parmLicenseValid(true);
+        response.parmPublicKey(device.PublicKey);
+        response.parmActiveDevices(HSMobileOpsDevice::activeDeviceCount());
+        response.parmMaxDevices(license.parmMaxDevices());
+        response.parmMessage(strFmt('Device ready - %1 of %2 devices.', response.parmActiveDevices(), response.parmMaxDevices()));
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>getDeviceKey</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// The device's public key and whether it may get tokens: active, and the license valid.
+    /// DEVICE_UNKNOWN for a device never set up with a code.
+    /// </summary>
+    [Wrappable(false), Hookable(false)]
+    public final HSMobileOpsDeviceSetupResponse getDeviceKey(HSMobileOpsDeviceSetupRequest _request)
+    {
+        HSMobileOpsDeviceSetupResponse response = HSMobileOpsDeviceSetupService::newResponse();
+        HSMobileOpsDevice              device;
+        HSMobileOpsLicenseStatus       license;
+
+        if (!_request || !_request.parmDeviceId())
+        {
+            return HSMobileOpsDeviceSetupService::fail(response, 'INVALID_REQUEST', 'Device is required.');
+        }
+        select firstOnly device where device.DeviceId == strLRTrim(_request.parmDeviceId());
+        if (!device.RecId || !device.PublicKey)
+        {
+            return HSMobileOpsDeviceSetupService::fail(response, 'DEVICE_UNKNOWN',
+                'This device has not been set up with a setup code.');
+        }
+        license = HSMobileOpsLicense::verify();
+        response.parmSuccess(true);
+        response.parmPublicKey(device.PublicKey);
+        response.parmIsActive(device.IsActive == NoYes::Yes);
+        response.parmLicenseValid(license.parmValid());
+        response.parmDeviceName(device.FriendlyName);
+        response.parmMaxDevices(license.parmMaxDevices());
+        if (!license.parmValid())
+        {
+            response.parmErrorCode(license.parmErrorCode());
+            response.parmMessage(license.parmMessage());
+        }
+        else if (device.IsActive == NoYes::No)
+        {
+            response.parmErrorCode('DEVICE_INACTIVE');
+            response.parmMessage('This device has been deactivated in Mobile devices.');
+        }
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>newResponse</Name>
+				<Source><![CDATA[
+    private static HSMobileOpsDeviceSetupResponse newResponse()
+    {
+        HSMobileOpsDeviceSetupResponse response = new HSMobileOpsDeviceSetupResponse();
+
+        response.parmSuccess(false);
+        response.parmServerUtc(System.DateTime::get_UtcNow().ToString('yyyy-MM-ddTHH:mm:ssZ'));
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>fail</Name>
+				<Source><![CDATA[
+    private static HSMobileOpsDeviceSetupResponse fail(HSMobileOpsDeviceSetupResponse _response, str _code, str _message)
+    {
+        _response.parmSuccess(false);
+        _response.parmErrorCode(_code);
+        _response.parmMessage(_message);
+        return _response;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxService xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsDeviceSetupSvc</Name>
+	<Class>HSMobileOpsDeviceSetupService</Class>
+	<ExternalName>DeviceSetupService</ExternalName>
+	<Namespace>http://schemas.hs.com/mobileops</Namespace>
+	<ServiceOperations>
+		<AxServiceOperation>
+			<Name>registerDeviceKey</Name>
+			<Method>registerDeviceKey</Method>
+		</AxServiceOperation>
+		<AxServiceOperation>
+			<Name>getDeviceKey</Name>
+			<Method>getDeviceKey</Method>
+		</AxServiceOperation>
+	</ServiceOperations>
+</AxService>

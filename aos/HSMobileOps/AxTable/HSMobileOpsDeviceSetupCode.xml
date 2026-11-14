@@ -1,0 +1,152 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxTable xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsDeviceSetupCode</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// A device setup code (Mobile devices, New device setup code): what a new handheld scans to
+/// join the fleet instead of a connection code with a client secret. Only the SHA-256 of the code
+/// is kept; the code itself is shown once, in its QR code. A code works until it expires or has
+/// been used MaxUses times. See HSMobileOpsDeviceSetupService and docs/device-setup.md.
+/// </summary>
+public class HSMobileOpsDeviceSetupCode extends common
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>hashOf</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// The stored form of a code: lower-case hex SHA-256 of its UTF-8 text, trimmed and upper-cased.
+    /// </summary>
+    public static str hashOf(str _code)
+    {
+        System.Security.Cryptography.SHA256 sha = System.Security.Cryptography.SHA256::Create();
+        System.Text.Encoding                utf8 = System.Text.Encoding::get_UTF8();
+
+        return strLwr(strReplace(System.BitConverter::ToString(
+            sha.ComputeHash(utf8.GetBytes(strUpr(strLRTrim(_code))))), '-', ''));
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>isOpen</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Whether the code can still set up a device: not expired, not used up.
+    /// </summary>
+    public boolean isOpen()
+    {
+        return this.RecId
+            && this.ExpiresUtc > DateTimeUtil::utcNow()
+            && this.Uses < this.MaxUses;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>lastTokenServiceUrl</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// The token service address of the newest code - the default for the next one.
+    /// </summary>
+    public static str lastTokenServiceUrl()
+    {
+        HSMobileOpsDeviceSetupCode setupCode;
+
+        select firstOnly TokenServiceUrl from setupCode
+            order by setupCode.CreatedDateTime desc
+            where setupCode.TokenServiceUrl;
+        return setupCode.TokenServiceUrl;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+	<Label>Device setup code</Label>
+	<TitleField1>Label</TitleField1>
+	<TitleField2>ExpiresUtc</TitleField2>
+	<CacheLookup>NotInTTS</CacheLookup>
+	<CreatedBy>Yes</CreatedBy>
+	<CreatedDateTime>Yes</CreatedDateTime>
+	<SaveDataPerCompany>No</SaveDataPerCompany>
+	<Fields>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>CodeHash</Name>
+			<AllowEdit>No</AllowEdit>
+			<HelpText>SHA-256 of the code. The code itself is not kept.</HelpText>
+			<Label>Code hash</Label>
+			<StringSize>64</StringSize>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>Label</Name>
+			<AllowEdit>No</AllowEdit>
+			<HelpText>What the code is for, e.g. the store or the batch of devices.</HelpText>
+			<Label>Label</Label>
+			<StringSize>60</StringSize>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>Company</Name>
+			<AllowEdit>No</AllowEdit>
+			<HelpText>The company devices set up with this code start in.</HelpText>
+			<Label>Company</Label>
+			<StringSize>4</StringSize>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>TokenServiceUrl</Name>
+			<AllowEdit>No</AllowEdit>
+			<HelpText>The address of the token service in your Azure tenant that devices get their access from.</HelpText>
+			<Label>Token service</Label>
+			<StringSize>255</StringSize>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldUtcDateTime">
+			<Name>ExpiresUtc</Name>
+			<AllowEdit>No</AllowEdit>
+			<HelpText>After this time the code sets up no more devices.</HelpText>
+			<Label>Expires</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldInt">
+			<Name>MaxUses</Name>
+			<AllowEdit>No</AllowEdit>
+			<HelpText>How many devices the code can set up.</HelpText>
+			<Label>Devices allowed</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldInt">
+			<Name>Uses</Name>
+			<AllowEdit>No</AllowEdit>
+			<HelpText>How many devices the code has set up so far.</HelpText>
+			<Label>Devices set up</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>LastDeviceId</Name>
+			<AllowEdit>No</AllowEdit>
+			<HelpText>The device the code set up last.</HelpText>
+			<Label>Last device</Label>
+			<StringSize>100</StringSize>
+		</AxTableField>
+	</Fields>
+	<FullTextIndexes />
+	<Indexes>
+		<AxTableIndex>
+			<Name>CodeHashIdx</Name>
+			<AllowDuplicates>No</AllowDuplicates>
+			<AlternateKey>Yes</AlternateKey>
+			<Fields>
+				<AxTableIndexField>
+					<DataField>CodeHash</DataField>
+				</AxTableIndexField>
+			</Fields>
+		</AxTableIndex>
+	</Indexes>
+	<Mappings />
+	<Relations />
+	<StateMachines />
+</AxTable>

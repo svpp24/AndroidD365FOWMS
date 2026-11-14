@@ -52,6 +52,8 @@ sealed interface ConnectionQrState {
     data class Failed(val message: String) : ConnectionQrState
     /** The code points somewhere new, and work on this device hasn't reached D365FO yet. */
     data class UnsentWork(val description: String, val ready: ConnectionQr.Result.Ready) : ConnectionQrState
+    /** As [UnsentWork], for a device setup code. */
+    data class UnsentDeviceSetup(val description: String, val raw: String) : ConnectionQrState
 }
 
 /**
@@ -62,10 +64,11 @@ sealed interface ConnectionQrState {
 @HiltViewModel
 class ConnectionQrViewModel @Inject constructor(
     private val connectionSettings: ConnectionSettings,
-    private val tokenProvider: ClientCredentialsTokenProvider,
+    private val tokenProvider: com.d365fo.mobileops.data.security.TokenProvider,
     private val workerContextRepository: WorkerContextRepositoryImpl,
     private val database: D365Database,
     private val unsentWork: com.d365fo.mobileops.data.sync.UnsentWork,
+    private val deviceSetup: com.d365fo.mobileops.data.security.DeviceSetup,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow<ConnectionQrState>(ConnectionQrState.Idle)
@@ -80,6 +83,10 @@ class ConnectionQrViewModel @Inject constructor(
     }
 
     fun onScanned(raw: String) {
+        if (com.d365fo.mobileops.data.security.DeviceSetupQr.isDeviceSetupQr(raw)) {
+            setUpDevice(raw, discardConfirmed = false)
+            return
+        }
         if (!ConnectionQr.isConnectionQr(raw)) {
             _state.value = ConnectionQrState.Failed("Not a connection code.")
             return
@@ -111,6 +118,36 @@ class ConnectionQrViewModel @Inject constructor(
     fun deleteUnsentAndApply(ready: ConnectionQr.Result.Ready) {
         _state.value = ConnectionQrState.Applying
         viewModelScope.launch { _state.value = save(ready, discardConfirmed = true) }
+    }
+
+    /** The worker chose to delete the unsent work and set the device up with the new code anyway. */
+    fun deleteUnsentAndSetUp(raw: String) = setUpDevice(raw, discardConfirmed = true)
+
+    /**
+     * A device setup code: the device registers its own key with the customer's token service
+     * and D365FO, then signs in through it - no client secret (see DeviceSetup).
+     */
+    private fun setUpDevice(raw: String, discardConfirmed: Boolean) {
+        _state.value = ConnectionQrState.Applying
+        viewModelScope.launch {
+            val read = com.d365fo.mobileops.data.security.DeviceSetupQr.read(raw)
+            if (read is com.d365fo.mobileops.data.security.DeviceSetupQr.Result.Invalid) {
+                _state.value = ConnectionQrState.Failed(read.reason)
+                return@launch
+            }
+            read as com.d365fo.mobileops.data.security.DeviceSetupQr.Result.Ready
+            if (!discardConfirmed && connectionSettings.wouldChangeTarget(read.config)) {
+                val unsent = unsentWork.summary()
+                if (!unsent.isEmpty) {
+                    _state.value = ConnectionQrState.UnsentDeviceSetup(unsent.describe(), raw)
+                    return@launch
+                }
+            }
+            _state.value = when (val result = deviceSetup.setUp(read)) {
+                is com.d365fo.mobileops.data.security.DeviceSetup.Result.Ready -> ConnectionQrState.Done(result.message)
+                is com.d365fo.mobileops.data.security.DeviceSetup.Result.Failed -> ConnectionQrState.Failed(result.message)
+            }
+        }
     }
 
     private suspend fun save(ready: ConnectionQr.Result.Ready, discardConfirmed: Boolean = false): ConnectionQrState {
@@ -196,6 +233,11 @@ fun ConnectionQrSetup(
             description = s.description,
             onKeep = viewModel::dismiss,
             onDelete = { viewModel.deleteUnsentAndApply(s.ready) },
+        )
+        is ConnectionQrState.UnsentDeviceSetup -> com.d365fo.mobileops.presentation.common.components.UnsentWorkDialog(
+            description = s.description,
+            onKeep = viewModel::dismiss,
+            onDelete = { viewModel.deleteUnsentAndSetUp(s.raw) },
         )
         is ConnectionQrState.NeedsPin -> PinDialog(
             wrongPin = s.wrongPin,

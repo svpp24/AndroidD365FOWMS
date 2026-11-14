@@ -70,6 +70,11 @@
 				</AxMenuElement>
 				<AxMenuElement xmlns=""
 					i:type="AxMenuElementMenuItem">
+					<Name>HSMobileOpsDeviceSetupCodes</Name>
+					<MenuItemName>HSMobileOpsDeviceSetupCodes</MenuItemName>
+				</AxMenuElement>
+				<AxMenuElement xmlns=""
+					i:type="AxMenuElementMenuItem">
 					<Name>HSMobileOpsLicenseSetup</Name>
 					<MenuItemName>HSMobileOpsLicenseSetup</MenuItemName>
 				</AxMenuElement>

@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxForm xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns="Microsoft.Dynamics.AX.Metadata.V6">
+	<Name>HSMobileOpsDeviceSetupQr</Name>
+	<SourceCode>
+		<Methods xmlns="">
+			<Method>
+				<Name>classDeclaration</Name>
+				<Source><![CDATA[
+/// <summary>
+/// The QR code of a new device setup code, shown once (HSMobileOpsDeviceSetupCodeNew). The code is
+/// not kept, so print or show it now; closing this loses it (make a new one then).
+/// </summary>
+[Form]
+public class HSMobileOpsDeviceSetupQr extends FormRun
+{
+}
+]]></Source>
+			</Method>
+			<Method>
+				<Name>init</Name>
+				<Source><![CDATA[
+    public void init()
+    {
+        str setupText;
+
+        super();
+        setupText = element.args() ? element.args().parm() : '';
+        if (!setupText)
+        {
+            throw error('Open this from New device setup code.');
+        }
+        QrText.text(setupText);
+        QrImage.image(new Image(HSMobileOpsDeviceSetupCodeNew::qrPng(setupText)));
+    }
+]]></Source>
+			</Method>
+		</Methods>
+		<DataSources xmlns="" />
+		<DataControls xmlns="" />
+		<Members xmlns="" />
+	</SourceCode>
+	<DataSources />
+	<Design>
+		<Caption xmlns="">Device setup code</Caption>
+		<Pattern xmlns="">Custom</Pattern>
+		<Style xmlns="">Dialog</Style>
+		<Controls xmlns="">
+			<AxFormControl xmlns=""
+				i:type="AxFormStaticTextControl">
+				<Name>Instructions</Name>
+				<Type>StaticText</Type>
+				<FormControlExtension
+					i:nil="true" />
+				<Text>On a new handheld: install the app, open it and scan this QR code. Print it or keep this open now - the code is not shown again.</Text>
+			</AxFormControl>
+			<AxFormControl xmlns=""
+				i:type="AxFormImageControl">
+				<Name>QrImage</Name>
+				<AutoDeclaration>Yes</AutoDeclaration>
+				<Height>320</Height>
+				<HeightMode>Manual</HeightMode>
+				<Type>Image</Type>
+				<Width>320</Width>
+				<WidthMode>Manual</WidthMode>
+				<FormControlExtension
+					i:nil="true" />
+			</AxFormControl>
+			<AxFormControl xmlns=""
+				i:type="AxFormStringControl">
+				<Name>QrText</Name>
+				<AutoDeclaration>Yes</AutoDeclaration>
+				<AllowEdit>No</AllowEdit>
+				<Type>String</Type>
+				<Width>320</Width>
+				<WidthMode>Manual</WidthMode>
+				<FormControlExtension
+					i:nil="true" />
+				<Label>Setup code text</Label>
+				<MultiLine>Yes</MultiLine>
+			</AxFormControl>
+		</Controls>
+	</Design>
+	<Parts />
+</AxForm>

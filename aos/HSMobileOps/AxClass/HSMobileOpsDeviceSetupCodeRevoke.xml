@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsDeviceSetupCodeRevoke</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Revoke (Device setup codes): the selected code expires now. Devices already set up keep working.
+/// </summary>
+class HSMobileOpsDeviceSetupCodeRevoke
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>main</Name>
+				<Source><![CDATA[
+    public static void main(Args _args)
+    {
+        HSMobileOpsDeviceSetupCode setupCode;
+
+        if (!_args || !_args.record() || _args.record().TableId != tableNum(HSMobileOpsDeviceSetupCode))
+        {
+            throw error('Select a setup code.');
+        }
+        ttsbegin;
+        select forUpdate setupCode where setupCode.RecId == _args.record().RecId;
+        if (setupCode.ExpiresUtc > DateTimeUtil::utcNow())
+        {
+            setupCode.ExpiresUtc = DateTimeUtil::utcNow();
+            setupCode.update();
+        }
+        ttscommit;
+        info(strFmt('Setup code %1 revoked. Devices already set up with it keep working.', setupCode.Label));
+        if (_args.record().isFormDataSource())
+        {
+            FormDataUtil::getFormDataSource(_args.record()).research(true);
+        }
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

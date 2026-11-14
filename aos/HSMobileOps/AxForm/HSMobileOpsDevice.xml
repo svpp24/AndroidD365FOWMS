@@ -137,6 +137,19 @@ public class HSMobileOpsDevice extends FormRun
 								<NeedsRecord>Yes</NeedsRecord>
 								<Text>Activate / deactivate</Text>
 							</AxFormControl>
+							<AxFormControl xmlns=""
+								i:type="AxFormMenuFunctionButtonControl">
+								<Name>SetupCodesButton</Name>
+								<HelpText>The codes new handhelds scan to join, without a client secret on the device.</HelpText>
+								<Type>MenuFunctionButton</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<ButtonDisplay>TextOnly</ButtonDisplay>
+								<DataSource>HSMobileOpsDevice</DataSource>
+								<MenuItemName>HSMobileOpsDeviceSetupCodes</MenuItemName>
+								<MenuItemType>Display</MenuItemType>
+								<Text>Device setup codes</Text>
+							</AxFormControl>
 						</Controls>
 						<ArrangeMethod>Vertical</ArrangeMethod>
 						<Caption>Maintain</Caption>
@@ -361,6 +374,16 @@ public class HSMobileOpsDevice extends FormRun
 								<FormControlExtension
 									i:nil="true" />
 								<DataField>FirstSeenUtc</DataField>
+								<DataSource>HSMobileOpsDevice</DataSource>
+							</AxFormControl>
+							<AxFormControl xmlns=""
+								i:type="AxFormDateTimeControl">
+								<Name>KeyRegisteredUtc</Name>
+								<AllowEdit>No</AllowEdit>
+								<Type>DateTime</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<DataField>KeyRegisteredUtc</DataField>
 								<DataSource>HSMobileOpsDevice</DataSource>
 							</AxFormControl>
 							<AxFormControl xmlns=""

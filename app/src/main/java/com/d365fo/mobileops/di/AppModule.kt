@@ -85,10 +85,10 @@ object AppModule {
 @InstallIn(SingletonComponent::class)
 abstract class RepositoryModule {
 
-    /** Client credentials - the only device credential since device-code sign-in was removed. */
+    /** The device key and token service for a device setup code, else client credentials - see RoutingTokenProvider. */
     @Binds
     @Singleton
-    abstract fun bindTokenProvider(impl: com.d365fo.mobileops.data.security.ClientCredentialsTokenProvider): TokenProvider
+    abstract fun bindTokenProvider(impl: com.d365fo.mobileops.data.security.RoutingTokenProvider): TokenProvider
 
     /**
      * Three layers, outermost first: cache, then the AOS service, then OData.

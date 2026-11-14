@@ -1,0 +1,146 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsDeviceSetupCodeNew</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// New device setup code (Mobile devices, Device setup codes): asks what the code is for, its
+/// company, how many devices and for how many days, and the token service address; makes a
+/// random code, keeps only its hash, and shows the QR code once (HSMobileOpsDeviceSetupQr).
+/// The QR text is HSMODEV1: + base64url of
+/// {"v":1,"label","url","company","token","code"} - url is this D365FO, token the token service.
+/// </summary>
+class HSMobileOpsDeviceSetupCodeNew
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>main</Name>
+				<Source><![CDATA[
+    public static void main(Args _args)
+    {
+        Dialog          dialog = new Dialog('New device setup code');
+        DialogField     labelField;
+        DialogField     companyField;
+        DialogField     usesField;
+        DialogField     daysField;
+        DialogField     tokenField;
+        Args            qrArgs;
+        str             qrText;
+
+        dialog.addText('Devices scan the QR code to join. Only someone who has the code can set up a device with it.');
+        labelField   = dialog.addFieldValue(extendedTypeStr(Name), 'Handhelds', 'Label', 'What the code is for, e.g. the store.');
+        companyField = dialog.addFieldValue(extendedTypeStr(DataAreaId), curExt(), 'Company', 'The company devices start in.');
+        usesField    = dialog.addFieldValue(extendedTypeStr(Integer), 1, 'Devices', 'How many devices the code can set up.');
+        daysField    = dialog.addFieldValue(extendedTypeStr(Integer), 7, 'Valid for days', 'After this the code sets up no more devices.');
+        tokenField   = dialog.addFieldValue(extendedTypeStr(URL), HSMobileOpsDeviceSetupCode::lastTokenServiceUrl(),
+            'Token service', 'The address of the token service in your Azure tenant, e.g. https://contoso-mobileops.azurewebsites.net');
+        if (!dialog.run())
+        {
+            return;
+        }
+        if (usesField.value() < 1 || usesField.value() > 500 || daysField.value() < 1 || daysField.value() > 90)
+        {
+            throw error('Devices must be 1 to 500 and days 1 to 90.');
+        }
+        if (!CompanyInfo::findDataArea(companyField.value()).RecId)
+        {
+            throw error(strFmt('Company %1 does not exist.', companyField.value()));
+        }
+        if (!strStartsWith(strLwr(tokenField.value()), 'https://'))
+        {
+            throw error('The token service address must start with https://');
+        }
+
+        qrText = HSMobileOpsDeviceSetupCodeNew::create(labelField.value(), companyField.value(),
+            usesField.value(), daysField.value(), tokenField.value());
+
+        qrArgs = new Args(formStr(HSMobileOpsDeviceSetupQr));
+        qrArgs.parm(qrText);
+        new MenuFunction(menuItemDisplayStr(HSMobileOpsDeviceSetupQr), MenuItemType::Display).run(qrArgs);
+        // The list behind shows the new code - also when it was empty (no record to refresh from).
+        if (_args && _args.caller() is FormRun)
+        {
+            FormRun caller = _args.caller();
+            if (caller.dataSource(1))
+            {
+                caller.dataSource(1).research(true);
+            }
+        }
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>create</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// A new code: 128 random bits as 32 hex characters. Returns the QR text.
+    /// </summary>
+    internal static str create(str _label, DataAreaId _company, int _uses, int _days, str _tokenUrl)
+    {
+        System.Security.Cryptography.RandomNumberGenerator random = System.Security.Cryptography.RandomNumberGenerator::Create();
+        System.Byte[]               bytes = new System.Byte[16]();
+        HSMobileOpsDeviceSetupCode  setupCode;
+        System.Text.StringBuilder   json = new System.Text.StringBuilder();
+        str                         code;
+        str                         url = Microsoft.Dynamics.ApplicationPlatform.Environment.EnvironmentFactory::GetApplicationEnvironment().get_Infrastructure().get_HostUrl();
+
+        random.GetBytes(bytes);
+        code = strReplace(System.BitConverter::ToString(bytes), '-', '');
+
+        ttsbegin;
+        setupCode.CodeHash        = HSMobileOpsDeviceSetupCode::hashOf(code);
+        setupCode.Label           = _label;
+        setupCode.Company         = strUpr(_company);
+        setupCode.MaxUses         = _uses;
+        setupCode.ExpiresUtc      = DateTimeUtil::addDays(DateTimeUtil::utcNow(), _days);
+        setupCode.TokenServiceUrl = strLRTrim(_tokenUrl);
+        setupCode.insert();
+        ttscommit;
+
+        json.Append('{"v":1,"label":');  json.Append(HSMobileOpsSkuPageService::jsonStr(_label));
+        json.Append(',"url":');          json.Append(HSMobileOpsSkuPageService::jsonStr(strLRTrim(url)));
+        json.Append(',"company":');      json.Append(HSMobileOpsSkuPageService::jsonStr(strUpr(_company)));
+        json.Append(',"token":');        json.Append(HSMobileOpsSkuPageService::jsonStr(strLRTrim(_tokenUrl)));
+        json.Append(',"code":');         json.Append(HSMobileOpsSkuPageService::jsonStr(code));
+        json.Append('}');
+        return 'HSMODEV1:' + HSMobileOpsDeviceSetupCodeNew::base64Url(json.ToString());
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>qrPng</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// The QR code of _text as a PNG, for HSMobileOpsDeviceSetupQr (the encoder ApplicationSuite ships).
+    /// </summary>
+    internal static container qrPng(str _text)
+    {
+        Microsoft.Dynamics.ApplicationSuite.QRCode.Encoder encoder = new Microsoft.Dynamics.ApplicationSuite.QRCode.Encoder();
+        System.Drawing.Bitmap                              bitmap;
+        System.IO.MemoryStream                             memory = new System.IO.MemoryStream();
+
+        encoder.set_CellSize(4);
+        bitmap = encoder.Encode(_text);
+        bitmap.Save(memory, System.Drawing.Imaging.ImageFormat::get_Png());
+        return Binary::constructFromMemoryStream(memory).getContainer();
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>base64Url</Name>
+				<Source><![CDATA[
+    private static str base64Url(str _text)
+    {
+        str text = System.Convert::ToBase64String(System.Text.Encoding::get_UTF8().GetBytes(_text));
+
+        text = strReplace(text, '+', '-');
+        text = strReplace(text, '/', '_');
+        return strRem(text, '=');
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>
