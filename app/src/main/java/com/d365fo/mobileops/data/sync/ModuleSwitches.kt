@@ -41,6 +41,9 @@ class ModuleSwitches @Inject constructor(
     private val errorMapper: D365ErrorMapper,
     private val companyProvider: CompanyProvider,
     private val scope: CoroutineScope,
+    /** The same answer can ask for a full item re-sync (Mobile item snapshot in D365FO). */
+    private val skuSync: dagger.Lazy<com.d365fo.mobileops.data.repository.SkuSyncRepository>,
+    private val syncScheduler: dagger.Lazy<SyncScheduler>,
 ) {
     private val _disabled = MutableStateFlow(load())
 
@@ -74,6 +77,23 @@ class ModuleSwitches @Inject constructor(
         val answer = (result as? NetworkResult.Success)?.data?.takeIf { it.success } ?: return
         update(answer.disabledModules)
         cleanupSettings.update(answer)
+        resyncIfAsked(answer.fullResyncAfterUtc)
+    }
+
+    /**
+     * D365FO asked every device for a full re-sync after [askedUtc]: one, unless this device's last
+     * full download is newer - or it already started one for the same request.
+     */
+    private fun resyncIfAsked(askedUtc: String) {
+        if (askedUtc.isBlank() || askedUtc == secureStore.getString(KEY_RESYNC_HANDLED)) return
+        val asked = runCatching {
+            java.time.LocalDateTime.parse(askedUtc.trim().removeSuffix("Z").take(19)).toInstant(java.time.ZoneOffset.UTC).toEpochMilli()
+        }.getOrNull() ?: return
+        val lastFull = skuSync.get().lastFullAt() ?: 0L
+        secureStore.putString(KEY_RESYNC_HANDLED, askedUtc)
+        if (lastFull >= asked) return
+        Timber.w("item list: D365FO asked for a full re-sync (%s) - starting one", askedUtc)
+        syncScheduler.get().syncMastersNow(com.d365fo.mobileops.data.repository.ManualSync.FULL)
     }
 
     /** D365FO's current list - replaces the one kept. */
@@ -103,6 +123,8 @@ class ModuleSwitches @Inject constructor(
     companion object {
         const val DEFAULT_MESSAGE = "Switched off for now. Ask your supervisor."
         private const val KEY = "module_switches"
+        /** The last "Ask all devices to full re-sync" this device acted on. */
+        private const val KEY_RESYNC_HANDLED = "full_resync_handled"
         private const val FIRST_POLL_MS = 3_000L
         // 30 minutes (was 3): the work backup's answer carries the switches whenever work
         // changes (WorkBackup.update), so this is only the fallback for an idle device.

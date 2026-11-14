@@ -442,6 +442,15 @@ interface MobileOpsServiceApi {
         @Tag tag: IdempotentRead = IdempotentRead,
     ): Response<com.d365fo.mobileops.data.remote.dto.OrderServiceResponse>
 
+    /**
+     * The current item snapshot - gzip files a full sync downloads instead of paging (RowsJson is a
+     * [com.d365fo.mobileops.data.remote.dto.SkuSnapshotManifest]); ErrorCode NO_SNAPSHOT when none.
+     */
+    @POST("HSMobileOpsServiceGroup/HSMobileOpsSkuPageSvc/getSkuSnapshot")
+    suspend fun getSkuSnapshot(
+        @Body body: com.d365fo.mobileops.data.remote.dto.SkuPageServiceRequest,
+    ): Response<com.d365fo.mobileops.data.remote.dto.SkuPageServiceResponse>
+
     /** One page of the offline item / barcode / variant cache - see SkuSyncRepository. */
     @POST("HSMobileOpsServiceGroup/HSMobileOpsSkuPageSvc/getSkuPage")
     suspend fun getSkuPage(

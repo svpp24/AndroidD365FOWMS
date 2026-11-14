@@ -61,4 +61,6 @@ data class DeviceWorkServiceResponse(
     @SerialName("OldWorkDays") val oldWorkDays: Int = 30,
     @SerialName("Items") val items: List<DeviceWorkItemDto> = emptyList(),
     @SerialName("DisabledModules") val disabledModules: List<ModuleSwitchDto> = emptyList(),
+    /** Mobile item snapshot, Ask all devices to full re-sync: when (UTC); blank = never asked. */
+    @SerialName("FullResyncAfterUtc") val fullResyncAfterUtc: String = "",
 )

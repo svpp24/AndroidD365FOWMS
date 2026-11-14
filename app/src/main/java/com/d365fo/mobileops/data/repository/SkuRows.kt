@@ -45,6 +45,18 @@ internal object SkuRows {
         )
     }
 
+    /** [itemId, inventUnit, purchUnit, salesUnit, [[unit, factor, decimals], ...]] */
+    fun units(row: JsonArray, now: Long): com.d365fo.mobileops.data.local.dao.SkuUnitRow? = with(row) {
+        val itemId = text(0).trim().takeIf { it.isNotEmpty() } ?: return@with null
+        val list = (getOrNull(4) as? JsonArray).orEmpty().mapNotNull { u ->
+            val unit = (u as? JsonArray) ?: return@mapNotNull null
+            val unitId = unit.text(0).trim().takeIf { it.isNotEmpty() } ?: return@mapNotNull null
+            val factor = unit.text(1).trim().toBigDecimalOrNull()?.takeIf { it.signum() > 0 } ?: return@mapNotNull null
+            com.d365fo.mobileops.data.local.entity.ItemUnitEntity(itemId, unitId, factor.toPlainString(), unit.text(2).toIntOrNull() ?: 0, now)
+        }
+        com.d365fo.mobileops.data.local.dao.SkuUnitRow(itemId, text(1).trim(), text(2).trim().ifBlank { null }, text(3).trim().ifBlank { null }, list)
+    }
+
     /** [barcode, itemId, qty, unit, configId, sizeId, colorId, styleId, blocked] */
     fun barcode(row: JsonArray, now: Long): BarcodeEntity? = with(row) {
         val barcode = text(0).trim().takeIf { it.isNotEmpty() } ?: return@with null

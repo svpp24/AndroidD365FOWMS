@@ -5,7 +5,7 @@
 		<Declaration><![CDATA[
 /// <summary>
 /// Builds the Mobile item snapshot of the company it runs in - nightly, and on "Rebuild snapshot
-/// now". The files are the getSkuPage feeds of a full refresh, gzip, one page of rows per line.
+/// now". The files are the getSkuPage feeds of a full refresh, ZIP (one .jsonl entry), one page of rows per line.
 /// A deploy restarts batch: an interrupted build stays Building and is ignored after 4 hours.
 /// </summary>
 class HSMobileOpsSkuSnapshotBuild extends RunBaseBatch
@@ -60,6 +60,7 @@ class HSMobileOpsSkuSnapshotBuild extends RunBaseBatch
         int64                  items;
         int64                  barcodes;
         int64                  variants;
+        int64                  units;
 
         select firstOnly RecId from snapshot
             where snapshot.Status     == HSMobileOpsSkuSnapshot::statusBuilding()
@@ -81,7 +82,8 @@ class HSMobileOpsSkuSnapshotBuild extends RunBaseBatch
             items    = HSMobileOpsSkuSnapshotBuild::writeArea(snapshot.RecId, 'ITEMS');
             barcodes = HSMobileOpsSkuSnapshotBuild::writeArea(snapshot.RecId, 'BARCODES');
             variants = HSMobileOpsSkuSnapshotBuild::writeArea(snapshot.RecId, 'VARIANTS');
-            result = strFmt('%1 items, %2 barcodes, %3 variants.', items, barcodes, variants);
+            units    = HSMobileOpsSkuSnapshotBuild::writeArea(snapshot.RecId, 'UNITS');
+            result = strFmt('%1 items, %2 barcodes, %3 variants, units of %4 items.', items, barcodes, variants, units);
             HSMobileOpsSkuSnapshotBuild::finish(snapshot.RecId, HSMobileOpsSkuSnapshot::statusReady(), started, result);
             HSMobileOpsSkuSnapshotBuild::removeOlder(snapshot.RecId);
             return result;
@@ -107,15 +109,18 @@ class HSMobileOpsSkuSnapshotBuild extends RunBaseBatch
 				<Source><![CDATA[
 
     /// <summary>
-    /// The whole feed of an area as gzip - each line one getSkuPage page of rows, exactly what the
+    /// The whole feed of an area as a ZIP (one .jsonl entry) - each line one getSkuPage page of rows, exactly what the
     /// paged sync sends - attached to a new HSMobileOpsSkuSnapshotFile row. Returns the rows.
     /// </summary>
     private static int64 writeArea(RefRecId _snapshot, str _area)
     {
         const int                           PageSize = 5000;
         System.IO.MemoryStream              memory = new System.IO.MemoryStream();
-        System.IO.Compression.GZipStream    gzip = new System.IO.Compression.GZipStream(memory, System.IO.Compression.CompressionLevel::Optimal, true);
-        System.IO.StreamWriter              writer = new System.IO.StreamWriter(gzip, new System.Text.UTF8Encoding(false));
+        // ZIP with one entry: document management attaches only its listed file types (14 Nov:
+        // .gz was refused - "Files with this file type cannot be attached"); ZIP is a standard one.
+        System.IO.Compression.ZipArchive    zip = new System.IO.Compression.ZipArchive(memory, System.IO.Compression.ZipArchiveMode::Create, true);
+        System.IO.Compression.ZipArchiveEntry entry = zip.CreateEntry(strLwr(_area) + '.jsonl', System.IO.Compression.CompressionLevel::Optimal);
+        System.IO.StreamWriter              writer = new System.IO.StreamWriter(entry.Open(), new System.Text.UTF8Encoding(false));
         System.Security.Cryptography.SHA256 sha = System.Security.Cryptography.SHA256::Create();
         HSMobileOpsSkuPageResponse          page;
         HSMobileOpsSkuSnapshotFile          file;
@@ -139,6 +144,9 @@ class HSMobileOpsSkuSnapshotBuild extends RunBaseBatch
                 case 'VARIANTS':
                     HSMobileOpsSkuPageService::variantPage(page, str2Int64(after), PageSize);
                     break;
+                case 'UNITS':
+                    HSMobileOpsSkuPageService::unitPage(page, after, full, PageSize);
+                    break;
                 default:
                     throw error(strFmt('Unknown snapshot area %1', _area));
             }
@@ -153,12 +161,13 @@ class HSMobileOpsSkuSnapshotBuild extends RunBaseBatch
         }
         writer.Flush();
         writer.Dispose();
+        zip.Dispose();
 
         memory.set_Position(0);
         file.Sha256 = strLwr(strReplace(System.BitConverter::ToString(sha.ComputeHash(memory)), '-', ''));
         memory.set_Position(0);
 
-        fileName = strFmt('%1-%2-%3.jsonl.gz', curExt(), strLwr(_area), _snapshot);
+        fileName = strFmt('%1-%2-%3.zip', curExt(), strLwr(_area), _snapshot);
         ttsbegin;
         file.SnapshotRecId = _snapshot;
         file.Area          = _area;
@@ -166,7 +175,7 @@ class HSMobileOpsSkuSnapshotBuild extends RunBaseBatch
         file.Bytes         = memory.get_Length();
         file.insert();
         DocumentManagement::attachFile(tableNum(HSMobileOpsSkuSnapshotFile), file.RecId, curExt(),
-            DocuType::typeFile(), memory, fileName, 'application/gzip', fileName);
+            DocuType::typeFile(), memory, fileName, 'application/zip', fileName);
         ttscommit;
         memory.Dispose();
         return rows;

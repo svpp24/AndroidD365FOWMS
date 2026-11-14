@@ -233,3 +233,21 @@ data class CategoryCountEntity(
     @PrimaryKey val category: String,
     val items: Int,
 )
+
+/**
+ * A unit an item can be counted in, as 1 [unitId] = [factor] inventory units, with the unit's
+ * decimals - the UNITS feed (14 Nov). Lets a scan convert units with no connection.
+ */
+@Entity(
+    tableName = "item_unit",
+    primaryKeys = ["itemId", "unitId"],
+    indices = [Index("modifiedAt")],
+)
+data class ItemUnitEntity(
+    val itemId: String,
+    val unitId: String,
+    /** Kept as D365FO wrote it, so no digits are lost on the way to BigDecimal. */
+    val factor: String,
+    val decimals: Int,
+    val modifiedAt: Long,
+)

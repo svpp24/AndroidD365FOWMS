@@ -39,6 +39,10 @@ import javax.inject.Singleton
  *   it was - see [runStep].
  * - **Gentle on both systems.** One page at a time with a pause between, each page written to
  *   the database in one short transaction, never more than a page in memory.
+ * - **Snapshot first** (14 Nov). A full sync downloads D365FO's item snapshot - each feed as one
+ *   ZIP file, built nightly - checks every file's size and SHA-256, loads them only once all
+ *   arrived, then runs the feeds as a delta from the snapshot's build time. No snapshot, or a
+ *   failed download: the pages, as before. Load test: 86 minutes of pages for 1M items.
  */
 @Singleton
 class SkuSyncRepository @Inject constructor(
@@ -109,17 +113,33 @@ class SkuSyncRepository @Inject constructor(
                 startCycle(forceFull = manual == ManualSync.FULL)
             }
             val full = prefs.getString(KEY_MODE, MODE_FULL) == MODE_FULL
+            if (full && prefs.getString(KEY_SNAP_STATE, "") != SNAP_SKIPPED && prefs.getString(KEY_SNAP_STATE, "") != SNAP_LOADED) {
+                when (snapshotStep(deadline)) {
+                    SnapshotResult.Pending -> { addActive(); return@withLock SkuSyncStep.Pending }
+                    SnapshotResult.Skipped -> prefs.edit().putString(KEY_SNAP_STATE, SNAP_SKIPPED).apply()
+                    SnapshotResult.Loaded -> {
+                        // The rest is a delta from when the snapshot was built.
+                        val built = prefs.getString(KEY_SNAP_BUILT, "").orEmpty()
+                        prefs.edit().putString(KEY_SNAP_STATE, SNAP_LOADED)
+                            .putString(KEY_CHANGED_SINCE, withOverlap(built))
+                            .putInt(KEY_FEED, 0)
+                            .putString(KEY_AFTER, initialKey(FEEDS[0], false)).apply()
+                    }
+                }
+            }
+            // A full sync whose rows came from the snapshot pages only the changes since its build.
+            val feedsFull = full && prefs.getString(KEY_SNAP_STATE, "") != SNAP_LOADED
 
             while (true) {
                 val feedIndex = prefs.getInt(KEY_FEED, 0)
                 if (feedIndex >= FEEDS.size) break
                 val feed = FEEDS[feedIndex]
-                when (val r = pageThrough(feed, full, deadline)) {
+                when (val r = pageThrough(feed, feedsFull, deadline)) {
                     FeedResult.Finished -> {
                         if (feed == FEED_VARIANTS) prefs.edit().putString(KEY_VARIANT_MAX, prefs.getString(KEY_AFTER, "0")).apply()
                         val next = feedIndex + 1
                         prefs.edit().putInt(KEY_FEED, next)
-                            .putString(KEY_AFTER, FEEDS.getOrNull(next)?.let { initialKey(it, full) }.orEmpty()).apply()
+                            .putString(KEY_AFTER, FEEDS.getOrNull(next)?.let { initialKey(it, feedsFull) }.orEmpty()).apply()
                     }
                     FeedResult.OutOfTime -> { addActive(); return@withLock SkuSyncStep.Pending }
                     // The position is kept either way; a failure waits out WorkManager's backoff
@@ -134,6 +154,8 @@ class SkuSyncRepository @Inject constructor(
                 val items = itemDao.deleteItemsNotSeenSince(cycleStarted)
                 val barcodes = itemDao.deleteBarcodesNotSeenSince(cycleStarted)
                 val variants = itemDao.deleteVariantsNotSeenSince(cycleStarted)
+                // Only once units came with this sync: a D365FO without the UNITS feed sends none.
+                if (prefs.getInt(countKey(FEED_UNITS), 0) > 0) itemDao.deleteUnitsNotSeenSince(cycleStarted)
                 Timber.i("SKU sync: removed %d items, %d barcodes, %d variants no longer in D365FO", items, barcodes, variants)
             }
             // Items by category reads these counts instead of recounting the list on every level.
@@ -200,6 +222,8 @@ class SkuSyncRepository @Inject constructor(
             .putInt(KEY_FEED, 0)
             .putString(KEY_AFTER, initialKey(FEEDS[0], full))
             .remove(KEY_CYCLE_SERVER_UTC)
+            .remove(KEY_SNAP_STATE).remove(KEY_SNAP_MANIFEST).remove(KEY_SNAP_BUILT)
+            .remove(KEY_SNAP_FILE).remove(KEY_SNAP_LINE)
             .putLong(KEY_ACTIVE_MS, 0L)
             .putLong(KEY_PEAK_MEMORY, 0L)
             .apply()
@@ -242,7 +266,7 @@ class SkuSyncRepository @Inject constructor(
             }
             // A D365FO package older than the CATEGORIES feed answers it as an unknown feed: the delta
             // then just leaves categories to the weekly full sync, as before.
-            if (!page.success && feed == FEED_CATEGORIES && page.errorCode == "INVALID_REQUEST") return FeedResult.Finished
+            if (!page.success && (feed == FEED_CATEGORIES || feed == FEED_UNITS) && page.errorCode == "INVALID_REQUEST") return FeedResult.Finished
             if (!page.success) {
                 return FeedResult.Failed(page.message.ifBlank { "D365FO refused the $feed page (${page.errorCode})" }, retryable = false)
             }
@@ -257,6 +281,7 @@ class SkuSyncRepository @Inject constructor(
                 FEED_BARCODES -> itemDao.upsertBarcodes(rows.mapNotNull { SkuRows.barcode(it, now) })
                 FEED_VARIANTS -> itemDao.upsertVariants(rows.mapNotNull { SkuRows.variant(it, now) })
                 FEED_CATEGORIES -> rows.mapNotNull { SkuRows.category(it) }.forEach { (itemId, path) -> itemDao.setCategory(itemId, path) }
+                FEED_UNITS -> itemDao.applyUnitRows(rows.mapNotNull { SkuRows.units(it, now) })
             }
             prefs.edit()
                 .putString(KEY_AFTER, page.nextKey.ifBlank { after })
@@ -272,6 +297,158 @@ class SkuSyncRepository @Inject constructor(
 
     private fun countKey(feed: String) = "count_$feed"
 
+    private enum class SnapshotResult { Loaded, Skipped, Pending }
+
+    private val snapshotDir: java.io.File get() = java.io.File(context.cacheDir, "sku_snapshot")
+
+    /** Plain client for the download links: they carry their own token - no D365FO auth header. */
+    private val downloader: okhttp3.OkHttpClient by lazy {
+        okhttp3.OkHttpClient.Builder()
+            .followRedirects(true)
+            .connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+            .readTimeout(120, java.util.concurrent.TimeUnit.SECONDS)
+            .build()
+    }
+
+    /**
+     * The snapshot part of a full sync, resumable: manifest, then every file downloaded and
+     * checked, then loaded a line (one page of rows) at a time. Skipped - the pages instead -
+     * when D365FO has no snapshot (or is older than it) or a file cannot be downloaded intact.
+     */
+    private suspend fun snapshotStep(deadline: Long): SnapshotResult {
+        var state = prefs.getString(KEY_SNAP_STATE, "").orEmpty()
+        if (state.isEmpty()) {
+            val manifest = fetchManifest() ?: return SnapshotResult.Skipped
+            snapshotDir.deleteRecursively()
+            snapshotDir.mkdirs()
+            prefs.edit().putString(KEY_SNAP_MANIFEST, Json.encodeToString(com.d365fo.mobileops.data.remote.dto.SkuSnapshotManifest.serializer(), manifest))
+                .putString(KEY_SNAP_BUILT, manifest.builtAtUtc)
+                .putString(KEY_SNAP_STATE, SNAP_DOWNLOADING).putInt(KEY_SNAP_FILE, 0).apply()
+            state = SNAP_DOWNLOADING
+        }
+        var manifest = savedManifest() ?: return SnapshotResult.Skipped
+        if (state == SNAP_DOWNLOADING) {
+            while (true) {
+                val index = prefs.getInt(KEY_SNAP_FILE, 0)
+                val file = manifest.files.getOrNull(index) ?: break
+                if (System.currentTimeMillis() >= deadline) return SnapshotResult.Pending
+                val started = System.currentTimeMillis()
+                var ok = download(file)
+                if (!ok) {
+                    // The links last minutes - after a pause they may have run out: fresh ones, once.
+                    val fresh = fetchManifest()
+                    if (fresh == null || fresh.builtAtUtc != manifest.builtAtUtc) {
+                        Timber.w("SKU snapshot: %s download failed and the snapshot changed - paging instead", file.area)
+                        snapshotDir.deleteRecursively()
+                        return SnapshotResult.Skipped
+                    }
+                    manifest = fresh
+                    prefs.edit().putString(KEY_SNAP_MANIFEST, Json.encodeToString(com.d365fo.mobileops.data.remote.dto.SkuSnapshotManifest.serializer(), fresh)).apply()
+                    ok = download(fresh.files.getOrNull(index) ?: file)
+                }
+                if (!ok) {
+                    Timber.w("SKU snapshot: %s could not be downloaded intact - paging instead", file.area)
+                    snapshotDir.deleteRecursively()
+                    return SnapshotResult.Skipped
+                }
+                Timber.w("SKU snapshot: %s downloaded, %d KB in %d ms", file.area, file.bytes / 1024, System.currentTimeMillis() - started)
+                prefs.edit().putInt(KEY_SNAP_FILE, index + 1).apply()
+            }
+            prefs.edit().putString(KEY_SNAP_STATE, SNAP_IMPORTING).putInt(KEY_SNAP_FILE, 0).putInt(KEY_SNAP_LINE, 0).apply()
+        }
+        // Every file is here and checked: load them.
+        while (true) {
+            val index = prefs.getInt(KEY_SNAP_FILE, 0)
+            val file = manifest.files.getOrNull(index) ?: break
+            val feed = file.area
+            val skip = prefs.getInt(KEY_SNAP_LINE, 0)
+            var line = 0
+            val started = System.currentTimeMillis()
+            // A ZIP with one .jsonl entry (D365FO attaches only its listed file types).
+            java.util.zip.ZipInputStream(java.io.BufferedInputStream(java.io.FileInputStream(fileFor(feed)), 64 * 1024)).also { it.nextEntry }
+                .bufferedReader(Charsets.UTF_8).use { reader ->
+                while (true) {
+                    val text = reader.readLine() ?: break
+                    line++
+                    if (line <= skip || text.isBlank()) continue
+                    if (System.currentTimeMillis() >= deadline) return SnapshotResult.Pending
+                    val rows = Json.parseToJsonElement(text).jsonArray.map { it.jsonArray }
+                    val now = System.currentTimeMillis()
+                    when (feed) {
+                        FEED_ITEMS -> itemDao.upsertItems(rows.mapNotNull { SkuRows.item(it, now) })
+                        FEED_BARCODES -> itemDao.upsertBarcodes(rows.mapNotNull { SkuRows.barcode(it, now) })
+                        FEED_VARIANTS -> itemDao.upsertVariants(rows.mapNotNull { SkuRows.variant(it, now) })
+                        FEED_UNITS -> itemDao.applyUnitRows(rows.mapNotNull { SkuRows.units(it, now) })
+                    }
+                    prefs.edit().putInt(KEY_SNAP_LINE, line)
+                        .putInt(countKey(feed), prefs.getInt(countKey(feed), 0) + rows.size).apply()
+                    notePeakMemory()
+                }
+            }
+            Timber.w("SKU snapshot: %s loaded in %d ms", feed, System.currentTimeMillis() - started)
+            prefs.edit().putInt(KEY_SNAP_FILE, index + 1).putInt(KEY_SNAP_LINE, 0).apply()
+        }
+        snapshotDir.deleteRecursively()
+        return SnapshotResult.Loaded
+    }
+
+    private fun savedManifest(): com.d365fo.mobileops.data.remote.dto.SkuSnapshotManifest? =
+        prefs.getString(KEY_SNAP_MANIFEST, null)?.let {
+            runCatching { Json.decodeFromString(com.d365fo.mobileops.data.remote.dto.SkuSnapshotManifest.serializer(), it) }.getOrNull()
+        }
+
+    /** The current snapshot, or null - none ready, a D365FO without it, or not reachable. */
+    private suspend fun fetchManifest(): com.d365fo.mobileops.data.remote.dto.SkuSnapshotManifest? {
+        val result = errorMapper.safeCall {
+            service.getSkuSnapshot(SkuPageServiceRequest(SkuPageRequestBody(dataAreaId = company(), feed = "")))
+        }
+        val answer = (result as? NetworkResult.Success)?.data
+        if (answer == null || !answer.success) {
+            Timber.w("SKU snapshot: none (%s) - paging", answer?.errorCode?.ifBlank { null } ?: (result as? NetworkResult.Error)?.failure?.message ?: "no answer")
+            return null
+        }
+        val manifest = runCatching {
+            Json { ignoreUnknownKeys = true }.decodeFromString(com.d365fo.mobileops.data.remote.dto.SkuSnapshotManifest.serializer(), answer.rowsJson)
+        }.getOrNull()
+        val known = setOf(FEED_ITEMS, FEED_BARCODES, FEED_VARIANTS, FEED_UNITS)
+        return manifest?.takeIf { m -> m.builtAtUtc.isNotBlank() && m.files.isNotEmpty() && m.files.all { it.area in known && it.url.isNotBlank() } }
+    }
+
+    private fun fileFor(area: String) = java.io.File(snapshotDir, area.lowercase() + ".zip")
+
+    /** Downloads one file and checks its size and SHA-256; false (file removed) when not intact. */
+    private fun download(file: com.d365fo.mobileops.data.remote.dto.SkuSnapshotFile): Boolean {
+        val target = fileFor(file.area)
+        return runCatching {
+            downloader.newCall(okhttp3.Request.Builder().url(file.url).build()).execute().use { response ->
+                if (!response.isSuccessful) error("HTTP ${response.code}")
+                val digest = java.security.MessageDigest.getInstance("SHA-256")
+                var size = 0L
+                response.body!!.byteStream().use { input ->
+                    java.io.FileOutputStream(target).use { output ->
+                        val buffer = ByteArray(64 * 1024)
+                        while (true) {
+                            val n = input.read(buffer)
+                            if (n < 0) break
+                            digest.update(buffer, 0, n)
+                            output.write(buffer, 0, n)
+                            size += n
+                        }
+                    }
+                }
+                val sha = digest.digest().joinToString("") { "%02x".format(it) }
+                if (size != file.bytes || !sha.equals(file.sha256, ignoreCase = true)) {
+                    error("size $size of ${file.bytes}, checksum ${if (sha.equals(file.sha256, true)) "ok" else "wrong"}")
+                }
+                true
+            }
+        }.getOrElse {
+            Timber.w("SKU snapshot: %s download failed: %s", file.area, it.message)
+            target.delete()
+            false
+        }
+    }
+
     private fun withOverlap(serverUtc: String): String = SkuRows.withOverlap(serverUtc, OVERLAP_MINUTES)
 
     private companion object {
@@ -280,7 +457,9 @@ class SkuSyncRepository @Inject constructor(
         const val FEED_VARIANTS = "VARIANTS"
         // Category changes do not touch the item, so a delta of ITEMS misses them (13 Nov).
         const val FEED_CATEGORIES = "CATEGORIES"
-        val FEEDS = listOf(FEED_ITEMS, FEED_BARCODES, FEED_VARIANTS, FEED_CATEGORIES)
+        // Units per item, and the item's own units (InventTableModule) - 14 Nov.
+        const val FEED_UNITS = "UNITS"
+        val FEEDS = listOf(FEED_ITEMS, FEED_BARCODES, FEED_VARIANTS, FEED_CATEGORIES, FEED_UNITS)
 
         // The server's maximum. 50k items + 65k barcodes is ~24 pages instead of ~60 - fewer round
         // trips; a page in memory is a few MB more, which a handheld does not notice.
@@ -313,9 +492,18 @@ class SkuSyncRepository @Inject constructor(
         const val KEY_SUM_ACTIVE = "sum_active"
         const val KEY_SUM_PEAK = "sum_peak"
         const val KEY_SUM_STORED = "sum_stored"
+        const val KEY_SNAP_STATE = "snap_state"
+        const val KEY_SNAP_MANIFEST = "snap_manifest"
+        const val KEY_SNAP_BUILT = "snap_built"
+        const val KEY_SNAP_FILE = "snap_file"
+        const val KEY_SNAP_LINE = "snap_line"
+        const val SNAP_DOWNLOADING = "DOWNLOADING"
+        const val SNAP_IMPORTING = "IMPORTING"
+        const val SNAP_LOADED = "LOADED"
+        const val SNAP_SKIPPED = "SKIPPED"
         const val MB = 1024L * 1024L
-        /** Bumped when a feed gains a column; 2 = variant names. */
-        const val SCHEMA = 3
+        /** Bumped when a feed gains a column; 2 = variant names, 3 = categories, 4 = units. */
+        const val SCHEMA = 4
     }
 }
 

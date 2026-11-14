@@ -30,6 +30,8 @@ class ItemUnitRepository @Inject constructor(
     private val errorMapper: D365ErrorMapper,
     private val companyProvider: CompanyProvider,
     private val ioDispatcher: CoroutineDispatcher,
+    /** The device's own units (UNITS feed) - used only when D365FO cannot be asked. */
+    private val itemDao: com.d365fo.mobileops.data.local.dao.ItemDao,
 ) {
     private val cache = ConcurrentHashMap<String, List<ItemUnit>>()
     private val mutex = Mutex()
@@ -74,6 +76,15 @@ class ItemUnitRepository @Inject constructor(
             result.data.items.forEach { r ->
                 cache[key(r.itemId, ProductVariant.of(r.configId, r.sizeId, r.colorId, r.styleId))] = r.units.toItemUnits()
             }
+            return@withContext
+        }
+        // Offline (or D365FO did not answer): the units downloaded with the item list. They are
+        // the item's, not a variant's - a variant with its own conversion still needs D365FO.
+        items.forEach { (id, variant) ->
+            val local = itemDao.unitsOf(id).mapNotNull { u ->
+                u.factor.toBigDecimalOrNull()?.let { com.d365fo.mobileops.domain.model.ItemUnit(u.unitId, it, u.decimals) }
+            }
+            if (local.isNotEmpty()) cache[key(id, variant)] = local
         }
     }
 

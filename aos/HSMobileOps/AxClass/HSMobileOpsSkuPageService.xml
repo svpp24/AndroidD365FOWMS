@@ -32,6 +32,13 @@ class HSMobileOpsSkuPageService
     ///   BARCODES - key RecId:   [barcode, itemId, qty, unit, configId, sizeId, colorId, styleId, blocked(0/1)]
     ///              ChangedSinceUtc: InventItemBarcode.ModifiedDateTime.
     ///   VARIANTS - key RecId:   [itemId, configId, sizeId, colorId, styleId]
+    ///   UNITS    - key ItemId:  [itemId, inventUnit, purchUnit, salesUnit, [[unit, factor, decimals], ...]]
+    ///              Every unit the item can be counted in - its own units, both sides of its
+    ///              product-specific conversions, its barcodes' units - as 1 unit = factor inventory
+    ///              units (HSMobileOpsUnitService::unitsFor's rule), with the unit's decimals.
+    ///              ChangedSinceUtc: the items whose units, product-specific conversions or barcode
+    ///              units changed since - which also carries an item's own unit change, which the
+    ///              ITEMS delta misses (InventTableModule has its own modified date).
     ///   CATEGORIES - key EcoResProductCategory RecId: [itemId, category]
     ///              Delta only (a full ITEMS page carries the category): the items whose retail
     ///              category assignment changed since ChangedSinceUtc - or every assignment when a
@@ -83,6 +90,9 @@ class HSMobileOpsSkuPageService
                     break;
                 case 'CATEGORIES':
                     HSMobileOpsSkuPageService::categoryPage(response, str2Int64(_request.parmAfterKey()), since, pageSize);
+                    break;
+                case 'UNITS':
+                    HSMobileOpsSkuPageService::unitPage(response, _request.parmAfterKey(), since, pageSize);
                     break;
                 default:
                     response.parmErrorCode('INVALID_REQUEST');
@@ -375,6 +385,251 @@ class HSMobileOpsSkuPageService
         _response.parmRowCount(rows);
         _response.parmNextKey(int642Str(last ? last : _after));
         _response.parmHasMore(more);
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>unitPage</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The UNITS feed - see getSkuPage. A full refresh walks the released items as ITEMS does; a
+    /// delta walks only the items whose unit setup changed since _since.
+    /// </summary>
+    internal static void unitPage(HSMobileOpsSkuPageResponse _response, ItemId _after, utcdatetime _since, int _pageSize)
+    {
+        InventTable                 inventTable;
+        Map                         factors = new Map(Types::String, Types::Real);
+        Map                         decimals = new Map(Types::String, Types::Integer);
+        System.Text.StringBuilder   json = new System.Text.StringBuilder();
+        boolean                     full = _since == DateTimeUtil::minValue();
+        Set                         changed;
+        SetEnumerator               itemEnum;
+        int                         rows;
+        ItemId                      last;
+        boolean                     more;
+
+        json.Append('[');
+        if (full)
+        {
+            while select ItemId, Product from inventTable
+                order by inventTable.ItemId
+                where inventTable.ItemId > _after
+                   && inventTable.ItemType != ItemType::Service
+                   && (!inventTable.ProductLifecycleStateId || inventTable.ProductLifecycleStateId == 'Active')
+            {
+                if (rows >= _pageSize)
+                {
+                    more = true;
+                    break;
+                }
+                if (rows)
+                {
+                    json.Append(',');
+                }
+                json.Append(HSMobileOpsSkuPageService::unitRow(inventTable, factors, decimals));
+                last = inventTable.ItemId;
+                rows++;
+            }
+        }
+        else
+        {
+            // A Set enumerates in key order, so paging by ItemId works as for a full refresh.
+            changed = HSMobileOpsSkuPageService::unitChangesSince(_since);
+            itemEnum = changed.getEnumerator();
+            while (itemEnum.moveNext())
+            {
+                if (itemEnum.current() <= _after)
+                {
+                    continue;
+                }
+                if (rows >= _pageSize)
+                {
+                    more = true;
+                    break;
+                }
+                inventTable = InventTable::find(itemEnum.current());
+                if (!inventTable.RecId || inventTable.ItemType == ItemType::Service)
+                {
+                    continue;
+                }
+                if (rows)
+                {
+                    json.Append(',');
+                }
+                json.Append(HSMobileOpsSkuPageService::unitRow(inventTable, factors, decimals));
+                last = inventTable.ItemId;
+                rows++;
+            }
+        }
+        json.Append(']');
+        _response.parmRowsJson(json.ToString());
+        _response.parmRowCount(rows);
+        _response.parmNextKey(last ? last : _after);
+        _response.parmHasMore(more);
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>unitChangesSince</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Items whose unit setup changed since _since: their units (InventTableModule), their
+    /// product-specific conversions, or a barcode with a unit. A change to a standard conversion
+    /// reaches the devices with their weekly full refresh.
+    /// </summary>
+    private static Set unitChangesSince(utcdatetime _since)
+    {
+        Set                     items = new Set(Types::String);
+        InventTableModule       module;
+        UnitOfMeasureConversion conversion;
+        InventTable             inventTable;
+        InventItemBarcode       barcode;
+
+        while select ItemId from module
+            group by module.ItemId
+            where module.ModifiedDateTime >= _since
+        {
+            items.add(module.ItemId);
+        }
+        while select Product from conversion
+            group by conversion.Product
+            where conversion.Product          != 0
+               && conversion.ModifiedDateTime >= _since
+        {
+            while select ItemId from inventTable
+                where inventTable.Product == conversion.Product
+            {
+                items.add(inventTable.ItemId);
+            }
+        }
+        while select ItemId from barcode
+            group by barcode.ItemId
+            where barcode.ModifiedDateTime >= _since
+               && barcode.UnitID
+        {
+            items.add(barcode.ItemId);
+        }
+        return items;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>unitRow</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// One UNITS row. Factors between two units with no product-specific conversion are the same
+    /// for every item, so they are worked out once per feed page (_factors).
+    /// </summary>
+    private static str unitRow(InventTable _inventTable, Map _factors, Map _decimals)
+    {
+        System.Text.StringBuilder   json = new System.Text.StringBuilder();
+        UnitOfMeasureConversion     conversion;
+        InventItemBarcode           barcode;
+        EcoResProductUnitConverter  converter;
+        Set                         candidates = new Set(Types::String);
+        SetEnumerator               se;
+        str                         inventUnit = _inventTable.inventUnitId();
+        str                         purchUnit  = _inventTable.purchUnitId();
+        str                         salesUnit  = _inventTable.salesUnitId();
+        str                         unit;
+        str                         key;
+        boolean                     own;
+        real                        factor;
+        real                        inverse;
+        int                         units;
+
+        candidates.add(inventUnit);
+        candidates.add(purchUnit);
+        candidates.add(salesUnit);
+        while select FromUnitOfMeasure, ToUnitOfMeasure from conversion
+            where conversion.Product == _inventTable.Product
+        {
+            own = true;
+            candidates.add(UnitOfMeasure::find(conversion.FromUnitOfMeasure).Symbol);
+            candidates.add(UnitOfMeasure::find(conversion.ToUnitOfMeasure).Symbol);
+        }
+        while select UnitID from barcode
+            group by barcode.UnitID
+            where barcode.itemId == _inventTable.ItemId
+               && barcode.UnitID
+        {
+            candidates.add(barcode.UnitID);
+        }
+
+        json.Append('[');
+        json.Append(HSMobileOpsSkuPageService::jsonStr(_inventTable.ItemId)); json.Append(',');
+        json.Append(HSMobileOpsSkuPageService::jsonStr(inventUnit)); json.Append(',');
+        json.Append(HSMobileOpsSkuPageService::jsonStr(purchUnit)); json.Append(',');
+        json.Append(HSMobileOpsSkuPageService::jsonStr(salesUnit)); json.Append(',[');
+        se = candidates.getEnumerator();
+        while (se.moveNext())
+        {
+            unit = se.current();
+            if (!unit || !inventUnit)
+            {
+                continue;
+            }
+            factor = 0;
+            if (unit == inventUnit)
+            {
+                factor = 1;
+            }
+            else
+            {
+                key = unit + '>' + inventUnit;
+                if (!own && _factors.exists(key))
+                {
+                    factor = _factors.lookup(key);
+                }
+                else
+                {
+                    converter = EcoResProductUnitConverter::newGivenUnitSymbolsForReleasedProduct(
+                        _inventTable.ItemId, InventDim::inventDimIdBlank(), unit, inventUnit, NoYes::No, NoYes::No);
+                    if (converter.canValueBeConverted())
+                    {
+                        factor = converter.convertValue(1);
+                        // A factor below 1 (1 pcs = 0.0833 dz) loses digits; the reverse is exact.
+                        if (factor > 0 && factor < 1)
+                        {
+                            converter = EcoResProductUnitConverter::newGivenUnitSymbolsForReleasedProduct(
+                                _inventTable.ItemId, InventDim::inventDimIdBlank(), inventUnit, unit, NoYes::No, NoYes::No);
+                            inverse = converter.canValueBeConverted() ? converter.convertValue(1) : 0;
+                            if (inverse > 0)
+                            {
+                                factor = 1 / inverse;
+                            }
+                        }
+                    }
+                    if (!own)
+                    {
+                        _factors.insert(key, factor);
+                    }
+                }
+            }
+            if (factor <= 0)
+            {
+                continue;
+            }
+            if (!_decimals.exists(unit))
+            {
+                _decimals.insert(unit, UnitOfMeasure::findBySymbol(unit).DecimalPrecision);
+            }
+            if (units)
+            {
+                json.Append(',');
+            }
+            json.Append('[');
+            json.Append(HSMobileOpsSkuPageService::jsonStr(unit)); json.Append(',');
+            json.Append(num2Str(factor, 0, 10, 1, 0)); json.Append(',');
+            json.Append(int2Str(_decimals.lookup(unit)));
+            json.Append(']');
+            units++;
+        }
+        json.Append(']]');
+        return json.ToString();
     }
 ]]></Source>
 			</Method>

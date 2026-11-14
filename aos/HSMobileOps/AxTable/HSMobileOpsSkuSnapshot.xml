@@ -4,7 +4,7 @@
 	<SourceCode>
 		<Declaration><![CDATA[
 /// <summary>
-/// One build of the handheld item snapshot (Mobile item snapshot): the item list as gzip files a
+/// One build of the handheld item snapshot (Mobile item snapshot): the item list as ZIP files a
 /// device downloads on a full re-sync instead of paging through getSkuPage (load test, 13 Nov: 86
 /// minutes for 1M items). Its files are HSMobileOpsSkuSnapshotFile rows with the file attached.
 /// Only the newest Ready build is offered; a new one replaces it once all its files are written.

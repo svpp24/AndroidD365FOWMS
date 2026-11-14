@@ -4,7 +4,7 @@
 	<SourceCode>
 		<Declaration><![CDATA[
 /// <summary>
-/// One file of a Mobile item snapshot - an area (ITEMS, BARCODES, VARIANTS) as gzip, one
+/// One file of a Mobile item snapshot - an area (ITEMS, BARCODES, VARIANTS) as a ZIP, one
 /// getSkuPage page of rows per line, attached to this record (document management, File type).
 /// </summary>
 public class HSMobileOpsSkuSnapshotFile extends common
@@ -43,14 +43,14 @@ public class HSMobileOpsSkuSnapshotFile extends common
 			i:type="AxTableFieldInt64">
 			<Name>Bytes</Name>
 			<AllowEdit>No</AllowEdit>
-			<HelpText>Size of the gzip file.</HelpText>
+			<HelpText>Size of the ZIP file.</HelpText>
 			<Label>Bytes</Label>
 		</AxTableField>
 		<AxTableField xmlns=""
 			i:type="AxTableFieldString">
 			<Name>Sha256</Name>
 			<AllowEdit>No</AllowEdit>
-			<HelpText>Checksum of the gzip file - the device checks it after downloading.</HelpText>
+			<HelpText>Checksum of the ZIP file - the device checks it after downloading.</HelpText>
 			<Label>SHA-256</Label>
 			<StringSize>64</StringSize>
 		</AxTableField>

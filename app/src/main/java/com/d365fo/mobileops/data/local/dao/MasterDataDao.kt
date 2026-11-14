@@ -151,6 +151,33 @@ interface ItemDao {
     )
     suspend fun searchInCategory(all: Boolean, none: Boolean, path: String, below: String, query: String, limit: Int): List<ItemEntity>
 
+    @Query("SELECT * FROM item_unit WHERE itemId = :itemId ORDER BY unitId")
+    suspend fun unitsOf(itemId: String): List<com.d365fo.mobileops.data.local.entity.ItemUnitEntity>
+
+    @Query("DELETE FROM item_unit WHERE itemId IN (:itemIds)")
+    suspend fun deleteUnitsOf(itemIds: List<String>)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertUnits(units: List<com.d365fo.mobileops.data.local.entity.ItemUnitEntity>)
+
+    @Query("UPDATE item SET inventoryUnit = :invent, purchaseUnit = :purch, salesUnit = :sales WHERE itemId = :itemId")
+    suspend fun setItemUnits(itemId: String, invent: String, purch: String?, sales: String?)
+
+    /**
+     * One UNITS page: each item's units replace what the device had, and the item's own
+     * inventory, purchase and sales units are brought up to date (the ITEMS delta misses those).
+     */
+    @Transaction
+    suspend fun applyUnitRows(rows: List<SkuUnitRow>) {
+        if (rows.isEmpty()) return
+        deleteUnitsOf(rows.map { it.itemId })
+        insertUnits(rows.flatMap { it.units })
+        rows.forEach { if (it.inventUnit.isNotBlank()) setItemUnits(it.itemId, it.inventUnit, it.purchUnit, it.salesUnit) }
+    }
+
+    @Query("DELETE FROM item_unit WHERE modifiedAt < :before")
+    suspend fun deleteUnitsNotSeenSince(before: Long): Int
+
     @Query("SELECT * FROM item WHERE category = :path AND active = 1 ORDER BY itemName, itemId")
     suspend fun itemsWithCategory(path: String): List<ItemEntity>
 
@@ -329,3 +356,12 @@ interface WarehouseDao {
         upsert(warehouses)
     }
 }
+
+/** One UNITS feed row - see SkuRows.units. */
+data class SkuUnitRow(
+    val itemId: String,
+    val inventUnit: String,
+    val purchUnit: String?,
+    val salesUnit: String?,
+    val units: List<com.d365fo.mobileops.data.local.entity.ItemUnitEntity>,
+)

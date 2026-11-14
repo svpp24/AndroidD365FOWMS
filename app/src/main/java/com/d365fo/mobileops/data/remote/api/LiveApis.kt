@@ -295,6 +295,10 @@ class LiveMobileOpsServiceApi @Inject constructor(
         body: com.d365fo.mobileops.data.remote.dto.SkuPageServiceRequest,
     ) = delegate.get().getSkuPage(body)
 
+    override suspend fun getSkuSnapshot(
+        body: com.d365fo.mobileops.data.remote.dto.SkuPageServiceRequest,
+    ) = delegate.get().getSkuSnapshot(body)
+
     override suspend fun logSignInSession(
         body: com.d365fo.mobileops.data.remote.dto.SignInLogServiceRequest,
     ) = delegate.get().logSignInSession(body)

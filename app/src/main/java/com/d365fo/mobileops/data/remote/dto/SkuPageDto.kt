@@ -30,3 +30,24 @@ data class SkuPageServiceResponse(
     @SerialName("HasMore") val hasMore: Boolean = false,
     @SerialName("ServerUtc") val serverUtc: String = "",
 )
+
+/**
+ * getSkuSnapshot's RowsJson: the company's current item snapshot (Mobile item snapshot in D365FO) -
+ * each area's whole feed as one gzip file, one getSkuPage page of rows per line.
+ */
+@Serializable
+data class SkuSnapshotManifest(
+    val builtAtUtc: String = "",
+    val files: List<SkuSnapshotFile> = emptyList(),
+)
+
+@Serializable
+data class SkuSnapshotFile(
+    /** ITEMS, BARCODES or VARIANTS. */
+    val area: String = "",
+    /** A short-lived download link (its own access token, no D365FO sign-in). */
+    val url: String = "",
+    val bytes: Long = 0L,
+    val rows: Long = 0L,
+    val sha256: String = "",
+)
