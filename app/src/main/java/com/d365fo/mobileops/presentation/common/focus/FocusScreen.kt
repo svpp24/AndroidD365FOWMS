@@ -58,8 +58,15 @@ fun FocusScreen(
     overlay: (@Composable BoxScope.() -> Unit)? = null,
     /** After the counter on the top bar - a flow's tools menu. */
     topBarTrailing: (@Composable RowScope.() -> Unit)? = null,
+    /**
+     * On a tablet (see [isWideLayout]) the flow's lines on the left, the scan and its result on
+     * the right (user, 16 Nov 2026). Ignored on a phone, where Lines opens its own screen.
+     */
+    sidePane: (@Composable ColumnScope.() -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
+    val mode = tabletMode()
+    val side = sidePane?.takeIf { mode != TabletMode.Phone }
     Box(
         modifier = modifier
             .fillMaxSize()
@@ -72,21 +79,33 @@ fun FocusScreen(
         ) {
             FlowTopBar(title = title, onBack = onBack, counter = counter, trailing = topBarTrailing)
             progress?.let { ProgressLine(it) }
-            band?.let {
-                if (it.autoHideMs != null) TimedResultBand(it, modifier = Modifier.padding(top = 16.dp))
-                else ResultBand(it, modifier = Modifier.padding(top = 16.dp))
+            val main: @Composable ColumnScope.() -> Unit = {
+                band?.let {
+                    if (it.autoHideMs != null) TimedResultBand(it, modifier = Modifier.padding(top = 16.dp))
+                    else ResultBand(it, modifier = Modifier.padding(top = 16.dp))
+                }
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth(),
+                    content = content,
+                )
+                remaining?.let { RemainingLine(it) }
+                scanPill?.let {
+                    Box(Modifier.padding(start = FocusDimens.side, end = FocusDimens.side, top = 8.dp)) { it() }
+                }
+                if (actions != null) ActionRow(content = actions) else Spacer(Modifier.height(20.dp))
             }
-            Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth(),
-                content = content,
-            )
-            remaining?.let { RemainingLine(it) }
-            scanPill?.let {
-                Box(Modifier.padding(start = FocusDimens.side, end = FocusDimens.side, top = 8.dp)) { it() }
+            if (side != null && mode == TabletMode.Landscape) {
+                TwoPane(modifier = Modifier.weight(1f), left = side, right = main)
+            } else if (side != null) {
+                // Portrait tablet: the scan on top, the lines below.
+                Column(Modifier.weight(0.58f).fillMaxWidth(), content = main)
+                Box(Modifier.fillMaxWidth().height(1.dp).background(FocusColors.divider))
+                Column(Modifier.weight(0.42f).fillMaxWidth(), content = side)
+            } else {
+                main()
             }
-            if (actions != null) ActionRow(content = actions) else Spacer(Modifier.height(20.dp))
         }
         overlay?.invoke(this)
     }

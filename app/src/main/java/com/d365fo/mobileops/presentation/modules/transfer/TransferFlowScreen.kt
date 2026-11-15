@@ -291,6 +291,15 @@ fun TransferFlowScreen(
             { com.d365fo.mobileops.presentation.common.focus.ScanPillField(enabled = !state.busy) }
         },
         topBarTrailing = if (state.showingCaptured) null else toolsMenu,
+        sidePane = if (state.showingCaptured) null else { {
+            com.d365fo.mobileops.presentation.common.focus.SideLines(
+                caption = "Scanned so far · ${state.captured.size}",
+                lines = state.captured.asReversed().map {
+                    com.d365fo.mobileops.presentation.common.focus.SideLine(it.itemId, it.itemName, "${it.quantity.stripTrailingZeros().toPlainString()} ${it.unitSymbol}".trim())
+                },
+                empty = "Nothing scanned yet.",
+            )
+        } },
         actions = transferActions(state, mode, onLines = { viewModel.showCaptured(true) }, onPost = viewModel::postTransfer, onUndo = stepBack, onSkip = viewModel::skipStep),
     ) {
         if (state.busy) {

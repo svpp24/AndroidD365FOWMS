@@ -215,45 +215,17 @@ fun SettingsScreen(
     }
 
     // A section's back arrow returns to the Settings list; the list's to where it was opened.
-    androidx.activity.compose.BackHandler(enabled = openSection != null) { openSection = null }
+    androidx.activity.compose.BackHandler(enabled = openSection != null && !com.d365fo.mobileops.presentation.common.focus.isWideLayout()) { openSection = null }
     // Focus list style throughout (user, 15 Nov 2026): captions, rows with icons and chevrons,
     // results in a band at the top. Connection & profile has its Scan button pinned at the bottom.
     var scanBand by remember { mutableStateOf<com.d365fo.mobileops.presentation.common.focus.BandState?>(null) }
     var labelsBeforeScan by remember { mutableStateOf<Set<String>>(emptySet()) }
-    val connectionOpen = openSection == SettingsMenuItem.ConnectionProfile && onSignOut == null
-    com.d365fo.mobileops.presentation.common.focus.FocusScreen(
-        title = openSection?.title ?: "Settings",
-        onBack = if (isTab && openSection == null) null else { { if (openSection != null) openSection = null else onBack() } },
-        counter = if (connectionOpen) profiles.size.takeIf { it > 0 }?.toString() else null,
-        band = if (connectionOpen) scanBand else null,
-        actions = if (connectionOpen) {
-            {
-                LaunchedEffect(Unit) { labelsBeforeScan = profiles.map { it.label }.toSet() }
-                ConnectionQrSetup(
-                    modifier = Modifier.weight(1f),
-                    onConnected = {
-                        val now = viewModel.tenant.value
-                        scanBand = com.d365fo.mobileops.presentation.common.focus.BandState(
-                            com.d365fo.mobileops.presentation.common.focus.BandKind.Ok,
-                            "${now.label} " + (if (now.label in labelsBeforeScan) "updated" else "added") + " · in use",
-                            profileLine(now),
-                            autoHideMs = 4_000L,
-                        )
-                        labelsBeforeScan = viewModel.profiles.value.map { it.label }.toSet()
-                    },
-                )
-            }
-        } else {
-            null
-        },
-    ) {
-        Column(
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth()
-                .verticalScroll(rememberScrollState()),
-        ) {
-            when (openSection) {
+    // A tablet (user, 16 Nov 2026): the menu stays on the left, the open section on the right.
+    val wide = com.d365fo.mobileops.presentation.common.focus.isWideLayout()
+    val shown = if (wide) openSection ?: (if (onSignOut != null) SettingsMenuItem.Session else SettingsMenuItem.ConnectionProfile) else openSection
+    val connectionOpen = shown == SettingsMenuItem.ConnectionProfile && onSignOut == null
+    val sectionBody: @Composable (SettingsMenuItem?) -> Unit = { section ->
+            when (section) {
                 null -> {
                     SettingsMenu(
                         postingEnabled = postingEnabled,
@@ -388,6 +360,45 @@ fun SettingsScreen(
 
                 SettingsMenuItem.Feedback -> Unit
             }
+    }
+    com.d365fo.mobileops.presentation.common.focus.FocusScreen(
+        title = if (wide) "Settings" else openSection?.title ?: "Settings",
+        onBack = if (isTab && openSection == null) null else { { if (openSection != null && !wide) openSection = null else onBack() } },
+        sidePane = if (wide) { {
+            Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState())) { sectionBody(null) }
+        } } else {
+            null
+        },
+        counter = if (connectionOpen) profiles.size.takeIf { it > 0 }?.toString() else null,
+        band = if (connectionOpen) scanBand else null,
+        actions = if (connectionOpen) {
+            {
+                LaunchedEffect(Unit) { labelsBeforeScan = profiles.map { it.label }.toSet() }
+                ConnectionQrSetup(
+                    modifier = Modifier.weight(1f),
+                    onConnected = {
+                        val now = viewModel.tenant.value
+                        scanBand = com.d365fo.mobileops.presentation.common.focus.BandState(
+                            com.d365fo.mobileops.presentation.common.focus.BandKind.Ok,
+                            "${now.label} " + (if (now.label in labelsBeforeScan) "updated" else "added") + " · in use",
+                            profileLine(now),
+                            autoHideMs = 4_000L,
+                        )
+                        labelsBeforeScan = viewModel.profiles.value.map { it.label }.toSet()
+                    },
+                )
+            }
+        } else {
+            null
+        },
+    ) {
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState()),
+        ) {
+            sectionBody(shown)
             Spacer(Modifier.height(28.dp))
         }
     }

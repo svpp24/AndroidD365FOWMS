@@ -168,6 +168,24 @@ fun ToCreateScreen(onBack: () -> Unit, onShip: () -> Unit, viewModel: ToCreateVi
         title = "Create transfer",
         onBack = onBack,
         counter = draft.lines.size.takeIf { it > 0 }?.let { linesText(it) },
+        sidePane = {
+            com.d365fo.mobileops.presentation.common.focus.FocusCaption(
+                "Lines · ${draft.lines.size}",
+                modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 14.dp, bottom = 6.dp),
+            )
+            androidx.compose.material3.HorizontalDivider(color = com.d365fo.mobileops.presentation.common.theme.FocusColors.divider)
+            var confirming by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<com.d365fo.mobileops.data.repository.DraftLine?>(null) }
+            confirming?.let { line -> RemoveLineDialog(line, onRemove = { confirming = null; viewModel.removeLine(line) }, onKeep = { confirming = null }) }
+            if (draft.lines.isEmpty()) {
+                Text("Scanned items show here.", style = com.d365fo.mobileops.presentation.common.theme.FocusType.rowDetail, color = com.d365fo.mobileops.presentation.common.theme.FocusColors.muted, modifier = Modifier.padding(20.dp))
+            }
+            androidx.compose.foundation.lazy.LazyColumn {
+                items(draft.lines.size) { i ->
+                    val line = draft.lines[draft.lines.size - 1 - i]
+                    OrderLineCard(line, showPrice = false, currency = "", onRemove = { confirming = line }) { viewModel.editLine(line) }
+                }
+            }
+        },
         band = state.error?.let { bandOf(BandKind.Bad, it) }
             ?: lastAdded?.let { BandState(BandKind.Ok, "Added", "${it.itemId} · ${com.d365fo.mobileops.domain.order.qtyText(it.qty)} ${it.unitId}".trim()) }
             ?: BandState(BandKind.Info, "New transfer · $route", "Ship date ${draft.shipDate}" + if (draft.lines.isEmpty()) " · no lines yet" else ""),
@@ -184,7 +202,8 @@ fun ToCreateScreen(onBack: () -> Unit, onShip: () -> Unit, viewModel: ToCreateVi
             )
         },
         actions = if (draft.lines.isEmpty()) null else { {
-            FocusButton("Lines", onClick = { showLines = true }, icon = Icons.AutoMirrored.Filled.ListAlt, modifier = Modifier.weight(1f))
+            // A tablet shows the lines beside or under the scan, so no Lines button there.
+            if (com.d365fo.mobileops.presentation.common.focus.tabletMode() == com.d365fo.mobileops.presentation.common.focus.TabletMode.Phone) FocusButton("Lines", onClick = { showLines = true }, icon = Icons.AutoMirrored.Filled.ListAlt, modifier = Modifier.weight(1f))
             HoldToConfirmButton("Hold to create", onConfirm = viewModel::create, enabled = !state.busy, modifier = Modifier.weight(1f))
         } },
     ) {

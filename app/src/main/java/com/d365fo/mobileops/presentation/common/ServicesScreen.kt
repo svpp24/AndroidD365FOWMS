@@ -95,7 +95,7 @@ internal fun modulesIn(area: ModuleArea, modules: List<ModuleTile>): List<Module
 @Composable
 fun ServicesScreen(
     onModuleSelected: (String) -> Unit,
-    onBack: () -> Unit = {},
+    onBack: (() -> Unit)? = {},
     accessViewModel: HomeAccessViewModel = hiltViewModel(),
     dashboardViewModel: HomeDashboardViewModel = hiltViewModel(),
 ) {

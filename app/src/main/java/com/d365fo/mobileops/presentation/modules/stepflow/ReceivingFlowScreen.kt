@@ -284,6 +284,15 @@ fun ReceivingFlowScreen(
             { com.d365fo.mobileops.presentation.common.focus.ScanPillField(enabled = !state.busy) }
         },
         topBarTrailing = toolsMenu,
+        sidePane = if (inPost || state.showingCaptured) null else { {
+            com.d365fo.mobileops.presentation.common.focus.SideLines(
+                caption = "Scanned so far · ${state.captured.size}",
+                lines = state.captured.asReversed().map {
+                    com.d365fo.mobileops.presentation.common.focus.SideLine(it.itemId, it.itemName, "${it.quantity.stripTrailingZeros().toPlainString()} ${it.unitSymbol}".trim())
+                },
+                empty = "Nothing scanned yet.",
+            )
+        } },
         actions = receivingActions(
             state = state,
             showTodays = showTodays,

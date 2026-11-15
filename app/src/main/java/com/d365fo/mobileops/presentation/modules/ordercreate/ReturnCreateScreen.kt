@@ -145,6 +145,24 @@ fun ReturnCreateScreen(onBack: () -> Unit, viewModel: ReturnCreateViewModel = hi
         title = "Return to vendor",
         onBack = onBack,
         counter = draft.lines.size.takeIf { it > 0 }?.let { linesText(it) },
+        sidePane = {
+            com.d365fo.mobileops.presentation.common.focus.FocusCaption(
+                "Lines · ${draft.lines.size}",
+                modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 14.dp, bottom = 6.dp),
+            )
+            androidx.compose.material3.HorizontalDivider(color = com.d365fo.mobileops.presentation.common.theme.FocusColors.divider)
+            var confirming by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<com.d365fo.mobileops.data.repository.DraftLine?>(null) }
+            confirming?.let { line -> RemoveLineDialog(line, onRemove = { confirming = null; viewModel.removeLine(line) }, onKeep = { confirming = null }) }
+            if (draft.lines.isEmpty()) {
+                Text("Scanned items show here.", style = com.d365fo.mobileops.presentation.common.theme.FocusType.rowDetail, color = com.d365fo.mobileops.presentation.common.theme.FocusColors.muted, modifier = Modifier.padding(20.dp))
+            }
+            androidx.compose.foundation.lazy.LazyColumn {
+                items(draft.lines.size) { i ->
+                    val line = draft.lines[draft.lines.size - 1 - i]
+                    OrderLineCard(line, showPrice = false, currency = "", onRemove = { confirming = line }) { viewModel.editLine(line) }
+                }
+            }
+        },
         band = returnBand(state, lastAdded, reasonLabel, online),
         remaining = orderSize(draft.lines),
         // Scans work on the reason step too (any order): an item scanned there is added.
@@ -171,7 +189,8 @@ fun ReturnCreateScreen(onBack: () -> Unit, viewModel: ReturnCreateViewModel = hi
                 )
             } else {
                 if (draft.lines.isNotEmpty()) {
-                    FocusButton("Lines", onClick = { showLines = true }, icon = Icons.AutoMirrored.Filled.ListAlt, modifier = Modifier.weight(1f))
+                    // A tablet shows the lines beside or under the scan, so no Lines button there.
+                    if (com.d365fo.mobileops.presentation.common.focus.tabletMode() == com.d365fo.mobileops.presentation.common.focus.TabletMode.Phone) FocusButton("Lines", onClick = { showLines = true }, icon = Icons.AutoMirrored.Filled.ListAlt, modifier = Modifier.weight(1f))
                 }
                 HoldToConfirmButton(
                     "Hold to post return",

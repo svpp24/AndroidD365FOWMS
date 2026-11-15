@@ -180,6 +180,15 @@ internal fun initialsOf(name: String): String {
     return (if (capital != null) "${word.first()}$capital" else word.take(2)).uppercase()
 }
 
+/** On a tablet, the Home row whose area is open on the right (its title), else null. */
+val LocalHomeSelected = androidx.compose.runtime.compositionLocalOf<String?> { null }
+
+/**
+ * A tablet in portrait (user, 16 Nov 2026): the chosen area, shown under Home's rows turned into a
+ * row of tabs. Null everywhere else.
+ */
+val LocalHomeArea = androidx.compose.runtime.compositionLocalOf<(@Composable () -> Unit)?> { null }
+
 /** One Home row. [alert]: the count is red (Activity). [muted]: grey icon (Enquiry). */
 internal data class HomeEntry(
     val icon: androidx.compose.ui.graphics.vector.ImageVector,
@@ -275,6 +284,41 @@ internal fun FocusHomeLayout(
 
         band?.let { ResultBand(it, modifier = Modifier.padding(bottom = 12.dp)) }
 
+        val area = LocalHomeArea.current
+        if (area != null) {
+            HomeOnHandPanel(
+                icon = Icons.Filled.Inventory2,
+                onSubmit = onPanelSubmit,
+                modifier = Modifier.padding(horizontal = FocusDimens.side).padding(top = 4.dp, bottom = 8.dp).tourTarget("tab_onhand"),
+            )
+            restoreCard(Modifier.padding(horizontal = FocusDimens.side, vertical = 4.dp))
+            val selected = LocalHomeSelected.current
+            Row(Modifier.fillMaxWidth().tourTarget("tiles")) {
+                rows.forEach { row ->
+                    val on = row.title == selected
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                        modifier = Modifier
+                            .weight(1f)
+                            .background(if (on) FocusColors.infoBg.copy(alpha = 0.6f) else FocusColors.page)
+                            .clickable(role = Role.Tab, onClick = row.onClick)
+                            .padding(vertical = 12.dp),
+                    ) {
+                        androidx.compose.material3.Icon(row.icon, contentDescription = null, tint = if (row.muted) FocusColors.muted else FocusColors.navy, modifier = Modifier.size(26.dp))
+                        Text(
+                            row.title + (row.count?.let { " $it" } ?: ""),
+                            style = FocusType.rowDetail.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.ExtraBold),
+                            color = if (row.alert && row.count != null) FocusColors.badIcon else FocusColors.ink,
+                        )
+                    }
+                }
+            }
+            androidx.compose.material3.HorizontalDivider(color = FocusColors.divider)
+            Box(Modifier.weight(1f).fillMaxWidth()) { area() }
+            return@Column
+        }
+
         Column(
             modifier = Modifier
                 .weight(1f)
@@ -293,8 +337,10 @@ internal fun FocusHomeLayout(
             restoreCard(Modifier.padding(horizontal = FocusDimens.side, vertical = 8.dp))
             Spacer(Modifier.height(8.dp))
             Column(Modifier.tourTarget("tiles")) {
+                val selected = LocalHomeSelected.current
                 rows.forEach { row ->
                     HomeRow(
+                        modifier = if (row.title == selected) Modifier.background(FocusColors.infoBg.copy(alpha = 0.6f)) else Modifier,
                         icon = row.icon,
                         title = row.title,
                         count = row.count,

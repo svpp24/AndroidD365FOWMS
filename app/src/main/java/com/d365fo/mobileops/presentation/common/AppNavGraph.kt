@@ -337,17 +337,54 @@ fun AppNavGraph(
                 modifier = Modifier.padding(innerPadding),
             ) {
 
-                composable(Routes.HOME) {
-                    HomeScreen(
+                composable(Routes.HOME) { homeEntry ->
+                    // A tablet (user, 16 Nov 2026): Home's menu on the left, the chosen area on
+                    // the right - a group's modules or Enquiry; a module itself opens full screen.
+                    val mode = com.d365fo.mobileops.presentation.common.focus.tabletMode()
+                    val wide = mode != com.d365fo.mobileops.presentation.common.focus.TabletMode.Phone
+                    var pane by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(ModuleGroup.route(ModuleGroup.RECEIVE)) }
+                    val home: @Composable () -> Unit = { HomeScreen(
                         warehouseId = warehouseId,
-                        onModuleSelected = { navController.navigate(it) },
+                        onModuleSelected = { route ->
+                            if (wide && (route.startsWith(ModuleGroup.ROUTE_PREFIX) || route == Routes.SERVICES)) pane = route else navController.navigate(route)
+                        },
                         onSignOut = onSignOut,
                         onChangeWarehouse = { navController.navigate(Routes.CHANGE_WAREHOUSE) },
                         failedCount = syncStatus.failedCount,
                         online = syncStatus.fullyOnline,
                         onSettings = { navController.navigate(Routes.SETTINGS) },
                         onScanOpen = { open -> navController.navigate(open.route) { launchSingleTop = true } },
-                    )
+                    ) }
+                    val areaPane: @Composable () -> Unit = {
+                                    if (pane == Routes.SERVICES) {
+                                        ServicesScreen(
+                                            onModuleSelected = { route -> navController.navigate(route) },
+                                            onBack = null,
+                                            accessViewModel = hiltViewModel(homeEntry),
+                                        )
+                                    } else {
+                                        ModuleGroupScreen(
+                                            groupId = pane.removePrefix(ModuleGroup.ROUTE_PREFIX),
+                                            onBack = null,
+                                            onModuleSelected = { route -> navController.navigate(route) },
+                                            accessViewModel = hiltViewModel(homeEntry),
+                                        )
+                                    }
+                    }
+                    if (!wide) {
+                        home()
+                    } else {
+                        androidx.compose.runtime.CompositionLocalProvider(
+                            LocalHomeSelected provides (ModuleGroup.entries.firstOrNull { ModuleGroup.route(it) == pane }?.title ?: "Enquiry"),
+                            LocalHomeArea provides (if (mode == com.d365fo.mobileops.presentation.common.focus.TabletMode.Portrait) areaPane else null),
+                        ) {
+                            if (mode == com.d365fo.mobileops.presentation.common.focus.TabletMode.Portrait) {
+                                home()
+                            } else {
+                                com.d365fo.mobileops.presentation.common.focus.TwoPane(left = { home() }, right = { areaPane() })
+                            }
+                        }
+                    }
                 }
 
                 composable(Routes.SERVICES) {

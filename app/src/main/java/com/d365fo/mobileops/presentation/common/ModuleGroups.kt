@@ -56,7 +56,7 @@ internal enum class ModuleGroup(
 @Composable
 fun ModuleGroupScreen(
     groupId: String,
-    onBack: () -> Unit,
+    onBack: (() -> Unit)?,
     onModuleSelected: (String) -> Unit,
     accessViewModel: HomeAccessViewModel = hiltViewModel(),
     dashboardViewModel: HomeDashboardViewModel = hiltViewModel(),
