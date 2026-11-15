@@ -142,6 +142,8 @@ internal fun FocusHome(
     val user = session?.displayName?.trim()?.split(' ')?.firstOrNull { it.isNotBlank() } ?: session?.userName.orEmpty()
     FocusHomeLayout(
         header = listOfNotNull(user.takeIf { it.isNotBlank() }, session?.selected?.warehouseId ?: warehouseId).joinToString(" · "),
+        // The warehouse's name under the code, small (user, 15 Nov 2026).
+        subheader = session?.selected?.let { wh -> wh.warehouseName.trim().takeIf { it.isNotBlank() && it != wh.warehouseId } },
         online = online,
         band = notAvailable ?: band,
         rows = rows,
@@ -174,6 +176,7 @@ internal fun FocusHomeLayout(
     onChangeWarehouse: (() -> Unit)?,
     restoreCard: @Composable (Modifier) -> Unit = {},
     onPanelSubmit: ((String) -> Unit)? = null,
+    subheader: String? = null,
 ) {
     var menuOpen by remember { mutableStateOf(false) }
     Column(
@@ -189,10 +192,7 @@ internal fun FocusHomeLayout(
                 .heightIn(min = FocusDimens.topBar)
                 .padding(start = FocusDimens.side, end = 8.dp),
         ) {
-            Text(
-                header,
-                style = FocusType.topBarTitle,
-                color = FocusColors.ink,
+            Column(
                 modifier = Modifier
                     .weight(1f)
                     .tourTarget("warehouse")
@@ -204,9 +204,20 @@ internal fun FocusHomeLayout(
                         },
                     )
                     .heightIn(min = if (onChangeWarehouse != null) 56.dp else 0.dp)
-                    .padding(vertical = 8.dp)
-                    .semantics { heading() },
-            )
+                    .padding(vertical = 8.dp),
+                verticalArrangement = Arrangement.Center,
+            ) {
+                Text(
+                    header,
+                    style = FocusType.topBarTitle,
+                    color = FocusColors.ink,
+                    modifier = Modifier.semantics { heading() },
+                )
+                // Wraps, never cut off (house rule): store names can be long.
+                subheader?.let {
+                    Text(it, style = FocusType.rowDetail, color = FocusColors.muted)
+                }
+            }
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -295,6 +306,7 @@ private fun receiveCount(figures: HomeDashboardViewModel.Figures, modules: List<
 internal fun FocusHomeSample(band: Boolean = false) {
     FocusHomeLayout(
         header = "Abdul · AAC",
+        subheader = "BSP - American Academy of Cosmetic Surgery Hospital",
         online = !band,
         band = if (band) BandState(BandKind.Bad, "Not recognised", "XJ-55-AB · nothing added") else null,
         rows = listOf(
