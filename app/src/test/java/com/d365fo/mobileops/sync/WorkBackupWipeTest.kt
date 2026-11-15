@@ -36,6 +36,9 @@ class WorkBackupWipeTest {
         cleanupSettings = mockk(relaxed = true),
         scheduler = mockk(relaxed = true),
         scope = TestScope(),
+        tokenService = mockk(relaxed = true),
+        deviceKey = mockk(relaxed = true),
+        connectionSettings = mockk(relaxed = true),
     )
 
     @Test

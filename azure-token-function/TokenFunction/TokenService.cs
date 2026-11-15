@@ -77,6 +77,9 @@ public static class Protocol
     public const string TokenExchangeAudience = "api://AzureADTokenExchange";
     public const string AssertionType = "urn:ietf:params:oauth:client-assertion-type:jwt-bearer";
     public const string ServicePath = "/api/services/HSMobileOpsServiceGroup/HSMobileOpsDeviceSetupSvc/";
+    public const string WorkServicePath = "/api/services/HSMobileOpsServiceGroup/HSMobileOpsDeviceWorkSvc/";
+    /// <summary>A final backup carries at most this much work (characters of ItemsJson).</summary>
+    public const int MaxBackupChars = 4_000_000;
 
     public static string Normalize(string url) => url.Trim().TrimEnd('/').ToLowerInvariant();
 
@@ -85,6 +88,12 @@ public static class Protocol
 
     public static string TokenText(string deviceId, string resource, long timestamp, string nonce) =>
         $"HSMODEV1-TOKEN\n{deviceId}\n{resource}\n{timestamp}\n{nonce}";
+
+    /// <summary>What a device signs for a final backup: the request, and the SHA-256 of the work it carries.</summary>
+    public static string BackupText(string deviceId, string resource, long timestamp, string nonce,
+        string backupDeviceId, string dataAreaId, string itemsJson) =>
+        $"HSMODEV1-BACKUP\n{deviceId}\n{resource}\n{timestamp}\n{nonce}\n{backupDeviceId}\n{dataAreaId}\n" +
+        Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(itemsJson)));
 
     /// <summary>SHA256withECDSA, DER signature, P-256 - what Android's Keystore makes (DeviceKey.sign).</summary>
     public static bool VerifyDeviceSignature(string publicKeyB64, string text, string signatureB64)
@@ -187,10 +196,11 @@ public sealed class TokenService(
 
     // -- D365FO ----------------------------------------------------------------------------
 
-    private async Task<JsonObject> D365Async(string resource, string deviceId, string operation, JsonObject request, CancellationToken ct)
+    private async Task<JsonObject> D365Async(string resource, string deviceId, string operation, JsonObject request, CancellationToken ct,
+        string servicePath = Protocol.ServicePath)
     {
         var (token, _) = await TokenForAsync(deviceId, resource, ct);
-        using var message = new HttpRequestMessage(HttpMethod.Post, resource + Protocol.ServicePath + operation)
+        using var message = new HttpRequestMessage(HttpMethod.Post, resource + servicePath + operation)
         {
             Content = new StringContent(new JsonObject { ["_request"] = request }.ToJsonString(), Encoding.UTF8, "application/json"),
         };
@@ -327,6 +337,97 @@ public sealed class TokenService(
         {
             return Fail(503, "AAD_UNAVAILABLE", e.Message);
         }
+    }
+
+    /// <summary>
+    /// A device's last copy of its unsent work, sent here because it can no longer get a D365FO
+    /// token - it was deactivated while it held work D365FO had not seen (e.g. offline for hours).
+    /// Signed with the device key, so only that device can send it; saved under its own backup
+    /// ID (deviceId or deviceId~n) and only ever added or updated, never deleted (Complete=false).
+    /// Active and inactive devices both may: the point is that no captured work is lost.
+    /// </summary>
+    public async Task<Result> BackupAsync(JsonObject body, CancellationToken ct = default)
+    {
+        var deviceId = Str(body, "deviceId").Trim();
+        var nonce = Str(body, "nonce");
+        var signature = Str(body, "signature");
+        var backupDeviceId = Str(body, "backupDeviceId").Trim();
+        var dataAreaId = Str(body, "dataAreaId").Trim();
+        var itemsJson = Str(body, "itemsJson");
+        var resource = Allowed(Str(body, "resource"));
+        long.TryParse(Str(body, "timestamp"), out var timestamp);
+        if (deviceId.Length == 0 || nonce.Length == 0 || nonce.Length > 64 || signature.Length == 0 || timestamp == 0
+            || dataAreaId.Length == 0 || backupDeviceId.Length == 0 || backupDeviceId.Length > 64)
+            return Fail(400, "INVALID_REQUEST", "deviceId, timestamp, nonce, signature, backupDeviceId and dataAreaId are required.", success: false);
+        if (backupDeviceId != deviceId && !backupDeviceId.StartsWith(deviceId + "~", StringComparison.Ordinal))
+            return Fail(400, "INVALID_REQUEST", "A device can only save its own work.", success: false);
+        if (itemsJson.Length > Protocol.MaxBackupChars)
+            return Fail(413, "TOO_LARGE", "The work list is too large to send this way.", success: false);
+        try
+        {
+            if (JsonNode.Parse(itemsJson.Length == 0 ? "[]" : itemsJson) is not JsonArray)
+                return Fail(400, "INVALID_REQUEST", "itemsJson must be a JSON array.", success: false);
+        }
+        catch (JsonException)
+        {
+            return Fail(400, "INVALID_REQUEST", "itemsJson must be a JSON array.", success: false);
+        }
+        if (resource is null)
+            return Fail(400, "UNKNOWN_ENVIRONMENT", "This token service does not serve that D365FO environment.", success: false);
+        if (Math.Abs(_clock().ToUnixTimeSeconds() - timestamp) > Protocol.ClockSkewSeconds)
+            return Fail(401, "CLOCK_SKEW", "The device clock is wrong. Set the date and time automatically.", success: false);
+        JsonObject device;
+        try
+        {
+            device = await DeviceKeyAsync(resource, deviceId, ct);
+        }
+        catch (ThrottledException e)
+        {
+            return Busy("The token service is busy.", e);
+        }
+        catch (UnavailableException e)
+        {
+            return Fail(503, "D365_UNAVAILABLE", $"D365FO could not be reached: {e.Message}", success: false);
+        }
+        if (Str(device, "PublicKey").Length == 0)
+            return Fail(403, "DEVICE_UNKNOWN", "This device has not been set up with a setup code.", success: false);
+        var signedResource = Str(body, "resource").Trim().TrimEnd('/');
+        if (!Protocol.VerifyDeviceSignature(Str(device, "PublicKey"),
+                Protocol.BackupText(deviceId, signedResource, timestamp, nonce, backupDeviceId, dataAreaId, itemsJson), signature))
+            return Fail(401, "BAD_SIGNATURE", "The device key signature is not valid.", success: false);
+        if (!await nonces.UseAsync(deviceId, nonce, timestamp, ct))
+            return Fail(401, "REPLAY", "This request was already used.", success: false);
+        JsonObject answer;
+        try
+        {
+            answer = await D365Async(resource, deviceId, "syncWork", new JsonObject
+            {
+                ["DataAreaId"] = dataAreaId,
+                ["DeviceId"] = backupDeviceId,
+                ["UserName"] = Or(Clip(Str(body, "userName"), 60), "device"),
+                ["AppVersion"] = Clip(Str(body, "appVersion"), 40),
+                ["DeviceModel"] = Clip(Str(body, "deviceModel"), 121),
+                ["ItemsJson"] = itemsJson,
+                ["Complete"] = false,
+            }, ct, Protocol.WorkServicePath);
+        }
+        catch (ThrottledException e)
+        {
+            return Busy("The token service is busy.", e);
+        }
+        catch (UnavailableException e)
+        {
+            return Fail(503, "D365_UNAVAILABLE", $"D365FO could not be reached: {e.Message}", success: false);
+        }
+        logger.LogWarning("final backup from {Device} as {BackupId}: success={Success} stored={Stored} active={Active}",
+            deviceId, backupDeviceId, Bool(answer, "Success"), Int(answer, "Stored"), Bool(device, "IsActive"));
+        return new Result(200, new JsonObject
+        {
+            ["success"] = Bool(answer, "Success"),
+            ["stored"] = Int(answer, "Stored"),
+            ["errorCode"] = Str(answer, "ErrorCode"),
+            ["message"] = Str(answer, "Message"),
+        });
     }
 
     // -- helpers ---------------------------------------------------------------------------

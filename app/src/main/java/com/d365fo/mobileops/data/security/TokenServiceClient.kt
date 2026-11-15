@@ -75,6 +75,34 @@ class TokenServiceClient @Inject constructor(
         val message: String = "",
     )
 
+    /**
+     * A deactivated device's last copy of its unsent work (POST /api/backup): it can't get a
+     * D365FO token any more, so the token service saves it in D365FO for it. Signed over
+     * [backupText], which covers the work itself.
+     */
+    @Serializable
+    data class BackupRequest(
+        val deviceId: String,
+        val resource: String,
+        val timestamp: Long,
+        val nonce: String,
+        val backupDeviceId: String,
+        val dataAreaId: String,
+        val userName: String,
+        val appVersion: String,
+        val deviceModel: String,
+        val itemsJson: String,
+        val signature: String,
+    )
+
+    @Serializable
+    data class BackupResponse(
+        val success: Boolean = false,
+        val stored: Int = 0,
+        val errorCode: String = "",
+        val message: String = "",
+    )
+
     sealed interface Answer<out T> {
         data class Ok<T>(val body: T) : Answer<T>
         /** The service answered with an error: [code] its errorCode (or HTTP_<status>). */
@@ -96,6 +124,11 @@ class TokenServiceClient @Inject constructor(
     suspend fun token(serviceUrl: String, request: TokenRequest): Answer<TokenResponse> =
         post(serviceUrl, "token", json.encodeToString(TokenRequest.serializer(), request)) {
             json.decodeFromString(TokenResponse.serializer(), it)
+        }
+
+    suspend fun backup(serviceUrl: String, request: BackupRequest): Answer<BackupResponse> =
+        post(serviceUrl, "backup", json.encodeToString(BackupRequest.serializer(), request)) {
+            json.decodeFromString(BackupResponse.serializer(), it)
         }
 
     private suspend fun <T> post(serviceUrl: String, path: String, body: String, parse: (String) -> T): Answer<T> =
@@ -134,5 +167,14 @@ class TokenServiceClient @Inject constructor(
 
         fun tokenText(deviceId: String, resource: String, timestamp: Long, nonce: String): String =
             "HSMODEV1-TOKEN\n$deviceId\n$resource\n$timestamp\n$nonce"
+
+        fun backupText(
+            deviceId: String, resource: String, timestamp: Long, nonce: String,
+            backupDeviceId: String, dataAreaId: String, itemsJson: String,
+        ): String {
+            val sha = java.security.MessageDigest.getInstance("SHA-256").digest(itemsJson.toByteArray(Charsets.UTF_8))
+                .joinToString("") { "%02x".format(it) }
+            return "HSMODEV1-BACKUP\n$deviceId\n$resource\n$timestamp\n$nonce\n$backupDeviceId\n$dataAreaId\n$sha"
+        }
     }
 }

@@ -26,6 +26,17 @@ internal sealed class Device(string id)
         ["appVersionName"] = "1.5.8", ["d365Url"] = Fixture.D365 + "/", ["company"] = "BSP",
     };
 
+    public JsonObject BackupBody(string items, string backupId = "", string nonce = "b1", long timestamp = Fixture.Now)
+    {
+        var id = backupId.Length == 0 ? Id : backupId;
+        return new()
+        {
+            ["deviceId"] = Id, ["resource"] = Fixture.D365, ["timestamp"] = timestamp, ["nonce"] = nonce,
+            ["backupDeviceId"] = id, ["dataAreaId"] = "bsp", ["userName"] = "002", ["itemsJson"] = items,
+            ["signature"] = Sign(Protocol.BackupText(Id, Fixture.D365, timestamp, nonce, id, "bsp", items)),
+        };
+    }
+
     public JsonObject TokenBody(string nonce = "n1", long timestamp = Fixture.Now) => new()
     {
         ["deviceId"] = Id, ["resource"] = Fixture.D365, ["timestamp"] = timestamp, ["nonce"] = nonce,
@@ -41,6 +52,7 @@ internal sealed class FakeCloud : HttpMessageHandler
     public List<string> AadCalls { get; } = [];
     public List<string> D365Calls { get; } = [];
     public HashSet<string> ThrottledApps { get; set; } = [];
+    public List<JsonObject> SavedWork { get; } = [];
 
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
     {
@@ -69,6 +81,13 @@ internal sealed class FakeCloud : HttpMessageHandler
         var op = url[(url.LastIndexOf('/') + 1)..];
         var req = JsonNode.Parse(body)!["_request"]!.AsObject();
         D365Calls.Add(op);
+        if (op == "syncWork")
+        {
+            Assert.Contains("/HSMobileOpsDeviceWorkSvc/", url);
+            SavedWork.Add(req);
+            var items = JsonNode.Parse(req["ItemsJson"]!.GetValue<string>())!.AsArray().Count;
+            return Json(HttpStatusCode.OK, new JsonObject { ["Success"] = true, ["Stored"] = items });
+        }
         if (op == "registerDeviceKey")
         {
             var code = req["Code"]!.GetValue<string>();
@@ -240,6 +259,44 @@ public class TokenServiceTests
         await svc.RegisterAsync(device.RegisterBody("GOODCODE"));
         Assert.Equal(200, (await svc.TokenAsync(device.TokenBody())).HttpStatus);
         Assert.Equal(0, identity.Calls);
+    }
+
+    [Fact]
+    public async Task A_deactivated_device_can_still_save_its_last_work()
+    {
+        var (cloud, device) = (new FakeCloud(), new Device("dev-1"));
+        var svc = Fixture.Service(cloud);
+        await svc.RegisterAsync(device.RegisterBody("GOODCODE"));
+        cloud.Devices["dev-1"] = (cloud.Devices["dev-1"].PublicKey, false);
+        Assert.Equal((403, "DEVICE_INACTIVE"), (await svc.TokenAsync(device.TokenBody())) is var t ? (t.HttpStatus, t.Body["errorCode"]!.GetValue<string>()) : default);
+
+        var r = await svc.BackupAsync(device.BackupBody("""[{"Key":"a"},{"Key":"b"}]""", "dev-1~2"));
+        Assert.Equal((200, true, 2L), (r.HttpStatus, r.Body["success"]!.GetValue<bool>(), r.Body["stored"]!.GetValue<long>()));
+        var saved = Assert.Single(cloud.SavedWork);
+        Assert.Equal("dev-1~2", saved["DeviceId"]!.GetValue<string>());
+        Assert.False(saved["Complete"]!.GetValue<bool>()); // adds or updates, never deletes
+        Assert.Equal("REPLAY", (await svc.BackupAsync(device.BackupBody("""[{"Key":"a"}]""", "dev-1~2"))).Body["errorCode"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public async Task A_backup_needs_the_device_key_and_its_own_backup_id()
+    {
+        var (cloud, device, other) = (new FakeCloud(), new Device("dev-1"), new Device("dev-2"));
+        var svc = Fixture.Service(cloud);
+        await svc.RegisterAsync(device.RegisterBody("GOODCODE"));
+
+        var forged = device.BackupBody("[]");
+        forged["signature"] = other.Sign(Protocol.BackupText("dev-1", Fixture.D365, Fixture.Now, "b1", "dev-1", "bsp", "[]"));
+        Assert.Equal("BAD_SIGNATURE", (await svc.BackupAsync(forged)).Body["errorCode"]!.GetValue<string>());
+
+        var swapped = device.BackupBody("""[{"Key":"a"}]""", nonce: "b2");
+        swapped["itemsJson"] = """[{"Key":"evil"}]"""; // the signature covers the work itself
+        Assert.Equal("BAD_SIGNATURE", (await svc.BackupAsync(swapped)).Body["errorCode"]!.GetValue<string>());
+
+        Assert.Equal("INVALID_REQUEST", (await svc.BackupAsync(device.BackupBody("[]", "dev-2", "b3"))).Body["errorCode"]!.GetValue<string>());
+        Assert.Equal("DEVICE_UNKNOWN", (await svc.BackupAsync(other.BackupBody("[]"))).Body["errorCode"]!.GetValue<string>());
+        Assert.Equal("CLOCK_SKEW", (await svc.BackupAsync(device.BackupBody("[]", nonce: "b4", timestamp: Fixture.Now - 900))).Body["errorCode"]!.GetValue<string>());
+        Assert.Empty(cloud.SavedWork);
     }
 
     [Fact]

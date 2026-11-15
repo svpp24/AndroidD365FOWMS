@@ -3,6 +3,7 @@
 //
 //   POST /api/register  - a new device: setup code + its public key (passed on to D365FO)
 //   POST /api/token     - a signed request from a set-up device -> {"access_token", "expires_in"}
+//   POST /api/backup    - a deactivated device's signed, last copy of its unsent work (to D365FO)
 //   timer nonceCleanup  - hourly, drops replay-check rows older than an hour
 //
 // Anonymous on purpose: devices have no secret to send. register needs a valid one-off setup
@@ -27,6 +28,12 @@ public sealed class Functions(Lazy<TokenService> service, Lazy<TableNonces> nonc
     public Task<HttpResponseData> Token(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "token")] HttpRequestData req, CancellationToken ct) =>
         HandleAsync(req, "token", ct);
+
+    /// <summary>A deactivated device's last copy of its unsent work (TokenService.BackupAsync).</summary>
+    [Function("backup")]
+    public Task<HttpResponseData> Backup(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "backup")] HttpRequestData req, CancellationToken ct) =>
+        HandleAsync(req, "backup", ct);
 
     [Function("nonceCleanup")]
     public async Task NonceCleanup([TimerTrigger("0 17 * * * *")] TimerInfo timer, CancellationToken ct)
@@ -66,7 +73,12 @@ public sealed class Functions(Lazy<TokenService> service, Lazy<TableNonces> nonc
             }));
         }
 
-        var result = endpoint == "register" ? await svc.RegisterAsync(body, ct) : await svc.TokenAsync(body, ct);
+        var result = endpoint switch
+        {
+            "register" => await svc.RegisterAsync(body, ct),
+            "backup" => await svc.BackupAsync(body, ct),
+            _ => await svc.TokenAsync(body, ct),
+        };
         var device = body["deviceId"]?.ToString() ?? "";
         logger.LogInformation("{Endpoint} device={Device} -> {Status} {Error}", endpoint,
             device.Length > 40 ? device[..40] : device, result.HttpStatus, result.Body["errorCode"]?.ToString() ?? "");

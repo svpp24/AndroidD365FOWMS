@@ -217,6 +217,9 @@ class WorkBackup @Inject constructor(
     private val cleanupSettings: DeviceCleanupSettingsStore,
     private val scheduler: SyncScheduler,
     private val scope: CoroutineScope,
+    private val tokenService: com.d365fo.mobileops.data.security.TokenServiceClient,
+    private val deviceKey: com.d365fo.mobileops.data.security.DeviceKey,
+    private val connectionSettings: com.d365fo.mobileops.data.security.ConnectionSettings,
 ) {
     private val dao get() = database.workBackupDao()
     private val lock = Mutex()
@@ -285,16 +288,64 @@ class WorkBackup @Inject constructor(
      * offline device can't), then moves this device to a new backup ID, so the emptied database's
      * next backup can't remove what D365FO holds - that copy stays restorable after sign-in.
      */
-    suspend fun keepBeforeWipe(saveFirst: Boolean = true) {
+    suspend fun keepBeforeWipe(saveFirst: Boolean = true, viaTokenService: Boolean = false) {
         // saveFirst = false when the device already points at the new target: the set would go
         // to the wrong environment. The regular backup (a few seconds after each change) has it.
-        val saved = saveFirst && (withTimeoutOrNull(KEEP_TIMEOUT_MS) { runCatching { backUpNow() }.getOrDefault(false) } ?: false)
+        // viaTokenService: the token service refused this device (deactivated) - no D365FO token,
+        // so the last set goes through the token service instead (option 2, 15 Nov 2026).
+        val saved = when {
+            saveFirst -> withTimeoutOrNull(KEEP_TIMEOUT_MS) { runCatching { backUpNow() }.getOrDefault(false) } ?: false
+            viaTokenService -> withTimeoutOrNull(KEEP_TIMEOUT_MS) { runCatching { backUpViaTokenService() }.getOrDefault(false) } ?: false
+            else -> false
+        }
         lock.withLock {
             val generation = (secureStore.getString(KEY_GENERATION)?.toIntOrNull() ?: 0) + 1
             secureStore.putString(KEY_GENERATION, generation.toString())
             secureStore.remove(KEY_HASH)
             Timber.w("work backup: local wipe - D365FO copy kept (saved now: %s), backing up as %s", saved, backupDeviceId())
         }
+    }
+
+    /**
+     * The current set, through the token service's backup endpoint, signed with the device key -
+     * for a device that can no longer get a D365FO token. Only adds or updates in D365FO. True
+     * when D365FO has it (or already had exactly this set).
+     */
+    private suspend fun backUpViaTokenService(): Boolean = lock.withLock {
+        val config = connectionSettings.tenant.value
+        if (config.tokenServiceUrl.isBlank() || !deviceKey.exists()) return@withLock false
+        val company = company() ?: return@withLock false
+        val items = snapshot()
+        val itemsJson = json.encodeToString(ListSerializer(DeviceWorkItemDto.serializer()), items)
+        if (sha256("$company|$itemsJson") == secureStore.getString(KEY_HASH)) return@withLock true
+        val deviceId = secureStore.deviceId()
+        val resource = config.resourceUrl.trimEnd('/')
+        val timestamp = System.currentTimeMillis() / 1000
+        val nonce = java.util.UUID.randomUUID().toString().replace("-", "")
+        val backupId = backupDeviceId()
+        val signature = deviceKey.sign(
+            com.d365fo.mobileops.data.security.TokenServiceClient.backupText(deviceId, resource, timestamp, nonce, backupId, company, itemsJson),
+        )
+        val answer = tokenService.backup(
+            config.tokenServiceUrl,
+            com.d365fo.mobileops.data.security.TokenServiceClient.BackupRequest(
+                deviceId = deviceId,
+                resource = resource,
+                timestamp = timestamp,
+                nonce = nonce,
+                backupDeviceId = backupId,
+                dataAreaId = company,
+                userName = sessions.session.value?.userName?.takeIf { it.isNotBlank() } ?: "device",
+                appVersion = BuildConfig.VERSION_NAME,
+                deviceModel = "${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}".take(121),
+                itemsJson = itemsJson,
+                signature = signature,
+            ),
+        )
+        val ok = answer is com.d365fo.mobileops.data.security.TokenServiceClient.Answer.Ok && answer.body.success
+        Timber.w("work backup: %d item(s) through the token service - %s", items.size,
+            if (ok) "saved" else (answer as? com.d365fo.mobileops.data.security.TokenServiceClient.Answer.Refused)?.code ?: "not saved")
+        ok
     }
 
     /**
