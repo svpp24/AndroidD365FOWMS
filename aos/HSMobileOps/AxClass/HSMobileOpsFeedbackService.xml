@@ -80,6 +80,20 @@ class HSMobileOpsFeedbackService
                 response.parmMessage(attachProblem);
             }
         }
+        // The other pictures (the worker can pick up to 5): never lose the feedback over them.
+        if (_request.parmPictures() && _request.parmPictures().elements() > 1)
+        {
+            attachProblem = HSMobileOpsFeedbackService::savePictures(_request.parmFeedbackId(), _request.parmPictures());
+            if (attachProblem)
+            {
+                ttsbegin;
+                feedback = HSMobileOpsFeedback::findByFeedbackId(_request.parmFeedbackId(), true);
+                feedback.Logs = attachProblem + '\n\n' + feedback.Logs;
+                feedback.update();
+                ttscommit;
+                response.parmMessage(attachProblem);
+            }
+        }
 
         response.parmSuccess(true);
         return response;
@@ -217,6 +231,60 @@ class HSMobileOpsFeedbackService
         catch (Exception::Error)
         {
             return 'Screenshot not attached: ' + HSMobileOpsFeedbackService::lastError();
+        }
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>savePictures</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Pictures 2 to 5 (the first is the record's Screenshot). Returns '' or why they were not saved.
+    /// </summary>
+    private static str savePictures(str _feedbackId, List _pictures)
+    {
+        HSMobileOpsFeedbackPicture picture;
+        ListEnumerator             pictures = _pictures.getEnumerator();
+        System.Exception           clrError;
+        int                        pictureNum;
+
+        try
+        {
+            ttsbegin;
+            while (pictures.moveNext())
+            {
+                pictureNum++;
+                if (pictureNum == 1 || !pictures.current())
+                {
+                    continue;
+                }
+                if (pictureNum > 5)
+                {
+                    break;
+                }
+                picture.clear();
+                picture.FeedbackId = _feedbackId;
+                picture.PictureNum = pictureNum;
+                picture.Picture    = Binary::constructFromMemoryStream(
+                    new System.IO.MemoryStream(System.Convert::FromBase64String(pictures.current()))).getContainer();
+                picture.insert();
+            }
+            ttscommit;
+            return '';
+        }
+        catch (Exception::CLRError)
+        {
+            clrError = CLRInterop::getLastException();
+            return 'Pictures not saved: ' + (clrError ? subStr(clrError.ToString(), 1, 300) : 'CLR error');
+        }
+        catch (Exception::DuplicateKeyException)
+        {
+            return '';
+        }
+        catch (Exception::Error)
+        {
+            return 'Pictures not saved: ' + HSMobileOpsFeedbackService::lastError();
         }
     }
 ]]></Source>

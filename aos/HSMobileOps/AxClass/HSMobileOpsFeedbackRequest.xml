@@ -4,7 +4,8 @@
 	<SourceCode>
 		<Declaration><![CDATA[
 /// <summary>
-/// One request shape for HSMobileOpsFeedbackService. ScreenshotBase64 is a JPEG.
+/// One request shape for HSMobileOpsFeedbackService. ScreenshotBase64 is a JPEG; Pictures (up to 5
+/// JPEGs, base64) are the pictures the worker picked - the first is also sent as ScreenshotBase64.
 /// </summary>
 [DataContractAttribute]
 class HSMobileOpsFeedbackRequest
@@ -21,6 +22,7 @@ class HSMobileOpsFeedbackRequest
     str message;
     str logs;
     str screenshotBase64;
+    List pictures;
     int take;
 }
 ]]></Declaration>
@@ -166,6 +168,18 @@ class HSMobileOpsFeedbackRequest
     {
         screenshotBase64 = _value;
         return screenshotBase64;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmPictures</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Pictures'), AifCollectionTypeAttribute('_value', Types::String)]
+    public List parmPictures(List _value = pictures)
+    {
+        pictures = _value;
+        return pictures;
     }
 ]]></Source>
 			</Method>

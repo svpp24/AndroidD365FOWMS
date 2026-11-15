@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxTable xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsFeedbackPicture</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// More pictures sent with a feedback (the worker picks up to 5 from the gallery; the first is
+/// HSMobileOpsFeedback.Screenshot, the others are here, numbered 2 to 5). Kept in the record, not
+/// as document attachments: attachments need the environment's file storage set up.
+/// </summary>
+public class HSMobileOpsFeedbackPicture extends common
+{
+}
+]]></Declaration>
+		<Methods />
+	</SourceCode>
+	<Label>Mobile feedback picture</Label>
+	<TitleField1>FeedbackId</TitleField1>
+	<TitleField2>PictureNum</TitleField2>
+	<CacheLookup>NotInTTS</CacheLookup>
+	<ReplacementKey>FeedbackPictureIdx</ReplacementKey>
+	<SaveDataPerCompany>No</SaveDataPerCompany>
+	<Fields>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>FeedbackId</Name>
+			<AllowEdit>No</AllowEdit>
+			<Label>Feedback ID</Label>
+			<Mandatory>Yes</Mandatory>
+			<StringSize>64</StringSize>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldInt">
+			<Name>PictureNum</Name>
+			<AllowEdit>No</AllowEdit>
+			<Label>Picture</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldContainer">
+			<Name>Picture</Name>
+			<AllowEdit>No</AllowEdit>
+			<ExtendedDataType>Bitmap</ExtendedDataType>
+			<Label>Picture</Label>
+		</AxTableField>
+	</Fields>
+	<FullTextIndexes />
+	<Indexes>
+		<AxTableIndex>
+			<Name>FeedbackPictureIdx</Name>
+			<AllowDuplicates>No</AllowDuplicates>
+			<Fields>
+				<AxTableIndexField>
+					<DataField>FeedbackId</DataField>
+				</AxTableIndexField>
+				<AxTableIndexField>
+					<DataField>PictureNum</DataField>
+				</AxTableIndexField>
+			</Fields>
+		</AxTableIndex>
+	</Indexes>
+	<Mappings />
+	<Relations />
+	<StateMachines />
+</AxTable>

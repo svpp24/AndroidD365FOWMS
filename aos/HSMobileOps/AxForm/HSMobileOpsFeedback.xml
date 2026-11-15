@@ -8,12 +8,47 @@
 				<Source><![CDATA[
 /// <summary>
 /// Feedback sent from the handheld, newest first. Set Status and Reply - the worker sees both in
-/// the app. The screenshot, when one was sent, is under Attachments.
+/// the app. The pictures the worker sent are on Screenshot and More pictures.
 /// </summary>
 [Form]
 public class HSMobileOpsFeedback extends FormRun
 {
 }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>showPictures</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Pictures 2 to 5 of the selected feedback into Picture2..Picture5; the empty ones hidden.
+    /// </summary>
+    public void showPictures()
+    {
+        HSMobileOpsFeedbackPicture picture;
+        container                  p2, p3, p4, p5;
+
+        while select PictureNum, Picture from picture
+            where picture.FeedbackId == HSMobileOpsFeedback.FeedbackId
+        {
+            switch (picture.PictureNum)
+            {
+                case 2: p2 = picture.Picture; break;
+                case 3: p3 = picture.Picture; break;
+                case 4: p4 = picture.Picture; break;
+                case 5: p5 = picture.Picture; break;
+            }
+        }
+        if (conLen(p2)) { Picture2.image(new Image(p2)); }
+        if (conLen(p3)) { Picture3.image(new Image(p3)); }
+        if (conLen(p4)) { Picture4.image(new Image(p4)); }
+        if (conLen(p5)) { Picture5.image(new Image(p5)); }
+        Picture2.visible(conLen(p2) > 0);
+        Picture3.visible(conLen(p3) > 0);
+        Picture4.visible(conLen(p4) > 0);
+        Picture5.visible(conLen(p5) > 0);
+        NoMorePictures.visible(!conLen(p2) && !conLen(p3) && !conLen(p4) && !conLen(p5));
+    }
 ]]></Source>
 			</Method>
 			<Method>
@@ -31,7 +66,28 @@ public class HSMobileOpsFeedback extends FormRun
 ]]></Source>
 			</Method>
 		</Methods>
-		<DataSources xmlns="" />
+		<DataSources xmlns="">
+			<DataSource>
+				<Name>HSMobileOpsFeedback</Name>
+				<Methods>
+					<Method>
+						<Name>active</Name>
+						<Source><![CDATA[
+        /// <summary>
+        /// Shows the selected feedback's pictures 2 to 5 on More pictures.
+        /// </summary>
+        public int active()
+        {
+            int ret = super();
+
+            element.showPictures();
+            return ret;
+        }
+]]></Source>
+					</Method>
+				</Methods>
+			</DataSource>
+		</DataSources>
 		<DataControls xmlns="" />
 		<Members xmlns="" />
 	</SourceCode>
@@ -363,6 +419,74 @@ public class HSMobileOpsFeedback extends FormRun
 						</Controls>
 						<Caption>Screenshot</Caption>
 						<DataSource>HSMobileOpsFeedback</DataSource>
+					</AxFormControl>
+					<AxFormControl xmlns=""
+						i:type="AxFormTabPageControl">
+						<Name>MorePicturesPage</Name>
+						<Type>TabPage</Type>
+						<FormControlExtension
+							i:nil="true" />
+						<Controls>
+							<AxFormControl xmlns=""
+								i:type="AxFormStaticTextControl">
+								<Name>NoMorePictures</Name>
+								<AutoDeclaration>Yes</AutoDeclaration>
+								<Type>StaticText</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<Text>Only one picture was sent with this feedback.</Text>
+							</AxFormControl>
+							<AxFormControl xmlns=""
+								i:type="AxFormImageControl">
+								<Name>Picture2</Name>
+								<AutoDeclaration>Yes</AutoDeclaration>
+								<Height>640</Height>
+								<HeightMode>Manual</HeightMode>
+								<Type>Image</Type>
+								<Width>360</Width>
+								<WidthMode>Manual</WidthMode>
+								<FormControlExtension
+									i:nil="true" />
+							</AxFormControl>
+							<AxFormControl xmlns=""
+								i:type="AxFormImageControl">
+								<Name>Picture3</Name>
+								<AutoDeclaration>Yes</AutoDeclaration>
+								<Height>640</Height>
+								<HeightMode>Manual</HeightMode>
+								<Type>Image</Type>
+								<Width>360</Width>
+								<WidthMode>Manual</WidthMode>
+								<FormControlExtension
+									i:nil="true" />
+							</AxFormControl>
+							<AxFormControl xmlns=""
+								i:type="AxFormImageControl">
+								<Name>Picture4</Name>
+								<AutoDeclaration>Yes</AutoDeclaration>
+								<Height>640</Height>
+								<HeightMode>Manual</HeightMode>
+								<Type>Image</Type>
+								<Width>360</Width>
+								<WidthMode>Manual</WidthMode>
+								<FormControlExtension
+									i:nil="true" />
+							</AxFormControl>
+							<AxFormControl xmlns=""
+								i:type="AxFormImageControl">
+								<Name>Picture5</Name>
+								<AutoDeclaration>Yes</AutoDeclaration>
+								<Height>640</Height>
+								<HeightMode>Manual</HeightMode>
+								<Type>Image</Type>
+								<Width>360</Width>
+								<WidthMode>Manual</WidthMode>
+								<FormControlExtension
+									i:nil="true" />
+							</AxFormControl>
+						</Controls>
+						<ArrangeMethod>HorizontalLeft</ArrangeMethod>
+						<Caption>More pictures</Caption>
 					</AxFormControl>
 					<AxFormControl xmlns=""
 						i:type="AxFormTabPageControl">
