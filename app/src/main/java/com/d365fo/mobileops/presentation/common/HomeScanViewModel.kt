@@ -33,6 +33,7 @@ import javax.inject.Inject
 class HomeScanViewModel @Inject constructor(
     private val router: ScanRouter,
     private val bridge: HidScannerBridge,
+    private val scanFeedback: com.d365fo.mobileops.presentation.common.scan.ScanFeedback,
 ) : ViewModel() {
 
     /** Where to go; [forward] is the scan to hand the new screen once it listens. */
@@ -56,6 +57,9 @@ class HomeScanViewModel @Inject constructor(
         handle = null
     }
 
+    /** A scan for a module this worker doesn't have. */
+    fun notAvailableSound() = scanFeedback.error()
+
     fun clearBand() {
         _band.value = null
     }
@@ -69,7 +73,7 @@ class HomeScanViewModel @Inject constructor(
                 TransferDirection.SHIP -> Open(Routes.TRANSFER_SHIP, WarehouseWorkflow.TRANSFER_SHIP, raw)
                 TransferDirection.RECEIVE -> Open(Routes.TRANSFER_RECEIVE, WarehouseWorkflow.TRANSFER_RECEIVE, raw)
                 // Not on this device, so whether it ships or receives here isn't known.
-                null -> null.also { _band.value = BandState(BandKind.Bad, "Transfer not on this device", "${route.transferId} · nothing opened") }
+                null -> null.also { scanFeedback.error(); _band.value = BandState(BandKind.Bad, "Transfer not on this device", "${route.transferId} · nothing opened") }
             }
             is ScanRoute.OpenCountJournal -> Open(
                 Routes.COUNTING_CAPTURE.replace("{journalId}", android.net.Uri.encode(route.journalId)),
@@ -78,7 +82,7 @@ class HomeScanViewModel @Inject constructor(
             )
             is ScanRoute.StartStoreCount, is ScanRoute.OpenLocation ->
                 Open(Routes.INQUIRY_LOCATION, WarehouseWorkflow.LOCATION_INQUIRY, raw)
-            is ScanRoute.Reject -> null.also { _band.value = BandState(BandKind.Bad, route.title, route.line) }
+            is ScanRoute.Reject -> null.also { scanFeedback.error(); _band.value = BandState(BandKind.Bad, route.title, route.line) }
             // Home is never a flow - these don't come from ScanContext.Home.
             is ScanRoute.Accept, is ScanRoute.SwitchDocument, is ScanRoute.Leave -> null
         }

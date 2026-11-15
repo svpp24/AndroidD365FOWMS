@@ -226,6 +226,7 @@ class StoreCountViewModel @Inject constructor(
     private val secureStore: SecureStore,
     private val workerSession: WorkerSessionRepository,
     private val scannerBridge: HidScannerBridge,
+    private val scanFeedback: com.d365fo.mobileops.presentation.common.scan.ScanFeedback,
     private val syncStatus: SyncStatusProvider,
     private val locationDao: com.d365fo.mobileops.data.local.dao.LocationDao,
     private val binRepository: com.d365fo.mobileops.data.counting.CountBinRepository,
@@ -393,7 +394,29 @@ class StoreCountViewModel @Inject constructor(
     }
 
     /** A scan: a location first (and whenever none is set), then items at it. */
+    /** What the last scan did, as a sound and a buzz (user, 16 Nov 2026) - see [ScanFeedback]. */
+    private fun soundFor(before: StoreCountState) {
+        val after = _state.value
+        when {
+            after.error != null && after.error != before.error ->
+                if (after.error.startsWith("Offline")) scanFeedback.warning() else scanFeedback.error()
+            after.message != null && after.message != before.message ->
+                if (after.message.startsWith("Offline")) scanFeedback.warning() else scanFeedback.success()
+            after.binId != before.binId || after.locationId != before.locationId || after.pending != before.pending -> scanFeedback.success()
+        }
+    }
+
     fun onScan(raw: String) {
+        val before = _state.value
+        viewModelScope.launch {
+            // Let the scan's own work settle, then say how it went.
+            kotlinx.coroutines.delay(SOUND_SETTLE_MS)
+            soundFor(before)
+        }
+        onScanInner(raw)
+    }
+
+    private fun onScanInner(raw: String) {
         val value = raw.trim()
         if (value.isBlank() || _state.value.draft?.counting != true) return
         val s = _state.value
@@ -1180,3 +1203,6 @@ private fun RequestedItemsList(state: StoreCountState, onClose: () -> Unit) {
         }
     }
 }
+
+/** How long a store-count scan gets to land before its sound plays. */
+private const val SOUND_SETTLE_MS = 350L

@@ -68,6 +68,7 @@ class ToCreateViewModel @Inject constructor(
     private val repository: OrderCreationRepository,
     private val sessions: WorkerSessionRepository,
     private val scannerBridge: HidScannerBridge,
+    private val scanFeedback: com.d365fo.mobileops.presentation.common.scan.ScanFeedback,
     private val pendingFlowResume: com.d365fo.mobileops.data.repository.PendingFlowResume,
     private val transferList: com.d365fo.mobileops.data.repository.TransferListRepository,
     syncStatusProvider: SyncStatusProvider,
@@ -162,6 +163,8 @@ class ToCreateViewModel @Inject constructor(
                 }
                 NetworkResult.Loading -> Unit
             }
+            // Heard as well as seen (user, 16 Nov 2026), like receiving and counting.
+            if (_state.value.error != null) scanFeedback.error() else scanFeedback.success()
         }
     }
 

@@ -113,6 +113,7 @@ internal fun FocusHome(
             // Modules switched off for this worker stay shut, from a scan too.
             if (open.workflow != null && latestModules.none { it.workflow == open.workflow }) {
                 notAvailable = BandState(BandKind.Bad, "Not available to you", open.workflow.label + " · nothing opened")
+                scanViewModel.notAvailableSound()
                 return@collect
             }
             notAvailable = null
