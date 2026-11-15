@@ -452,7 +452,9 @@ class SkuSyncRepository @Inject constructor(
     /** Set by [fetchManifest] when the answer was for other items than this cycle's. */
     private var manifestScopeChanged = false
 
-    private val snapshotDir: java.io.File get() = java.io.File(context.cacheDir, "sku_snapshot")
+    // The app's own storage, not cacheDir: Android empties cacheDir when storage runs low, and
+    // did so part way through a 1M-item load on 15 Nov 2026 (a file gone before it was loaded).
+    private val snapshotDir: java.io.File get() = java.io.File(context.filesDir, "sku_snapshot")
 
     /**
      * The snapshot part of a full sync, resumable: manifest, then every file downloaded and
@@ -464,6 +466,7 @@ class SkuSyncRepository @Inject constructor(
         if (state.isEmpty()) {
             val manifest = fetchManifest() ?: return if (manifestScopeChanged) SnapshotResult.ScopeChanged else SnapshotResult.Skipped
             snapshotDir.deleteRecursively()
+            java.io.File(context.cacheDir, "sku_snapshot").deleteRecursively()
             snapshotDir.mkdirs()
             prefs.edit().putString(KEY_SNAP_MANIFEST, Json.encodeToString(com.d365fo.mobileops.data.remote.dto.SkuSnapshotManifest.serializer(), manifest))
                 .putString(KEY_SNAP_BUILT, manifest.builtAtUtc)
@@ -515,6 +518,12 @@ class SkuSyncRepository @Inject constructor(
             progress("Loading ${areaName(feed)}", prefs.getInt(countKey(feed), 0).toLong(), areaRows)
             var line = 0
             val started = System.currentTimeMillis()
+            if (!fileFor(index).exists()) {
+                // Removed under us (storage cleaned, app data cleared): page the rest instead.
+                Timber.w("SKU snapshot: %s part %d is gone before it was loaded - paging instead", file.area, file.part)
+                snapshotDir.deleteRecursively()
+                return SnapshotResult.Skipped
+            }
             // A ZIP with one .jsonl entry (D365FO attaches only its listed file types).
             java.util.zip.ZipInputStream(java.io.BufferedInputStream(java.io.FileInputStream(fileFor(index)), 64 * 1024)).also { it.nextEntry }
                 .bufferedReader(Charsets.UTF_8).use { reader ->
