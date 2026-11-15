@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsDeviceSetupCodeShowQr</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Show QR code (Device setup codes): only the hash of a code is kept, so its QR code can't be
+/// shown again as it was. This gives the selected code a new random value and shows that QR code;
+/// the one shown before stops working. Label, company, devices left and expiry stay the same, and
+/// devices already set up keep working.
+/// </summary>
+class HSMobileOpsDeviceSetupCodeShowQr
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>main</Name>
+				<Source><![CDATA[
+    public static void main(Args _args)
+    {
+        HSMobileOpsDeviceSetupCode setupCode;
+        str code;
+
+        if (!_args || !_args.record() || _args.record().TableId != tableNum(HSMobileOpsDeviceSetupCode))
+        {
+            throw error('Select a setup code.');
+        }
+        select firstonly setupCode where setupCode.RecId == _args.record().RecId;
+        if (!setupCode.isOpen())
+        {
+            throw error(strFmt('Setup code %1 has expired, been revoked or set up all its devices. Make a new device setup code.', setupCode.Label));
+        }
+        if (Box::yesNo(strFmt('Show a new QR code for %1? The QR code shown before stops working.', setupCode.Label), DialogButton::No) != DialogButton::Yes)
+        {
+            return;
+        }
+
+        code = HSMobileOpsDeviceSetupCodeNew::newCode();
+        ttsbegin;
+        select forUpdate setupCode where setupCode.RecId == _args.record().RecId;
+        setupCode.CodeHash = HSMobileOpsDeviceSetupCode::hashOf(code);
+        setupCode.update();
+        ttscommit;
+
+        HSMobileOpsDeviceSetupCodeNew::showQr(HSMobileOpsDeviceSetupCodeNew::qrText(setupCode, code), _args);
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

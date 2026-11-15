@@ -44,6 +44,15 @@
 			<ObjectType>MenuItemAction</ObjectType>
 			<Forms />
 		</AxSecurityEntryPointReference>
+		<AxSecurityEntryPointReference>
+			<Name>HSMobileOpsDeviceSetupCodeShowQr</Name>
+			<Grant>
+				<Read>Allow</Read>
+			</Grant>
+			<ObjectName>HSMobileOpsDeviceSetupCodeShowQr</ObjectName>
+			<ObjectType>MenuItemAction</ObjectType>
+			<Forms />
+		</AxSecurityEntryPointReference>
 	</EntryPoints>
 	<FormControlOverrides />
 </AxSecurityPrivilege>

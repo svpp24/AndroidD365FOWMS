@@ -6,7 +6,8 @@
 /// <summary>
 /// New device setup code (Mobile devices, Device setup codes): asks what the code is for, its
 /// company, how many devices and for how many days, and the token service address; makes a
-/// random code, keeps only its hash, and shows the QR code once (HSMobileOpsDeviceSetupQr).
+/// random code, keeps only its hash, and shows its QR code (HSMobileOpsDeviceSetupQr). Show QR code
+/// (HSMobileOpsDeviceSetupCodeShowQr) shows it again by giving the code a new random value.
 /// The QR text is HSMODEV1: + base64url of
 /// {"v":1,"label","url","company","token","code"} - url is this D365FO, token the token service.
 /// </summary>
@@ -26,7 +27,6 @@ class HSMobileOpsDeviceSetupCodeNew
         DialogField     usesField;
         DialogField     daysField;
         DialogField     tokenField;
-        Args            qrArgs;
         str             qrText;
 
         dialog.addText('Devices scan the QR code to join. Only someone who has the code can set up a device with it.');
@@ -56,18 +56,7 @@ class HSMobileOpsDeviceSetupCodeNew
         qrText = HSMobileOpsDeviceSetupCodeNew::create(labelField.value(), companyField.value(),
             usesField.value(), daysField.value(), tokenField.value());
 
-        qrArgs = new Args(formStr(HSMobileOpsDeviceSetupQr));
-        qrArgs.parm(qrText);
-        new MenuFunction(menuItemDisplayStr(HSMobileOpsDeviceSetupQr), MenuItemType::Display).run(qrArgs);
-        // The list behind shows the new code - also when it was empty (no record to refresh from).
-        if (_args && _args.caller() is FormRun)
-        {
-            FormRun caller = _args.caller();
-            if (caller.dataSource(1))
-            {
-                caller.dataSource(1).research(true);
-            }
-        }
+        HSMobileOpsDeviceSetupCodeNew::showQr(qrText, _args);
     }
 ]]></Source>
 			</Method>
@@ -79,15 +68,8 @@ class HSMobileOpsDeviceSetupCodeNew
     /// </summary>
     internal static str create(str _label, DataAreaId _company, int _uses, int _days, str _tokenUrl)
     {
-        System.Security.Cryptography.RandomNumberGenerator random = System.Security.Cryptography.RandomNumberGenerator::Create();
-        System.Byte[]               bytes = new System.Byte[16]();
         HSMobileOpsDeviceSetupCode  setupCode;
-        System.Text.StringBuilder   json = new System.Text.StringBuilder();
-        str                         code;
-        str                         url = Microsoft.Dynamics.ApplicationPlatform.Environment.EnvironmentFactory::GetApplicationEnvironment().get_Infrastructure().get_HostUrl();
-
-        random.GetBytes(bytes);
-        code = strReplace(System.BitConverter::ToString(bytes), '-', '');
+        str                         code = HSMobileOpsDeviceSetupCodeNew::newCode();
 
         ttsbegin;
         setupCode.CodeHash        = HSMobileOpsDeviceSetupCode::hashOf(code);
@@ -99,13 +81,67 @@ class HSMobileOpsDeviceSetupCodeNew
         setupCode.insert();
         ttscommit;
 
-        json.Append('{"v":1,"label":');  json.Append(HSMobileOpsSkuPageService::jsonStr(_label));
+        return HSMobileOpsDeviceSetupCodeNew::qrText(setupCode, code);
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>newCode</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// 128 random bits as 32 hex characters. Only its hash is kept.
+    /// </summary>
+    internal static str newCode()
+    {
+        System.Security.Cryptography.RandomNumberGenerator random = System.Security.Cryptography.RandomNumberGenerator::Create();
+        System.Byte[] bytes = new System.Byte[16]();
+
+        random.GetBytes(bytes);
+        return strReplace(System.BitConverter::ToString(bytes), '-', '');
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>qrText</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// The text the handheld scans: HSMODEV1: + base64url of the JSON in the class summary.
+    /// </summary>
+    internal static str qrText(HSMobileOpsDeviceSetupCode _setupCode, str _code)
+    {
+        System.Text.StringBuilder json = new System.Text.StringBuilder();
+        str url = Microsoft.Dynamics.ApplicationPlatform.Environment.EnvironmentFactory::GetApplicationEnvironment().get_Infrastructure().get_HostUrl();
+
+        json.Append('{"v":1,"label":');  json.Append(HSMobileOpsSkuPageService::jsonStr(_setupCode.Label));
         json.Append(',"url":');          json.Append(HSMobileOpsSkuPageService::jsonStr(strLRTrim(url)));
-        json.Append(',"company":');      json.Append(HSMobileOpsSkuPageService::jsonStr(strUpr(_company)));
-        json.Append(',"token":');        json.Append(HSMobileOpsSkuPageService::jsonStr(strLRTrim(_tokenUrl)));
-        json.Append(',"code":');         json.Append(HSMobileOpsSkuPageService::jsonStr(code));
+        json.Append(',"company":');      json.Append(HSMobileOpsSkuPageService::jsonStr(_setupCode.Company));
+        json.Append(',"token":');        json.Append(HSMobileOpsSkuPageService::jsonStr(_setupCode.TokenServiceUrl));
+        json.Append(',"code":');         json.Append(HSMobileOpsSkuPageService::jsonStr(_code));
         json.Append('}');
         return 'HSMODEV1:' + HSMobileOpsDeviceSetupCodeNew::base64Url(json.ToString());
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>showQr</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Opens the QR code and refreshes the list behind (also when it was empty - no record to refresh from).
+    /// </summary>
+    internal static void showQr(str _qrText, Args _args)
+    {
+        Args qrArgs = new Args(formStr(HSMobileOpsDeviceSetupQr));
+
+        qrArgs.parm(_qrText);
+        new MenuFunction(menuItemDisplayStr(HSMobileOpsDeviceSetupQr), MenuItemType::Display).run(qrArgs);
+        if (_args && _args.caller() is FormRun)
+        {
+            FormRun caller = _args.caller();
+            if (caller.dataSource(1))
+            {
+                caller.dataSource(1).research(true);
+            }
+        }
     }
 ]]></Source>
 			</Method>
@@ -120,8 +156,13 @@ class HSMobileOpsDeviceSetupCodeNew
         Microsoft.Dynamics.ApplicationSuite.QRCode.Encoder encoder = new Microsoft.Dynamics.ApplicationSuite.QRCode.Encoder();
         System.Drawing.Bitmap                              bitmap;
         System.IO.MemoryStream                             memory = new System.IO.MemoryStream();
+        int                                                cellSize;
 
-        encoder.set_CellSize(4);
+        // About 300 px whatever the text's length, so it fits the dialog and still scans.
+        encoder.set_CellSize(1);
+        bitmap = encoder.Encode(_text);
+        cellSize = max(2, min(8, 300 div max(1, bitmap.get_Width())));
+        encoder.set_CellSize(cellSize);
         bitmap = encoder.Encode(_text);
         bitmap.Save(memory, System.Drawing.Imaging.ImageFormat::get_Png());
         return Binary::constructFromMemoryStream(memory).getContainer();

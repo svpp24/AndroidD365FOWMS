@@ -70,6 +70,20 @@ public class HSMobileOpsDeviceSetupCode extends FormRun
 							</AxFormControl>
 							<AxFormControl xmlns=""
 								i:type="AxFormMenuFunctionButtonControl">
+								<Name>ShowQrButton</Name>
+								<HelpText>Shows the selected code's QR code again. It makes a new QR code: the one shown before stops working. Devices already set up keep working.</HelpText>
+								<Type>MenuFunctionButton</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<ButtonDisplay>TextOnly</ButtonDisplay>
+								<DataSource>HSMobileOpsDeviceSetupCode</DataSource>
+								<MenuItemName>HSMobileOpsDeviceSetupCodeShowQr</MenuItemName>
+								<MenuItemType>Action</MenuItemType>
+								<NeedsRecord>Yes</NeedsRecord>
+								<Text>Show QR code</Text>
+							</AxFormControl>
+							<AxFormControl xmlns=""
+								i:type="AxFormMenuFunctionButtonControl">
 								<Name>RevokeButton</Name>
 								<HelpText>The selected code expires now. Devices already set up with it keep working.</HelpText>
 								<Type>MenuFunctionButton</Type>
