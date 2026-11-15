@@ -53,6 +53,7 @@ class SessionViewModel @Inject constructor(
     private val connectionSettings: ConnectionSettings,
     private val workerContextRepository: WorkerContextRepositoryImpl,
     private val ioDispatcher: CoroutineDispatcher,
+    private val deactivation: com.d365fo.mobileops.data.security.DeviceDeactivation,
 ) : ViewModel() {
 
     private val handler = CoroutineExceptionHandler { _, t ->
@@ -68,6 +69,13 @@ class SessionViewModel @Inject constructor(
         // A connection saved on an unconfigured device moves it on at once, as reopening the
         // app did (30 Oct: first install sat on "Setting up…" with the connection already in
         // use). Only from NotConfigured - there is no live data or signed-in worker to disturb.
+        // Deactivated in D365FO and wiped (DeviceDeactivation): straight to the start screen,
+        // saying so - from any screen, mid-shift too.
+        viewModelScope.launch {
+            deactivation.deactivated.drop(1).collect { gone ->
+                if (gone) _state.value = SessionState.SignedOut(com.d365fo.mobileops.data.security.DeviceDeactivation.MESSAGE)
+            }
+        }
         viewModelScope.launch {
             connectionSettings.tenant.drop(1).collect {
                 if (_state.value is SessionState.NotConfigured) refresh()
@@ -122,7 +130,11 @@ class SessionViewModel @Inject constructor(
                 workerContextRepository.current()
             }
 
-            _state.value = if (ready == null) {
+            _state.value = if (ready == null && deactivation.wasDeactivated()) {
+                // Not "not configured yet": say why, and what to ask for.
+                Timber.i("device session: deactivated in D365FO")
+                SessionState.SignedOut(com.d365fo.mobileops.data.security.DeviceDeactivation.MESSAGE)
+            } else if (ready == null) {
                 Timber.i("device session: not configured")
                 SessionState.NotConfigured
             } else {

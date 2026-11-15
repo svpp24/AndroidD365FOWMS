@@ -20,7 +20,20 @@ class DeviceDeactivation @Inject constructor(
     private val connectionSettings: ConnectionSettings,
     private val secureStore: SecureStore,
     private val workBackup: dagger.Lazy<com.d365fo.mobileops.data.sync.WorkBackup>,
+    private val workerSessions: dagger.Lazy<com.d365fo.mobileops.data.repository.WorkerSessionRepository>,
 ) {
+    private val _deactivated = kotlinx.coroutines.flow.MutableStateFlow(false)
+
+    /**
+     * True once this device has been wiped for deactivation (also after a restart, until a new
+     * setup code is accepted). The device gate watches it: the open app leaves for the start
+     * screen with [MESSAGE] at once - not "D365FO can't be reached, keep working" over a device
+     * that can no longer send anything (15 Nov 2026).
+     */
+    val deactivated: kotlinx.coroutines.flow.StateFlow<Boolean> get() = _deactivated.also {
+        if (!it.value && wasDeactivated()) it.value = true
+    }
+
     suspend fun wipe() = withContext(Dispatchers.IO) {
         Timber.w("device deactivated in D365FO: removing local data")
         // The device's data goes; its D365FO copy stays for a supervisor (WorkBackup.keepBeforeWipe).
@@ -29,12 +42,17 @@ class DeviceDeactivation @Inject constructor(
         deviceKey.delete()
         connectionSettings.clearAllCredentials()
         secureStore.putBoolean(KEY_DEACTIVATED, true)
+        runCatching { workerSessions.get().signOut(reason = "Device deactivated") }
+        _deactivated.value = true
     }
 
     fun wasDeactivated(): Boolean = secureStore.getBoolean(KEY_DEACTIVATED)
 
     /** A new setup code was scanned and accepted. */
-    fun clear() = secureStore.remove(KEY_DEACTIVATED)
+    fun clear() {
+        secureStore.remove(KEY_DEACTIVATED)
+        _deactivated.value = false
+    }
 
     companion object {
         const val MESSAGE = "This device has been deactivated in D365FO. Its local data was removed. " +
