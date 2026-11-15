@@ -3,6 +3,9 @@ package com.d365fo.mobileops.presentation.common
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.layout.wrapContentHeight
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -184,15 +187,18 @@ internal fun FocusHomeLayout(
             .fillMaxSize()
             .background(FocusColors.page),
     ) {
-        // Header: who and where, online, the hamburger.
+        // Header: who and where, online and the hamburger on one line (user, 15 Nov 2026).
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
                 .fillMaxWidth()
-                .heightIn(min = FocusDimens.topBar)
+                .heightIn(min = FocusDimens.topBar - 8.dp)
                 .padding(start = FocusDimens.side, end = 8.dp),
         ) {
-            Column(
+            Text(
+                header,
+                style = FocusType.topBarTitle,
+                color = FocusColors.ink,
                 modifier = Modifier
                     .weight(1f)
                     .tourTarget("warehouse")
@@ -203,21 +209,10 @@ internal fun FocusHomeLayout(
                             Modifier
                         },
                     )
-                    .heightIn(min = if (onChangeWarehouse != null) 56.dp else 0.dp)
-                    .padding(vertical = 8.dp),
-                verticalArrangement = Arrangement.Center,
-            ) {
-                Text(
-                    header,
-                    style = FocusType.topBarTitle,
-                    color = FocusColors.ink,
-                    modifier = Modifier.semantics { heading() },
-                )
-                // Wraps, never cut off (house rule): store names can be long.
-                subheader?.let {
-                    Text(it, style = FocusType.rowDetail, color = FocusColors.muted)
-                }
-            }
+                    .heightIn(min = if (onChangeWarehouse != null) 48.dp else 0.dp)
+                    .wrapContentHeight(Alignment.CenterVertically)
+                    .semantics { heading() },
+            )
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -239,6 +234,29 @@ internal fun FocusHomeLayout(
             }
             Box(Modifier.tourTarget("signout")) {
                 HamburgerButton(open = menuOpen, onClick = { menuOpen = !menuOpen })
+            }
+        }
+        // The warehouse's name: one line in a thin info-blue banner, scrolling when it is longer
+        // than the line (user, 15 Nov 2026). basicMarquee stays still when it fits, and the
+        // system's "remove animations" setting stops it.
+        subheader?.let { name ->
+            Box(
+                contentAlignment = Alignment.CenterStart,
+                modifier = Modifier
+                    .padding(start = FocusDimens.side, end = FocusDimens.side, bottom = 8.dp)
+                    .fillMaxWidth()
+                    .heightIn(min = 22.dp)
+                    .clip(androidx.compose.foundation.shape.RoundedCornerShape(6.dp))
+                    .background(FocusColors.infoBg)
+                    .padding(horizontal = 8.dp),
+            ) {
+                Text(
+                    name,
+                    style = FocusType.rowDetail.copy(fontSize = 12.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold),
+                    color = FocusColors.infoText,
+                    maxLines = 1,
+                    modifier = Modifier.basicMarquee(iterations = Int.MAX_VALUE, initialDelayMillis = 1_200, spacing = androidx.compose.foundation.MarqueeSpacing(32.dp)),
+                )
             }
         }
         FocusMenu(

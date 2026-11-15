@@ -6,7 +6,11 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -50,7 +54,11 @@ object FocusDimens {
 }
 
 /** What a [ResultBand] says: kind (colour and icon), a title and an optional detail line. */
-data class BandState(val kind: BandKind, val title: String, val detail: String? = null)
+/**
+ * [autoHideMs]: the band shows a thin line that drains, then fades away after that long - for a
+ * "saved" message the worker doesn't need to keep reading (user, 15 Nov 2026). Null keeps it.
+ */
+data class BandState(val kind: BandKind, val title: String, val detail: String? = null, val autoHideMs: Long? = null)
 
 /** The four band kinds. Each is an icon plus words - never colour alone. */
 enum class BandKind { Ok, Bad, Warn, Info }
@@ -70,27 +78,63 @@ private fun BandKind.look() = when (this) {
  * the next scan replaces it. Announced to TalkBack when it changes.
  */
 @Composable
-fun ResultBand(state: BandState, modifier: Modifier = Modifier) {
+fun ResultBand(state: BandState, modifier: Modifier = Modifier, remaining: (() -> Float)? = null) {
     val look = state.kind.look()
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    Box(
         modifier = modifier
             .padding(horizontal = FocusDimens.side)
             .fillMaxWidth()
-            .heightIn(min = 56.dp)
             .clip(FocusShapes.band)
-            .background(look.bg)
-            .semantics { liveRegion = LiveRegionMode.Polite }
-            .padding(horizontal = 16.dp, vertical = 8.dp),
+            .background(look.bg),
     ) {
-        Icon(look.icon, contentDescription = look.label, tint = look.iconTint, modifier = Modifier.size(28.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(state.title, style = FocusType.bandTitle, color = look.text)
-            state.detail?.takeIf { it.isNotBlank() }?.let {
-                Text(it, style = FocusType.bandDetail, color = look.text)
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 56.dp)
+                .semantics { liveRegion = LiveRegionMode.Polite }
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+        ) {
+            Icon(look.icon, contentDescription = look.label, tint = look.iconTint, modifier = Modifier.size(28.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(state.title, style = FocusType.bandTitle, color = look.text)
+                state.detail?.takeIf { it.isNotBlank() }?.let {
+                    Text(it, style = FocusType.bandDetail, color = look.text)
+                }
             }
         }
+        // The time left before the band goes ([BandState.autoHideMs]).
+        remaining?.let { left ->
+            Box(
+                Modifier
+                    .align(Alignment.BottomStart)
+                    .fillMaxWidth(left().coerceIn(0f, 1f))
+                    .height(3.dp)
+                    .background(look.iconTint),
+            )
+        }
+    }
+}
+
+/**
+ * [ResultBand] for a [BandState] with [BandState.autoHideMs]: the line drains, then the band fades
+ * and folds away. A new state (another save) starts it again.
+ */
+@Composable
+fun TimedResultBand(state: BandState, modifier: Modifier = Modifier) {
+    val ms = state.autoHideMs ?: 0L
+    var visible by androidx.compose.runtime.remember(state) { androidx.compose.runtime.mutableStateOf(true) }
+    val left = androidx.compose.runtime.remember(state) { androidx.compose.animation.core.Animatable(1f) }
+    androidx.compose.runtime.LaunchedEffect(state) {
+        left.animateTo(0f, androidx.compose.animation.core.tween(ms.toInt(), easing = androidx.compose.animation.core.LinearEasing))
+        visible = false
+    }
+    androidx.compose.animation.AnimatedVisibility(
+        visible = visible,
+        exit = androidx.compose.animation.fadeOut() + androidx.compose.animation.shrinkVertically(),
+    ) {
+        ResultBand(state, modifier = modifier, remaining = { left.value })
     }
 }
 

@@ -71,6 +71,7 @@ fun ToCreateScreen(onBack: () -> Unit, onShip: () -> Unit, viewModel: ToCreateVi
             footer = orderSize(draft.lines),
             onLine = { viewModel.editLine(it) },
             onClose = { showLines = false },
+            onRemove = { viewModel.removeLine(it) },
         )
         return
     }
@@ -83,7 +84,7 @@ fun ToCreateScreen(onBack: () -> Unit, onShip: () -> Unit, viewModel: ToCreateVi
             title = "Create transfer",
             onBack = onBack,
             band = state.error?.let { bandOf(BandKind.Bad, it) }
-                ?: submitted?.let { BandState(BandKind.Ok, "Transfer saved", it.documentNumber ?: it.title) }
+                ?: submitted?.let { BandState(BandKind.Ok, "Transfer saved", it.documentNumber ?: it.title, autoHideMs = SAVED_BAND_MS) }
                 ?: BandState(BandKind.Warn, "You need two warehouses", "ask a supervisor").takeIf { tooFew },
             actions = when {
                 submitted != null -> { {
@@ -111,9 +112,6 @@ fun ToCreateScreen(onBack: () -> Unit, onShip: () -> Unit, viewModel: ToCreateVi
         ) {
             BusyLine(state.busy)
             LazyColumn(modifier = Modifier.weight(1f).fillMaxWidth()) {
-                if (submitted != null) {
-                    item(key = "submitted") { CreatedOrderCard(submitted) }
-                }
                 if (!tooFew) {
                     // Dropdowns, not a chip per warehouse: a worker assigned many warehouses got
                     // two walls of chips before the first item (feedback, 10 Oct).
@@ -145,7 +143,11 @@ fun ToCreateScreen(onBack: () -> Unit, onShip: () -> Unit, viewModel: ToCreateVi
                         }
                     }
                 }
-                if (orders.isNotEmpty() && submitted == null) {
+                if (submitted != null) {
+                    // Under its caption, as on the route step (user, 15 Nov).
+                    item(key = "orders-caption") { ListCaption("Your transfers", "Newest") }
+                    item(key = "submitted") { CreatedOrderCard(submitted) }
+                } else if (orders.isNotEmpty()) {
                     item(key = "orders-caption") { ListCaption("Your transfers", "Newest") }
                     items(orders.take(3), key = { it.id }) { order ->
                         val shippable = state.shippableIds?.let { ids -> order.documentNumber?.uppercase() in ids } ?: true
@@ -168,9 +170,10 @@ fun ToCreateScreen(onBack: () -> Unit, onShip: () -> Unit, viewModel: ToCreateVi
         counter = draft.lines.size.takeIf { it > 0 }?.let { linesText(it) },
         band = state.error?.let { bandOf(BandKind.Bad, it) }
             ?: lastAdded?.let { BandState(BandKind.Ok, "Added", "${it.itemId} · ${com.d365fo.mobileops.domain.order.qtyText(it.qty)} ${it.unitId}".trim()) }
-            ?: BandState(BandKind.Info, "New transfer · $route", "Ship date ${draft.shipDate}"),
+            ?: BandState(BandKind.Info, "New transfer · $route", "Ship date ${draft.shipDate}" + if (draft.lines.isEmpty()) " · no lines yet" else ""),
         remaining = orderSize(draft.lines),
-        scanPill = { ScanPillField(enabled = !state.busy) },
+        // Says what to do first while the transfer is empty (user, 15 Nov); same look as always.
+        scanPill = { ScanPillField(label = if (draft.lines.isEmpty()) "Scan an item" else "Scan or type", enabled = !state.busy) },
         topBarTrailing = {
             OrderToolsMenu(
                 listOfNotNull(

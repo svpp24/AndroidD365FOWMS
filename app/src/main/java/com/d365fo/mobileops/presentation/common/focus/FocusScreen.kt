@@ -72,7 +72,10 @@ fun FocusScreen(
         ) {
             FlowTopBar(title = title, onBack = onBack, counter = counter, trailing = topBarTrailing)
             progress?.let { ProgressLine(it) }
-            band?.let { ResultBand(it, modifier = Modifier.padding(top = 16.dp)) }
+            band?.let {
+                if (it.autoHideMs != null) TimedResultBand(it, modifier = Modifier.padding(top = 16.dp))
+                else ResultBand(it, modifier = Modifier.padding(top = 16.dp))
+            }
             Column(
                 modifier = Modifier
                     .weight(1f)

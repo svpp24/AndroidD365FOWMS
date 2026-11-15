@@ -87,6 +87,7 @@ fun PoCreateScreen(
             footer = total ?: "Priced by D365FO",
             onLine = { viewModel.editLine(it) },
             onClose = { showLines = false },
+            onRemove = { viewModel.removeLine(it) },
         )
         return
     }
@@ -98,7 +99,7 @@ fun PoCreateScreen(
             title = "Create PO",
             onBack = onBack,
             band = state.error?.let { bandOf(BandKind.Bad, it) }
-                ?: submitted?.let { BandState(BandKind.Ok, "Order saved", it.documentNumber ?: it.title) },
+                ?: submitted?.let { BandState(BandKind.Ok, "Order saved", it.documentNumber ?: it.title, autoHideMs = SAVED_BAND_MS) },
             actions = if (submitted == null) null else { {
                 FocusButton("Start another order", onClick = viewModel::dismissResult, modifier = Modifier.weight(1f))
             } },
@@ -114,6 +115,8 @@ fun PoCreateScreen(
                     )
                 }
                 if (submitted != null) {
+                    // Under its caption, like the orders below (user, 15 Nov).
+                    item(key = "orders-caption") { ListCaption("Your orders", "Newest") }
                     item(key = "submitted") {
                         CreatedOrderCard(submitted, actionLabel = confirmLabel(submitted), onAction = { submitted.documentNumber?.let(onConfirm) })
                     }

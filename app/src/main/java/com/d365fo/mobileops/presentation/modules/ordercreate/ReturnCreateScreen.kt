@@ -79,6 +79,7 @@ fun ReturnCreateScreen(onBack: () -> Unit, viewModel: ReturnCreateViewModel = hi
             footer = orderSize(draft.lines),
             onLine = { viewModel.editLine(it) },
             onClose = { showLines = false },
+            onRemove = { viewModel.removeLine(it) },
         )
         return
     }
@@ -90,7 +91,7 @@ fun ReturnCreateScreen(onBack: () -> Unit, viewModel: ReturnCreateViewModel = hi
             title = "Return to vendor",
             onBack = onBack,
             band = state.error?.let { bandOf(BandKind.Bad, it) }
-                ?: submitted?.let { BandState(BandKind.Ok, "Return saved", it.documentNumber ?: it.title) }
+                ?: submitted?.let { BandState(BandKind.Ok, "Return saved", it.documentNumber ?: it.title, autoHideMs = SAVED_BAND_MS) }
                 ?: BandState(BandKind.Info, "New return", "From ${draft.warehouseId}".takeIf { draft.warehouseId.isNotBlank() }),
             scanPill = { ScanPillField(enabled = !state.busy) },
             actions = if (submitted == null) null else { {
@@ -107,6 +108,8 @@ fun ReturnCreateScreen(onBack: () -> Unit, viewModel: ReturnCreateViewModel = hi
                     )
                 }
                 if (submitted != null) {
+                    // Under its caption, like the returns below (user, 15 Nov).
+                    item(key = "orders-caption") { ListCaption("Your returns", "Newest") }
                     item(key = "submitted") { CreatedOrderCard(submitted) }
                 } else if (orders.isNotEmpty() && state.vendorQuery.isBlank()) {
                     item(key = "orders-caption") { ListCaption("Your returns", "Newest") }

@@ -182,6 +182,8 @@ fun FocusListRow(
     titleIsCode: Boolean = false,
     chevron: Boolean = false,
     onClick: (() -> Unit)? = null,
+    /** After the count - e.g. a line's remove button. */
+    trailing: (@Composable () -> Unit)? = null,
 ) {
     val (shownIcon, tint) = when (state) {
         RowState.Done -> (icon ?: Icons.Filled.CheckCircle) to FocusColors.okIcon
@@ -217,6 +219,7 @@ fun FocusListRow(
             if (chevron) {
                 Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = FocusColors.iconMuted, modifier = Modifier.size(22.dp))
             }
+            trailing?.invoke()
         }
         HorizontalDivider(color = FocusColors.divider)
     }

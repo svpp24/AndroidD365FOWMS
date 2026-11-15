@@ -13,6 +13,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -65,7 +66,7 @@ import com.d365fo.mobileops.util.Formatters
  * and where it comes from underneath, the quantity on the right. [showPrice]: purchase orders.
  */
 @Composable
-fun OrderLineCard(line: DraftLine, showPrice: Boolean, currency: String, onClick: () -> Unit) {
+fun OrderLineCard(line: DraftLine, showPrice: Boolean, currency: String, onRemove: (() -> Unit)? = null, onClick: () -> Unit) {
     // Allowed for an item that may go negative - but said, not left for the reader to compare
     // two numbers (50 ordered with 3 there showed only "3 available at From").
     val over = line.available?.let { line.qty > it } == true
@@ -95,6 +96,53 @@ fun OrderLineCard(line: DraftLine, showPrice: Boolean, currency: String, onClick
         ).joinToString(" · "),
         count = "${qtyText(line.qty)} ${line.unitId}".trim(),
         onClick = onClick,
+        // The grey bin, as on Receiving and Transfer ship (user, 15 Nov).
+        trailing = onRemove?.let { remove ->
+            {
+                androidx.compose.material3.IconButton(onClick = remove) {
+                    androidx.compose.material3.Icon(androidx.compose.material.icons.Icons.Default.Delete, contentDescription = "Remove", tint = com.d365fo.mobileops.presentation.common.theme.FocusColors.iconMuted)
+                }
+            }
+        },
+    )
+}
+
+/**
+ * "Remove this line?" - the item code and quantity, then the item name; Remove (left), Keep
+ * (right), as every confirmation in the app (user, 15 Nov).
+ */
+@Composable
+fun RemoveLineDialog(line: DraftLine, onRemove: () -> Unit, onKeep: () -> Unit) {
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onKeep,
+        title = { androidx.compose.material3.Text("Remove this line?") },
+        text = {
+            androidx.compose.foundation.layout.Column {
+                androidx.compose.material3.Text(
+                    listOf(line.itemId, line.variant.label).filter { it.isNotBlank() }.joinToString(" · ") +
+                        " · ${qtyText(line.qty)} ${line.unitId}".trimEnd(),
+                )
+                line.itemName.takeIf { it.isNotBlank() && !it.equals(line.itemId, ignoreCase = true) }?.let {
+                    androidx.compose.material3.Text(it)
+                }
+            }
+        },
+        confirmButton = {
+            com.d365fo.mobileops.presentation.common.components.DialogButtonRow(
+                dismiss = {
+                    com.d365fo.mobileops.presentation.common.components.CancelOutlinedButton(
+                        onClick = onKeep,
+                        modifier = Modifier.weight(1f).heightIn(min = com.d365fo.mobileops.presentation.common.theme.WarehouseDimens.MinTouchTarget),
+                    ) { androidx.compose.material3.Text("Keep") }
+                },
+                confirm = {
+                    com.d365fo.mobileops.presentation.common.components.CancelButton(
+                        onClick = onRemove,
+                        modifier = Modifier.weight(1f).heightIn(min = com.d365fo.mobileops.presentation.common.theme.WarehouseDimens.MinTouchTarget),
+                    ) { androidx.compose.material3.Text("Remove") }
+                },
+            )
+        },
     )
 }
 

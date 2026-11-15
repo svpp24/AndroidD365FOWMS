@@ -112,16 +112,29 @@ internal fun OrderLinesScreen(
     footer: String?,
     onLine: (DraftLine) -> Unit,
     onClose: () -> Unit,
+    onRemove: ((DraftLine) -> Unit)? = null,
 ) {
     androidx.activity.compose.BackHandler(onBack = onClose)
+    var confirming by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<DraftLine?>(null) }
+    confirming?.let { line ->
+        RemoveLineDialog(line, onRemove = { confirming = null; onRemove?.invoke(line) }, onKeep = { confirming = null })
+    }
     FocusScreen(title = title, onBack = onClose, counter = lines.size.toString(), remaining = footer) {
         LazyColumn(modifier = Modifier.weight(1f).fillMaxWidth()) {
             items(lines, key = { it.id }) { line ->
-                OrderLineCard(line, showPrice = showPrice, currency = currency) { onLine(line) }
+                OrderLineCard(
+                    line,
+                    showPrice = showPrice,
+                    currency = currency,
+                    onRemove = onRemove?.let { { confirming = line } },
+                ) { onLine(line) }
             }
         }
     }
 }
+
+/** How long a "saved" band stays on the Create screens (user, 15 Nov 2026). */
+internal const val SAVED_BAND_MS = 4_000L
 
 /** An uppercase caption over a list on a start step ("YOUR ORDERS", "VENDORS"). */
 @Composable

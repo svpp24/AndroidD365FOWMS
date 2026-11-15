@@ -30,6 +30,7 @@ class SkuSyncWorker @AssistedInject constructor(
     @Assisted params: WorkerParameters,
     private val repository: SkuSyncRepository,
     private val scheduler: com.d365fo.mobileops.data.sync.SyncScheduler,
+    private val orders: com.d365fo.mobileops.data.repository.OrderCreationRepository,
 ) : CoroutineWorker(context, params) {
 
     /** Settings > Sync masters now: set on its first run only, so a continuation never restarts it. */
@@ -37,6 +38,19 @@ class SkuSyncWorker @AssistedInject constructor(
 
     /** Started from Settings: its continuations go on any connection, like it did. */
     private val manualChain = inputData.getBoolean(KEY_MANUAL_CHAIN, false)
+
+    /**
+     * Vendors come with the master sync (user, 15 Nov 2026): before, only Create PO / Return to
+     * vendor opened online fetched them, so a new or wiped device went offline with none ("No
+     * vendors yet - connect once"). At most every 6 hours; every time when asked for in Settings.
+     */
+    private suspend fun refreshVendors() {
+        when (val result = runCatching { orders.refreshVendors(force = manual != null) }.getOrNull()) {
+            is com.d365fo.mobileops.util.NetworkResult.Success -> Timber.i("vendors: %d on the device", result.data)
+            is com.d365fo.mobileops.util.NetworkResult.Error -> Timber.w("vendors not refreshed: %s", result.failure.message)
+            else -> Unit
+        }
+    }
 
     override suspend fun doWork(): Result =
         // A step, not the whole sync: an export still running in D365FO is picked up again by a
@@ -51,6 +65,7 @@ class SkuSyncWorker @AssistedInject constructor(
                         if (it.full) "full" else "delta", it.itemCount, it.barcodeCount, it.variantCount, it.seconds,
                     )
                 }
+                refreshVendors()
                 Result.success()
             }
             SkuSyncStep.Pending -> {
