@@ -414,6 +414,8 @@ class HSMobileOpsCountTaskService
     [Wrappable(false), Hookable(false)]
     public HSMobileOpsCountBinResponse submitBinCounts(HSMobileOpsCountBinLinesRequest _request)
     {
+        // The license is checked on the work itself too, not only at sign-in (HSMobileOpsLicense).
+        HSMobileOpsLicense::requireForWork();
         HSMobileOpsCountBinResponse   response = new HSMobileOpsCountBinResponse();
         HSMobileOpsCountBinLine       binLine;
         InventJournalTrans            journalTrans;
@@ -666,6 +668,8 @@ class HSMobileOpsCountTaskService
     [Wrappable(false), Hookable(false)]
     public HSMobileOpsCountDirectSubmitResponse submitCounts(HSMobileOpsCountDirectSubmitRequest _request)
     {
+        // The license is checked on the work itself too, not only at sign-in (HSMobileOpsLicense).
+        HSMobileOpsLicense::requireForWork();
         HSMobileOpsCountDirectSubmitResponse response = new HSMobileOpsCountDirectSubmitResponse();
         str                                  state;
 
@@ -804,6 +808,8 @@ class HSMobileOpsCountTaskService
     [Wrappable(false), Hookable(false)]
     public HSMobileOpsCountExceptionsResponse submitExceptions(HSMobileOpsCountExceptionsRequest _request)
     {
+        // The license is checked on the work itself too, not only at sign-in (HSMobileOpsLicense).
+        HSMobileOpsLicense::requireForWork();
         HSMobileOpsCountExceptionsResponse response = new HSMobileOpsCountExceptionsResponse();
         str                                state;
 

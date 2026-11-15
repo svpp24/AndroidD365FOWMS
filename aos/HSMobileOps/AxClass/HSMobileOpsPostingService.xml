@@ -61,6 +61,8 @@ class HSMobileOpsPostingService
     /// </summary>
     public HSMobileOpsPostResponse postProductReceipt(HSMobileOpsPostRequest _request)
     {
+        // The license is checked on the work itself too, not only at sign-in (HSMobileOpsLicense).
+        HSMobileOpsLicense::requireForWork();
         HSMobileOpsPostResponse      response = new HSMobileOpsPostResponse();
         PurchTable                   purchTable;
         DataAreaId                   company;
@@ -223,6 +225,8 @@ class HSMobileOpsPostingService
     /// </summary>
     public HSMobileOpsPostQueueResponse processPending(HSMobileOpsPostQueueRequest _request)
     {
+        // The license is checked on the work itself too, not only at sign-in (HSMobileOpsLicense).
+        HSMobileOpsLicense::requireForWork();
         HSMobileOpsPostQueueResponse response = new HSMobileOpsPostQueueResponse();
 
         if (!_request || !_request.parmDataAreaId())
@@ -1613,6 +1617,8 @@ class HSMobileOpsPostingService
     /// </summary>
     public HSMobileOpsPostResponse postTransferShipment(HSMobileOpsPostRequest _request)
     {
+        // The license is checked on the work itself too, not only at sign-in (HSMobileOpsLicense).
+        HSMobileOpsLicense::requireForWork();
         return HSMobileOpsPostingService::postTransfer(_request, true);
     }
 ]]></Source>
@@ -1629,6 +1635,8 @@ class HSMobileOpsPostingService
     /// </summary>
     public HSMobileOpsPostResponse postTransferReceipt(HSMobileOpsPostRequest _request)
     {
+        // The license is checked on the work itself too, not only at sign-in (HSMobileOpsLicense).
+        HSMobileOpsLicense::requireForWork();
         return HSMobileOpsPostingService::postTransfer(_request, false);
     }
 ]]></Source>
@@ -2091,6 +2099,8 @@ class HSMobileOpsPostingService
     /// </summary>
     public HSMobileOpsPostResponse pickTransferLine(HSMobileOpsPostRequest _request)
     {
+        // The license is checked on the work itself too, not only at sign-in (HSMobileOpsLicense).
+        HSMobileOpsLicense::requireForWork();
         HSMobileOpsPostResponse response = new HSMobileOpsPostResponse();
         InventTransferLine      transferLine;
         HSMobileOpsPostLine     postLine;

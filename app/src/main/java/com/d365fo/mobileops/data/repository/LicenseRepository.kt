@@ -50,14 +50,12 @@ sealed interface LicenseState {
  * 2. Call `HSMobileOpsLicenseSvc/getLicense`.
  * 3. Verify the returned license's signature against the CERTIFICATE's own customer public key -
  *    never anything the server merely asserts.
- * 4. Check the license's customerId/tenantId match the certificate's, and that it hasn't expired.
+ * 4. Check the license's customerId/tenantId match the certificate's, that it names this
+ *    device's Entra tenant (when set up with a tenant GUID), and that it hasn't expired.
  * 5. Check neither this device's own clock nor the server's returned clock is earlier than the
  *    last trusted time this device has ever seen - a rollback in either direction is rejected.
- * 6. Call `HSMobileOpsLicenseSvc/registerDevice` - the server-enforced device-limit gate. AOS
- *    now also runs a live revocation + [PlayIntegrityTokenProvider] attestation check behind this
- *    same call (`HSMobileOpsLicense::verifyWithAttestation`) - this repository does not need to
- *    know that happened, it just reads whatever ErrorCode/Message comes back, same as any other
- *    failure here.
+ * 6. Call `HSMobileOpsLicenseSvc/registerDevice` - the server-enforced device-limit gate, where
+ *    D365FO runs the same license checks itself (`HSMobileOpsLicense::verifyAtSignIn`).
  * 7. On full success, cache the validation for the offline grace period.
  *
  * **Only a genuine connectivity failure (steps 2 or 6 not reachable at all) falls back to the
@@ -72,6 +70,7 @@ class LicenseRepository @Inject constructor(
     private val companyProvider: CompanyProvider,
     private val secureStore: SecureStore,
     private val integrityTokenProvider: PlayIntegrityTokenProvider,
+    private val connectionSettings: com.d365fo.mobileops.data.security.ConnectionSettings,
 ) {
 
     private val _state = MutableStateFlow<LicenseState>(LicenseState.Checking)
@@ -141,7 +140,7 @@ class LicenseRepository @Inject constructor(
             // A real answer from AOS (NO_LICENSE/LICENSE_INVALID/LICENSE_EXPIRED), not a
             // transport failure - never grace-covered.
             return LicenseState.Blocked(
-                licenseResponse.message ?: "This app's license is not valid. Contact your administrator.",
+                licenseResponse.message ?: "License not valid - contact your administrator.",
             )
         }
 
@@ -155,7 +154,7 @@ class LicenseRepository @Inject constructor(
             val deviceNowMillis = System.currentTimeMillis()
             if (serverNow.toEpochMilli() < lastTrusted || deviceNowMillis < lastTrusted) {
                 return LicenseState.Blocked(
-                    "This device's clock (or the server's) appears to have moved backward. Contact your administrator.",
+                    "Clock moved backward - contact your administrator.",
                 )
             }
         }
@@ -174,6 +173,13 @@ class LicenseRepository @Inject constructor(
         // Step 4.
         if (licensePayload.customerId != certPayload.customerId || licensePayload.tenantId != certPayload.tenantId) {
             return LicenseState.Blocked("The license on file does not match this device's certificate.")
+        }
+
+        // Step 5 - the license names the customer's Entra tenant; D365FO refuses it in any other
+        // tenant, and so does the app when it is set up with a tenant GUID (a domain name cannot
+        // be compared here - D365FO's own check still applies).
+        tenantMismatch(licensePayload.entraTenantId, connectionSettings.tenant.value.tenantId)?.let {
+            return LicenseState.Blocked(it)
         }
 
         val expiry = runCatching { Instant.parse(licensePayload.expiryUtc) }.getOrNull()
@@ -211,7 +217,7 @@ class LicenseRepository @Inject constructor(
 
         if (!registerResponse.success) {
             return LicenseState.Blocked(
-                registerResponse.message ?: "This device could not be registered. Contact your administrator.",
+                registerResponse.message ?: "Device not registered - contact your administrator.",
             )
         }
 
@@ -234,10 +240,21 @@ class LicenseRepository @Inject constructor(
             Timber.w("license check failed (%s) - within grace period, proceeding", reason)
             return LicenseState.Ok
         }
-        return LicenseState.Blocked(reason ?: "Could not verify this app's license. Check the connection and try again.")
+        return LicenseState.Blocked(reason ?: "Can't verify the license - check the connection.")
     }
 
     private companion object {
+        private val GUID = Regex("^[0-9a-fA-F]{8}-([0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$")
+
+        /** Null when [licensed] (comma-separated tenant IDs) covers [configured]; otherwise why not. */
+        fun tenantMismatch(licensed: String, configured: String): String? {
+            val allowed = licensed.split(',').map { it.trim().lowercase() }.filter { it.isNotEmpty() }
+            if (allowed.isEmpty()) return "This license is not bound to a Microsoft Entra tenant. Contact your administrator."
+            val here = configured.trim().lowercase()
+            if (!GUID.matches(here)) return null
+            return if (here in allowed) null else "This license is for another Microsoft Entra tenant. Contact your administrator."
+        }
+
         /** How long the app keeps working on the last successful validation alone, once a
          *  live check genuinely cannot be reached - see the class doc's step 7 and [failOrGrace]. */
         const val GRACE_PERIOD_MS = 72 * 60 * 60 * 1000L

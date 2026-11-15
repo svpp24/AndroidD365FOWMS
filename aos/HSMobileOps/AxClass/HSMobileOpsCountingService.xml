@@ -566,6 +566,8 @@ class HSMobileOpsCountingService
     /// </summary>
     public HSMobileOpsImportCountsResponse importCounts(HSMobileOpsImportCountsRequest _request)
     {
+        // The license is checked on the work itself too, not only at sign-in (HSMobileOpsLicense).
+        HSMobileOpsLicense::requireForWork();
         HSMobileOpsImportCountsResponse response = new HSMobileOpsImportCountsResponse();
         DataAreaId                      company;
         InventJournalId                 journalId;

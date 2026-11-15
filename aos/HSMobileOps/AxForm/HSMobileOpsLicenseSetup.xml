@@ -46,18 +46,6 @@ public class HSMobileOpsLicenseSetup extends FormRun
 				<AxFormDataSourceField>
 					<DataField>LicenseKey</DataField>
 				</AxFormDataSourceField>
-				<AxFormDataSourceField>
-					<DataField>AzureFunctionUrl</DataField>
-				</AxFormDataSourceField>
-				<AxFormDataSourceField>
-					<DataField>AzureFunctionKey</DataField>
-				</AxFormDataSourceField>
-				<AxFormDataSourceField>
-					<DataField>licenseStatus</DataField>
-				</AxFormDataSourceField>
-				<AxFormDataSourceField>
-					<DataField>deviceUsage</DataField>
-				</AxFormDataSourceField>
 			</Fields>
 			<ReferencedDataSources />
 			<AllowCreate>No</AllowCreate>
@@ -68,7 +56,7 @@ public class HSMobileOpsLicenseSetup extends FormRun
 		</AxFormDataSource>
 	</DataSources>
 	<Design>
-		<Caption xmlns="">Mobile app license</Caption>
+		<Caption xmlns="">Mobile license</Caption>
 		<DataSource xmlns="">HSMobileOpsLicenseSetup</DataSource>
 		<Pattern xmlns="">SimpleListDetails</Pattern>
 		<PatternVersion xmlns="">1.3</PatternVersion>
@@ -97,6 +85,28 @@ public class HSMobileOpsLicenseSetup extends FormRun
 				<FormControlExtension
 					i:nil="true" />
 				<Controls>
+					<AxFormControl>
+						<Name>QuickFilterControl1</Name>
+						<WidthMode>SizeToAvailable</WidthMode>
+						<FormControlExtension>
+							<Name>QuickFilterControl</Name>
+							<ExtensionComponents />
+							<ExtensionProperties>
+								<AxFormControlExtensionProperty>
+									<Name>targetControlName</Name>
+									<Type>String</Type>
+								</AxFormControlExtensionProperty>
+								<AxFormControlExtensionProperty>
+									<Name>placeholderText</Name>
+									<Type>String</Type>
+								</AxFormControlExtensionProperty>
+								<AxFormControlExtensionProperty>
+									<Name>defaultColumnName</Name>
+									<Type>String</Type>
+								</AxFormControlExtensionProperty>
+							</ExtensionProperties>
+						</FormControlExtension>
+					</AxFormControl>
 					<AxFormControl xmlns=""
 						i:type="AxFormGridControl">
 						<Name>FormGridControl1</Name>
@@ -166,43 +176,23 @@ public class HSMobileOpsLicenseSetup extends FormRun
 					</AxFormControl>
 					<AxFormControl xmlns=""
 						i:type="AxFormStringControl">
-						<Name>AzureFunctionUrl</Name>
-						<Label>License status check URL</Label>
-						<Type>String</Type>
-						<FormControlExtension
-							i:nil="true" />
-						<DataField>AzureFunctionUrl</DataField>
-						<DataSource>HSMobileOpsLicenseSetup</DataSource>
-					</AxFormControl>
-					<AxFormControl xmlns=""
-						i:type="AxFormStringControl">
-						<Name>AzureFunctionKey</Name>
-						<Label>License status check key</Label>
-						<Type>String</Type>
-						<FormControlExtension
-							i:nil="true" />
-						<DataField>AzureFunctionKey</DataField>
-						<DataSource>HSMobileOpsLicenseSetup</DataSource>
-					</AxFormControl>
-					<AxFormControl xmlns=""
-						i:type="AxFormStringControl">
 						<Name>LicenseStatus</Name>
-						<Label>License status</Label>
 						<Type>String</Type>
 						<FormControlExtension
 							i:nil="true" />
-						<DataField>licenseStatus</DataField>
+						<DataMethod>licenseStatus</DataMethod>
 						<DataSource>HSMobileOpsLicenseSetup</DataSource>
+						<Label>License status</Label>
 					</AxFormControl>
 					<AxFormControl xmlns=""
 						i:type="AxFormStringControl">
 						<Name>DeviceUsage</Name>
-						<Label>Devices in use</Label>
 						<Type>String</Type>
 						<FormControlExtension
 							i:nil="true" />
-						<DataField>deviceUsage</DataField>
+						<DataMethod>deviceUsage</DataMethod>
 						<DataSource>HSMobileOpsLicenseSetup</DataSource>
+						<Label>Devices in use</Label>
 					</AxFormControl>
 				</Controls>
 				<ColumnsMode>Fill</ColumnsMode>
@@ -217,7 +207,16 @@ public class HSMobileOpsLicenseSetup extends FormRun
 				<Type>Tab</Type>
 				<FormControlExtension
 					i:nil="true" />
-				<Controls />
+				<Controls>
+					<AxFormControl xmlns=""
+						i:type="AxFormTabPageControl">
+						<Name>FormTabPageControl1</Name>
+						<Type>TabPage</Type>
+						<FormControlExtension
+							i:nil="true" />
+						<Controls />
+					</AxFormControl>
+				</Controls>
 				<AlignChild>No</AlignChild>
 				<ArrangeMethod>Vertical</ArrangeMethod>
 				<DataSource>HSMobileOpsLicenseSetup</DataSource>

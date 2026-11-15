@@ -44,4 +44,6 @@ data class LicensePayload(
     @SerialName("expiryUtc") val expiryUtc: String = "",
     @SerialName("maxDevices") val maxDevices: Int = 0,
     @SerialName("issuedUtc") val issuedUtc: String = "",
+    /** The customer's Microsoft Entra tenant ID(s), comma-separated - the license works only there. */
+    @SerialName("entraTenantId") val entraTenantId: String = "",
 )

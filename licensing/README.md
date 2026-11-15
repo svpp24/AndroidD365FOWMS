@@ -97,8 +97,14 @@ can judge this before printing anything.
 
 ```
 python wms_license_tool.py sign-license --client "Contoso Warehousing" \
-    --expiry 2027-01-01 --max-devices 25
+    --expiry 2027-01-01 --max-devices 25 \
+    --entra-tenant-id 00000000-0000-0000-0000-000000000000
 ```
+
+`--entra-tenant-id` is the customer's Microsoft Entra tenant ID (the GUID their D365FO
+environments sign users in with; several separated by commas). It is required: D365FO reads
+its own tenant from the platform and refuses a license for any other tenant, so a license
+file cannot be used in another company's environment.
 
 Signs a license (customer ID, tenant ID, expiry, device limit) with that customer's own
 private key. `--tenant-id` defaults to whatever is already recorded in that client's own
@@ -123,23 +129,33 @@ Runs the exact same chain AOS and the Android app will run - root verifies certi
 certificate's own key verifies license, tenant/customer IDs match, nothing has expired -
 entirely locally, before anything touches a real customer's environment or device.
 
-## Revoking (or reactivating) a customer instantly
+## Revoking a customer
 
-The certificate/license chain above answers "was this ever legitimately issued" - it says
-nothing about whether the vendor has since revoked a customer, and a compromised root key is
-the only way to invalidate it, which breaks every customer at once (see "Key rotation" below).
-For a single customer, use the live Azure-backed layer instead - see
-`../azure-license-function/README.md` and `HSMobileOpsLicense::verifyWithAttestation`:
+There is no vendor server (15 Nov 2026): the license file loaded in D365FO is the only
+check, so a license cannot be withdrawn before it expires. That is why licenses are issued
+for a year at a time - to stop a customer, do not issue the next license.
 
-```
-python wms_license_tool.py azure-register --client "Contoso Warehousing" --status Revoked \
-    --notes "Non-payment, 2027-02-01"
-```
+## How tamper-proof it is (threat model)
 
-Takes effect on the next sign-in or license check for that customer - no app rebuild, no
-certificate/license reissue, no device reactivation. Set `--status Active` again to restore
-access. Needs `AZURE_TABLE_CONNECTION_STRING` set (or pass `--connection-string`) - this writes
-to the vendor's own Azure subscription, not anything in a customer's environment.
+D365FO decides; the app checks the same chain itself as a second line. In D365FO, at every
+sign-in, device registration, session check (every ~10 minutes per device), posting, order
+and count submission (`HSMobileOpsLicense`):
+
+| Attempt | Why it fails |
+|---|---|
+| Make your own license or certificate | Needs the root private key, which never leaves `root/`. The root public key is compiled into the binaries, not stored in a table. |
+| Edit the license text | Breaks the customer-key signature. |
+| Use a license in another company's D365FO | The license names the customer's Entra tenant; D365FO reads its own tenant from the platform (`Aad.TenantDomainGUID`). |
+| Turn the server clock back past expiry | The license is judged at the latest time a sign-in has seen (`LastSeenUtc`), not only the clock. |
+| Register more devices than licensed | Counted inside the internal license code at registration. |
+| Extend the HSMobileOps model (Chain of Command, event handlers) to skip the check | The deciding code is `internal`, `final`, `[Wrappable(false)]`/`[Hookable(false)]`; work operations run the check before doing anything. |
+| Change the app to skip sign-in | The license is checked again on session checks and on every posting/order/count call. |
+| Repackage the app | The app refuses to run under a signing certificate that is not the vendor's or Google Play's (`SelfIntegrityCheck`). |
+
+What it cannot stop: someone with full control of their own servers editing the compiled
+HSMobileOps DLL (and repackaging the app). No check without a vendor server can stop that;
+shipping the D365FO package as binaries only (no X++ source) and yearly licenses keep the
+reward small. Make sure the deployable package carries no `Ax*` source XML for HSMobileOps.
 
 ## Key rotation
 

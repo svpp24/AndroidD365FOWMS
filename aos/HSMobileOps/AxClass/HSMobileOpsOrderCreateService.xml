@@ -315,6 +315,8 @@ class HSMobileOpsOrderCreateService
     /// </summary>
     public HSMobileOpsOrderResponse createPurchaseOrder(HSMobileOpsOrderRequest _request)
     {
+        // The license is checked on the work itself too, not only at sign-in (HSMobileOpsLicense).
+        HSMobileOpsLicense::requireForWork();
         HSMobileOpsOrderResponse response = HSMobileOpsOrderCreateService::newResponse();
         HSMobileOpsUser          user;
         HSMobileOpsPostLog       existing;
@@ -524,6 +526,8 @@ class HSMobileOpsOrderCreateService
     /// </summary>
     public HSMobileOpsOrderResponse createTransferOrder(HSMobileOpsOrderRequest _request)
     {
+        // The license is checked on the work itself too, not only at sign-in (HSMobileOpsLicense).
+        HSMobileOpsLicense::requireForWork();
         HSMobileOpsOrderResponse response = HSMobileOpsOrderCreateService::newResponse();
         HSMobileOpsUser          user;
         HSMobileOpsPostLog       existing;
@@ -1336,6 +1340,8 @@ class HSMobileOpsOrderCreateService
     /// </summary>
     public HSMobileOpsOrderResponse confirmPurchaseOrder(HSMobileOpsOrderRequest _request)
     {
+        // The license is checked on the work itself too, not only at sign-in (HSMobileOpsLicense).
+        HSMobileOpsLicense::requireForWork();
         HSMobileOpsOrderResponse response = HSMobileOpsOrderCreateService::newResponse();
         HSMobileOpsUser          user;
         HSMobileOpsPostLog       existing;
@@ -1510,6 +1516,8 @@ class HSMobileOpsOrderCreateService
     /// </summary>
     public HSMobileOpsOrderResponse createPurchaseReturn(HSMobileOpsOrderRequest _request)
     {
+        // The license is checked on the work itself too, not only at sign-in (HSMobileOpsLicense).
+        HSMobileOpsLicense::requireForWork();
         HSMobileOpsOrderResponse response = HSMobileOpsOrderCreateService::newResponse();
         HSMobileOpsUser          user;
         HSMobileOpsPostLog       existing;

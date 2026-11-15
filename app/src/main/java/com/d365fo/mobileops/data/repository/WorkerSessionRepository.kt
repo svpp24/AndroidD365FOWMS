@@ -91,6 +91,12 @@ class WorkerSessionRepository @Inject constructor(
     private val _signOutNotice = MutableStateFlow<String?>(null)
     val signOutNotice: StateFlow<String?> = _signOutNotice.asStateFlow()
 
+    /** D365FO says the license is no longer valid (session check): sign out and say why. */
+    fun signOutLicense(message: String) {
+        signOut(reason = "License not valid")
+        _signOutNotice.value = message
+    }
+
     /** The worker signed in on another device: sign out here and say so on the sign-in screen. */
     fun signOutElsewhere(message: String) {
         signOut(reason = "Signed in on another device")

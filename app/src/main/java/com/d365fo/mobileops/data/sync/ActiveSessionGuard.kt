@@ -171,16 +171,29 @@ class ActiveSessionGuard @Inject constructor(
         if (pendingStart.equals(user, ignoreCase = true)) {
             val result = errorMapper.safeCall { api.startSession(body) }
             if ((result is NetworkResult.Success && result.data.success) || result.notDeployed()) pendingStart = null
+            (result as? NetworkResult.Success)?.data?.let { signOutIfUnlicensed(user, it.errorCode, it.message) }
             return@withLock
         }
         val result = errorMapper.safeCall { api.checkSession(body) }
         val answer = (result as? NetworkResult.Success)?.data ?: return@withLock
+        if (signOutIfUnlicensed(user, answer.errorCode, answer.message)) return@withLock
         if (answer.success && answer.signedInElsewhere && sessions.session.value?.userName == user) {
             Timber.w("'%s' signed in on another device - signing out here", user)
             signedOutElsewhere = true
             val here = body.request.let { PendingWork(it.pendingJobs, it.pendingCounts) }
             sessions.signOutElsewhere(elsewhereMessage(user, here))
         }
+    }
+
+    /**
+     * D365FO checks the license on every session check (HSMobileOpsLicense::sessionCheck): a
+     * LICENSE_* answer - expired, or replaced by one for another tenant - signs the worker out.
+     */
+    private fun signOutIfUnlicensed(user: String, code: String?, message: String?): Boolean {
+        if (code?.startsWith("LICENSE") != true || sessions.session.value?.userName != user) return false
+        Timber.w("license no longer valid (%s) - signing out", code)
+        sessions.signOutLicense(message?.takeIf { it.isNotBlank() } ?: "This app's license is no longer valid. Contact your administrator.")
+        return true
     }
 
     private suspend fun end(user: String) {

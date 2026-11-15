@@ -18,18 +18,16 @@ import kotlin.coroutines.resumeWithException
 /**
  * Wraps the Play Integrity Standard API: one warm token provider per process (preparing it is
  * the expensive step, several seconds on a cold start; requesting a token from an already-warm
- * provider is cheap), exposed as a plain suspend function. See `licensing/README.md` and
- * `azure-license-function/playintegrity.py` for what AOS/Azure do with the token this hands
- * them - this class only ever obtains it, never evaluates it. The pass/fail decision lives
+ * provider is cheap), exposed as a plain suspend function. Since 15 Nov 2026 nothing evaluates
+ * the token (there is no vendor server to decode it; D365FO ignores it) - it is still sent so a
+ * later server-side check needs no app change. This class only ever obtains it. The pass/fail decision lives
  * entirely server-side, on purpose: nothing about "is this install genuine" should be something
  * a modified client could answer for itself, same reasoning [SelfIntegrityCheck] already
  * documents for its own, narrower, local-only check.
  *
  * **Never throws.** Any failure - no cloud project configured, Play Services unavailable, a
  * network hiccup preparing or requesting the token - returns null.
- * `HSMobileOpsLicense::verifyWithAttestation` treats a missing token as an UNVERIFIED verdict,
- * not a hard failure, deliberately - see that method's own doc comment on why, especially during
- * the rollout window before every device in a fleet has updated to a build carrying this class.
+ * D365FO does not require the token, so a null never blocks a sign-in.
  */
 @Singleton
 class PlayIntegrityTokenProvider @Inject constructor(

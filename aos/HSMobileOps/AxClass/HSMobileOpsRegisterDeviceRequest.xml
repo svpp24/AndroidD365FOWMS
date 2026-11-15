@@ -115,10 +115,8 @@ class HSMobileOpsRegisterDeviceRequest
 
     /// <summary>
     /// A Play Integrity Standard API token from the calling device, or blank on a build that
-    /// predates this field / a device that could not obtain one - see
-    /// HSMobileOpsLicense::verifyWithAttestation for how a blank token is handled (UNVERIFIED,
-    /// not a hard failure). Opaque to this class - only the vendor's CheckLicense Azure Function
-    /// can actually decode it.
+    /// predates this field / a device that could not obtain one. Not used by D365FO since
+    /// 15 Nov 2026 (no vendor server to decode it); kept so app builds that send it keep working.
     /// </summary>
     [DataMemberAttribute('IntegrityToken')]
     public str parmIntegrityToken(str _value = integrityToken)

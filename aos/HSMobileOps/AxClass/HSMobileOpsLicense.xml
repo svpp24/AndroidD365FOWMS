@@ -325,6 +325,7 @@ internal final class HSMobileOpsLicense
         int                              remainingDaysInt;
         int                              maxDevices;
         boolean                          dateOk;
+        str                              tenantError;
 
         status.parmValid(false);
 
@@ -408,7 +409,7 @@ internal final class HSMobileOpsLicense
             return status;
         }
 
-        nowUtc = System.DateTime::get_UtcNow();
+        nowUtc = HSMobileOpsLicense::licenseNow(setup);
         if (System.DateTime::Compare(nowUtc, notBefore) < 0 || System.DateTime::Compare(nowUtc, notAfter) > 0)
         {
             status.parmErrorCode('LICENSE_INVALID');
@@ -474,6 +475,19 @@ internal final class HSMobileOpsLicense
         {
             status.parmErrorCode('LICENSE_INVALID');
             status.parmMessage('The configured license does not match the configured certificate.');
+            return status;
+        }
+
+        // -- Step 4: the license must be for THIS environment's Microsoft Entra tenant ----------
+        //
+        // Read from the platform, not from a table, so a license cannot be copied to another
+        // company's environment (15 Nov 2026: the license file is the only check - no vendor server).
+
+        tenantError = HSMobileOpsLicense::tenantMismatch(HSMobileOpsLicense::jsonStr(licJson, 'entraTenantId'));
+        if (tenantError)
+        {
+            status.parmErrorCode('LICENSE_INVALID');
+            status.parmMessage(tenantError);
             return status;
         }
 
@@ -601,7 +615,7 @@ internal final class HSMobileOpsLicense
             return conNull();
         }
 
-        nowUtc = System.DateTime::get_UtcNow();
+        nowUtc = HSMobileOpsLicense::licenseNow(HSMobileOpsLicenseSetup::find());
         if (System.DateTime::Compare(nowUtc, notBefore) < 0 || System.DateTime::Compare(nowUtc, notAfter) > 0)
         {
             return conNull();
@@ -676,104 +690,222 @@ internal final class HSMobileOpsLicense
 ]]></Source>
 			</Method>
 			<Method>
-				<Name>verifyWithAttestation</Name>
+				<Name>verifyAtSignIn</Name>
 				<Source><![CDATA[
 
     /// <summary>
-    /// The entry point HSMobileOpsUserService::signIn and HSMobileOpsLicenseService::
-    /// getLicense/registerDevice actually call now, in place of verify() directly. Runs verify()
-    /// first, unchanged - if the local certificate/license chain is not already valid, there is
-    /// nothing further to check, and that result is returned as-is. Only on a locally-valid
-    /// license does this go on to ask the vendor's CheckLicense Function (see
-    /// HSMobileOpsLicenseCloudClient) two independent questions: has this customer been revoked
-    /// since the license was signed, and does the calling device's own attestation say this is a
-    /// genuine, unmodified install. See ../../../azure-license-function/function_app.py for what
-    /// that Function actually checks.
-    ///
-    /// **Reachable vs. not is the first branch, before looking at what it said.** A reachable
-    /// answer is trusted immediately and cached (HSMobileOpsLicenseCloudCache::record) for the
-    /// next unreachable moment. An unreachable answer falls back to that cache for a short grace
-    /// period (HSMobileOpsLicenseCloudCache::withinGracePeriod) so a transient Azure/network
-    /// outage does not lock out a whole fleet the instant it happens; outside that grace period it
-    /// fails closed as LICENSE_INVALID, deliberately not reusing LICENSE_REVOKED's wording, which
-    /// would wrongly imply a deliberate vendor action rather than "could not be confirmed."
-    ///
-    /// **licenseStatus other than "Active" is treated as not valid** - Suspended, Revoked, and
-    /// Unknown (no row on file for this customerId yet) are all folded into LICENSE_REVOKED here;
-    /// the Function's own README explains why Unknown belongs in that bucket rather than being
-    /// treated as a pass.
-    ///
-    /// **integrityVerdict "FAIL" blocks sign-in; "UNVERIFIED" does not.** UNVERIFIED covers "no
-    /// token was sent" and "Google's own endpoint could not be reached" - importantly, this is
-    /// the verdict for EVERY call until the Android side ships the Play Integrity token provider
-    /// (see the plan's staged order: AOS changes land before Android ones), so treating it as a
-    /// hard failure would break every sign-in during that entire rollout window. Only a positive
-    /// FAIL - Google actively saying the install looks tampered or the wrong package/certificate -
-    /// blocks sign-in on integrity grounds.
+    /// The check at sign-in and device registration: verify() - the license file is the only
+    /// authority (15 Nov 2026: no vendor server, no Azure function for licensing) - and, when it
+    /// passes, the latest time seen moves forward (see licenseNow).
     /// </summary>
-    internal static HSMobileOpsLicenseStatus verifyWithAttestation(str _deviceId, str _integrityToken)
+    internal static HSMobileOpsLicenseStatus verifyAtSignIn()
     {
-        HSMobileOpsLicenseStatus        status = HSMobileOpsLicense::verify();
-        HSMobileOpsCloudLicenseResult   cloud;
-        HSMobileOpsLicenseCloudCache    cache;
+        HSMobileOpsLicenseStatus status = HSMobileOpsLicense::verify();
 
-        if (!status.parmValid())
+        if (status.parmValid())
         {
-            return status;
+            HSMobileOpsLicense::noteSeen();
         }
-
-        cloud = HSMobileOpsLicenseCloudClient::checkStatus(status.parmCustomerId(), _deviceId, _integrityToken);
-
-        if (cloud.parmReachable())
-        {
-            HSMobileOpsLicenseCloudCache::record(
-                cloud.parmLicenseStatus(), cloud.parmIntegrityVerdict(), cloud.parmReasonsText());
-        }
-        else
-        {
-            cache = HSMobileOpsLicenseCloudCache::find();
-            if (!cache.withinGracePeriod())
-            {
-                status.parmValid(false);
-                status.parmErrorCode('LICENSE_INVALID');
-                status.parmMessage(
-                    'Could not confirm this license with the vendor, and the last successful '
-                  + 'check is too old to fall back on. Check this environment\'s internet access.');
-                return status;
-            }
-
-            // Within grace: fall back to the cached verdict as if it were the live one, so the
-            // same two checks below apply uniformly either way.
-            cloud = new HSMobileOpsCloudLicenseResult();
-            cloud.parmLicenseStatus(cache.LicenseStatus);
-            cloud.parmIntegrityVerdict(cache.IntegrityVerdict);
-            cloud.parmReasonsText(cache.ReasonsText);
-        }
-
-        if (cloud.parmLicenseStatus() != 'Active')
-        {
-            status.parmValid(false);
-            status.parmErrorCode('LICENSE_REVOKED');
-            status.parmMessage(strFmt(
-                "This app's license is no longer active (%1). Contact your administrator.",
-                cloud.parmLicenseStatus() ? cloud.parmLicenseStatus() : 'Unknown'));
-            status.parmIntegrityVerdict(cloud.parmIntegrityVerdict());
-            return status;
-        }
-
-        status.parmIntegrityVerdict(cloud.parmIntegrityVerdict());
-
-        if (cloud.parmIntegrityVerdict() == 'FAIL')
-        {
-            status.parmValid(false);
-            status.parmErrorCode('INTEGRITY_FAILED');
-            status.parmMessage(strFmt(
-                'This install could not be verified as genuine (%1). Reinstall from the Play Store.',
-                cloud.parmReasonsText() ? cloud.parmReasonsText() : 'no further detail'));
-            return status;
-        }
-
         return status;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>licenseNow</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The time a license is judged at: the server clock, or the latest time a sign-in has seen
+    /// when that is later. Turning a server clock back (possible on a customer-hosted VM) then
+    /// does not bring an expired license back to life.
+    /// </summary>
+    private static System.DateTime licenseNow(HSMobileOpsLicenseSetup _setup)
+    {
+        System.DateTime now = System.DateTime::get_UtcNow();
+        System.DateTime seen;
+
+        if (_setup.LastSeenUtc)
+        {
+            try
+            {
+                seen = HSMobileOpsLicense::parseUtcDate(DateTimeUtil::toStr(_setup.LastSeenUtc) + 'Z');
+                if (System.DateTime::Compare(seen, now) > 0)
+                {
+                    now = seen;
+                }
+            }
+            catch (Exception::CLRError)
+            {
+            }
+        }
+        return now;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>noteSeen</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Moves HSMobileOpsLicenseSetup.LastSeenUtc to now - at most once an hour, so a shift's
+    /// sign-ins do not all write the one row. Never fails a sign-in.
+    /// </summary>
+    private static void noteSeen()
+    {
+        HSMobileOpsLicenseSetup setup;
+        utcdatetime             now = DateTimeUtil::utcNow();
+
+        try
+        {
+            ttsbegin;
+            select forUpdate firstOnly setup;
+            if (setup.RecId && (!setup.LastSeenUtc || DateTimeUtil::addHours(setup.LastSeenUtc, 1) < now))
+            {
+                setup.LastSeenUtc = now;
+                setup.doUpdate();
+            }
+            ttscommit;
+        }
+        catch (Exception::UpdateConflict)
+        {
+        }
+        catch (Exception::Deadlock)
+        {
+        }
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>environmentEntraTenant</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The Microsoft Entra tenant (GUID, lower case) this D365FO environment signs users in with,
+    /// from the platform's own configuration - nothing a customer's code or data can change.
+    /// '' when it cannot be read.
+    /// </summary>
+    private static str environmentEntraTenant()
+    {
+        Microsoft.Dynamics.ApplicationPlatform.Environment.IApplicationEnvironment env;
+        str tenant;
+
+        try
+        {
+            env    = Microsoft.Dynamics.ApplicationPlatform.Environment.EnvironmentFactory::GetApplicationEnvironment();
+            tenant = env.Aad.TenantDomainGUID;
+        }
+        catch (Exception::CLRError)
+        {
+            tenant = '';
+        }
+        return strLwr(strLRTrim(tenant));
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>tenantMismatch</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// '' when the license's entraTenantId (one GUID, or several separated by commas) names this
+    /// environment's tenant; otherwise why not. A license without one is refused: every license
+    /// is bound to its customer's tenant, so it cannot be used in another company's D365FO.
+    /// </summary>
+    private static str tenantMismatch(str _licensed)
+    {
+        str            here = HSMobileOpsLicense::environmentEntraTenant();
+        List           allowed;
+        ListEnumerator e;
+
+        if (!_licensed)
+        {
+            return 'This license is not bound to a Microsoft Entra tenant. Ask the vendor for a license issued for your tenant.';
+        }
+        if (!here)
+        {
+            return "This environment's Microsoft Entra tenant could not be read, so the license cannot be checked.";
+        }
+        allowed = strSplit(strLwr(strRem(_licensed, ' ')), ',');
+        e = allowed.getEnumerator();
+        while (e.moveNext())
+        {
+            if (e.current() == here)
+            {
+                return '';
+            }
+        }
+        return strFmt("This license is for another Microsoft Entra tenant, not this environment's (%1).", here);
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>entraTenantError</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// For saving a license (HSMobileOpsLicenseSetup.validateBeforeSave, after its signature
+    /// checks): '' when it is for this environment's tenant, otherwise why not.
+    /// </summary>
+    internal static str entraTenantError(str _licenseKey)
+    {
+        container                    parts = HSMobileOpsLicense::splitSigned(_licenseKey, 'WMSLIC1');
+        Newtonsoft.Json.Linq.JObject json;
+        System.Object                parsed;
+
+        if (conLen(parts) != 2)
+        {
+            return 'The license key is malformed.';
+        }
+        try
+        {
+            parsed = Newtonsoft.Json.Linq.JObject::Parse(System.Text.Encoding::get_UTF8().GetString(
+                System.Convert::FromBase64String(HSMobileOpsLicense::base64UrlToStandard(conPeek(parts, 1)))));
+        }
+        catch (Exception::CLRError)
+        {
+            return 'The license key is malformed.';
+        }
+        json = parsed;
+        return HSMobileOpsLicense::tenantMismatch(HSMobileOpsLicense::jsonStr(json, 'entraTenantId'));
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>requireForWork</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// At the top of every operation that does work (posting, orders, count submissions): throws
+    /// when the license is not valid, so nothing is done. The message starts with [LICENSE]: the
+    /// app then holds the work in its queue (no retries used up) until a valid license is loaded -
+    /// nothing captured on a device is lost or marked failed because of the license.
+    /// </summary>
+    [Hookable(false)]
+    internal static void requireForWork()
+    {
+        container problem = HSMobileOpsLicense::sessionCheck();
+
+        if (conLen(problem))
+        {
+            throw error('[LICENSE] ' + conPeek(problem, 2));
+        }
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>sessionCheck</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// For the calls a signed-in device makes all day (session checks, posting): conNull() while
+    /// the license is valid, else [error code, message]. The license is checked on these too, not
+    /// only at sign-in, so an app changed to skip sign-in gets nothing done.
+    /// </summary>
+    internal static container sessionCheck()
+    {
+        HSMobileOpsLicenseStatus status = HSMobileOpsLicense::verify();
+
+        return status.parmValid() ? conNull() : [status.parmErrorCode(), status.parmMessage()];
     }
 ]]></Source>
 			</Method>

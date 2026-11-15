@@ -33,6 +33,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import re
 import base64
 import datetime
 import json
@@ -296,6 +297,11 @@ def cmd_sign_license(args: argparse.Namespace) -> None:
         tenant_id = cert_payload["tenantId"]
         print(f"Using tenantId '{tenant_id}' from {cert_path}")
 
+    entra = [t.strip().lower() for t in args.entra_tenant_id.split(",") if t.strip()]
+    if not entra or not all(re.fullmatch(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", t) for t in entra):
+        print("ERROR: --entra-tenant-id must be the customer's Microsoft Entra tenant ID (a GUID), or several separated by commas.")
+        sys.exit(1)
+
     expiry = parse_date(args.expiry)
     issued = datetime.datetime.now(datetime.timezone.utc)
     if expiry <= issued:
@@ -309,6 +315,9 @@ def cmd_sign_license(args: argparse.Namespace) -> None:
         "expiryUtc": expiry.strftime(DATE_FMT),
         "maxDevices": args.max_devices,
         "issuedUtc": issued.strftime(DATE_FMT),
+        # The only place a license is bound to one customer: D365FO compares it with the Entra
+        # tenant its own environment signs in with (HSMobileOpsLicense::tenantMismatch).
+        "entraTenantId": ",".join(entra),
     }
     license_string = build_signed_string(LICENSE_PREFIX, payload, customer_private_key)
 
@@ -374,55 +383,12 @@ def cmd_verify(args: argparse.Namespace) -> None:
     days_left = (expiry - now).days
     print(f"OK   license valid - expires {license_payload['expiryUtc']} ({days_left} day(s) left)")
     print(f"     maxDevices={license_payload['maxDevices']}")
+    if not license_payload.get("entraTenantId"):
+        print("FAIL: license is not bound to a Microsoft Entra tenant (no entraTenantId) - D365FO refuses it")
+        sys.exit(1)
+    print(f"OK   bound to Entra tenant(s) {license_payload['entraTenantId']}")
     print()
     print("Full chain verifies end to end.")
-
-
-def cmd_azure_register(args: argparse.Namespace) -> None:
-    """Sets one customer's row in the CheckLicense Function's LicenseStatus table - see
-    ../azure-license-function/README.md for what that Function does with it. This is the
-    operational lever for "revoke this customer right now": one command, no app rebuild, no
-    root-key rotation, no per-device reactivation - see that README's own PartitionKey/RowKey
-    shape, which this mirrors exactly (PartitionKey=customerId, RowKey='status').
-
-    Deliberately a separate command from sign-certificate/sign-license, not folded into either -
-    this writes to the VENDOR's own Azure subscription, a completely different trust boundary
-    from the customer-specific signing operations above, and needs its own explicit
-    --connection-string (or AZURE_TABLE_CONNECTION_STRING) to run at all.
-    """
-    try:
-        from azure.data.tables import TableServiceClient
-    except ImportError:
-        print("ERROR: azure-data-tables is not installed. pip install azure-data-tables")
-        print("(only needed for this one command - see requirements.txt)")
-        sys.exit(1)
-
-    connection_string = args.connection_string or os.environ.get("AZURE_TABLE_CONNECTION_STRING")
-    if not connection_string:
-        print("ERROR: no connection string given. Pass --connection-string or set AZURE_TABLE_CONNECTION_STRING.")
-        sys.exit(1)
-
-    if args.status not in ("Active", "Suspended", "Revoked"):
-        print(f"ERROR: --status must be Active, Suspended or Revoked, got {args.status!r}")
-        sys.exit(1)
-
-    entity = {
-        "PartitionKey": args.client,
-        "RowKey": "status",
-        "Status": args.status,
-        "Notes": args.notes or "",
-    }
-
-    with TableServiceClient.from_connection_string(connection_string) as service:
-        table_client = service.get_table_client("LicenseStatus")
-        table_client.upsert_entity(entity)
-
-    print(f"customerId '{args.client}' set to Status={args.status} in the LicenseStatus table.")
-    if args.notes:
-        print(f"  notes: {args.notes}")
-    if args.status != "Active":
-        print("The next sign-in or license check for this customer will be refused within a few")
-        print("minutes (once AOS's own short grace-period cache, if any, expires).")
 
 
 # -- CLI wiring -------------------------------------------------------------------------
@@ -454,19 +420,14 @@ def main() -> None:
     p.add_argument("--tenant-id", help="Defaults to the tenantId already recorded in this client's certificate.txt.")
     p.add_argument("--expiry", required=True, help="License expiry, e.g. 2027-01-01.")
     p.add_argument("--max-devices", required=True, type=int)
+    p.add_argument("--entra-tenant-id", required=True,
+                   help="The customer's Microsoft Entra tenant ID (GUID) - the license works only in D365FO environments of that tenant. Several: comma-separated.")
     p.set_defaults(func=cmd_sign_license)
 
     p = sub.add_parser("verify", help="Locally verify a certificate+license pair end to end - no F&O or Android involved.")
     p.add_argument("--certificate", required=True, help="Path to a certificate.txt file.")
     p.add_argument("--license", required=True, help="Path to a license .txt file.")
     p.set_defaults(func=cmd_verify)
-
-    p = sub.add_parser("azure-register", help="Set a customer's live status (Active/Suspended/Revoked) in the CheckLicense Azure Table.")
-    p.add_argument("--client", required=True, help="customerId - same value used in sign-certificate/sign-license.")
-    p.add_argument("--status", required=True, choices=["Active", "Suspended", "Revoked"])
-    p.add_argument("--notes", help="Free-text reason, shown in HSMobileOpsLicenseCloudCache's ReasonsText.")
-    p.add_argument("--connection-string", help="Storage account connection string. Defaults to $AZURE_TABLE_CONNECTION_STRING.")
-    p.set_defaults(func=cmd_azure_register)
 
     args = parser.parse_args()
     args.func(args)

@@ -319,8 +319,8 @@ ApplicationSuite's own files:
 The licensing duty and privilege (`HSMobileOpsMaintainLicense`, `HSMobileOpsLicenseImport`) still
 use the old names; they are left to the licensing work.
 
-All HSMobileOps tables except the two licensing tables (`HSMobileOpsLicenseSetup`,
-`HSMobileOpsLicenseCloudCache`, left to the licensing work) were corrected and synced on the dev
+All HSMobileOps tables except the licensing table (`HSMobileOpsLicenseSetup`, left to the
+licensing work) were corrected and synced on the dev
 VM on 5 October 2026.
 
 ## The registration queue is worked by a batch job
@@ -783,40 +783,24 @@ server for `HSMobileOpsPostingService::parseLines`'s `LinesJson`) parses these c
 license payloads the same way — reused deliberately rather than risking an unverified JSON API,
 but not yet exercised for *this* shape of JSON specifically. See "Verification status" below.
 
-### Live revocation + device attestation, layered on top — `verifyWithAttestation`
+### The license file is the only check (15 Nov 2026)
 
-Written this session, on top of the certificate/license chain above rather than replacing it.
-Two problems the signed chain alone can't solve: revoking a single customer requires a full root
-rotation today (breaks every customer's fleet at once, no partial containment — see
-`licensing/README.md`'s "Key rotation"), and nothing checks whether the calling Android build is
-genuine rather than a reverse-engineered, resigned APK.
+There is no vendor server and no Azure function for licensing (the token function only issues
+D365FO tokens). `HSMobileOpsLicense::verify()` decides from the certificate and license loaded in
+Mobile license, and adds two checks to the signed chain above:
 
-`HSMobileOpsLicense::verifyWithAttestation(deviceId, integrityToken)` — now called by
-`HSMobileOpsUserService::signIn` and `HSMobileOpsLicenseService::registerDevice` in place of
-`verify()` directly — runs the existing local chain first, unchanged, then (only if that already
-passed) calls the vendor's own `CheckLicense` Azure Function (`HSMobileOpsLicenseCloudClient`,
-`../azure-license-function/`), which independently checks a live per-customer status row in a
-Storage Table the vendor alone controls, and decodes the device's Play Integrity token via
-Google's own API. Genuinely new for this model: **no other class here makes any outbound HTTP
-call at all** — confirmed via a full grep before writing this — so the `System.Net.Http.HttpClient`
-interop in `HSMobileOpsLicenseCloudClient` is unverified against a real AOS build; see that
-Function's own README "Verify it's actually callable" section for the curl check that has to
-happen first.
+- **Entra tenant**: the license's `entraTenantId` must name the tenant D365FO itself signs in
+  with (`EnvironmentFactory::GetApplicationEnvironment().Aad.TenantDomainGUID`), so a license
+  file cannot be used in another company's environment.
+- **Clock floor**: the license is judged at the later of the server clock and
+  `HSMobileOpsLicenseSetup.LastSeenUtc` (moved forward at sign-in, at most hourly), so turning a
+  server clock back does not revive an expired license.
 
-A short grace-period cache (`HSMobileOpsLicenseCloudCache`, 4 hours) rides out a transient
-Azure/network outage between AOS and the Function without locking out an entire customer's fleet;
-beyond that window it fails closed. `integrityVerdict = UNVERIFIED` (no token sent, or Google's
-endpoint unreachable) never blocks sign-in on its own — only an explicit `FAIL` does — which
-matters during rollout, since every call is UNVERIFIED until the Android side ships
-`PlayIntegrityTokenProvider`. Two new `HSMobileOpsLicenseSetup` fields
-(`AzureFunctionUrl`/`AzureFunctionKey`) hold the Function's own endpoint; the key is stored
-encrypted at rest (AES-256-CBC, a compiled constant key — see `fieldEncryptionKeyBase64()`'s own
-doc comment on exactly what that does and does not protect against) so a browse of that table by
-a customer's own admin shows ciphertext, the same reasoning that moved the root key out of a
-table field in the first place.
-
-Revoking one customer live: `python wms_license_tool.py azure-register --client "..." --status
-Revoked` — see `licensing/README.md`. Not yet built or exercised against a real AOS.
+`verifyAtSignIn()` runs at sign-in and device registration; `sessionCheck()` on every session
+check (the app signs out on a LICENSE_* answer); `requireForWork()` at the top of every posting,
+order and count-submission operation. The deciding code is internal, final and not wrappable or
+hookable. What remains possible - patching the compiled DLL on servers the customer controls - is
+in `licensing/README.md`, "How tamper-proof it is".
 
 ## Verification status
 

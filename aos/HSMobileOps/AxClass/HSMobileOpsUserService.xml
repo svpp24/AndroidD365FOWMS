@@ -86,13 +86,12 @@ class HSMobileOpsUserService
         // SaveDataPerCompany=No; HSMobileOpsDevice's own methods query crossCompany) - checked here,
         // ahead of changecompany and ahead of touching HSMobileOpsUser at all, so a license problem
         // is never confused with a wrong password and blocks every company alike. See
-        // HSMobileOpsLicense::verifyWithAttestation for the full chain this now runs - the local
-        // certificate/license signature check, then a live revocation + device-attestation check
-        // against the vendor's own CheckLicense Azure Function - and HSMobileOpsDevice::
+        // HSMobileOpsLicense::verifyAtSignIn for the chain this runs - the license file alone
+        // (signatures, expiry, this environment's Entra tenant; no vendor server) - and HSMobileOpsDevice::
         // checkDeviceLimit for why this only ever turns away a device D365FO has never seen before -
         // a device already in the fleet always passes, exactly the same "never kicks someone already
         // in" spirit as the account-lockout and inactive-account checks below.
-        license = HSMobileOpsLicense::verifyWithAttestation(deviceId, _request.parmIntegrityToken());
+        license = HSMobileOpsLicense::verifyAtSignIn();
         if (!license.parmValid())
         {
             response.parmErrorCode(license.parmErrorCode());

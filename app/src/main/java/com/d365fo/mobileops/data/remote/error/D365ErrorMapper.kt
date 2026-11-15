@@ -145,6 +145,9 @@ class D365ErrorMapper @Inject constructor(
      * because a vague generic message is worse than an unfamiliar precise one.
      */
     private fun humanise(serverMessage: String): String = when {
+        // A license refusal keeps its "[LICENSE]" mark: the sync queue holds such work.
+        serverMessage.contains("[LICENSE]") -> serverMessage
+
         serverMessage.containsAny("period", "closed", "not open") ->
             "Accounting period closed - ask a supervisor."
 

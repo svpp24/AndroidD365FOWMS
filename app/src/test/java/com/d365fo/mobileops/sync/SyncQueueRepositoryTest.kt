@@ -163,6 +163,33 @@ class SyncQueueRepositoryTest {
     }
 
     @Test
+    fun `a license refusal holds the work - never failed, no attempt used`() = runTest {
+        // HSMobileOpsLicense::requireForWork throws "[LICENSE] ..."; D365FO answers 500 or a
+        // business-rule error depending on how the infolog surfaces. Either way: keep it.
+        val refusals = listOf(
+            AppFailure.Transient("[LICENSE] The license has expired.", httpCode = 500),
+            AppFailure.BusinessRule("[LICENSE] The license is not valid.", d365ErrorCode = "Error"),
+        )
+        for (failure in refusals) {
+            val dropped = repository.onFailure(
+                entry(retryCount = Constants.MAX_RETRY_COUNT - 1),
+                failure,
+                now = 10_000L,
+            )
+            assertThat(dropped).isFalse()
+        }
+        coVerify(exactly = 0) { dao.deadLetter(any(), any()) }
+        coVerify(exactly = 2) {
+            dao.scheduleRetry(
+                queueId = "q1",
+                retryCount = Constants.MAX_RETRY_COUNT - 1,
+                nextAttemptAt = 10_000L + 30 * 60 * 1000L,
+                error = match { it.startsWith("[LICENSE]") },
+            )
+        }
+    }
+
+    @Test
     fun `an outage never exhausts the retries - no answer keeps it queued`() = runTest {
         for (failure in listOf(AppFailure.Offline("no connection"), AppFailure.Transient("timeout"))) {
             val dropped = repository.onFailure(

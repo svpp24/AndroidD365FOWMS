@@ -39,6 +39,19 @@ class HSMobileOpsSessionService
     public HSMobileOpsSessionResponse startSession(HSMobileOpsSessionRequest _request)
     {
         HSMobileOpsSessionResponse response = HSMobileOpsSessionService::validate(_request);
+        container                  licenseProblem;
+
+        if (!response.parmErrorCode())
+        {
+            // A license that stopped being valid (expired, replaced) signs the device out at its
+            // next check - LICENSE_* codes, see HSMobileOpsLicense::sessionCheck.
+            licenseProblem = HSMobileOpsLicense::sessionCheck();
+            if (conLen(licenseProblem))
+            {
+                response.parmErrorCode(conPeek(licenseProblem, 1));
+                response.parmMessage(conPeek(licenseProblem, 2));
+            }
+        }
 
         if (response.parmErrorCode())
         {
@@ -104,6 +117,19 @@ class HSMobileOpsSessionService
     public HSMobileOpsSessionResponse checkSession(HSMobileOpsSessionRequest _request)
     {
         HSMobileOpsSessionResponse response = HSMobileOpsSessionService::validate(_request);
+        container                  licenseProblem;
+
+        if (!response.parmErrorCode())
+        {
+            // A license that stopped being valid (expired, replaced) signs the device out at its
+            // next check - LICENSE_* codes, see HSMobileOpsLicense::sessionCheck.
+            licenseProblem = HSMobileOpsLicense::sessionCheck();
+            if (conLen(licenseProblem))
+            {
+                response.parmErrorCode(conPeek(licenseProblem, 1));
+                response.parmMessage(conPeek(licenseProblem, 2));
+            }
+        }
         HSMobileOpsLineClaim       session;
 
         if (response.parmErrorCode())

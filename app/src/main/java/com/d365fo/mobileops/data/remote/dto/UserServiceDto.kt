@@ -36,8 +36,7 @@ data class SignInRequestBody(
     @SerialName("PlatformVersion") val platformVersion: String = "",
     @SerialName("AppVersionName") val appVersionName: String = "",
     /** A Play Integrity Standard API token from [com.d365fo.mobileops.data.security.PlayIntegrityTokenProvider],
-     *  or null if one could not be obtained - see `HSMobileOpsLicense::verifyWithAttestation` for
-     *  how AOS treats a missing token (UNVERIFIED, not a hard failure). */
+     *  or null if one could not be obtained. Not checked by D365FO since 15 Nov 2026. */
     @SerialName("IntegrityToken") val integrityToken: String? = null,
 )
 
@@ -51,9 +50,7 @@ data class SignInServiceResponse(
      * A wrong user name and a wrong password both come back as INVALID_CREDENTIALS by design, so
      * the client must not try to be more specific than the server was. The license-related codes
      * are all checked server-side before credentials are even looked at - see
-     * WorkerSessionRepository.signIn. The last two (LICENSE_REVOKED, INTEGRITY_FAILED) only ever
-     * come from the live cloud/attestation check layered on top of the local certificate/license
-     * chain - see `HSMobileOpsLicense::verifyWithAttestation`.
+     * WorkerSessionRepository.signIn. See `HSMobileOpsLicense::verifyAtSignIn`.
      */
     @SerialName("ErrorCode") val errorCode: String? = null,
     @SerialName("Message") val message: String? = null,

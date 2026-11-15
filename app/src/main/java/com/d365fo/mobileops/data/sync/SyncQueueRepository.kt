@@ -168,6 +168,20 @@ class SyncQueueRepository @Inject constructor(
         failure: AppFailure,
         now: Long = System.currentTimeMillis(),
     ): Boolean {
+        // D365FO refused the work because the license is not valid (HSMobileOpsLicense::
+        // requireForWork - "[LICENSE] ..."): hold it, without using up attempts, and try again
+        // later. Captured work is never parked as failed because of the license; it posts once a
+        // valid license is loaded.
+        if (failure.message.contains(LICENSE_REFUSAL)) {
+            dao.scheduleRetry(
+                queueId = entry.queueId,
+                retryCount = entry.retryCount,
+                nextAttemptAt = now + LICENSE_HOLD_MS,
+                error = failure.message,
+            )
+            return false
+        }
+
         val attempts = entry.retryCount + 1
         // No answer from D365FO at all - no connection, DNS, a timeout - never uses up the
         // budget: an outage longer than the ladder must not turn captured work into a "failed"
@@ -257,6 +271,10 @@ class SyncQueueRepository @Inject constructor(
     private val registered = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
 
     private companion object {
+        /** How HSMobileOpsLicense::requireForWork marks a license refusal. */
+        const val LICENSE_REFUSAL = "[LICENSE]"
+        /** A held posting is tried again this often - a new license loaded in D365FO lets it through. */
+        const val LICENSE_HOLD_MS = 30 * 60 * 1000L
         const val LEASE_BATCH_SIZE = 10
         const val RESUBMIT_MARK = ":resubmit:"
 
