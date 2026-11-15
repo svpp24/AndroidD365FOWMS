@@ -19,9 +19,12 @@ class DeviceDeactivation @Inject constructor(
     private val deviceKey: DeviceKey,
     private val connectionSettings: ConnectionSettings,
     private val secureStore: SecureStore,
+    private val workBackup: dagger.Lazy<com.d365fo.mobileops.data.sync.WorkBackup>,
 ) {
     suspend fun wipe() = withContext(Dispatchers.IO) {
         Timber.w("device deactivated in D365FO: removing local data")
+        // The device's data goes; its D365FO copy stays for a supervisor (WorkBackup.keepBeforeWipe).
+        runCatching { workBackup.get().keepBeforeWipe() }
         runCatching { database.clearAllTables() }.onFailure { Timber.e(it, "deactivation: database wipe failed") }
         deviceKey.delete()
         connectionSettings.clearAllCredentials()

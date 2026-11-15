@@ -28,6 +28,7 @@ class DeviceSetup @Inject constructor(
     private val workerContextRepository: WorkerContextRepositoryImpl,
     private val tokenProvider: TokenProvider,
     private val deactivation: DeviceDeactivation,
+    private val workBackup: dagger.Lazy<com.d365fo.mobileops.data.sync.WorkBackup>,
 ) {
     sealed interface Result {
         data class Ready(val message: String) : Result
@@ -71,6 +72,8 @@ class DeviceSetup @Inject constructor(
         }
 
         val hadTarget = connectionSettings.tenant.value.resourceUrl.isNotBlank()
+        // A new target clears the local database below: keep its unsent work restorable first.
+        if (hadTarget && connectionSettings.wouldChangeTarget(config)) workBackup.get().keepBeforeWipe()
         try {
             withContext(Dispatchers.IO) {
                 val changed = connectionSettings.saveTenant(config)

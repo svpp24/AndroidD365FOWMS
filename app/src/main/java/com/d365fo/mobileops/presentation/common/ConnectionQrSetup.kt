@@ -69,6 +69,7 @@ class ConnectionQrViewModel @Inject constructor(
     private val database: D365Database,
     private val unsentWork: com.d365fo.mobileops.data.sync.UnsentWork,
     private val deviceSetup: com.d365fo.mobileops.data.security.DeviceSetup,
+    private val workBackup: dagger.Lazy<com.d365fo.mobileops.data.sync.WorkBackup>,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow<ConnectionQrState>(ConnectionQrState.Idle)
@@ -160,6 +161,8 @@ class ConnectionQrViewModel @Inject constructor(
         // on "Setting up…" (30 Oct: the code was saved, but the screen never moved on until the
         // app was reopened).
         val hadTarget = connectionSettings.tenant.value.resourceUrl.isNotBlank()
+        // A new target clears the local database below: keep its unsent work restorable first.
+        if (hadTarget && connectionSettings.wouldChangeTarget(ready.config)) workBackup.get().keepBeforeWipe()
         try {
             withContext(Dispatchers.IO) {
                 val changed = connectionSettings.saveTenant(ready.config)

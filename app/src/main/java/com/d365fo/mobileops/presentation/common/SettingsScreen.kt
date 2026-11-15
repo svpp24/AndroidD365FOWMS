@@ -747,7 +747,12 @@ private fun ConnectionProfiles(
                     "Company",
                     profile.company.ifBlank { if (active) deviceCompany.ifBlank { "Not set" } else "Not set" },
                 )
-                if (registrations == 0) {
+                if (profile.usesTokenService) {
+                    // Set up with a device setup code: no client secret on the device by design -
+                    // its own key, and tokens from the customer's token service (docs/device-setup.md).
+                    InfoRow("Sign-in", "Device key · token service")
+                    InfoRow("Token service", profile.tokenServiceUrl.removePrefix("https://"))
+                } else if (registrations == 0) {
                     Text(
                         text = "No credentials - scan its QR code.",
                         style = MaterialTheme.typography.bodyMedium,

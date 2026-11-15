@@ -71,6 +71,7 @@ class SettingsViewModel @Inject constructor(
     private val offlineSignIn: com.d365fo.mobileops.data.security.OfflineSignIn,
     workerSessions: WorkerSessionRepository,
     @dagger.hilt.android.qualifiers.ApplicationContext private val appContext: android.content.Context,
+    private val workBackup: dagger.Lazy<com.d365fo.mobileops.data.sync.WorkBackup>,
 ) : ViewModel() {
 
     /**
@@ -81,6 +82,7 @@ class SettingsViewModel @Inject constructor(
      */
     fun deleteAllData(onDone: () -> Unit) {
         viewModelScope.launch(handler) {
+            workBackup.get().keepBeforeWipe()
             withContext(Dispatchers.IO) {
                 database.clearAllTables()
                 listOf("sku_sync", "signin_log", "home_module_usage").forEach { name ->
@@ -239,6 +241,9 @@ class SettingsViewModel @Inject constructor(
      * a resource it was never issued for. See TokenProvider.invalidateCache's own doc comment.
      */
     private suspend fun wipeLocalData() = withContext(Dispatchers.IO) {
+        // Its unsent work stays restorable from D365FO (WorkBackup.keepBeforeWipe). Called once the
+        // profile has switched, so no fresh save - it would reach the new environment.
+        workBackup.get().keepBeforeWipe(saveFirst = false)
         database.clearAllTables()
         clientCredentialsTokenProvider.invalidateCache()
     }

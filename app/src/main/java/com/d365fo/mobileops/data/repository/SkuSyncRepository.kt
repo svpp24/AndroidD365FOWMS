@@ -233,16 +233,25 @@ class SkuSyncRepository @Inject constructor(
             // Settings > Sync masters now (30 Oct): a full sync starts over even part way through
             // another; changes only carry on with one already running.
             if (manual == ManualSync.FULL) prefs.edit().putLong(KEY_CYCLE_STARTED, 0L).apply()
+            // The local database was cleared (new connection, device setup code, deactivation)
+            // while this sync's bookmarks survived: a delta would add nothing to an empty cache.
+            // Start over with a full sync (15 Nov 2026: "Item master not on this device", and Sync
+            // answered "0 items").
+            val emptied = prefs.getLong(KEY_LAST_FULL, 0L) > 0L && itemDao.itemCount() == 0
+            if (emptied) {
+                Timber.w("SKU sync: the item cache is empty after a completed sync - starting a full sync")
+                prefs.edit().putLong(KEY_CYCLE_STARTED, 0L).remove(KEY_LAST_FULL).apply()
+            }
             if (prefs.getLong(KEY_CYCLE_STARTED, 0L) == 0L) {
                 // Not again within the day - unless a feed gained a column (SCHEMA), which needs a
                 // full sync now: the guard used to come first and kept the variant names away.
                 // Asked for by the worker (manual), it runs whenever.
-                if (manual == null && prefs.getInt(KEY_SCHEMA, 0) >= SCHEMA &&
+                if (manual == null && !emptied && prefs.getInt(KEY_SCHEMA, 0) >= SCHEMA &&
                     System.currentTimeMillis() - prefs.getLong(KEY_LAST_SUCCESS, 0L) < MIN_CYCLE_INTERVAL_MS
                 ) {
                     return@withLock SkuSyncStep.Done(null)
                 }
-                startCycle(forceFull = manual == ManualSync.FULL)
+                startCycle(forceFull = manual == ManualSync.FULL || emptied)
             }
             progress("Checking for changes")
             val full = prefs.getString(KEY_MODE, MODE_FULL) == MODE_FULL

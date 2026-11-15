@@ -35,6 +35,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
@@ -196,6 +197,12 @@ data class RestoreResult(val restored: Int, val notes: List<String>) {
  * After sign-in, [savedElsewhere] finds the worker's work saved from another device (or an
  * earlier install of this one) and [restore] brings it here: postings keep their idempotency
  * keys, so one D365FO already has is not posted twice.
+ *
+ * A local wipe (new connection, device setup code, deactivation, Delete all app data) never
+ * takes the D365FO copy with it: [keepBeforeWipe] saves the latest set, then this device backs
+ * up under a new backup ID. The old copy stays in D365FO under the previous one, and after
+ * sign-in it is offered back like work from another device (15 Nov 2026: a device setup wiped
+ * a job and a count journal, and the emptied device's next backup deleted their D365FO copy).
  */
 @Singleton
 class WorkBackup @Inject constructor(
@@ -271,6 +278,34 @@ class WorkBackup @Inject constructor(
             Timber.w("work backup: not saved - %s", (result as? NetworkResult.Error)?.failure?.message ?: answer?.errorCode)
             false
         }
+    }
+
+    /**
+     * Call before clearing the local database. Saves the current set (bounded: a deactivated or
+     * offline device can't), then moves this device to a new backup ID, so the emptied database's
+     * next backup can't remove what D365FO holds - that copy stays restorable after sign-in.
+     */
+    suspend fun keepBeforeWipe(saveFirst: Boolean = true) {
+        // saveFirst = false when the device already points at the new target: the set would go
+        // to the wrong environment. The regular backup (a few seconds after each change) has it.
+        val saved = saveFirst && (withTimeoutOrNull(KEEP_TIMEOUT_MS) { runCatching { backUpNow() }.getOrDefault(false) } ?: false)
+        lock.withLock {
+            val generation = (secureStore.getString(KEY_GENERATION)?.toIntOrNull() ?: 0) + 1
+            secureStore.putString(KEY_GENERATION, generation.toString())
+            secureStore.remove(KEY_HASH)
+            Timber.w("work backup: local wipe - D365FO copy kept (saved now: %s), backing up as %s", saved, backupDeviceId())
+        }
+    }
+
+    /**
+     * The device ID the backup is filed under: the device's own, with ~n after the nth local
+     * wipe. The device itself (registration, postings) keeps its ID.
+     */
+    @androidx.annotation.VisibleForTesting
+    internal fun backupDeviceId(): String {
+        val generation = secureStore.getString(KEY_GENERATION)?.toIntOrNull() ?: 0
+        val id = secureStore.deviceId()
+        return if (generation == 0) id else "${id.take(56)}~$generation"
     }
 
     /** This device's unsent work, one item per posting, refusal, job, draft or journal. */
@@ -550,7 +585,7 @@ class WorkBackup @Inject constructor(
         clearDeviceId: String = "",
     ) = DeviceWorkRequestBody(
         dataAreaId = company,
-        deviceId = secureStore.deviceId(),
+        deviceId = backupDeviceId(),
         // D365FO wants a name on every call; the device's own work carries its workers' names.
         userName = userName ?: sessions.session.value?.userName?.takeIf { it.isNotBlank() } ?: "device",
         appVersion = BuildConfig.VERSION_NAME,
@@ -597,6 +632,8 @@ class WorkBackup @Inject constructor(
     private companion object {
         const val KEY_HASH = "work_backup_hash"
         const val KEY_LAST_AT = "work_backup_last_at"
+        const val KEY_GENERATION = "work_backup_generation"
+        const val KEEP_TIMEOUT_MS = 15_000L
         const val DEBOUNCE_MS = 4_000L
         const val RETRY_MS = 120_000L
     }
