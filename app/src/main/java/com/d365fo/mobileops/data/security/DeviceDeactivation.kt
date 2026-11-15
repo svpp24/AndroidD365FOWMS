@@ -34,10 +34,14 @@ class DeviceDeactivation @Inject constructor(
         if (!it.value && wasDeactivated()) it.value = true
     }
 
-    suspend fun wipe() = withContext(Dispatchers.IO) {
+    /**
+     * [saveFirst]: false when the token service just refused this device - with no token the
+     * save can't reach D365FO (and would wait on the token lock it is called from).
+     */
+    suspend fun wipe(saveFirst: Boolean = true) = withContext(Dispatchers.IO) {
         Timber.w("device deactivated in D365FO: removing local data")
         // The device's data goes; its D365FO copy stays for a supervisor (WorkBackup.keepBeforeWipe).
-        runCatching { workBackup.get().keepBeforeWipe() }
+        runCatching { workBackup.get().keepBeforeWipe(saveFirst) }
         runCatching { database.clearAllTables() }.onFailure { Timber.e(it, "deactivation: database wipe failed") }
         deviceKey.delete()
         connectionSettings.clearAllCredentials()

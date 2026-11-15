@@ -52,6 +52,7 @@ class HSMobileOpsSessionService
                 response.parmMessage(conPeek(licenseProblem, 2));
             }
         }
+        HSMobileOpsSessionService::refuseInactiveDevice(_request, response);
 
         if (response.parmErrorCode())
         {
@@ -130,6 +131,7 @@ class HSMobileOpsSessionService
                 response.parmMessage(conPeek(licenseProblem, 2));
             }
         }
+        HSMobileOpsSessionService::refuseInactiveDevice(_request, response);
         HSMobileOpsLineClaim       session;
 
         if (response.parmErrorCode())
@@ -200,6 +202,37 @@ class HSMobileOpsSessionService
         }
         response.parmSuccess(true);
         return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>refuseInactiveDevice</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// DEVICE_INACTIVE when this device was deactivated in Mobile devices - for a device set up
+    /// with a device setup code (it has a registered key). Its D365FO token can still be valid
+    /// for up to an hour; this answer makes the app wipe itself at the next session check
+    /// (10 minutes, or when it is reopened) instead (15 Nov 2026). Devices on a client secret
+    /// are left as they are: deactivating them only marks them, as before.
+    /// </summary>
+    private static void refuseInactiveDevice(HSMobileOpsSessionRequest _request, HSMobileOpsSessionResponse _response)
+    {
+        HSMobileOpsDevice device;
+
+        if (_response.parmErrorCode())
+        {
+            return;
+        }
+        select firstonly IsActive, KeyRegisteredUtc from device
+            where device.DeviceId == _request.parmDeviceId();
+        if (device.RecId
+            && device.IsActive == NoYes::No
+            && device.KeyRegisteredUtc != utcDateTimeNull())
+        {
+            _response.parmErrorCode('DEVICE_INACTIVE');
+            _response.parmMessage('This device has been deactivated in D365FO.');
+        }
     }
 ]]></Source>
 			</Method>

@@ -27,6 +27,7 @@ class ActiveSessionGuardTest {
         val calls = mutableListOf<String>()
         var elsewhere = false
         var otherJobs = 0
+        var errorCode: String? = null
         override suspend fun peekSession(body: SessionServiceRequest): Response<SessionServiceResponse> {
             calls += "peek:${body.request.userName}"
             return Response.success(SessionServiceResponse(success = true, otherDevicePendingJobs = otherJobs))
@@ -37,7 +38,7 @@ class ActiveSessionGuardTest {
         }
         override suspend fun checkSession(body: SessionServiceRequest): Response<SessionServiceResponse> {
             calls += "check:${body.request.userName}"
-            return Response.success(SessionServiceResponse(success = true, signedInElsewhere = elsewhere))
+            return Response.success(SessionServiceResponse(success = errorCode == null, signedInElsewhere = elsewhere, errorCode = errorCode))
         }
         override suspend fun endSession(body: SessionServiceRequest): Response<SessionServiceResponse> {
             calls += "end:${body.request.userName}"
@@ -57,9 +58,21 @@ class ActiveSessionGuardTest {
         io.mockk.coEvery { it.forUser(any()) } returns com.d365fo.mobileops.data.sync.PendingWork(jobs = 2, counts = 1)
     }
 
+    private val deactivation = mockk<com.d365fo.mobileops.data.security.DeviceDeactivation>(relaxed = true)
+
     private fun guard() = ActiveSessionGuard(
         api, D365ErrorMapper(Json { ignoreUnknownKeys = true }), sessions, CompanyProvider { "BSP" }, store, pending, TestScope(),
+        { deactivation },
     )
+
+    @Test
+    fun `deactivated in D365FO - the device wipes itself at the session check`() = runTest {
+        api.errorCode = "DEVICE_INACTIVE"
+        guard().check()
+
+        io.mockk.coVerify(exactly = 1) { deactivation.wipe(any()) }
+        verify(exactly = 0) { sessions.signOutLicense(any()) }
+    }
 
     @Test
     fun `still the active device - stays signed in`() = runTest {
@@ -67,6 +80,7 @@ class ActiveSessionGuardTest {
 
         assertThat(api.calls).containsExactly("check:001")
         verify(exactly = 0) { sessions.signOutElsewhere(any()) }
+        io.mockk.coVerify(exactly = 0) { deactivation.wipe(any()) }
     }
 
     @Test

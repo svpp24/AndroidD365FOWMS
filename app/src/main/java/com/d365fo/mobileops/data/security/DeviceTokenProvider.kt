@@ -100,7 +100,7 @@ class DeviceTokenProvider @Inject constructor(
         Timber.w("device token: refused %s %s", answer.httpStatus, answer.code)
         return when {
             answer.code == "DEVICE_INACTIVE" -> {
-                deactivation.get().wipe()
+                deactivation.get().wipe(saveFirst = false)
                 NetworkResult.Error(AppFailure.Authentication(DeviceDeactivation.MESSAGE))
             }
             answer.httpStatus == 429 || answer.httpStatus >= 500 -> NetworkResult.Error(

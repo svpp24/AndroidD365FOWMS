@@ -55,6 +55,7 @@ class ActiveSessionGuard @Inject constructor(
     private val secureStore: SecureStore,
     private val pendingWork: PendingWorkCounter,
     private val scope: CoroutineScope,
+    private val deactivation: dagger.Lazy<com.d365fo.mobileops.data.security.DeviceDeactivation>,
 ) {
     /** A sign-in not yet recorded in D365FO - the user name it was for. */
     @Volatile private var pendingStart: String? = null
@@ -171,11 +172,14 @@ class ActiveSessionGuard @Inject constructor(
         if (pendingStart.equals(user, ignoreCase = true)) {
             val result = errorMapper.safeCall { api.startSession(body) }
             if ((result is NetworkResult.Success && result.data.success) || result.notDeployed()) pendingStart = null
-            (result as? NetworkResult.Success)?.data?.let { signOutIfUnlicensed(user, it.errorCode, it.message) }
+            (result as? NetworkResult.Success)?.data?.let {
+                if (!wipeIfDeactivated(it.errorCode)) signOutIfUnlicensed(user, it.errorCode, it.message)
+            }
             return@withLock
         }
         val result = errorMapper.safeCall { api.checkSession(body) }
         val answer = (result as? NetworkResult.Success)?.data ?: return@withLock
+        if (wipeIfDeactivated(answer.errorCode)) return@withLock
         if (signOutIfUnlicensed(user, answer.errorCode, answer.message)) return@withLock
         if (answer.success && answer.signedInElsewhere && sessions.session.value?.userName == user) {
             Timber.w("'%s' signed in on another device - signing out here", user)
@@ -189,6 +193,18 @@ class ActiveSessionGuard @Inject constructor(
      * D365FO checks the license on every session check (HSMobileOpsLicense::sessionCheck): a
      * LICENSE_* answer - expired, or replaced by one for another tenant - signs the worker out.
      */
+    /**
+     * DEVICE_INACTIVE: this device (set up with a device setup code) was deactivated in D365FO.
+     * Its token may still be good for up to an hour - D365FO says so now, so the device wipes
+     * itself now (DeviceDeactivation) instead of when the token runs out (15 Nov 2026).
+     */
+    private suspend fun wipeIfDeactivated(code: String?): Boolean {
+        if (code != "DEVICE_INACTIVE") return false
+        Timber.w("session check: device deactivated in D365FO")
+        deactivation.get().wipe()
+        return true
+    }
+
     private fun signOutIfUnlicensed(user: String, code: String?, message: String?): Boolean {
         if (code?.startsWith("LICENSE") != true || sessions.session.value?.userName != user) return false
         Timber.w("license no longer valid (%s) - signing out", code)
