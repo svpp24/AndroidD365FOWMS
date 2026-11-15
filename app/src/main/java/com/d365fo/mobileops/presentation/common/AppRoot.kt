@@ -230,6 +230,10 @@ fun AppRoot(
         else -> NotConfiguredScreen(
             state = session,
             tenant = tenant,
+            // Deactivated in one environment, still set up for another: point at the menu.
+            otherProfiles = settingsViewModel.profiles.collectAsStateWithLifecycle().value.any {
+                it.label != tenant.label && (it.usesTokenService || it.credentials.any { c -> c.isComplete })
+            },
             onOpenSettings = { settingsWhileSignedOut = true },
             onConnected = sessionViewModel::refresh,
             onTryDemo = { demoViewModel.start { sessionViewModel.refresh() } },

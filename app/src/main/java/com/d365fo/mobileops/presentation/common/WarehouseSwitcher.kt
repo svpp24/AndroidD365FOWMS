@@ -1,5 +1,9 @@
 package com.d365fo.mobileops.presentation.common
 
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.layout.size
+import androidx.compose.ui.draw.clip
 import com.d365fo.mobileops.presentation.common.theme.WarehouseDimens
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.background
@@ -7,6 +11,8 @@ import androidx.compose.foundation.border
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Warehouse
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -267,7 +273,7 @@ fun ChangeWarehouseScreen(
             title = { Text("Switch to ${target.warehouseId}?") },
             text = {
                 Text(
-                    "${here.size} unfinished job${if (here.size == 1) "" else "s"} wait${if (here.size == 1) "s" else ""} here for you.",
+                    "${here.size} unfinished job${if (here.size == 1) "" else "s"} wait${if (here.size == 1) "s" else ""} here in ${selected?.warehouseId ?: "this warehouse"} for you.",
                 )
             },
             confirmButton = {
@@ -283,69 +289,139 @@ fun ChangeWarehouseScreen(
         )
     }
 
-    androidx.compose.material3.Scaffold(
-        topBar = {
-            com.d365fo.mobileops.presentation.common.components.AppTopBar(
-                title = { Text("Change warehouse") },
-                expandedHeight = com.d365fo.mobileops.presentation.common.theme.WarehouseDimens.TopBarHeight,
-                navigationIcon = {
-                    androidx.compose.material3.IconButton(onClick = onDone) {
-                        androidx.compose.material3.Icon(
-                            androidx.compose.material.icons.Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Back",
-                        )
-                    }
-                },
-            )
-        },
-    ) { padding ->
-        androidx.compose.foundation.lazy.LazyColumn(
-            modifier = Modifier.padding(padding),
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
-            verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp),
-        ) {
-            val warehouses = session?.warehouses.orEmpty()
+    // A Focus list like Hazard count (user, 15 Nov 2026): where the worker is now, then the
+    // others, each with its unfinished work.
+    val warehouses = session?.warehouses.orEmpty()
+    fun unfinishedAt(id: String) = all.count { it.warehouseId.equals(id, ignoreCase = true) }
+    fun pick(warehouse: AssignedWarehouse) {
+        if (here.isEmpty()) {
+            viewModel.select(warehouse.warehouseId)
+            onDone()
+        } else {
+            confirmFor = warehouse
+        }
+    }
+    com.d365fo.mobileops.presentation.common.focus.FocusScreen(
+        title = "Change warehouse",
+        onBack = onDone,
+        counter = warehouses.size.takeIf { it > 0 }?.toString(),
+    ) {
+        androidx.compose.foundation.lazy.LazyColumn(modifier = Modifier.weight(1f).fillMaxWidth()) {
             if (warehouses.isEmpty()) {
-                item { Text("No warehouse - ask a supervisor") }
+                item {
+                    com.d365fo.mobileops.presentation.common.focus.ResultBand(
+                        com.d365fo.mobileops.presentation.common.focus.BandState(
+                            com.d365fo.mobileops.presentation.common.focus.BandKind.Warn,
+                            "No warehouse",
+                            "Ask a supervisor to assign one in D365FO.",
+                        ),
+                        modifier = Modifier.padding(top = 16.dp),
+                    )
+                }
             }
-            items(warehouses.size) { index ->
-                val warehouse = warehouses[index]
-                val isCurrent = warehouse.warehouseId == selected?.warehouseId
-                val saved = all.count { it.warehouseId.equals(warehouse.warehouseId, ignoreCase = true) }
-                com.d365fo.mobileops.presentation.common.components.AppCard(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable(enabled = !isCurrent) {
-                            if (here.isEmpty()) {
-                                viewModel.select(warehouse.warehouseId)
-                                onDone()
-                            } else {
-                                confirmFor = warehouse
-                            }
-                        },
-                ) {
-                    Column(modifier = Modifier.padding(14.dp)) {
-                        Text(
-                            warehouse.warehouseName.ifBlank { warehouse.warehouseId },
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = if (isCurrent) FontWeight.SemiBold else FontWeight.Normal,
-                        )
-                        Text(
-                            listOfNotNull(
-                                warehouse.warehouseId,
-                                warehouse.siteId.takeIf { it.isNotBlank() }?.let { "site $it" },
-                                "default".takeIf { warehouse.isDefault },
-                                "current".takeIf { isCurrent },
-                                if (saved > 0) "$saved unfinished${if (isCurrent) "" else " on hold"}" else null,
-                            ).joinToString(" \u00B7 "),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = if (isCurrent) WarehouseStatusColors.accent else WarehouseStatusColors.text3,
-                        )
-                    }
+            val current = warehouses.firstOrNull { it.warehouseId == selected?.warehouseId }
+            current?.let { wh ->
+                item(key = "here-caption") { WarehouseCaption("Working in") }
+                item(key = "here-${wh.warehouseId}") {
+                    val saved = unfinishedAt(wh.warehouseId)
+                    WarehouseRow(
+                        warehouse = wh,
+                        current = true,
+                        pill = if (saved > 0) "$saved unfinished" to false else null,
+                        onClick = null,
+                    )
+                }
+            }
+            val others = warehouses.filter { it.warehouseId != selected?.warehouseId }
+            if (others.isNotEmpty()) {
+                item(key = "others-caption") { WarehouseCaption(if (current != null) "You can also work in" else "Choose a warehouse") }
+                items(others.size, key = { "wh-${others[it].warehouseId}" }) { index ->
+                    val wh = others[index]
+                    val saved = unfinishedAt(wh.warehouseId)
+                    WarehouseRow(
+                        warehouse = wh,
+                        current = false,
+                        pill = if (saved > 0) "$saved unfinished on hold" to true else null,
+                        onClick = { pick(wh) },
+                    )
                 }
             }
         }
     }
 }
+
+@Composable
+private fun WarehouseCaption(text: String) {
+    com.d365fo.mobileops.presentation.common.focus.FocusCaption(
+        text,
+        modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 18.dp, bottom = 6.dp),
+    )
+}
+
+/**
+ * One warehouse: the code in the code font, its name and site, [pill] (text, on hold) for
+ * unfinished work, a green tick on a light green row for the current one, a chevron otherwise.
+ */
+@Composable
+internal fun WarehouseRow(
+    warehouse: AssignedWarehouse,
+    current: Boolean,
+    pill: Pair<String, Boolean>?,
+    onClick: (() -> Unit)?,
+    showSite: Boolean = true,
+) {
+    val colors = com.d365fo.mobileops.presentation.common.theme.FocusColors
+    val type = com.d365fo.mobileops.presentation.common.theme.FocusType
+    Column(modifier = Modifier.fillMaxWidth().then(if (current) Modifier.background(colors.okBg.copy(alpha = 0.45f)) else Modifier)) {
+        androidx.compose.foundation.layout.Row(
+            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .then(if (onClick != null) Modifier.clickable(role = androidx.compose.ui.semantics.Role.Button, onClick = onClick) else Modifier)
+                .heightIn(min = com.d365fo.mobileops.presentation.common.focus.FocusDimens.listRow)
+                .padding(horizontal = 20.dp, vertical = 10.dp),
+        ) {
+            androidx.compose.material3.Icon(
+                if (current) androidx.compose.material.icons.Icons.Filled.CheckCircle else androidx.compose.material.icons.Icons.Filled.Warehouse,
+                contentDescription = if (current) "Current" else null,
+                tint = if (current) colors.okIcon else if (onClick != null) colors.navy else colors.iconMuted,
+                modifier = Modifier.size(26.dp),
+            )
+            Column(modifier = Modifier.weight(1f)) {
+                Text(with(com.d365fo.mobileops.presentation.common.focus.FocusDimens) { warehouse.warehouseId }.replace("-", "-​"), style = type.rowCode, color = colors.ink)
+                val name = warehouse.warehouseName.trim().takeIf { it.isNotBlank() && !it.equals(warehouse.warehouseId, ignoreCase = true) }
+                val details = listOfNotNull(
+                    name,
+                    warehouse.siteId.takeIf { showSite && it.isNotBlank() }?.let { "Site $it" },
+                    "default".takeIf { warehouse.isDefault },
+                ).joinToString(" · ")
+                if (details.isNotBlank()) Text(details, style = type.rowDetail, color = colors.muted)
+                pill?.let { (text, onHold) ->
+                    Text(
+                        text.uppercase(),
+                        style = type.caption.copy(fontSize = 11.sp),
+                        color = if (onHold) colors.warnText else colors.infoText,
+                        modifier = Modifier
+                            .padding(top = 4.dp)
+                            .clip(androidx.compose.foundation.shape.RoundedCornerShape(50))
+                            .background(if (onHold) colors.warnBg else colors.infoBg)
+                            .padding(horizontal = 8.dp, vertical = 2.dp),
+                    )
+                }
+            }
+            if (onClick != null) {
+                androidx.compose.material3.Icon(
+                    androidx.compose.material.icons.Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                    contentDescription = null,
+                    tint = colors.iconMuted,
+                    modifier = Modifier.size(22.dp),
+                )
+            }
+        }
+        androidx.compose.material3.HorizontalDivider(color = colors.divider)
+    }
+}
+
 
 

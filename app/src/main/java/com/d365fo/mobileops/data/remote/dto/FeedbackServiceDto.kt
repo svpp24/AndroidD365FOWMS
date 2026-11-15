@@ -23,6 +23,8 @@ data class FeedbackRequestBody(
     @SerialName("Logs") val logs: String = "",
     /** A JPEG, base64 - blank for none. */
     @SerialName("ScreenshotBase64") val screenshotBase64: String = "",
+    /** Every picture (JPEG, base64), up to 5; the first is also [screenshotBase64]. */
+    @SerialName("Pictures") val pictures: List<String> = emptyList(),
     @SerialName("Take") val take: Int = 0,
 )
 

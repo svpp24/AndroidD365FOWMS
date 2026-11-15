@@ -3,6 +3,11 @@ package com.d365fo.mobileops.presentation.common
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.material.icons.automirrored.filled.Chat
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.border
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.basicMarquee
@@ -142,19 +147,36 @@ internal fun FocusHome(
         add(HomeEntry(LineIcons.ActivityThin, "Activity", failedCount.takeIf { it > 0 }?.toString(), alert = true) { onOpen(Routes.FAILED_SYNC) })
         add(HomeEntry(LineIcons.SearchThin, "Enquiry", null, muted = true) { onOpen(Routes.SERVICES) })
     }
-    val user = session?.displayName?.trim()?.split(' ')?.firstOrNull { it.isNotBlank() } ?: session?.userName.orEmpty()
+    val user = session?.displayName?.trim()?.takeIf { it.isNotBlank() } ?: session?.userName.orEmpty()
+    val code = session?.selected?.warehouseId ?: warehouseId.orEmpty()
     FocusHomeLayout(
-        header = listOfNotNull(user.takeIf { it.isNotBlank() }, session?.selected?.warehouseId ?: warehouseId).joinToString(" · "),
-        // The warehouse's name under the code, small (user, 15 Nov 2026).
-        subheader = session?.selected?.let { wh -> wh.warehouseName.trim().takeIf { it.isNotBlank() && it != wh.warehouseId } },
+        initials = initialsOf(user),
+        warehouseCode = code,
+        warehouseName = session?.selected?.warehouseName?.trim()?.takeIf { it.isNotBlank() } ?: code,
+        userLabel = user,
         online = online,
         band = notAvailable ?: band,
         rows = rows,
         onSettings = onSettings,
+        onFeedback = { onOpen(Routes.FEEDBACK) },
         onSignOut = onSignOut,
         onChangeWarehouse = if (session?.warehouses.orEmpty().size > 1) onChangeWarehouse else null,
         restoreCard = { RestoreWorkCard(modifier = it) },
     )
+}
+
+/**
+ * Two letters for the header circle: the first letters of the first two words ("Abdul Rahman" ->
+ * AR), or of a one-word name its first letter and its next capital ("Demo1Supervisor" -> DS), or
+ * its first two characters ("002" -> 00).
+ */
+internal fun initialsOf(name: String): String {
+    val words = name.trim().split(Regex("\\s+")).filter { it.isNotBlank() }
+    if (words.isEmpty()) return ""
+    if (words.size >= 2) return "${words[0].first()}${words[1].first()}".uppercase()
+    val word = words[0]
+    val capital = word.drop(1).firstOrNull { it.isUpperCase() }
+    return (if (capital != null) "${word.first()}$capital" else word.take(2)).uppercase()
 }
 
 /** One Home row. [alert]: the count is red (Activity). [muted]: grey icon (Enquiry). */
@@ -170,7 +192,9 @@ internal data class HomeEntry(
 /** Home's layout, without view models - for the app and for the layout test's samples. */
 @Composable
 internal fun FocusHomeLayout(
-    header: String,
+    initials: String,
+    warehouseCode: String,
+    warehouseName: String,
     online: Boolean,
     band: BandState?,
     rows: List<HomeEntry>,
@@ -179,7 +203,8 @@ internal fun FocusHomeLayout(
     onChangeWarehouse: (() -> Unit)?,
     restoreCard: @Composable (Modifier) -> Unit = {},
     onPanelSubmit: ((String) -> Unit)? = null,
-    subheader: String? = null,
+    onFeedback: (() -> Unit)? = null,
+    userLabel: String = initials,
 ) {
     var menuOpen by remember { mutableStateOf(false) }
     Column(
@@ -187,18 +212,20 @@ internal fun FocusHomeLayout(
             .fillMaxSize()
             .background(FocusColors.page),
     ) {
-        // Header: who and where, online and the hamburger on one line (user, 15 Nov 2026).
+        // Header (user, 15 Nov 2026): the worker's initials in a navy circle - a green ring when
+        // online, a dashed grey one offline - with the warehouse code on an orange tag, then the
+        // warehouse's name on one line, scrolling when it is longer than the line, and the menu.
         Row(
             verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
             modifier = Modifier
                 .fillMaxWidth()
-                .heightIn(min = FocusDimens.topBar - 8.dp)
-                .padding(start = FocusDimens.side, end = 8.dp),
+                .heightIn(min = FocusDimens.topBar + 8.dp)
+                .padding(start = FocusDimens.side, end = 8.dp, top = 6.dp, bottom = 6.dp),
         ) {
-            Text(
-                header,
-                style = FocusType.topBarTitle,
-                color = FocusColors.ink,
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
                 modifier = Modifier
                     .weight(1f)
                     .tourTarget("warehouse")
@@ -209,54 +236,25 @@ internal fun FocusHomeLayout(
                             Modifier
                         },
                     )
-                    .heightIn(min = if (onChangeWarehouse != null) 48.dp else 0.dp)
-                    .wrapContentHeight(Alignment.CenterVertically)
-                    .semantics { heading() },
-            )
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                modifier = Modifier
-                    .tourTarget("connection")
-                    .padding(horizontal = 8.dp),
+                    .heightIn(min = 48.dp)
+                    .semantics(mergeDescendants = true) {
+                        heading()
+                        contentDescription = "$userLabel, $warehouseCode $warehouseName, " + if (online) "online" else "offline"
+                    },
             ) {
-                Box(
-                    Modifier
-                        .size(10.dp)
-                        .clip(CircleShape)
-                        .background(if (online) FocusColors.okIcon else FocusColors.caption),
-                )
+                StatusAvatar(initials = initials, tag = warehouseCode, online = online, modifier = Modifier.tourTarget("connection"))
                 Text(
-                    if (online) "Online" else "Offline",
-                    style = FocusType.rowDetail,
-                    color = if (online) FocusColors.okText else FocusColors.muted,
+                    warehouseName,
+                    style = FocusType.rowTitle.copy(fontSize = 16.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.ExtraBold),
+                    color = FocusColors.ink,
+                    maxLines = 1,
+                    modifier = Modifier
+                        .weight(1f)
+                        .basicMarquee(iterations = Int.MAX_VALUE, initialDelayMillis = 1_200, spacing = androidx.compose.foundation.MarqueeSpacing(40.dp)),
                 )
             }
             Box(Modifier.tourTarget("signout")) {
                 HamburgerButton(open = menuOpen, onClick = { menuOpen = !menuOpen })
-            }
-        }
-        // The warehouse's name: one line in a thin info-blue banner, scrolling when it is longer
-        // than the line (user, 15 Nov 2026). basicMarquee stays still when it fits, and the
-        // system's "remove animations" setting stops it.
-        subheader?.let { name ->
-            Box(
-                contentAlignment = Alignment.CenterStart,
-                modifier = Modifier
-                    .padding(start = FocusDimens.side, end = FocusDimens.side, bottom = 8.dp)
-                    .fillMaxWidth()
-                    .heightIn(min = 22.dp)
-                    .clip(androidx.compose.foundation.shape.RoundedCornerShape(6.dp))
-                    .background(FocusColors.infoBg)
-                    .padding(horizontal = 8.dp),
-            ) {
-                Text(
-                    name,
-                    style = FocusType.rowDetail.copy(fontSize = 12.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold),
-                    color = FocusColors.infoText,
-                    maxLines = 1,
-                    modifier = Modifier.basicMarquee(iterations = Int.MAX_VALUE, initialDelayMillis = 1_200, spacing = androidx.compose.foundation.MarqueeSpacing(32.dp)),
-                )
             }
         }
         FocusMenu(
@@ -264,6 +262,10 @@ internal fun FocusHomeLayout(
             onDismiss = { menuOpen = false },
             items = listOfNotNull(
                 FocusMenuItem(Icons.Filled.Settings, "Settings") { menuOpen = false; onSettings() },
+                // Feedback lives here only (user, 15 Nov 2026), with pictures from the gallery.
+                onFeedback?.let { feedback ->
+                    FocusMenuItem(Icons.AutoMirrored.Filled.Chat, "Send feedback") { menuOpen = false; feedback() }
+                },
                 onSignOut?.let { signOut ->
                     FocusMenuItem(Icons.AutoMirrored.Filled.Logout, "Sign out", color = FocusColors.badIcon) { menuOpen = false; signOut() }
                 },
@@ -319,12 +321,66 @@ private fun receiveCount(figures: HomeDashboardViewModel.Figures, modules: List<
     return parts.sum().toString()
 }
 
+/**
+ * The header circle: [initials] on navy, a ring that says online (solid green) or offline (dashed
+ * grey), and [tag] - the warehouse code - on an orange tag over its lower right corner.
+ */
+@Composable
+internal fun StatusAvatar(initials: String, tag: String, online: Boolean, modifier: Modifier = Modifier) {
+    val ok = FocusColors.okIcon
+    val off = FocusColors.iconMuted
+    Box(modifier = modifier.padding(end = 10.dp, bottom = 6.dp)) {
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier
+                .size(50.dp)
+                .drawBehind {
+                    val stroke = 2.dp.toPx()
+                    val radius = size.minDimension / 2 - stroke / 2
+                    drawCircle(
+                        color = if (online) ok else off,
+                        radius = radius,
+                        style = androidx.compose.ui.graphics.drawscope.Stroke(
+                            width = stroke,
+                            pathEffect = if (online) null else androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(6.dp.toPx(), 4.dp.toPx())),
+                        ),
+                    )
+                },
+        ) {
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier
+                    .size(42.dp)
+                    .clip(CircleShape)
+                    .background(FocusColors.navy),
+            ) {
+                Text(initials, style = FocusType.rowTitle.copy(fontSize = 15.sp), color = FocusColors.surface)
+            }
+        }
+        if (tag.isNotBlank()) {
+            Text(
+                tag,
+                style = FocusType.rowCode.copy(fontSize = 13.sp, lineHeight = 15.sp),
+                color = FocusColors.surface,
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .offset(x = 10.dp, y = 6.dp)
+                    .border(2.dp, FocusColors.page, androidx.compose.foundation.shape.RoundedCornerShape(7.dp))
+                    .clip(androidx.compose.foundation.shape.RoundedCornerShape(7.dp))
+                    .background(FocusColors.action)
+                    .padding(horizontal = 6.dp, vertical = 1.dp),
+            )
+        }
+    }
+}
+
 /** Home with sample figures - previews and the layout test. [band]: the state after a bad scan. */
 @Composable
 internal fun FocusHomeSample(band: Boolean = false) {
     FocusHomeLayout(
-        header = "Abdul · AAC",
-        subheader = "BSP - American Academy of Cosmetic Surgery Hospital",
+        initials = "AR",
+        warehouseCode = "AAC",
+        warehouseName = "BSP - American Academy of Cosmetic Surgery Hospital",
         online = !band,
         band = if (band) BandState(BandKind.Bad, "Not recognised", "XJ-55-AB · nothing added") else null,
         rows = listOf(

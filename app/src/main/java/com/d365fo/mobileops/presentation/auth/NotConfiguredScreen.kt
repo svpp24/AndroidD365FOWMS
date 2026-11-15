@@ -1,5 +1,10 @@
 package com.d365fo.mobileops.presentation.auth
 
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -59,6 +64,8 @@ fun NotConfiguredScreen(
     onTryDemo: () -> Unit = {},
     demoBusy: Boolean = false,
     demoError: String? = null,
+    /** Another profile on this device still has its sign-in - point at the menu after a deactivation. */
+    otherProfiles: Boolean = false,
 ) {
     // Dead centre of the page, on its own - not sharing a Column with the title above it. A
     // Column with Arrangement.Center centres the *pair* of title-plus-spinner as one block,
@@ -83,13 +90,20 @@ fun NotConfiguredScreen(
             .verticalScroll(rememberScrollState()),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
+        val deactivated = state is SessionState.SignedOut &&
+            com.d365fo.mobileops.data.security.DeviceDeactivation.isDeactivation(state.reason)
+        val pointAtMenu = deactivated && otherProfiles && !menuOpen
         Row(
-            horizontalArrangement = Arrangement.End,
+            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+            verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(top = 4.dp, end = 8.dp),
         ) {
-            HamburgerButton(open = menuOpen, onClick = { menuOpen = !menuOpen })
+            if (pointAtMenu) TryOtherProfilesHint()
+            Box(if (pointAtMenu) Modifier.pulseRing() else Modifier) {
+                HamburgerButton(open = menuOpen, onClick = { menuOpen = !menuOpen })
+            }
         }
         FocusMenu(
             open = menuOpen,
@@ -118,7 +132,8 @@ fun NotConfiguredScreen(
                     is SessionState.SignedOut -> state.reason ?: "This device cannot reach D365FO"
                     else -> "Setting up"
                 },
-                tenant.host.takeIf { tenant.resourceUrl.isNotBlank() },
+                // No address after a deactivation (user, 15 Nov 2026) - the profile is named instead.
+                tenant.host.takeIf { tenant.resourceUrl.isNotBlank() && !deactivated },
             ),
         )
         Text(
@@ -157,5 +172,68 @@ fun NotConfiguredScreen(
                 modifier = Modifier.padding(horizontal = FocusDimens.side).padding(bottom = 20.dp),
             )
         }
+    }
+}
+
+/** Whether the system's "remove animations" is on - the hint then stays still. */
+@Composable
+private fun animationsOff(): Boolean {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    return androidx.compose.runtime.remember {
+        android.provider.Settings.Global.getFloat(context.contentResolver, android.provider.Settings.Global.ANIMATOR_DURATION_SCALE, 1f) == 0f
+    }
+}
+
+/** "Try other profiles" in a light-blue bubble with an arrow, nudging towards the menu. */
+@Composable
+private fun TryOtherProfilesHint() {
+    val still = animationsOff()
+    val transition = androidx.compose.animation.core.rememberInfiniteTransition(label = "hint")
+    val nudge by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 6f,
+        animationSpec = androidx.compose.animation.core.infiniteRepeatable(
+            androidx.compose.animation.core.tween(600),
+            androidx.compose.animation.core.RepeatMode.Reverse,
+        ),
+        label = "nudge",
+    )
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        modifier = Modifier
+            .offset(x = if (still) 0.dp else nudge.dp)
+            .clip(androidx.compose.foundation.shape.RoundedCornerShape(10.dp))
+            .background(FocusColors.infoBg)
+            .padding(horizontal = 12.dp, vertical = 7.dp),
+    ) {
+        Text("Try other profiles", style = FocusType.rowDetail.copy(fontWeight = FontWeight.ExtraBold), color = FocusColors.infoText)
+        androidx.compose.material3.Icon(
+            androidx.compose.material.icons.Icons.AutoMirrored.Filled.ArrowForward,
+            contentDescription = null,
+            tint = FocusColors.infoText,
+            modifier = Modifier.width(18.dp),
+        )
+    }
+}
+
+/** A navy ring that grows and fades around the menu button, over and over. */
+@Composable
+private fun Modifier.pulseRing(): Modifier {
+    val still = animationsOff()
+    val transition = androidx.compose.animation.core.rememberInfiniteTransition(label = "pulse")
+    val t by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = androidx.compose.animation.core.infiniteRepeatable(androidx.compose.animation.core.tween(1600)),
+        label = "ring",
+    )
+    if (still) return this
+    val navy = FocusColors.navy
+    return this.drawBehind {
+        drawCircle(
+            color = navy.copy(alpha = 0.45f * (1f - t)),
+            radius = size.minDimension / 2 + 12.dp.toPx() * t,
+        )
     }
 }

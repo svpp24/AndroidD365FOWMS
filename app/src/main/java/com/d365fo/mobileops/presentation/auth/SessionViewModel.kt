@@ -73,7 +73,7 @@ class SessionViewModel @Inject constructor(
         // saying so - from any screen, mid-shift too.
         viewModelScope.launch {
             deactivation.deactivated.drop(1).collect { gone ->
-                if (gone) _state.value = SessionState.SignedOut(com.d365fo.mobileops.data.security.DeviceDeactivation.MESSAGE)
+                if (gone) _state.value = SessionState.SignedOut(deactivation.message())
             }
         }
         viewModelScope.launch {
@@ -133,7 +133,7 @@ class SessionViewModel @Inject constructor(
             _state.value = if (ready == null && deactivation.wasDeactivated()) {
                 // Not "not configured yet": say why, and what to ask for.
                 Timber.i("device session: deactivated in D365FO")
-                SessionState.SignedOut(com.d365fo.mobileops.data.security.DeviceDeactivation.MESSAGE)
+                SessionState.SignedOut(deactivation.message())
             } else if (ready == null) {
                 Timber.i("device session: not configured")
                 SessionState.NotConfigured

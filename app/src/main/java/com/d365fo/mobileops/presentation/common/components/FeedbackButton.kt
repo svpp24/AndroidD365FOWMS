@@ -40,7 +40,8 @@ fun TopBarMenu(
     onSignOut: (() -> Unit)? = null,
     items: (@Composable ColumnScope.(close: () -> Unit) -> Unit)? = null,
 ) {
-    val launch = LocalFeedbackLauncher.current
+    // Feedback is on Home's menu only now (user, 15 Nov 2026), so not here.
+    val launch: ((android.graphics.Bitmap?) -> Unit)? = null
     if (launch == null && onSignOut == null && items == null) return
     val view = LocalView.current
     var open by remember { mutableStateOf(false) }

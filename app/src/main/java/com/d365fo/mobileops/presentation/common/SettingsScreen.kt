@@ -1,5 +1,15 @@
 package com.d365fo.mobileops.presentation.common
 
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Assignment
+import androidx.compose.material.icons.filled.Route
+import androidx.compose.material.icons.filled.RestartAlt
+import androidx.compose.material.icons.filled.Dns
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.layout.wrapContentHeight
+import androidx.compose.foundation.selection.selectable
 import com.d365fo.mobileops.presentation.common.components.bleed
 import com.d365fo.mobileops.presentation.common.components.LineIcons
 import android.content.Intent
@@ -208,219 +218,235 @@ fun SettingsScreen(
 
     // A section's back arrow returns to the Settings list; the list's to where it was opened.
     androidx.activity.compose.BackHandler(enabled = openSection != null) { openSection = null }
+    // Focus list style throughout (user, 15 Nov 2026): captions, rows with icons and chevrons,
+    // results in a band at the top. Connection & profile has its Scan button pinned at the bottom.
+    var scanBand by remember { mutableStateOf<com.d365fo.mobileops.presentation.common.focus.BandState?>(null) }
+    var labelsBeforeScan by remember { mutableStateOf<Set<String>>(emptySet()) }
+    val connectionOpen = openSection == SettingsMenuItem.ConnectionProfile && onSignOut == null
     com.d365fo.mobileops.presentation.common.focus.FocusScreen(
         title = openSection?.title ?: "Settings",
         onBack = if (isTab && openSection == null) null else { { if (openSection != null) openSection = null else onBack() } },
+        counter = if (connectionOpen) profiles.size.takeIf { it > 0 }?.toString() else null,
+        band = if (connectionOpen) scanBand else null,
+        actions = if (connectionOpen) {
+            {
+                LaunchedEffect(Unit) { labelsBeforeScan = profiles.map { it.label }.toSet() }
+                ConnectionQrSetup(
+                    modifier = Modifier.weight(1f),
+                    onConnected = {
+                        val now = viewModel.tenant.value
+                        scanBand = com.d365fo.mobileops.presentation.common.focus.BandState(
+                            com.d365fo.mobileops.presentation.common.focus.BandKind.Ok,
+                            "${now.label} " + (if (now.label in labelsBeforeScan) "updated" else "added") + " · in use",
+                            profileLine(now),
+                            autoHideMs = 4_000L,
+                        )
+                        labelsBeforeScan = viewModel.profiles.value.map { it.label }.toSet()
+                    },
+                )
+            }
+        } else {
+            null
+        },
     ) {
         Column(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
-                .padding(horizontal = WarehouseDimens.ScreenPadding)
                 .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(WarehouseDimens.ItemSpacing),
         ) {
-            Row(modifier = Modifier.padding(top = 4.dp)) { }
-
-            if (openSection == null) {
-                SettingsMenu(
-                    postingEnabled = postingEnabled,
-                    showConnectionProfile = onSignOut == null,
-                    showSignedInSections = onSignOut != null,
-                    onOpen = { if (it == SettingsMenuItem.Feedback) onFeedback?.invoke() else openSection = it },
-                )
-                if (onSignOut != null) {
-                    com.d365fo.mobileops.presentation.common.components.SquareOutlinedButton(
-                        onClick = { confirmSignOut = true },
-                        border = androidx.compose.foundation.BorderStroke(1.5.dp, WarehouseStatusColors.red),
-                        colors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(contentColor = WarehouseStatusColors.red),
-                        modifier = Modifier.fillMaxWidth().heightIn(min = WarehouseDimens.MinTouchTarget).padding(top = 4.dp),
-                    ) { Text("Sign out", fontWeight = androidx.compose.ui.text.font.FontWeight.ExtraBold) }
-                    // Wipes this device's work data, then signs out (user, 9 Nov). Asks first and
-                    // says what unsent work would be lost.
-                    com.d365fo.mobileops.presentation.common.components.SquareTextButton(
-                        onClick = { confirmDeleteAll = true },
-                        modifier = Modifier.fillMaxWidth().heightIn(min = WarehouseDimens.MinTouchTarget),
-                    ) {
-                        Text("Delete all app data", color = WarehouseStatusColors.red, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
-                    }
-                }
-                // Which build this is - what support asks first, and what D365FO's device list records.
-                Text(
-                    text = com.d365fo.mobileops.util.AppVersion.full,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = WarehouseStatusColors.text3,
-                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                    modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
-                )
-                // The brand mark at the foot of More, like the reference app (video, 20 Oct).
-                androidx.compose.foundation.Image(
-                    painter = androidx.compose.ui.res.painterResource(id = R.drawable.ic_app_logo),
-                    contentDescription = null,
-                    modifier = Modifier.fillMaxWidth().height(44.dp).padding(top = 4.dp),
-                )
-            }
-
-            // Connection setup (environment URL, tenant ID, auth) only ever appears here when
-            // this screen was reached from the sign-in gate - see the onSignOut == null check
-            // below. A worker mid-shift, already signed in, has no business re-pointing the
-            // device at a different D365FO environment from the Settings tab; that is fleet
-            // commissioning, done once before anyone signs in, not a day-to-day setting.
-            if (openSection == SettingsMenuItem.ConnectionProfile && onSignOut == null) {
-                // One profile = one D365FO environment: its URL, company and app registrations,
-                // all from that environment's connection QR code. Scanning a code adds the
-                // profile (or updates it) and makes it the one in use.
-                SettingsSection("Connection") {
-                    Text(
-                        text = "Scan a connection QR code to add or update a profile.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = WarehouseStatusColors.text3,
+            when (openSection) {
+                null -> {
+                    SettingsMenu(
+                        postingEnabled = postingEnabled,
+                        postImmediately = postImmediately,
+                        tenant = tenant,
+                        displayScale = displayScale,
+                        idleTimeout = idleTimeout,
+                        showConnectionProfile = onSignOut == null,
+                        showSignedInSections = onSignOut != null,
+                        onOpen = { if (it == SettingsMenuItem.Feedback) onFeedback?.invoke() else openSection = it },
                     )
-                    ConnectionQrSetup()
+                    if (onSignOut != null) {
+                        RedOutlineButton(
+                            "Sign out",
+                            onClick = { confirmSignOut = true },
+                            modifier = Modifier.padding(start = SIDE, end = SIDE, top = 20.dp),
+                        )
+                        // Wipes this device's work data, then signs out (user, 9 Nov). Asks first and
+                        // says what unsent work would be lost.
+                        Text(
+                            "Delete all app data",
+                            style = com.d365fo.mobileops.presentation.common.theme.FocusType.rowTitle,
+                            color = com.d365fo.mobileops.presentation.common.theme.FocusColors.badIcon,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = WarehouseDimens.MinTouchTarget)
+                                .clickable(role = Role.Button) { confirmDeleteAll = true }
+                                .wrapContentHeight(Alignment.CenterVertically),
+                        )
+                    }
+                    // Which build this is - what support asks first, and what D365FO's device list records.
+                    Text(
+                        text = com.d365fo.mobileops.util.AppVersion.full,
+                        style = com.d365fo.mobileops.presentation.common.theme.FocusType.rowDetail,
+                        color = com.d365fo.mobileops.presentation.common.theme.FocusColors.iconMuted,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                    )
+                    androidx.compose.foundation.Image(
+                        painter = androidx.compose.ui.res.painterResource(id = R.drawable.ic_app_logo),
+                        contentDescription = null,
+                        modifier = Modifier.fillMaxWidth().height(44.dp).padding(top = 4.dp),
+                    )
                 }
 
-                ConnectionProfiles(
-                    profiles = profiles,
-                    activeLabel = tenant.label,
-                    deviceCompany = worker.dataAreaId,
-                    credentialStatus = credentialStatus,
-                    test = test,
-                    viewModel = viewModel,
-                )
-
-                // Moved here from the day-to-day Settings tab: whether captures post to
-                // D365FO is a fleet-commissioning decision, made once by whoever sets the
-                // device up, not something a worker should find and flip mid-shift. It stays
-                // off by default during commissioning itself - see ConnectionSettings'
-                // own doc comment on why a freshly connected device should hold captures
-                // rather than post them before the AOS services are confirmed deployed.
-                SettingsSection("Data posting" + tenant.label.takeIf { it.isNotBlank() }?.let { " · $it" }.orEmpty()) {
+                // Connection setup only ever appears when this screen was reached from the
+                // sign-in gate: re-pointing a device is commissioning, not a mid-shift setting.
+                SettingsMenuItem.ConnectionProfile -> if (onSignOut == null) {
+                    ConnectionProfiles(
+                        profiles = profiles,
+                        activeLabel = tenant.label,
+                        deviceCompany = worker.dataAreaId,
+                        test = test,
+                        viewModel = viewModel,
+                    )
+                    // Commissioning switches for this device (moved here from the Settings tab).
+                    Caption("This device")
                     ToggleRow(
-                        title = "Allow posting to D365FO",
-                        detail = if (postingEnabled) {
-                            "Work is sent to D365FO."
-                        } else {
-                            "Off: work is held here until switched on."
-                        },
+                        title = "Allow posting to D365FO" + tenant.label.takeIf { it.isNotBlank() }?.let { " · $it" }.orEmpty(),
+                        detail = if (postingEnabled) "Work is sent to D365FO." else "Off: work is held here until switched on.",
                         checked = postingEnabled,
                         onToggle = { viewModel.setPostingEnabled(!postingEnabled) },
                     )
+                    ConnectionReset(
+                        hasCredentials = profiles.any { it.clientId.isNotBlank() || it.tenantId.isNotBlank() || it.usesTokenService },
+                        viewModel = viewModel,
+                    )
                 }
 
-                ConnectionReset(
-                    hasCredentials = profiles.any { it.clientId.isNotBlank() || it.tenantId.isNotBlank() },
-                    viewModel = viewModel,
-                )
-            }
-
-            // Display scale and lockout timeout are both fleet-commissioning settings, on
-            // request - reachable only from the pre-sign-in ("outside") screen, set once by
-            // whoever configures the device rather than found and changed mid-shift. Same
-            // reasoning as Connection & profile and Data posting just above them there.
-            if (openSection == SettingsMenuItem.Appearance && onSignOut == null) {
-                SettingsSection("Appearance") {
+                SettingsMenuItem.Appearance -> if (onSignOut == null) {
+                    Caption("Text size")
                     DisplayScaleRow(selected = displayScale, onSelect = viewModel::setDisplayScale)
+                    Note("Applies straight away, for this worker.")
                 }
-            }
 
-            if (openSection == SettingsMenuItem.Lockout && onSignOut == null) {
-                SettingsSection("Lockout settings") {
+                SettingsMenuItem.Lockout -> if (onSignOut == null) {
+                    Caption("Lock after")
                     IdleTimeoutSlider(selected = idleTimeout, onSelect = viewModel::setIdleTimeout)
                 }
-            }
 
-            if (openSection == SettingsMenuItem.Session && onSignOut != null) {
-                // Read-only - a worker works the warehouse D365FO assigned them, and this exists
-                // only so they can see what that is without having to guess from a scan failing.
-                SettingsSection("Assigned warehouse") {
-                    AssignedWarehouseText(fallbackId = worker.warehouseId)
-                    // An outlined full-width button, like "Show the app tour again" below it.
-                    OutlinedButton(onClick = onChangeWarehouse, modifier = Modifier.fillMaxWidth()) { Text("Change warehouse") }
-                }
-
-                // Sign-out itself lives one tap away on Home's own top bar now, not buried here -
-                // this screen keeps only who is signed in, for the rare moment that matters.
-                SettingsSection("Session") {
-                    Text(
-                        text = signedInAs,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = WarehouseStatusColors.text3,
+                SettingsMenuItem.Session -> if (onSignOut != null) {
+                    // Read-only - a worker works the warehouse D365FO assigned them.
+                    val switcher: WarehouseSwitcherViewModel = hiltViewModel()
+                    val session by switcher.session.collectAsStateWithLifecycle()
+                    Caption("Assigned warehouse")
+                    session?.selected?.let { wh ->
+                        WarehouseRow(warehouse = wh, current = false, pill = null, onClick = onChangeWarehouse)
+                    } ?: Note(worker.warehouseId.ifBlank { "No warehouse - ask a supervisor" })
+                    Caption("Session")
+                    com.d365fo.mobileops.presentation.common.focus.FocusListRow(
+                        title = signedInAs.ifBlank { "Signed in" },
+                        icon = androidx.compose.material.icons.Icons.Filled.Person,
                     )
                     // The navigation tour shows once per worker; this brings it back on Home.
                     val tour: com.d365fo.mobileops.presentation.common.tour.TourViewModel = hiltViewModel()
-                    OutlinedButton(
-                        onClick = {
-                            tour.replay()
-                            onBack()
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                    ) { Text("Show the app tour again") }
-                }
-
-                OfflineSection(warehouseId = worker.warehouseId)
-            }
-
-            // Always reachable, regardless of sign-in or license state - see LogStore's own doc
-            // on why this exists outside both gates.
-            if (openSection == SettingsMenuItem.Logs) {
-                LogsSection()
-            }
-
-            // Before or after sign-in: a copy in D365FO, or a PIN-protected file (29 Oct).
-            if (openSection == SettingsMenuItem.UnsentWork) {
-                SettingsSection("Unsent work") {
-                    val work: com.d365fo.mobileops.presentation.recovery.WorkSaveViewModel = hiltViewModel()
-                    val saveState by work.state.collectAsStateWithLifecycle()
-                    val lastBackup by work.lastBackupAt.collectAsStateWithLifecycle()
-                    val waiting by work.waiting.collectAsStateWithLifecycle()
-                    Text(
-                        text = listOfNotNull(
-                            saveState.unsent ?: "Nothing unsent on this device",
-                            when {
-                                waiting -> "Not in D365FO yet - waiting for a connection"
-                                lastBackup != null -> "Saved in D365FO at " + com.d365fo.mobileops.util.Formatters.clockTime(lastBackup!!)
-                                else -> null
-                            },
-                        ).joinToString("\n"),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = WarehouseStatusColors.text3,
+                    com.d365fo.mobileops.presentation.common.focus.FocusListRow(
+                        title = "Show the app tour again",
+                        icon = androidx.compose.material.icons.Icons.Filled.Route,
+                        chevron = true,
+                        onClick = { tour.replay(); onBack() },
                     )
-                    com.d365fo.mobileops.presentation.recovery.WorkSaveButtons(viewModel = work)
+                    OfflineSection(warehouseId = worker.warehouseId)
                 }
-            }
 
-            // Signed in, so it can be changed during a shift (feedback 301e5d0e); whether the
-            // device posts at all stays a commissioning switch on the sign-in screen.
-            if (openSection == SettingsMenuItem.Posting && onSignOut != null) {
-                SettingsSection("Data posting") {
-                    // Feedback 301e5d0e: synchronous or asynchronous posting.
+                // Always reachable, regardless of sign-in or license state - see LogStore.
+                SettingsMenuItem.Logs -> LogsSection()
+
+                // Before or after sign-in: a copy in D365FO, or a PIN-protected file (29 Oct).
+                SettingsMenuItem.UnsentWork -> com.d365fo.mobileops.presentation.recovery.UnsentWorkPanel()
+
+                // Signed in, so it can be changed during a shift (feedback 301e5d0e).
+                SettingsMenuItem.Posting -> if (onSignOut != null) {
+                    Caption("Posting")
                     ToggleRow(
                         title = "Post immediately",
-                        detail = if (postImmediately) {
-                            "On: posts while you wait; a refusal shows at once."
-                        } else {
-                            "Off: posts in the background within minutes."
-                        },
+                        detail = if (postImmediately) "On: posts while you wait; a refusal shows at once." else "Off: posts in the background within minutes.",
                         checked = postImmediately,
                         onToggle = { viewModel.setPostImmediately(!postImmediately) },
                     )
-                    // The commissioning switch lives on the sign-in screen; say so here when it is
-                    // off - "Post immediately" On read as "posting is on" (11 Oct) while every
-                    // capture was still being held.
                     if (!postingEnabled) {
-                        Text(
-                            text = "Posting is off - work is held here. Turn it on in Connection settings.",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = WarehouseStatusColors.amber,
+                        com.d365fo.mobileops.presentation.common.focus.ResultBand(
+                            com.d365fo.mobileops.presentation.common.focus.BandState(
+                                com.d365fo.mobileops.presentation.common.focus.BandKind.Warn,
+                                "Posting is off",
+                                "Work is held here. Turn it on in Connection settings.",
+                            ),
+                            modifier = Modifier.padding(top = 16.dp),
                         )
                     }
                 }
-            }
 
-            Row(modifier = Modifier.padding(bottom = 28.dp)) { }
+                SettingsMenuItem.Feedback -> Unit
+            }
+            Spacer(Modifier.height(28.dp))
         }
     }
 }
+
+private val SIDE = 20.dp
+
+/** An upper-case caption over a group of rows. */
+@Composable
+private fun Caption(text: String) {
+    com.d365fo.mobileops.presentation.common.focus.FocusCaption(
+        text,
+        modifier = Modifier.padding(start = SIDE, end = SIDE, top = 18.dp, bottom = 6.dp),
+    )
+}
+
+/** A short grey line under a group. */
+@Composable
+private fun Note(text: String) {
+    Text(
+        text,
+        style = com.d365fo.mobileops.presentation.common.theme.FocusType.rowDetail,
+        color = com.d365fo.mobileops.presentation.common.theme.FocusColors.muted,
+        modifier = Modifier.padding(horizontal = SIDE, vertical = 8.dp),
+    )
+}
+
+/** Red text in a red outline - Sign out. */
+@Composable
+private fun RedOutlineButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    val red = com.d365fo.mobileops.presentation.common.theme.FocusColors.badIcon
+    Text(
+        text,
+        style = com.d365fo.mobileops.presentation.common.theme.FocusType.button,
+        color = red,
+        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+        modifier = modifier
+            .fillMaxWidth()
+            .heightIn(min = com.d365fo.mobileops.presentation.common.focus.FocusDimens.button)
+            .clip(com.d365fo.mobileops.presentation.common.theme.FocusShapes.button)
+            .border(2.dp, red, com.d365fo.mobileops.presentation.common.theme.FocusShapes.button)
+            .background(com.d365fo.mobileops.presentation.common.theme.FocusColors.surface)
+            .clickable(role = Role.Button, onClick = onClick)
+            .wrapContentHeight(Alignment.CenterVertically),
+    )
+}
+
+/** "contoso-dev · BSP · Device key" - a profile in one line. */
+internal fun profileLine(profile: TenantConfig, deviceCompany: String = ""): String = listOfNotNull(
+    profile.host.substringBefore('.').ifBlank { null },
+    profile.company.ifBlank { deviceCompany }.ifBlank { null },
+    when {
+        profile.usesTokenService -> "Device key"
+        profile.credentials.any { it.isComplete } -> "App registration"
+        else -> null
+    },
+).joinToString(" · ")
 
 /**
  * One entry in [SettingsMenu] - deliberately just a title, not an icon or a description. This
@@ -448,22 +474,27 @@ private enum class SettingsMenuItem(val title: String, val icon: androidx.compos
 @Composable
 private fun SettingsMenu(
     postingEnabled: Boolean,
+    postImmediately: Boolean,
+    tenant: TenantConfig,
+    displayScale: DisplayScale,
+    idleTimeout: IdleTimeout,
     showConnectionProfile: Boolean,
     showSignedInSections: Boolean,
     onOpen: (SettingsMenuItem) -> Unit,
 ) {
-    // Headed groups of rows in one white card each, icon and chevron per row (20 Oct restyle,
-    // the mock's More screen). Appearance, Lockout and Connection stay pre-sign-in only - they
-    // are set once by whoever commissions the device.
-    // A row's current value on its right, as the reference app shows "English" (video, 20 Oct).
+    // Rows with a navy icon, what each is set to under it, and a chevron (user, 15 Nov 2026).
     val switcher: WarehouseSwitcherViewModel = hiltViewModel()
     val session by switcher.session.collectAsStateWithLifecycle()
-    // Harbour (9 Nov): who is signed in as a chip, then one card of rows - a tinted icon, the
-    // name in the accent and what it is set to under it.
-    // Only a value worth reading under a row (user, 9 Nov: nothing that repeats the row's name).
+    val work: com.d365fo.mobileops.presentation.recovery.WorkSaveViewModel = hiltViewModel()
+    val workState by work.state.collectAsStateWithLifecycle()
+    LaunchedEffect(Unit) { work.refreshSummary() }
     val values = mapOf(
-        SettingsMenuItem.Session to (session?.selected?.warehouseId?.let { "Store $it" } ?: ""),
-        SettingsMenuItem.Posting to if (postingEnabled) "On - work is sent" else "Off - work is held on this device",
+        SettingsMenuItem.ConnectionProfile to listOfNotNull(tenant.label.ifBlank { null }, tenant.company.ifBlank { null }).joinToString(" · "),
+        SettingsMenuItem.Appearance to "Text size ${displayScale.label}",
+        SettingsMenuItem.Lockout to "After ${idleTimeout.label}",
+        SettingsMenuItem.Session to listOfNotNull(session?.selected?.warehouseId, "offline use").joinToString(" · "),
+        SettingsMenuItem.Posting to if (!postingEnabled) "Posting is off" else "Post immediately: " + if (postImmediately) "on" else "off",
+        SettingsMenuItem.UnsentWork to (workState.unsent ?: "Nothing unsent"),
     )
     val items = buildList {
         if (showConnectionProfile) addAll(listOf(SettingsMenuItem.ConnectionProfile, SettingsMenuItem.Appearance, SettingsMenuItem.Lockout))
@@ -473,38 +504,21 @@ private fun SettingsMenu(
             addAll(listOf(SettingsMenuItem.UnsentWork, SettingsMenuItem.Logs))
         }
     }
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        // Only when someone is signed in - before sign-in (the setup screens) there is nobody to name.
-        session?.displayName?.takeIf { it.isNotBlank() && showSignedInSections }?.let { name ->
-            com.d365fo.mobileops.presentation.common.components.ContextPill(
-                androidx.compose.material.icons.Icons.Filled.Person,
-                "Signed in $name" + (session?.userName?.takeIf { it.isNotBlank() && !it.equals(name, ignoreCase = true) }?.let { " ($it)" } ?: ""),
-            )
-        }
-        // Items and barcodes on this device, with a manual Sync - moved here from Inventory count
-        // (user, 9 Nov). Signed in only: a sync needs the worker's company.
-        if (showSignedInSections) {
-            val offline: OfflineReadyViewModel = hiltViewModel()
-            val sync by offline.mastersSync.collectAsStateWithLifecycle()
-            com.d365fo.mobileops.presentation.modules.cyclecounting.ItemMasterOnDevice(
-                onSync = { offline.syncMastersNow(full = false) },
-                onFullSync = { offline.syncMastersNow(full = true) },
-                syncing = sync is com.d365fo.mobileops.data.sync.MasterSyncState.Running,
-                syncError = (sync as? com.d365fo.mobileops.data.sync.MasterSyncState.Failed)?.let { "Sync failed: ${it.reason}" },
-            )
-        }
-        // Focus list rows (brief section 9): the setting, its value under it, a chevron.
-        Column(modifier = Modifier.bleed(WarehouseDimens.ScreenPadding)) {
-            items.forEach { item ->
-                com.d365fo.mobileops.presentation.common.focus.FocusListRow(
-                    title = item.title,
-                    icon = item.icon,
-                    subtitle = values[item]?.takeIf { it.isNotBlank() },
-                    chevron = true,
-                    onClick = { onOpen(item) },
-                )
-            }
-        }
+    // Who and where - only when someone is signed in.
+    val who = listOfNotNull(
+        session?.userName?.takeIf { it.isNotBlank() && showSignedInSections },
+        session?.selected?.warehouseId?.takeIf { showSignedInSections },
+    ).joinToString(" · ")
+    if (who.isNotBlank()) Caption(who) else Spacer(Modifier.height(12.dp))
+    androidx.compose.material3.HorizontalDivider(color = com.d365fo.mobileops.presentation.common.theme.FocusColors.divider)
+    items.forEach { item ->
+        com.d365fo.mobileops.presentation.common.focus.FocusListRow(
+            title = item.title,
+            icon = item.icon,
+            subtitle = values[item]?.takeIf { it.isNotBlank() },
+            chevron = true,
+            onClick = { onOpen(item) },
+        )
     }
 }
 
@@ -526,33 +540,27 @@ private fun LogsSection(viewModel: LogViewerViewModel = hiltViewModel()) {
     var expandedId by remember { mutableStateOf<Long?>(null) }
     var shown by remember { mutableStateOf(LOG_PAGE) }
 
-    Column(verticalArrangement = Arrangement.spacedBy(WarehouseDimens.ItemSpacing)) {
+    Column {
         Row(
-            horizontalArrangement = Arrangement.spacedBy(WarehouseDimens.ItemSpacing),
-            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier.fillMaxWidth().padding(start = SIDE, end = SIDE, top = 12.dp, bottom = 8.dp),
         ) {
-            OutlinedButton(
+            com.d365fo.mobileops.presentation.common.focus.FocusButton(
+                "Copy all",
                 onClick = {
                     clipboard.setText(AnnotatedString(entries.joinToString("\n") { it.toLogLine() }))
                     Toast.makeText(context, "Copied ${entries.size} log lines", Toast.LENGTH_SHORT).show()
                 },
-                modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget),
-            ) { Text("Copy all") }
-
-            CancelOutlinedButton(
-                onClick = { viewModel.clear(); expandedId = null },
-                modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget),
-            ) { Text("Clear") }
+                modifier = Modifier.weight(1f),
+            )
+            RedOutlineButton("Clear", onClick = { viewModel.clear(); expandedId = null }, modifier = Modifier.weight(1f))
         }
+        Caption("Newest first · ${entries.size}")
+        androidx.compose.material3.HorizontalDivider(color = com.d365fo.mobileops.presentation.common.theme.FocusColors.divider)
 
         if (entries.isEmpty()) {
-            Text(
-                text = "No log entries yet.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = WarehouseStatusColors.text3,
-            )
+            Note("No log entries yet.")
         } else {
-            LogTableHeader()
             // Newest first, and not virtualized (LazyColumn) - this whole screen already sits
             // inside SettingsScreen's own verticalScroll, and nesting a scrollable list inside
             // another with unbounded height needs exactly the height constraints a LazyColumn
@@ -568,10 +576,11 @@ private fun LogsSection(viewModel: LogViewerViewModel = hiltViewModel()) {
                 )
             }
             if (entries.size > shown) {
-                OutlinedButton(
+                com.d365fo.mobileops.presentation.common.focus.FocusButton(
+                    "Show ${minOf(LOG_PAGE, entries.size - shown)} more (${entries.size - shown} older)",
                     onClick = { shown += LOG_PAGE },
-                    modifier = Modifier.fillMaxWidth().heightIn(min = WarehouseDimens.MinTouchTarget),
-                ) { Text("Show ${minOf(LOG_PAGE, entries.size - shown)} more (${entries.size - shown} older)") }
+                    modifier = Modifier.fillMaxWidth().padding(SIDE),
+                )
             }
         }
     }
@@ -616,67 +625,44 @@ private fun LogTableHeader() {
  */
 @Composable
 private fun LogRow(entry: LogEntry, expanded: Boolean, onToggle: () -> Unit) {
-    val levelColor = when (entry.levelLabel) {
-        "E", "A" -> WarehouseStatusColors.red
-        "W" -> WarehouseStatusColors.amber
-        else -> WarehouseStatusColors.text3
+    val colors = com.d365fo.mobileops.presentation.common.theme.FocusColors
+    val type = com.d365fo.mobileops.presentation.common.theme.FocusType
+    val (word, color) = when (entry.levelLabel) {
+        "E", "A" -> "ERROR" to colors.badIcon
+        "W" -> "WARN" to colors.warnText
+        "I" -> "INFO" to colors.okText
+        else -> "DEBUG" to colors.muted
     }
-    val rowBackground = if (expanded) WarehouseStatusColors.surface2 else MaterialTheme.colorScheme.surface
-
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .background(rowBackground)
+            .background(if (expanded) colors.infoBg.copy(alpha = 0.4f) else colors.page)
             .clickable(onClick = onToggle)
-            .padding(horizontal = 4.dp, vertical = 6.dp),
+            .padding(horizontal = SIDE, vertical = 10.dp),
     ) {
-        Row(verticalAlignment = Alignment.Top, modifier = Modifier.fillMaxWidth()) {
+        Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
             Text(
                 text = LogTimeFormatter.format(entry.timestamp),
-                style = MaterialTheme.typography.bodySmall,
-                fontFamily = FontFamily.Monospace,
-                color = WarehouseStatusColors.text3,
+                style = type.rowDetail.copy(fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold),
+                color = colors.muted,
                 modifier = Modifier.width(72.dp),
             )
-            Text(
-                text = entry.levelLabel,
-                style = MaterialTheme.typography.bodySmall,
-                fontFamily = FontFamily.Monospace,
-                fontWeight = FontWeight.Bold,
-                color = levelColor,
-                modifier = Modifier.width(28.dp),
-            )
-            Text(
-                text = "${entry.tag}: ${entry.message}",
-                style = MaterialTheme.typography.bodySmall,
-                // Wrapped, never cut off with "…" (the app's rule); a tap adds the full time
-                // and any stack trace. 72 dp fits HH:mm:ss without breaking the seconds.
-                modifier = Modifier.weight(1f),
-            )
+            Column(Modifier.weight(1f)) {
+                Text(word, style = type.caption.copy(fontSize = 11.sp), color = color)
+                // Wrapped, never cut off (the app's rule); a tap adds the full time and stack trace.
+                Text("${entry.tag}: ${entry.message}", style = type.rowDetail, color = colors.ink)
+            }
         }
-
         if (expanded) {
-            Column(modifier = Modifier.fillMaxWidth().padding(top = 6.dp, start = 100.dp)) {
-                Text(
-                    text = entry.timestamp.toString(),
-                    style = MaterialTheme.typography.bodySmall,
-                    fontFamily = FontFamily.Monospace,
-                    color = WarehouseStatusColors.text3,
-                )
+            Column(modifier = Modifier.fillMaxWidth().padding(top = 6.dp, start = 84.dp)) {
+                Text(entry.timestamp.toString(), style = type.rowDetail.copy(fontFamily = FontFamily.Monospace), color = colors.muted)
                 entry.throwable?.let {
-                    Text(
-                        text = it,
-                        style = MaterialTheme.typography.bodySmall,
-                        fontFamily = FontFamily.Monospace,
-                        color = WarehouseStatusColors.red,
-                        modifier = Modifier.padding(top = 4.dp),
-                    )
+                    Text(it, style = type.rowDetail.copy(fontFamily = FontFamily.Monospace), color = colors.badIcon, modifier = Modifier.padding(top = 4.dp))
                 }
             }
         }
     }
-
-    HorizontalDivider(color = WarehouseStatusColors.border)
+    androidx.compose.material3.HorizontalDivider(color = colors.divider)
 }
 
 private fun LogEntry.toLogLine(): String =
@@ -697,128 +683,92 @@ private fun LogEntry.toLogLine(): String =
  * an unused one can be switched to. Switching or deleting the one in use clears order and item
  * data, so both ask first (and the view model checks for unsent work - see guardUnsent).
  */
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 private fun ConnectionProfiles(
     profiles: List<TenantConfig>,
     activeLabel: String,
     deviceCompany: String,
-    credentialStatus: com.d365fo.mobileops.data.security.CredentialStatus,
     test: ConnectionTest,
     viewModel: SettingsViewModel,
 ) {
-    var switchTarget by remember { mutableStateOf<String?>(null) }
+    // Hazard-count style rows (user, 15 Nov 2026); a row opens a sheet with that profile's actions.
+    var open by remember { mutableStateOf<String?>(null) }
     var deleteTarget by remember { mutableStateOf<String?>(null) }
+    val colors = com.d365fo.mobileops.presentation.common.theme.FocusColors
 
     if (profiles.isEmpty()) {
-        SettingsSection("Profiles") {
-            Text(
-                text = "No profile yet. Scan a connection QR code.",
-                style = MaterialTheme.typography.bodyMedium,
+        com.d365fo.mobileops.presentation.common.focus.ResultBand(
+            com.d365fo.mobileops.presentation.common.focus.BandState(
+                com.d365fo.mobileops.presentation.common.focus.BandKind.Info,
+                "No profile yet",
+                "Scan a connection QR code.",
+            ),
+            modifier = Modifier.padding(top = 16.dp),
+        )
+    }
+    val active = profiles.firstOrNull { it.label == activeLabel }
+    val others = profiles.filter { it.label != activeLabel }
+    fun hasSignIn(p: TenantConfig) = p.usesTokenService || p.credentials.any { it.isComplete }
+    active?.let { profile ->
+        Caption("In use")
+        androidx.compose.material3.HorizontalDivider(color = colors.divider)
+        com.d365fo.mobileops.presentation.common.focus.FocusListRow(
+            title = profile.label,
+            titleIsCode = true,
+            state = if (hasSignIn(profile)) com.d365fo.mobileops.presentation.common.focus.RowState.Done else com.d365fo.mobileops.presentation.common.focus.RowState.Warn,
+            subtitle = profileLine(profile, deviceCompany) + when (test) {
+                is ConnectionTest.Ok -> "\nConnected"
+                is ConnectionTest.Failed -> "\nNot connected"
+                else -> ""
+            },
+            chevron = true,
+            onClick = { open = profile.label },
+        )
+    }
+    if (others.isNotEmpty()) {
+        Caption("Other profiles")
+        androidx.compose.material3.HorizontalDivider(color = colors.divider)
+        others.forEach { profile ->
+            com.d365fo.mobileops.presentation.common.focus.FocusListRow(
+                title = profile.label,
+                titleIsCode = true,
+                state = if (hasSignIn(profile)) com.d365fo.mobileops.presentation.common.focus.RowState.Plain else com.d365fo.mobileops.presentation.common.focus.RowState.Warn,
+                icon = if (hasSignIn(profile)) androidx.compose.material.icons.Icons.Filled.Dns else null,
+                subtitle = profileLine(profile) + if (hasSignIn(profile)) "" else "\nNo sign-in details. Scan its QR code.",
+                chevron = true,
+                onClick = { open = profile.label },
             )
         }
     }
 
-    profiles.sortedByDescending { it.label == activeLabel }.forEach { profile ->
-        val active = profile.label == activeLabel
-        val registrations = profile.credentials.count { it.isComplete }
-        Card(
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-            modifier = Modifier.fillMaxWidth(),
+    open?.let { label ->
+        val profile = profiles.firstOrNull { it.label == label }
+        if (profile == null) {
+            open = null
+            return@let
+        }
+        val inUse = label == activeLabel
+        androidx.compose.material3.ModalBottomSheet(
+            onDismissRequest = { open = null },
+            containerColor = colors.surface,
         ) {
-            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(
-                        text = profile.label,
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.SemiBold,
-                        color = WarehouseStatusColors.accent,
-                        modifier = Modifier.weight(1f),
-                    )
-                    if (active) {
-                        com.d365fo.mobileops.presentation.common.components.StatusChip(
-                            text = "In use",
-                            color = WarehouseStatusColors.green,
-                            dimColor = WarehouseStatusColors.greenDim,
-                        )
-                    }
-                }
-                InfoRow("Environment", profile.resourceUrl.ifBlank { "Not set" })
-                InfoRow(
-                    "Company",
-                    profile.company.ifBlank { if (active) deviceCompany.ifBlank { "Not set" } else "Not set" },
-                )
-                if (profile.usesTokenService) {
-                    // Set up with a device setup code: no client secret on the device by design -
-                    // its own key, and tokens from the customer's token service (docs/device-setup.md).
-                    InfoRow("Sign-in", "Device key · token service")
-                    InfoRow("Token service", profile.tokenServiceUrl.removePrefix("https://"))
-                } else if (registrations == 0) {
-                    Text(
-                        text = "No credentials - scan its QR code.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = WarehouseStatusColors.amber,
-                    )
-                } else {
-                    InfoRow("App registrations", registrations.toString())
-                    InfoRow("Tenant", profile.tenantId.ifBlank { "Not set" })
-                    if (active) {
-                        // This device's one, not all of them: the slot and the last few
-                        // characters of its client ID, never a secret.
-                        InfoRow(
-                            "This device uses",
-                            "Registration ${credentialStatus.slot} of ${credentialStatus.total}" +
-                                credentialStatus.shortId.takeIf { it.isNotBlank() }?.let { " · …$it" }.orEmpty() +
-                                credentialStatus.borrowedFromSlot?.let { " (moved from $it while it is throttled)" }.orEmpty(),
-                        )
-                        if (credentialStatus.throttledReplies > 0) {
-                            InfoRow("Throttled replies since start", credentialStatus.throttledReplies.toString())
-                        }
-                    }
-                }
-                if (active) TestResult(test)
-                Row(horizontalArrangement = Arrangement.spacedBy(WarehouseDimens.ItemSpacing), modifier = Modifier.fillMaxWidth()) {
-                    if (active) {
-                        OutlinedButton(
-                            onClick = { viewModel.saveAndSignInWithSecret(profile) },
-                            enabled = profile.isComplete,
-                            modifier = Modifier.weight(1f),
-                        ) { Text("Test connection") }
-                    } else {
-                        OutlinedButton(onClick = { switchTarget = profile.label }, modifier = Modifier.weight(1f)) {
-                            Text("Use this profile")
-                        }
-                    }
-                    CancelOutlinedButton(onClick = { deleteTarget = profile.label }, modifier = Modifier.weight(1f)) {
-                        Text("Delete")
-                    }
-                }
-            }
+            ProfileSheet(
+                profile = profile,
+                inUse = inUse,
+                activeLabel = activeLabel,
+                deviceCompany = deviceCompany,
+                test = test,
+                signInMissing = !hasSignIn(profile),
+                onTest = { viewModel.testConnection(profile) },
+                onUse = { open = null; viewModel.switchProfile(label) },
+                onDelete = { deleteTarget = label },
+            )
         }
     }
 
-    switchTarget?.let { label ->
-        AlertDialog(
-            onDismissRequest = { switchTarget = null },
-            title = { Text("Use $label?") },
-            text = {
-                Text(
-                    "Data from $activeLabel is cleared from this device first.",
-                )
-            },
-            confirmButton = {
-                com.d365fo.mobileops.presentation.common.components.DialogButtonRow(
-                    dismiss = { com.d365fo.mobileops.presentation.common.components.CancelOutlinedButton(onClick = { switchTarget = null }, modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget)) { Text("Cancel") } },
-                    confirm = { com.d365fo.mobileops.presentation.common.components.ConfirmButton(onClick = {
-                    switchTarget = null
-                    viewModel.switchProfile(label)
-                }, modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget)) { Text("Use $label") } },
-                )
-            },
-        )
-    }
-
     deleteTarget?.let { label ->
-        val active = label == activeLabel
+        val isActive = label == activeLabel
         val next = profiles.firstOrNull { it.label != label }?.label
         AlertDialog(
             onDismissRequest = { deleteTarget = null },
@@ -826,7 +776,7 @@ private fun ConnectionProfiles(
             text = {
                 Text(
                     "Removes $label from this device." +
-                        if (active) {
+                        if (isActive) {
                             " " + (next?.let { "Switches to $it" } ?: "No connection until a QR code is scanned") +
                                 "; data here is cleared."
                         } else {
@@ -836,13 +786,115 @@ private fun ConnectionProfiles(
             },
             confirmButton = {
                 com.d365fo.mobileops.presentation.common.components.DialogButtonRow(
-                    dismiss = { com.d365fo.mobileops.presentation.common.components.CancelOutlinedButton(onClick = { deleteTarget = null }, modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget)) { Text("Cancel") } },
+                    dismiss = { com.d365fo.mobileops.presentation.common.components.CancelOutlinedButton(onClick = { deleteTarget = null }, modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget)) { Text("Keep") } },
                     confirm = { com.d365fo.mobileops.presentation.common.components.CancelButton(onClick = {
-                    deleteTarget = null
-                    viewModel.deleteProfile(label)
-                }, modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget)) { Text("Delete") } },
+                        deleteTarget = null
+                        open = null
+                        viewModel.deleteProfile(label)
+                    }, modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget)) { Text("Delete") } },
                 )
             },
+        )
+    }
+}
+
+/** A profile's sheet: its details, the last test, and what can be done with it. */
+@Composable
+private fun ProfileSheet(
+    profile: TenantConfig,
+    inUse: Boolean,
+    activeLabel: String,
+    deviceCompany: String,
+    test: ConnectionTest,
+    signInMissing: Boolean,
+    onTest: () -> Unit,
+    onUse: () -> Unit,
+    onDelete: () -> Unit,
+) {
+    val colors = com.d365fo.mobileops.presentation.common.theme.FocusColors
+    val type = com.d365fo.mobileops.presentation.common.theme.FocusType
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(start = SIDE, end = SIDE, bottom = 28.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(profile.label, style = type.rowCode.copy(fontSize = 28.sp), color = colors.ink, modifier = Modifier.weight(1f))
+            if (inUse) {
+                Text(
+                    "IN USE",
+                    style = type.caption.copy(fontSize = 11.sp),
+                    color = colors.okText,
+                    modifier = Modifier.clip(RoundedCornerShape(50)).background(colors.okBg).padding(horizontal = 9.dp, vertical = 3.dp),
+                )
+            }
+        }
+        SheetValue("Environment", profile.host.ifBlank { "Not set" })
+        Row(horizontalArrangement = Arrangement.spacedBy(28.dp)) {
+            SheetValue("Legal entity", profile.company.ifBlank { if (inUse) deviceCompany.ifBlank { "Not set" } else "Not set" })
+            SheetValue(
+                "Sign-in",
+                when {
+                    profile.usesTokenService -> "Device key"
+                    profile.credentials.any { it.isComplete } -> "App registration"
+                    else -> "None"
+                },
+            )
+        }
+        if (signInMissing) {
+            com.d365fo.mobileops.presentation.common.focus.ResultBand(
+                com.d365fo.mobileops.presentation.common.focus.BandState(
+                    com.d365fo.mobileops.presentation.common.focus.BandKind.Warn,
+                    "No sign-in details",
+                    "Scan a connection QR code for ${profile.host.substringBefore('.')}.",
+                ),
+                modifier = Modifier.padding(horizontal = -SIDE),
+            )
+        } else if (inUse) {
+            when (test) {
+                ConnectionTest.Idle -> Unit
+                ConnectionTest.Running -> Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    CircularProgressIndicator(modifier = Modifier.size(22.dp), strokeWidth = 2.dp)
+                    Text("Contacting D365FO…", style = type.rowDetail, color = colors.muted)
+                }
+                is ConnectionTest.Ok -> com.d365fo.mobileops.presentation.common.focus.ResultBand(
+                    com.d365fo.mobileops.presentation.common.focus.BandState(com.d365fo.mobileops.presentation.common.focus.BandKind.Ok, "Connected", test.detail),
+                    modifier = Modifier.padding(horizontal = -SIDE),
+                )
+                is ConnectionTest.Failed -> com.d365fo.mobileops.presentation.common.focus.ResultBand(
+                    com.d365fo.mobileops.presentation.common.focus.BandState(com.d365fo.mobileops.presentation.common.focus.BandKind.Bad, "Not connected", test.reason),
+                    modifier = Modifier.padding(horizontal = -SIDE),
+                )
+            }
+        } else {
+            Text(
+                "Switching saves unsent work, then clears this device's $activeLabel data.",
+                style = type.rowDetail,
+                color = colors.muted,
+            )
+        }
+        Spacer(Modifier.height(4.dp))
+        when {
+            inUse && !signInMissing -> com.d365fo.mobileops.presentation.common.focus.FocusButton(
+                "Test connection",
+                onClick = onTest,
+                enabled = test != ConnectionTest.Running,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            signInMissing -> ConnectionQrSetup(modifier = Modifier.fillMaxWidth())
+            else -> com.d365fo.mobileops.presentation.common.focus.FocusButton("Use this profile", onClick = onUse, primary = true, modifier = Modifier.fillMaxWidth())
+        }
+        RedOutlineButton("Delete", onClick = onDelete)
+    }
+}
+
+@Composable
+private fun SheetValue(label: String, value: String) {
+    Column {
+        Text(label, style = com.d365fo.mobileops.presentation.common.theme.FocusType.rowDetail, color = com.d365fo.mobileops.presentation.common.theme.FocusColors.muted)
+        Text(
+            value.replace(".", ".\u200B"),
+            style = com.d365fo.mobileops.presentation.common.theme.FocusType.rowTitle,
+            color = com.d365fo.mobileops.presentation.common.theme.FocusColors.ink,
         )
     }
 }
@@ -854,16 +906,12 @@ private fun ConnectionReset(hasCredentials: Boolean, viewModel: SettingsViewMode
     var unsent by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(confirm) { unsent = if (confirm) viewModel.unsentDescription() else null }
 
-    SettingsSection("Reset") {
-        Text(
-            text = "Clears secrets and offline sign-ins. Profiles and data stay.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = WarehouseStatusColors.text3,
-        )
-        OutlinedButton(onClick = { confirm = true }, enabled = hasCredentials, modifier = Modifier.fillMaxWidth()) {
-            Text("Reset connection")
-        }
-    }
+    com.d365fo.mobileops.presentation.common.focus.FocusListRow(
+        title = "Reset connection",
+        subtitle = "Clears secrets and offline sign-ins. Profiles and data stay.",
+        icon = androidx.compose.material.icons.Icons.Filled.RestartAlt,
+        onClick = if (hasCredentials) ({ confirm = true }) else null,
+    )
     if (!confirm) return
     AlertDialog(
         onDismissRequest = { confirm = false },
@@ -895,22 +943,30 @@ private fun DisplayScaleRow(
     selected: DisplayScale,
     onSelect: (DisplayScale) -> Unit,
 ) {
+    val colors = com.d365fo.mobileops.presentation.common.theme.FocusColors
     Row(
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .padding(horizontal = SIDE)
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .background(colors.divider)
+            .padding(4.dp),
     ) {
         DisplayScale.entries.forEach { option ->
-            if (option == selected) {
-                Button(
-                    onClick = { onSelect(option) },
-                    modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget),
-                ) { Text(option.label) }
-            } else {
-                OutlinedButton(
-                    onClick = { onSelect(option) },
-                    modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget),
-                ) { Text(option.label) }
-            }
+            val on = option == selected
+            Text(
+                option.label,
+                style = com.d365fo.mobileops.presentation.common.theme.FocusType.rowTitle,
+                color = if (on) colors.navy else colors.muted,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                modifier = Modifier
+                    .weight(1f)
+                    .heightIn(min = WarehouseDimens.MinTouchTarget)
+                    .clip(RoundedCornerShape(11.dp))
+                    .background(if (on) colors.surface else Color.Transparent)
+                    .selectable(selected = on, role = Role.RadioButton) { onSelect(option) }
+                    .wrapContentHeight(Alignment.CenterVertically),
+            )
         }
     }
 }
@@ -936,10 +992,20 @@ private fun IdleTimeoutSlider(
     val maxV = IdleTimeout.entries.last().minutes.toFloat()
     val fraction = ((sliderValue - minV) / (maxV - minV)).coerceIn(0f, 1f)
 
-    Column(modifier = Modifier.fillMaxWidth()) {
+    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = SIDE)) {
         Text(
-            text = "Lock out after ${sliderValue.toInt()} min of inactivity",
-            style = MaterialTheme.typography.bodyMedium,
+            text = "${sliderValue.toInt()} min",
+            style = com.d365fo.mobileops.presentation.common.theme.FocusType.rowCode.copy(fontSize = 44.sp, lineHeight = 48.sp),
+            color = com.d365fo.mobileops.presentation.common.theme.FocusColors.navy,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Text(
+            "of no activity",
+            style = com.d365fo.mobileops.presentation.common.theme.FocusType.rowDetail,
+            color = com.d365fo.mobileops.presentation.common.theme.FocusColors.muted,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
         )
         Slider(
             value = sliderValue,
@@ -958,8 +1024,8 @@ private fun IdleTimeoutSlider(
                 Box(
                     modifier = Modifier
                         .size(28.dp)
-                        .background(WarehouseStatusColors.accent, RoundedCornerShape(6.dp))
-                        .border(2.dp, Color.White, RoundedCornerShape(6.dp)),
+                        .background(com.d365fo.mobileops.presentation.common.theme.FocusColors.navy, CircleShape)
+                        .border(3.dp, Color.White, CircleShape),
                 )
             },
             // A segmented bar - a solid fill up to the current value plus a visible divider at
@@ -971,13 +1037,13 @@ private fun IdleTimeoutSlider(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(10.dp)
-                        .background(WarehouseStatusColors.border, RoundedCornerShape(5.dp)),
+                        .background(com.d365fo.mobileops.presentation.common.theme.FocusColors.divider, RoundedCornerShape(5.dp)),
                 ) {
                     Box(
                         modifier = Modifier
                             .fillMaxWidth(fraction)
                             .height(10.dp)
-                            .background(WarehouseStatusColors.accent, RoundedCornerShape(5.dp)),
+                            .background(com.d365fo.mobileops.presentation.common.theme.FocusColors.navy, RoundedCornerShape(5.dp)),
                     )
                     Row(
                         modifier = Modifier.fillMaxWidth().height(10.dp),
@@ -1048,80 +1114,74 @@ private fun TestResult(test: ConnectionTest) {
  * one-off here), flat fill, a real border for definition rather than a shadow - the same
  * language [WarehouseStatusColors.border] already draws card/field edges in everywhere else.
  */
-/** What works without a connection, and what is saved for it. See OfflinePrefetcher. */
+/**
+ * What works without a connection, and what is saved for it (see OfflinePrefetcher): Item data and
+ * Open orders and counts, each a row with a refresh button; what happened shows in a band.
+ */
 @Composable
 private fun OfflineSection(warehouseId: String?, viewModel: OfflineReadyViewModel = hiltViewModel()) {
     val readiness by viewModel.readiness.collectAsStateWithLifecycle()
-    SettingsSection("Offline use") {
-        Text(
-            text = "Offline: sign-ins from the last ${viewModel.offlineSignInDays} days still work. Work is sent when back online.",
-            style = MaterialTheme.typography.bodyMedium,
-        )
-        Text(
-            text = when {
-                readiness.running -> "Saving open orders and counts..."
-                readiness.savedAt != null && readiness.warehouseId == warehouseId ->
-                    "Saved for offline: ${readiness.purchaseOrders} purchase " +
-                        (if (readiness.purchaseOrders == 1) "order" else "orders") +
-                        ", ${readiness.transferOrders} transfer " +
-                        (if (readiness.transferOrders == 1) "order" else "orders") +
-                        ", ${readiness.counts} " + (if (readiness.counts == 1) "count" else "counts") +
-                        " · ${com.d365fo.mobileops.util.Formatters.clockTime(readiness.savedAt!!)}"
-                else -> "Open orders and counts save while online."
-            },
-            style = MaterialTheme.typography.bodyMedium,
-            color = WarehouseStatusColors.text3,
-        )
-        readiness.error?.let {
-            Text(text = it, style = MaterialTheme.typography.bodySmall, color = WarehouseStatusColors.red)
-        }
-        // Item data for offline scanning: what the last sync brought, how long it took and what
-        // it cost the device (feedback: record count, time taken, app memory).
-        val mastersSync by viewModel.mastersSync.collectAsStateWithLifecycle()
-        // Read again whenever a manual sync starts or ends, so its result shows here.
-        val sku = androidx.compose.runtime.remember(mastersSync) { viewModel.lastSkuSync() }
-        Text(
-            text = sku?.let { s ->
-                val n = java.text.NumberFormat.getIntegerInstance()
-                "Item data (${if (s.full) "full" else "changes"} sync ${com.d365fo.mobileops.util.Formatters.clockTime(s.finishedAt)}): " +
-                    "${n.format(s.itemCount)} items, ${n.format(s.barcodeCount)} barcodes, ${n.format(s.variantCount)} variants · " +
-                    "${s.activeSeconds} s" + (if (s.seconds > s.activeSeconds + 5) " (${s.seconds} s with pauses)" else "") +
-                    " · peak memory ${s.peakMemoryBytes / (1024 * 1024)} MB · stored ${s.storedBytes / (1024 * 1024)} MB"
-            } ?: "Item data: not synced yet (daily, on Wi-Fi and charging).",
-            style = MaterialTheme.typography.bodyMedium,
-            color = WarehouseStatusColors.text3,
-        )
-        val online = com.d365fo.mobileops.presentation.common.components.LocalSyncStatus.current?.fullyOnline != false
-        // Sync masters now (30 Oct): items, barcodes and variants at once, on any connection,
-        // instead of waiting for the daily sync on Wi-Fi and charging.
-        val syncing = mastersSync is com.d365fo.mobileops.data.sync.MasterSyncState.Running
-        when (val s = mastersSync) {
-            com.d365fo.mobileops.data.sync.MasterSyncState.Running -> Text(
-                text = "Syncing masters... It carries on if you leave this screen.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = WarehouseStatusColors.accent,
-            )
-            is com.d365fo.mobileops.data.sync.MasterSyncState.Failed -> Text(
-                text = "Master sync failed: ${s.reason}",
-                style = MaterialTheme.typography.bodySmall,
-                color = WarehouseStatusColors.red,
-            )
-            com.d365fo.mobileops.data.sync.MasterSyncState.Idle -> Unit
-        }
-        // Full re-sync moved to the item list card on Settings (user, 13 Nov: in the app's own look).
-        com.d365fo.mobileops.presentation.common.components.SquareOutlinedButton(
-            onClick = { viewModel.syncMastersNow(full = false) },
-            enabled = !syncing && online,
-            modifier = Modifier.fillMaxWidth(),
-        ) { Text(if (online) "Sync masters now" else "Syncing needs a connection") }
-        if (warehouseId != null) {
-            com.d365fo.mobileops.presentation.common.components.SquareOutlinedButton(
-                onClick = { viewModel.saveNow(warehouseId) },
-                enabled = !readiness.running && online,
-                modifier = Modifier.fillMaxWidth(),
-            ) { Text(if (online) "Save open orders and counts now" else "Saving needs a connection") }
-        }
+    val mastersSync by viewModel.mastersSync.collectAsStateWithLifecycle()
+    val online = com.d365fo.mobileops.presentation.common.components.LocalSyncStatus.current?.fullyOnline != false
+    val syncing = mastersSync is com.d365fo.mobileops.data.sync.MasterSyncState.Running
+    var tried by remember { mutableStateOf<String?>(null) }
+    var wasSyncing by remember { mutableStateOf(false) }
+    var synced by remember { mutableStateOf(false) }
+    LaunchedEffect(syncing) {
+        if (wasSyncing && !syncing && mastersSync !is com.d365fo.mobileops.data.sync.MasterSyncState.Failed) synced = true
+        wasSyncing = syncing
     }
+    val band = when {
+        tried != null && !online -> com.d365fo.mobileops.presentation.common.focus.BandState(
+            com.d365fo.mobileops.presentation.common.focus.BandKind.Bad, "$tried needs a connection",
+        )
+        syncing -> com.d365fo.mobileops.presentation.common.focus.BandState(
+            com.d365fo.mobileops.presentation.common.focus.BandKind.Info, "Syncing item data…", "It carries on if you leave this screen.",
+        )
+        mastersSync is com.d365fo.mobileops.data.sync.MasterSyncState.Failed -> com.d365fo.mobileops.presentation.common.focus.BandState(
+            com.d365fo.mobileops.presentation.common.focus.BandKind.Bad, "Item data not synced",
+            (mastersSync as com.d365fo.mobileops.data.sync.MasterSyncState.Failed).reason,
+        )
+        synced -> com.d365fo.mobileops.presentation.common.focus.BandState(
+            com.d365fo.mobileops.presentation.common.focus.BandKind.Ok, "Item data synced", autoHideMs = 4_000L,
+        )
+        readiness.error != null -> com.d365fo.mobileops.presentation.common.focus.BandState(
+            com.d365fo.mobileops.presentation.common.focus.BandKind.Bad, "Open orders and counts not saved", readiness.error,
+        )
+        else -> null
+    }
+    Caption("Offline use")
+    band?.let {
+        if (it.autoHideMs != null) com.d365fo.mobileops.presentation.common.focus.TimedResultBand(it, modifier = Modifier.padding(bottom = 10.dp))
+        else com.d365fo.mobileops.presentation.common.focus.ResultBand(it, modifier = Modifier.padding(bottom = 10.dp))
+    }
+    androidx.compose.material3.HorizontalDivider(color = com.d365fo.mobileops.presentation.common.theme.FocusColors.divider)
+    com.d365fo.mobileops.presentation.modules.cyclecounting.ItemDataRow(
+        syncing = syncing,
+        onSync = { tried = "Syncing"; if (online) viewModel.syncMastersNow(full = false) },
+        onFullSync = { tried = "Syncing"; if (online) viewModel.syncMastersNow(full = true) },
+    )
+    val saved = readiness.savedAt?.takeIf { readiness.warehouseId == warehouseId }
+    com.d365fo.mobileops.presentation.common.focus.FocusListRow(
+        title = "Open orders and counts",
+        icon = androidx.compose.material.icons.Icons.Filled.Assignment,
+        subtitle = when {
+            readiness.running -> "Saving…"
+            saved != null -> "${readiness.purchaseOrders} POs · ${readiness.transferOrders} TOs · ${readiness.counts} " +
+                (if (readiness.counts == 1) "count" else "counts") + " · " + com.d365fo.mobileops.util.Formatters.clockTime(saved)
+            else -> "Save while online."
+        },
+        trailing = if (warehouseId != null) {
+            {
+                IconButton(onClick = { tried = "Saving"; if (online) viewModel.saveNow(warehouseId) }, enabled = !readiness.running) {
+                    Icon(androidx.compose.material.icons.Icons.Filled.Refresh, contentDescription = "Save open orders and counts now", tint = com.d365fo.mobileops.presentation.common.theme.FocusColors.navy)
+                }
+            }
+        } else {
+            null
+        },
+    )
+    Note("Sign-ins from the last ${viewModel.offlineSignInDays} days work offline. Work is sent when back online.")
 }
 
 @Composable
@@ -1159,8 +1219,8 @@ private fun ToggleRow(
         modifier = Modifier
             .fillMaxWidth()
             .toggleable(value = checked, role = Role.Switch, onValueChange = { onToggle() })
-            .heightIn(min = WarehouseDimens.MinTouchTarget)
-            .padding(vertical = 6.dp),
+            .heightIn(min = com.d365fo.mobileops.presentation.common.focus.FocusDimens.listRow)
+            .padding(horizontal = SIDE, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(WarehouseDimens.ItemSpacing),
     ) {
@@ -1172,8 +1232,15 @@ private fun ToggleRow(
                 color = com.d365fo.mobileops.presentation.common.theme.FocusColors.muted,
             )
         }
-        Switch(checked = checked, onCheckedChange = null)
+        Switch(
+            checked = checked,
+            onCheckedChange = null,
+            colors = androidx.compose.material3.SwitchDefaults.colors(
+                checkedTrackColor = com.d365fo.mobileops.presentation.common.theme.FocusColors.navy,
+            ),
+        )
     }
+    androidx.compose.material3.HorizontalDivider(color = com.d365fo.mobileops.presentation.common.theme.FocusColors.divider)
 }
 
 /** A read-only label and value, the label above in the muted colour. */

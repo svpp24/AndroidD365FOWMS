@@ -148,6 +148,8 @@ data class SendFeedbackPayload(
     val message: String,
     val logs: String,
     val screenshotPath: String? = null,
+    /** All the pictures the worker picked (up to 5); [screenshotPath] is the first, for older queues. */
+    val picturePaths: List<String> = emptyList(),
 ) : SyncPayload
 
 /** Confirmation of an approved purchase order (PO confirmation). */

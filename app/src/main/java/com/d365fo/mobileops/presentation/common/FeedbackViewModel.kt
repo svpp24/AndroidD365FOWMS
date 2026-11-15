@@ -22,13 +22,16 @@ import javax.inject.Inject
 
 data class FeedbackState(
     val screen: String = "",
-    val screenshot: File? = null,
-    val includeScreenshot: Boolean = true,
+    /** Pictures picked from the gallery, up to [com.d365fo.mobileops.data.repository.MAX_PICTURES]. */
+    val pictures: List<File> = emptyList(),
+    val addingPictures: Boolean = false,
     val type: FeedbackType = FeedbackType.Problem,
     val message: String = "",
     val sending: Boolean = false,
     /** The feedback just sent - a thank-you replaces the form until "Send more". */
     val sentId: String? = null,
+    val sentPictures: Int = 0,
+    val sentType: FeedbackType = FeedbackType.Problem,
     val mine: List<FeedbackEntry> = emptyList(),
     val loadingMine: Boolean = false,
     val mineError: String? = null,
@@ -71,8 +74,9 @@ class FeedbackViewModel @Inject constructor(
         ).filterNotNull().joinToString(" · ")
 
     init {
-        val (screen, shot) = origin.consume()
-        _state.update { it.copy(screen = screen ?: "General", screenshot = shot, includeScreenshot = shot != null) }
+        // Opened from Home's menu only now (user, 15 Nov 2026): pictures come from the gallery.
+        val (screen, _) = origin.consume()
+        _state.update { it.copy(screen = screen ?: "General") }
         refreshMine()
         // Feedback is sent in the background: once one leaves the device, D365FO's list has it.
         viewModelScope.launch {
@@ -85,7 +89,18 @@ class FeedbackViewModel @Inject constructor(
 
     fun setMessage(value: String) = _state.update { it.copy(message = value.take(4000)) }
 
-    fun setIncludeScreenshot(value: Boolean) = _state.update { it.copy(includeScreenshot = value) }
+    /** Pictures chosen in the system photo picker; more than the limit are ignored. */
+    fun addPictures(uris: List<android.net.Uri>) {
+        val room = com.d365fo.mobileops.data.repository.MAX_PICTURES - _state.value.pictures.size
+        if (uris.isEmpty() || room <= 0) return
+        viewModelScope.launch {
+            _state.update { it.copy(addingPictures = true) }
+            val files = uris.take(room).mapNotNull { repository.importPicture(it) }
+            _state.update { s -> s.copy(addingPictures = false, pictures = (s.pictures + files).take(com.d365fo.mobileops.data.repository.MAX_PICTURES)) }
+        }
+    }
+
+    fun removePicture(file: File) = _state.update { s -> s.copy(pictures = s.pictures - file) }
 
     fun send() {
         val s = _state.value
@@ -98,9 +113,9 @@ class FeedbackViewModel @Inject constructor(
                 screen = s.screen,
                 type = s.type,
                 message = s.message,
-                screenshot = s.screenshot.takeIf { s.includeScreenshot },
+                pictures = s.pictures,
             )
-            _state.update { it.copy(sending = false, sentId = id, message = "") }
+            _state.update { it.copy(sending = false, sentId = id, message = "", sentPictures = s.pictures.size, sentType = s.type, pictures = emptyList()) }
             refreshMine()
         }
     }

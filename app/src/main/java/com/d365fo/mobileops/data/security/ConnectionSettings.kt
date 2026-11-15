@@ -162,7 +162,8 @@ class ConnectionSettings @Inject constructor(
     }
 
     /** Whether [saveTenant] with [config] would point the device somewhere new (and so wipe local data). */
-    fun wouldChangeTarget(config: TenantConfig): Boolean {
+    fun wouldChangeTarget(scanned: TenantConfig): Boolean {
+        val config = matched(scanned)
         val previous = _tenant.value
         return previous.label != config.label ||
             previous.resourceUrl != config.resourceUrl || previous.tenantId != config.tenantId
@@ -171,7 +172,40 @@ class ConnectionSettings @Inject constructor(
     /** Whether [activate] with [label] would point the device somewhere new. */
     fun wouldChangeTarget(label: String): Boolean = label != _tenant.value.label && readProfile(label) != null
 
-    fun saveTenant(config: TenantConfig): Boolean {
+    /**
+     * A scanned connection is matched to a saved profile by its environment and legal entity, not
+     * by the label in the QR code (user, 15 Nov 2026): a profile for the same server and company
+     * is updated in place and keeps its name - the one in use first; a new one takes the QR's
+     * label, made unique if another environment already has it.
+     */
+    private fun matched(config: TenantConfig): TenantConfig {
+        val host = config.host.lowercase()
+        if (host.isBlank()) return config
+        val same = loadProfileLabels().mapNotNull(::readProfile).filter {
+            it.host.equals(host, ignoreCase = true) &&
+                (it.company.isBlank() || config.company.isBlank() || it.company.equals(config.company, ignoreCase = true))
+        }
+        val keep = same.firstOrNull { it.label == _tenant.value.label } ?: same.firstOrNull()
+        if (keep != null) return config.copy(label = keep.label)
+        var label = config.label
+        var n = 2
+        while (readProfile(label) != null) label = "${config.label} ${n++}"
+        return config.copy(label = label)
+    }
+
+    fun saveTenant(scanned: TenantConfig): Boolean {
+        val config = matched(scanned)
+        // Other profiles for the same environment and legal entity are merged into this one.
+        loadProfileLabels().mapNotNull(::readProfile).filter {
+            it.label != config.label && config.host.isNotBlank() && it.host.equals(config.host, ignoreCase = true) &&
+                (it.company.isBlank() || config.company.isBlank() || it.company.equals(config.company, ignoreCase = true))
+        }.forEach { duplicate ->
+            if (duplicate.label != _tenant.value.label) {
+                secureStore.putString(KEY_PROFILE_LABELS, (loadProfileLabels() - duplicate.label).joinToString(","))
+                clearProfileFields(duplicate.label)
+                secureStore.remove(postingKey(duplicate.label))
+            }
+        }
         val previous = _tenant.value
         val changed = previous.label == config.label &&
             (previous.resourceUrl != config.resourceUrl || previous.tenantId != config.tenantId)

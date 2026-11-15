@@ -1,5 +1,10 @@
 package com.d365fo.mobileops.presentation.common
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -34,38 +39,44 @@ fun PickWarehouseScreen(
     onSignOut: () -> Unit,
     viewModel: WarehouseSwitcherViewModel = hiltViewModel(),
 ) {
-    Column(
-        modifier = Modifier.fillMaxSize().padding(WarehouseDimens.ScreenPadding),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        Text("Choose your warehouse", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
-        Text(
-            "Where are you today?",
-            style = MaterialTheme.typography.bodyMedium,
-            color = WarehouseStatusColors.text3,
-        )
-        LazyColumn(
-            modifier = Modifier.weight(1f),
-            contentPadding = PaddingValues(vertical = 4.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+    // In the Focus list style (user, 15 Nov 2026): who signed in, the question, one row per warehouse.
+    val session by viewModel.session.collectAsStateWithLifecycle()
+    val user = session?.displayName?.trim()?.takeIf { it.isNotBlank() } ?: session?.userName.orEmpty()
+    val online = com.d365fo.mobileops.presentation.common.components.LocalSyncStatus.current?.fullyOnline != false
+    val colors = com.d365fo.mobileops.presentation.common.theme.FocusColors
+    Column(modifier = Modifier.fillMaxSize().background(colors.page)) {
+        androidx.compose.foundation.layout.Row(
+            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+            modifier = Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 24.dp, bottom = 8.dp),
         ) {
-            items(warehouses, key = { it.warehouseId }) { wh ->
-                AppCard(
-                    modifier = Modifier.fillMaxWidth().heightIn(min = WarehouseDimens.MinTouchTarget)
-                        .clickable { viewModel.select(wh.warehouseId) },
-                ) {
-                    Column(Modifier.padding(16.dp)) {
-                        Text(wh.warehouseId, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                        val name = wh.warehouseName.takeIf { it.isNotBlank() && !it.equals(wh.warehouseId, ignoreCase = true) }
-                        Text(
-                            listOfNotNull(name, wh.siteId.takeIf { it.isNotBlank() }?.let { "Site $it" }).joinToString(" · "),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = WarehouseStatusColors.text3,
-                        )
-                    }
+            StatusAvatar(initials = initialsOf(user), tag = "", online = online)
+            Column(Modifier.weight(1f)) {
+                if (user.isNotBlank()) {
+                    Text("Signed in as $user", style = com.d365fo.mobileops.presentation.common.theme.FocusType.rowDetail, color = colors.muted)
                 }
+                Text(
+                    "Where are you today?",
+                    style = com.d365fo.mobileops.presentation.common.theme.FocusType.panelTitle,
+                    color = colors.ink,
+                    modifier = Modifier.semantics { heading() },
+                )
             }
         }
-        TextButton(onClick = onSignOut, modifier = Modifier.fillMaxWidth()) { Text("Not you? Sign out") }
+        com.d365fo.mobileops.presentation.common.focus.FocusCaption(
+            "Choose your warehouse · ${warehouses.size}",
+            modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 16.dp, bottom = 6.dp),
+        )
+        LazyColumn(modifier = Modifier.weight(1f)) {
+            items(warehouses, key = { it.warehouseId }) { wh ->
+                WarehouseRow(warehouse = wh, current = false, pill = null, onClick = { viewModel.select(wh.warehouseId) })
+            }
+        }
+        com.d365fo.mobileops.presentation.common.focus.FocusButton(
+            "Not you? Sign out",
+            onClick = onSignOut,
+            contentColor = colors.badIcon,
+            modifier = Modifier.fillMaxWidth().padding(20.dp),
+        )
     }
 }

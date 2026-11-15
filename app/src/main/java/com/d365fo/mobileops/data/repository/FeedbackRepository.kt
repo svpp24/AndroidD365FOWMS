@@ -76,6 +76,9 @@ data class FeedbackEntry(
     val waiting: Boolean,
 )
 
+/** Pictures a feedback can carry (user, 15 Nov 2026). */
+const val MAX_PICTURES = 5
+
 /**
  * Feedback from the app: saved and queued like an order (so it survives being offline) and
  * sent at once when D365FO answers; HSMobileOpsFeedbackSvc records it and attaches the
@@ -104,12 +107,12 @@ class FeedbackRepository @Inject constructor(
         screen: String,
         type: FeedbackType,
         message: String,
-        screenshot: File?,
+        pictures: List<File>,
     ): String {
         val id = UUID.randomUUID().toString()
-        val kept = screenshot?.takeIf { it.isFile }?.let { file ->
-            withContext(Dispatchers.IO) {
-                File(context.filesDir, "feedback").apply { mkdirs() }.resolve("$id.jpg").also { file.copyTo(it, overwrite = true) }
+        val kept = withContext(Dispatchers.IO) {
+            pictures.filter { it.isFile }.take(MAX_PICTURES).mapIndexed { n, file ->
+                File(context.filesDir, "feedback").apply { mkdirs() }.resolve("$id-${n + 1}.jpg").also { file.copyTo(it, overwrite = true) }
             }
         }
         val payload = SendFeedbackPayload(
@@ -124,7 +127,8 @@ class FeedbackRepository @Inject constructor(
             feedbackType = type.name,
             message = message.trim(),
             logs = recentLogs(),
-            screenshotPath = kept?.absolutePath,
+            screenshotPath = kept.firstOrNull()?.absolutePath,
+            picturePaths = kept.map { it.absolutePath },
         )
         val row = CreatedOrderEntity(
             id = id,
@@ -142,6 +146,28 @@ class FeedbackRepository @Inject constructor(
     }
 
     /** Feedback still on this device (waiting, or refused) - D365FO's list covers the rest. */
+    /**
+     * A picture from the gallery, as a scaled-down JPEG in the cache (longest side 1600 px) - or
+     * null when it can't be read.
+     */
+    suspend fun importPicture(uri: android.net.Uri): File? = withContext(Dispatchers.IO) {
+        runCatching {
+            val resolver = context.contentResolver
+            val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            resolver.openInputStream(uri)?.use { android.graphics.BitmapFactory.decodeStream(it, null, bounds) }
+            var sample = 1
+            while (maxOf(bounds.outWidth, bounds.outHeight) / (sample * 2) >= 1600) sample *= 2
+            val bitmap = resolver.openInputStream(uri)?.use {
+                android.graphics.BitmapFactory.decodeStream(it, null, android.graphics.BitmapFactory.Options().apply { inSampleSize = sample })
+            } ?: return@runCatching null
+            val scale = minOf(1f, 1600f / maxOf(bitmap.width, bitmap.height))
+            val scaled = if (scale < 1f) android.graphics.Bitmap.createScaledBitmap(bitmap, (bitmap.width * scale).toInt(), (bitmap.height * scale).toInt(), true) else bitmap
+            File(context.cacheDir, "feedback").apply { mkdirs() }.resolve("pick-${UUID.randomUUID()}.jpg").also { file ->
+                file.outputStream().use { scaled.compress(android.graphics.Bitmap.CompressFormat.JPEG, 75, it) }
+            }
+        }.getOrNull()
+    }
+
     fun observeUnsent(userName: String): Flow<List<FeedbackEntry>> = dao.observeOrders(OrderKind.FEEDBACK).map { rows ->
         rows.filter { it.userName == userName && it.status != CreatedOrderStatus.CREATED }.map { row ->
             FeedbackEntry(

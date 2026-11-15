@@ -1,5 +1,10 @@
 package com.d365fo.mobileops.presentation.recovery
 
+import androidx.compose.foundation.background
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.FileUpload
+import androidx.compose.material.icons.filled.FileDownload
+import androidx.compose.material.icons.filled.CloudUpload
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -215,6 +220,122 @@ fun WorkSaveButtons(viewModel: WorkSaveViewModel = hiltViewModel(), showImport: 
 }
 
 private enum class PinPurpose { EXPORT, IMPORT }
+
+/**
+ * Settings > Unsent work in the Focus list style (user, 15 Nov 2026): a band that says what is
+ * waiting and when D365FO last got a copy - or what the last action did - then the three ways to
+ * keep a copy as rows. A file still asks for a PIN first.
+ */
+@Composable
+fun UnsentWorkPanel(viewModel: WorkSaveViewModel = hiltViewModel()) {
+    val state by viewModel.state.collectAsStateWithLifecycle()
+    val lastBackup by viewModel.lastBackupAt.collectAsStateWithLifecycle()
+    val waiting by viewModel.waiting.collectAsStateWithLifecycle()
+    var pinFor by remember { mutableStateOf<PinPurpose?>(null) }
+    var pendingPin by remember { mutableStateOf("") }
+    val createFile = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument(WorkFile.MIME)) { uri ->
+        if (uri != null) viewModel.export(uri, pendingPin)
+        pendingPin = ""
+    }
+    val openFile = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) viewModel.import(uri, pendingPin)
+        pendingPin = ""
+    }
+    LaunchedEffect(Unit) { viewModel.refreshSummary() }
+    pinFor?.let { purpose ->
+        PinDialog(
+            purpose = purpose,
+            onPin = { pin ->
+                pinFor = null
+                pendingPin = pin
+                when (purpose) {
+                    PinPurpose.EXPORT -> createFile.launch(WorkFile.suggestedName())
+                    PinPurpose.IMPORT -> openFile.launch(arrayOf("*/*"))
+                }
+            },
+            onCancel = { pinFor = null },
+        )
+    }
+
+    val colors = com.d365fo.mobileops.presentation.common.theme.FocusColors
+    val message = state.message
+    val failed = message != null && (message.startsWith("Couldn't") || message.startsWith("Wrong"))
+    val status = com.d365fo.mobileops.presentation.common.focus.BandState(
+        com.d365fo.mobileops.presentation.common.focus.BandKind.Info,
+        state.unsent ?: "Nothing unsent on this device",
+        when {
+            waiting -> "Not in D365FO yet - waiting for a connection"
+            lastBackup != null -> "Copy saved in D365FO at " + com.d365fo.mobileops.util.Formatters.clockTime(lastBackup!!)
+            else -> null
+        },
+    )
+    when {
+        state.busy -> com.d365fo.mobileops.presentation.common.focus.ResultBand(
+            com.d365fo.mobileops.presentation.common.focus.BandState(com.d365fo.mobileops.presentation.common.focus.BandKind.Info, "Working…"),
+            modifier = Modifier.padding(top = 16.dp),
+        )
+        message == null -> com.d365fo.mobileops.presentation.common.focus.ResultBand(status, modifier = Modifier.padding(top = 16.dp))
+        failed -> androidx.compose.foundation.layout.Box(Modifier.padding(top = 16.dp)) {
+            // A problem stays until dismissed - the next step is in the rows below.
+            com.d365fo.mobileops.presentation.common.focus.ResultBand(
+                com.d365fo.mobileops.presentation.common.focus.BandState(
+                    com.d365fo.mobileops.presentation.common.focus.BandKind.Bad,
+                    message.substringBefore(" - ").substringBefore(". "),
+                    message.substringAfter(" - ", "").ifBlank { message.substringAfter(". ", "") }.ifBlank { null }?.replaceFirstChar { it.uppercase() },
+                ),
+            )
+            androidx.compose.material3.IconButton(
+                onClick = viewModel::dismissMessage,
+                modifier = Modifier.align(androidx.compose.ui.Alignment.TopEnd).padding(end = 20.dp),
+            ) {
+                androidx.compose.material3.Icon(androidx.compose.material.icons.Icons.Filled.Close, contentDescription = "Dismiss", tint = colors.badText)
+            }
+        }
+        else -> {
+            // Done: green, then it fades back to the status band.
+            LaunchedEffect(message) {
+                kotlinx.coroutines.delay(4_000L + 600L)
+                viewModel.dismissMessage()
+            }
+            com.d365fo.mobileops.presentation.common.focus.TimedResultBand(
+                com.d365fo.mobileops.presentation.common.focus.BandState(
+                    com.d365fo.mobileops.presentation.common.focus.BandKind.Ok,
+                    (if (message.startsWith("Saved in D365FO")) message + " · " + com.d365fo.mobileops.util.Formatters.clockTime(System.currentTimeMillis()) else message.substringBefore(". ")),
+                    message.substringAfter(". ", "").ifBlank { state.unsent },
+                    autoHideMs = 4_000L,
+                ),
+                modifier = Modifier.padding(top = 16.dp),
+            )
+        }
+    }
+    com.d365fo.mobileops.presentation.common.focus.FocusCaption(
+        "Keep a copy",
+        modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 18.dp, bottom = 6.dp),
+    )
+    androidx.compose.material3.HorizontalDivider(color = colors.divider)
+    com.d365fo.mobileops.presentation.common.focus.FocusListRow(
+        title = "Save to D365FO",
+        icon = androidx.compose.material.icons.Icons.Filled.CloudUpload,
+        subtitle = "Sign in on any device to get it back.",
+        chevron = true,
+        onClick = if (state.busy) null else viewModel::backUp,
+    )
+    com.d365fo.mobileops.presentation.common.focus.FocusListRow(
+        title = "Save to a file",
+        icon = androidx.compose.material.icons.Icons.Filled.FileDownload,
+        subtitle = "For when D365FO can't be reached.",
+        chevron = true,
+        modifier = if (failed && message?.contains("D365FO") == true) Modifier.background(colors.infoBg.copy(alpha = 0.5f)) else Modifier,
+        onClick = if (state.busy) null else ({ pinFor = PinPurpose.EXPORT }),
+    )
+    com.d365fo.mobileops.presentation.common.focus.FocusListRow(
+        title = "Restore from a file",
+        icon = androidx.compose.material.icons.Icons.Filled.FileUpload,
+        subtitle = "Brings saved work back onto this device.",
+        chevron = true,
+        onClick = if (state.busy) null else ({ pinFor = PinPurpose.IMPORT }),
+    )
+}
 
 @Composable
 private fun PinDialog(purpose: PinPurpose, onPin: (String) -> Unit, onCancel: () -> Unit) {

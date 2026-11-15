@@ -72,6 +72,7 @@ class SettingsViewModel @Inject constructor(
     workerSessions: WorkerSessionRepository,
     @dagger.hilt.android.qualifiers.ApplicationContext private val appContext: android.content.Context,
     private val workBackup: dagger.Lazy<com.d365fo.mobileops.data.sync.WorkBackup>,
+    private val tokenProvider: com.d365fo.mobileops.data.security.TokenProvider,
 ) : ViewModel() {
 
     /**
@@ -263,6 +264,25 @@ class SettingsViewModel @Inject constructor(
                 is NetworkResult.Error -> ConnectionTest.Failed(result.failure.message)
                 NetworkResult.Loading -> ConnectionTest.Running
                 is NetworkResult.Success -> ConnectionTest.Ok("Signed in with client secret.")
+            }
+        }
+    }
+
+    /**
+     * Test connection for the profile in use: a token the way the device really signs in - the
+     * device key and token service for a device setup code, else the app registration. (A device
+     * key profile used to try the client secret it doesn't have: "Azure AD returned 404".)
+     */
+    fun testConnection(config: TenantConfig) {
+        if (!config.usesTokenService) return saveAndSignInWithSecret(config)
+        _test.value = ConnectionTest.Running
+        viewModelScope.launch(handler) {
+            _test.value = when (val result = tokenProvider.acquireSilent()) {
+                is NetworkResult.Error -> ConnectionTest.Failed(result.failure.message)
+                NetworkResult.Loading -> ConnectionTest.Running
+                is NetworkResult.Success -> ConnectionTest.Ok(
+                    "Device key · " + java.time.LocalTime.now().format(java.time.format.DateTimeFormatter.ofPattern("HH:mm")),
+                )
             }
         }
     }

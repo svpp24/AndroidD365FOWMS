@@ -1,5 +1,6 @@
 package com.d365fo.mobileops.presentation.modules.cyclecounting
 
+import androidx.compose.material.icons.filled.Inventory2
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -276,5 +277,51 @@ private fun SyncProgressLine(progress: com.d365fo.mobileops.data.repository.SkuS
         )
     } else {
         androidx.compose.material3.LinearProgressIndicator(modifier = bar, color = color, trackColor = WarehouseStatusColors.border)
+    }
+}
+
+/**
+ * Settings > My warehouse and sign-in > Offline use: the item data on the device as a row - what
+ * the last sync brought, or "Syncing… n of N" while it runs - with a refresh button and the
+ * Full re-sync action (user, 15 Nov 2026).
+ */
+@Composable
+fun ItemDataRow(
+    syncing: Boolean,
+    onSync: () -> Unit,
+    onFullSync: () -> Unit,
+    viewModel: ItemMasterViewModel = hiltViewModel(),
+) {
+    val progress by viewModel.progress.collectAsStateWithLifecycle()
+    val busy = syncing || progress != null
+    androidx.compose.runtime.LaunchedEffect(busy) { if (!busy) viewModel.reload() }
+    val counts by viewModel.counts.collectAsStateWithLifecycle()
+    val n = NumberFormat.getIntegerInstance()
+    val c = counts
+    val p = progress
+    val subtitle = when {
+        busy && p != null && p.total > 0 -> "Syncing… ${n.format(p.done)} of ${n.format(p.total)}"
+        busy -> "Syncing…"
+        c == null || c.items == 0 -> "Not on this device - sync now."
+        else -> "${n.format(c.items)} items · ${n.format(c.barcodes)} barcodes" +
+            (c.syncedAt?.let { " · " + Formatters.clockTime(it) } ?: "")
+    }
+    com.d365fo.mobileops.presentation.common.focus.FocusListRow(
+        title = "Item data",
+        icon = androidx.compose.material.icons.Icons.Filled.Inventory2,
+        state = if (c != null && c.items == 0 && !busy) com.d365fo.mobileops.presentation.common.focus.RowState.Warn else com.d365fo.mobileops.presentation.common.focus.RowState.Plain,
+        subtitle = subtitle,
+        trailing = {
+            androidx.compose.material3.IconButton(onClick = onSync, enabled = !busy) {
+                androidx.compose.material3.Icon(
+                    androidx.compose.material.icons.Icons.Filled.Refresh,
+                    contentDescription = "Sync item data now",
+                    tint = if (busy) com.d365fo.mobileops.presentation.common.theme.FocusColors.iconMuted else com.d365fo.mobileops.presentation.common.theme.FocusColors.navy,
+                )
+            }
+        },
+    )
+    androidx.compose.foundation.layout.Box(Modifier.padding(horizontal = 20.dp)) {
+        FullResyncAction(onFullSync, enabled = !busy)
     }
 }

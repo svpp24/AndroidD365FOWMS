@@ -61,6 +61,7 @@ class DeviceDeactivation @Inject constructor(
         // Its key and connection go; the device's keys and connections for the other
         // environments stay (user, 15 Nov 2026).
         val host = connectionSettings.tenant.value.host
+        secureStore.putString(KEY_DEACTIVATED_LABEL, connectionSettings.tenant.value.label)
         runCatching { database.clearAllTables() }.onFailure { Timber.e(it, "deactivation: database wipe failed") }
         deviceKey.delete(host)
         connectionSettings.clearActiveCredentials()
@@ -71,9 +72,17 @@ class DeviceDeactivation @Inject constructor(
 
     fun wasDeactivated(): Boolean = secureStore.getBoolean(KEY_DEACTIVATED)
 
+    /**
+     * The start screen's message (user, 15 Nov 2026): short, names the profile, no address -
+     * "Active profile Dev has deactivated this device."
+     */
+    fun message(): String = secureStore.getString(KEY_DEACTIVATED_LABEL)?.takeIf { it.isNotBlank() }
+        ?.let { "Active profile $it has deactivated this device." } ?: MESSAGE
+
     /** A new setup code was scanned and accepted. */
     fun clear() {
         secureStore.remove(KEY_DEACTIVATED)
+        secureStore.remove(KEY_DEACTIVATED_LABEL)
         _deactivated.value = false
     }
 
@@ -81,5 +90,10 @@ class DeviceDeactivation @Inject constructor(
         const val MESSAGE = "This device has been deactivated in this D365FO environment. Its local data was removed. " +
             "Ask your administrator for a new device setup code."
         private const val KEY_DEACTIVATED = "device_deactivated"
+        private const val KEY_DEACTIVATED_LABEL = "device_deactivated_label"
+
+        /** Whether [reason] is a deactivation message - the start screen shows no address then. */
+        fun isDeactivation(reason: String?): Boolean =
+            reason != null && (reason == MESSAGE || (reason.startsWith("Active profile ") && reason.endsWith(" has deactivated this device.")))
     }
 }

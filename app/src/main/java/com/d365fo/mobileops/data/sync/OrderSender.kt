@@ -154,8 +154,9 @@ class OrderSender @Inject constructor(
      */
     suspend fun sendFeedback(p: com.d365fo.mobileops.data.sync.payload.SendFeedbackPayload): NetworkResult<Unit> {
         val now = System.currentTimeMillis()
-        val shot = p.screenshotPath?.let { java.io.File(it) }?.takeIf { it.isFile }
-        val base64 = shot?.let { android.util.Base64.encodeToString(it.readBytes(), android.util.Base64.NO_WRAP) }.orEmpty()
+        val files = p.picturePaths.ifEmpty { listOfNotNull(p.screenshotPath) }.map { java.io.File(it) }.filter { it.isFile }
+        val pictures = files.map { android.util.Base64.encodeToString(it.readBytes(), android.util.Base64.NO_WRAP) }
+        val base64 = pictures.firstOrNull().orEmpty()
         val result = errorMapper.safeCall {
             api.submitFeedback(
                 com.d365fo.mobileops.data.remote.dto.FeedbackServiceRequest(
@@ -172,6 +173,7 @@ class OrderSender @Inject constructor(
                         message = p.message,
                         logs = p.logs,
                         screenshotBase64 = base64,
+                        pictures = pictures,
                     ),
                 ),
             )
@@ -181,7 +183,7 @@ class OrderSender @Inject constructor(
                 val body = result.data
                 if (body.success) {
                     dao.markOrder(p.idempotencyKey, CreatedOrderStatus.CREATED, null, null, null, body.message.ifBlank { null }, null, now)
-                    shot?.delete()
+                    files.forEach { it.delete() }
                     NetworkResult.Success(Unit)
                 } else {
                     val reason = body.message.ifBlank { "D365FO refused the feedback (${body.errorCode})" }
