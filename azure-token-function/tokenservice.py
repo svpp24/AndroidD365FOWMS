@@ -4,6 +4,11 @@ A handheld set up with a device setup code holds no client secret. It holds an E
 its Keystore; D365FO holds the public key (HSMobileOpsDeviceSetupSvc). This service holds the
 customer's app registrations and hands out D365FO access tokens to devices that prove they hold
 their key and that D365FO still lists as active.
+
+No secrets (15 Nov 2026): each app registration trusts this Function App's managed identity (a
+federated credential). The function gets its identity's token for api://AzureADTokenExchange and
+hands it to Azure AD in place of a client secret; the D365FO token Azure AD returns is the app
+registration's own, so D365FO (Microsoft Entra applications) sees exactly what it saw before.
 """
 import base64
 import hashlib
@@ -23,13 +28,17 @@ from cryptography.hazmat.primitives.asymmetric import ec
 
 CLOCK_SKEW_SECONDS = 300
 DEVICE_KEY_CACHE_SECONDS = 300
+TOKEN_EXCHANGE_AUDIENCE = "api://AzureADTokenExchange"
+ASSERTION_TYPE = "urn:ietf:params:oauth:client-assertion-type:jwt-bearer"
 SERVICE_PATH = "/api/services/HSMobileOpsServiceGroup/HSMobileOpsDeviceSetupSvc/"
 
 
 @dataclass
 class AppRegistration:
     client_id: str
-    secret: str
+    # Blank: the managed identity vouches for this registration (federated credential) - the
+    # normal case. A secret still works, for a registration set up the old way.
+    secret: str = ""
 
 
 @dataclass
@@ -40,8 +49,9 @@ class Config:
 
     @staticmethod
     def from_settings(tenant_id: str, d365_urls: str, apps_json: str) -> "Config":
-        apps = [AppRegistration(a["id"].strip(), a["secret"].strip()) for a in json.loads(apps_json)
-                if a.get("id") and a.get("secret")]
+        # ["client-id", ...] - or [{"id": ..., "secret": ...}] from an older setup.
+        apps = [AppRegistration(a.strip()) if isinstance(a, str) else AppRegistration(a["id"].strip(), (a.get("secret") or "").strip())
+                for a in json.loads(apps_json) if (a.strip() if isinstance(a, str) else a.get("id"))]
         urls = [normalize(u) for u in d365_urls.split(",") if u.strip()]
         if not tenant_id.strip() or not urls or not apps:
             raise ValueError("TENANT_ID, D365_URLS and APP_REGISTRATIONS are all required")
@@ -57,6 +67,8 @@ class Result:
 
 class Http(Protocol):
     def post(self, url: str, body: bytes, headers: dict, timeout: int) -> tuple[int, dict, bytes]: ...
+
+    def get(self, url: str, headers: dict, timeout: int) -> tuple[int, dict, bytes]: ...
 
 
 class NonceStore(Protocol):
@@ -100,7 +112,13 @@ def verify_device_signature(public_key_b64: str, text: str, signature_b64: str) 
 
 class UrllibHttp:
     def post(self, url, body, headers, timeout):
-        request = urllib.request.Request(url, body, headers, method="POST")
+        return self._send(urllib.request.Request(url, body, headers, method="POST"), timeout)
+
+    def get(self, url, headers, timeout):
+        return self._send(urllib.request.Request(url, None, headers, method="GET"), timeout)
+
+    @staticmethod
+    def _send(request, timeout):
         try:
             with urllib.request.urlopen(request, timeout=timeout) as response:
                 return response.status, dict(response.headers), response.read()
@@ -108,9 +126,39 @@ class UrllibHttp:
             return e.code, dict(e.headers or {}), e.read()
 
 
+class ManagedIdentity:
+    """This Function App's own (system-assigned) identity: a token for api://AzureADTokenExchange,
+    the credential the app registrations trust. From the endpoint Azure gives every Function App
+    with an identity (IDENTITY_ENDPOINT / IDENTITY_HEADER); cached until 5 minutes before expiry."""
+
+    def __init__(self, http: Http, endpoint: str, header: str, clock=time.time):
+        self.http, self.endpoint, self.header, self.clock = http, endpoint, header, clock
+        self._token: tuple[str, float] | None = None
+        self._lock = threading.Lock()
+
+    def assertion(self) -> str:
+        with self._lock:
+            if self._token and self._token[1] - 300 > self.clock():
+                return self._token[0]
+        if not self.endpoint or not self.header:
+            raise Unavailable("this Function App has no managed identity")
+        url = self.endpoint + "?" + urllib.parse.urlencode({"resource": TOKEN_EXCHANGE_AUDIENCE, "api-version": "2019-08-01"})
+        status, _, raw = self.http.get(url, {"X-IDENTITY-HEADER": self.header}, 30)
+        if status != 200:
+            logging.error("managed identity answered %s: %s", status, raw[:300])
+            raise Unavailable(f"managed identity answered {status}")
+        data = json.loads(raw)
+        expires = float(data.get("expires_on") or 0) or self.clock() + 3600
+        with self._lock:
+            self._token = (data["access_token"], expires)
+        return data["access_token"]
+
+
 class TokenService:
-    def __init__(self, config: Config, http: Http, nonces: NonceStore, clock=time.time):
+    def __init__(self, config: Config, http: Http, nonces: NonceStore, clock=time.time,
+                 identity: "ManagedIdentity | None" = None):
         self.config, self.http, self.nonces, self.clock = config, http, nonces, clock
+        self.identity = identity
         self._tokens: dict[tuple[int, str], tuple[str, float]] = {}
         self._keys: dict[str, tuple[dict, float]] = {}
         self._lock = threading.Lock()
@@ -129,9 +177,15 @@ class TokenService:
         if cached and cached[1] - 300 > self.clock():
             return cached
         app = self.config.apps[index]
-        body = urllib.parse.urlencode({
-            "grant_type": "client_credentials", "client_id": app.client_id, "client_secret": app.secret,
-            "scope": resource + "/.default"}).encode()
+        form = {"grant_type": "client_credentials", "client_id": app.client_id, "scope": resource + "/.default"}
+        if app.secret:
+            form["client_secret"] = app.secret
+        else:
+            if not self.identity:
+                raise Unavailable("no managed identity and no secret for this registration")
+            form["client_assertion_type"] = ASSERTION_TYPE
+            form["client_assertion"] = self.identity.assertion()
+        body = urllib.parse.urlencode(form).encode()
         status, headers, raw = self.http.post(
             f"https://login.microsoftonline.com/{self.config.tenant_id}/oauth2/v2.0/token", body,
             {"Content-Type": "application/x-www-form-urlencoded"}, 30)

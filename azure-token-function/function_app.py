@@ -9,7 +9,8 @@ Anonymous on purpose: devices have no secret to send. register needs a valid one
 code; token needs a request signed with a key D365FO holds for an active device.
 
 Settings: TENANT_ID, D365_URLS (comma-separated environment URLs this service serves),
-APP_REGISTRATIONS (JSON [{"id","secret"}], 1-10 - best as a Key Vault reference),
+APP_REGISTRATIONS (JSON ["client-id", ...], 1-10 - no secrets: each registration trusts this
+Function App's managed identity; IDENTITY_ENDPOINT/IDENTITY_HEADER are set by Azure),
 AzureWebJobsStorage (used for the replay check).
 """
 import datetime
@@ -66,7 +67,9 @@ def _setup() -> tokenservice.TokenService:
         config = tokenservice.Config.from_settings(
             os.environ.get("TENANT_ID", ""), os.environ.get("D365_URLS", ""), os.environ.get("APP_REGISTRATIONS", "[]"))
         _nonces = TableNonces(os.environ["AzureWebJobsStorage"])
-        _service = tokenservice.TokenService(config, tokenservice.UrllibHttp(), _nonces)
+        http = tokenservice.UrllibHttp()
+        identity = tokenservice.ManagedIdentity(http, os.environ.get("IDENTITY_ENDPOINT", ""), os.environ.get("IDENTITY_HEADER", ""))
+        _service = tokenservice.TokenService(config, http, _nonces, identity=identity)
     return _service
 
 

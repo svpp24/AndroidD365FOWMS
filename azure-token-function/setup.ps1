@@ -4,9 +4,10 @@
 
 .DESCRIPTION
   Run by the customer's Azure admin, signed in with `az login` to the right tenant and subscription.
-  Creates: a resource group, a storage account, a Key Vault, a Python Function App with a managed
-  identity, and 1-10 app registrations for D365FO (each with a 2-year secret that goes straight into
-  the Key Vault - the secrets are never shown). Then deploys this folder's code.
+  Creates: a resource group, a storage account, a Python Function App with a managed identity, and
+  1-10 app registrations for D365FO. No secrets: each app registration trusts the Function App's
+  managed identity (a federated credential), so there is nothing to store, leak or renew. Then
+  deploys this folder's code.
 
   Afterwards, in D365FO:
     1. System administration > Setup > Microsoft Entra applications: add each client ID printed
@@ -14,7 +15,7 @@
     2. Mobile devices > Device setup codes > New device setup code: Token service = the URL printed.
 
   Re-running is safe: existing resources are kept; -AppCount above the current number adds
-  registrations. Rotate the secrets with -RotateSecrets.
+  registrations. -RemoveSecrets deletes client secrets an older version of this script made.
 
 .EXAMPLE
   ./setup.ps1 -Name contoso-mobileops -Location westeurope -D365Urls https://contoso.operations.dynamics.com -AppCount 3
@@ -25,7 +26,7 @@ param(
     [Parameter(Mandatory)] [string[]] $D365Urls,
     [ValidateRange(1, 10)] [int] $AppCount = 2,
     [string] $ResourceGroup = "$Name-rg",
-    [switch] $RotateSecrets
+    [switch] $RemoveSecrets
 )
 $ErrorActionPreference = 'Stop'
 function Az { $out = & az @args; if ($LASTEXITCODE -ne 0) { throw "az $($args -join ' ') failed" }; $out }
@@ -38,30 +39,28 @@ foreach ($u in $D365Urls) { if ($u -notmatch '^https://') { throw "D365FO URL mu
 
 # Storage account names: 3-24 lower-case letters and digits.
 $storage = (($Name -replace '-', '') + 'st').Substring(0, [Math]::Min(24, ($Name -replace '-', '').Length + 2))
-$vault = ($Name + '-kv').Substring(0, [Math]::Min(24, $Name.Length + 3))
 
 Az group create -n $ResourceGroup -l $Location -o none
 if (-not (Exists storage account show -n $storage -g $ResourceGroup)) {
     Az storage account create -n $storage -g $ResourceGroup -l $Location --sku Standard_LRS --min-tls-version TLS1_2 --allow-blob-public-access false -o none
-}
-if (-not (Exists keyvault show -n $vault)) {
-    Az keyvault create -n $vault -g $ResourceGroup -l $Location --enable-rbac-authorization true -o none
 }
 if (-not (Exists functionapp show -n $Name -g $ResourceGroup)) {
     Az functionapp create -n $Name -g $ResourceGroup --storage-account $storage --consumption-plan-location $Location `
         --runtime python --runtime-version 3.11 --functions-version 4 --os-type Linux --https-only true -o none
 }
 $principal = Az functionapp identity assign -n $Name -g $ResourceGroup --query principalId -o tsv
-$vaultId = Az keyvault show -n $vault --query id -o tsv
-$me = Az ad signed-in-user show --query id -o tsv
-az role assignment create --assignee-object-id $principal --assignee-principal-type ServicePrincipal --role 'Key Vault Secrets User' --scope $vaultId -o none 2>$null
-az role assignment create --assignee-object-id $me --assignee-principal-type User --role 'Key Vault Secrets Officer' --scope $vaultId -o none 2>$null
 
-# App registrations for D365FO: "<name>-d365-1" ... each with its own secret, kept only in the vault.
-$existing = @()
-$current = az keyvault secret show --vault-name $vault -n AppRegistrations --query value -o tsv 2>$null
-if ($LASTEXITCODE -eq 0 -and $current) { $existing = @($current | ConvertFrom-Json) }
-$apps = [System.Collections.Generic.List[object]]::new()
+# App registrations for D365FO: "<name>-d365-1" ... each trusts the Function App's identity.
+$fic = @{
+    name      = 'mobileops-token-function'
+    issuer    = "https://login.microsoftonline.com/$tenant/v2.0"
+    subject   = $principal
+    audiences = @('api://AzureADTokenExchange')
+    description = 'The Mobile Ops token function (its managed identity) - no client secret.'
+} | ConvertTo-Json -Compress
+$ficFile = Join-Path ([IO.Path]::GetTempPath()) "$Name-fic.json"
+Set-Content -Path $ficFile -Value $fic -Encoding utf8
+$apps = [System.Collections.Generic.List[string]]::new()
 for ($i = 1; $i -le $AppCount; $i++) {
     $display = "$Name-d365-$i"
     $appId = Az ad app list --display-name $display --query '[0].appId' -o tsv
@@ -69,29 +68,25 @@ for ($i = 1; $i -le $AppCount; $i++) {
         $appId = Az ad app create --display-name $display --sign-in-audience AzureADMyOrg --query appId -o tsv
         Az ad sp create --id $appId -o none
     }
-    $known = $existing | Where-Object { $_.id -eq $appId } | Select-Object -First 1
-    if ($known -and -not $RotateSecrets) {
-        $apps.Add([pscustomobject]@{ id = $appId; secret = $known.secret })
-    } else {
-        $secret = Az ad app credential reset --id $appId --append --display-name 'mobileops-token-service' --years 2 --query password -o tsv
-        $apps.Add([pscustomobject]@{ id = $appId; secret = $secret })
+    $subjects = @(Az ad app federated-credential list --id $appId --query '[].subject' -o tsv)
+    if ($subjects -notcontains $principal) {
+        # A recreated Function App has a new identity: replace the old trust.
+        $old = Az ad app federated-credential list --id $appId --query "[?name=='mobileops-token-function'].id" -o tsv
+        if ($old) { Az ad app federated-credential delete --id $appId --federated-credential-id $old -o none }
+        Az ad app federated-credential create --id $appId --parameters "@$ficFile" -o none
     }
+    if ($RemoveSecrets) {
+        $keys = @(Az ad app credential list --id $appId --query '[].keyId' -o tsv)
+        foreach ($k in $keys) { if ($k) { Az ad app credential delete --id $appId --key-id $k -o none } }
+    }
+    $apps.Add($appId)
 }
+Remove-Item $ficFile -ErrorAction SilentlyContinue
 $json = ConvertTo-Json -InputObject @($apps) -Compress
-# A new role assignment can take a few minutes to apply.
-for ($try = 1; ; $try++) {
-    & az keyvault secret set --vault-name $vault -n AppRegistrations --value $json -o none 2>$null
-    if ($LASTEXITCODE -eq 0) { break }
-    if ($try -ge 10) { throw 'Could not write the Key Vault secret - check your Key Vault Secrets Officer role.' }
-    Write-Host 'Waiting for Key Vault access...'; Start-Sleep 30
-}
-$json = $null; $apps = $apps | ForEach-Object { $_.id }
-$secretUri = Az keyvault secret show --vault-name $vault -n AppRegistrations --query id -o tsv
-$secretUri = $secretUri -replace '/[0-9a-f]{32}$', '/'
 
 Az functionapp config appsettings set -n $Name -g $ResourceGroup -o none --settings `
     "TENANT_ID=$tenant" "D365_URLS=$($D365Urls -join ',')" `
-    "APP_REGISTRATIONS=@Microsoft.KeyVault(SecretUri=$secretUri)" "SCM_DO_BUILD_DURING_DEPLOYMENT=true"
+    "APP_REGISTRATIONS=$json" "SCM_DO_BUILD_DURING_DEPLOYMENT=true"
 
 # Deploy this folder (remote build installs requirements.txt).
 $zip = Join-Path ([IO.Path]::GetTempPath()) "$Name-token-service.zip"

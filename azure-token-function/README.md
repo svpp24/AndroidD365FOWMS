@@ -15,10 +15,16 @@ handhelds hold no client secret. The full contract and the security model are in
 - register needs a valid one-off setup code;
 - token needs a request signed with a key that D365FO holds for an active device.
 
-**App registrations.** 1–10 app registrations live in a Key Vault secret. Each device keeps to
-one of them, picked by a hash of its device ID, which spreads D365FO's per-registration limits.
-If Azure AD throttles one, the device uses the next. App tokens are cached until 5 minutes
-before they expire, so Azure AD sees about one request per registration per hour.
+**App registrations, no secrets.** 1–10 app registrations, listed by client ID. Each trusts
+the Function App's managed identity (a federated credential): the function gets its identity's
+token for `api://AzureADTokenExchange` and gives it to Azure AD instead of a client secret. The
+D365FO token that comes back belongs to the app registration, so D365FO accepts it through
+*Microsoft Entra applications* exactly as before. Nothing to store, leak or renew.
+
+Each device keeps to one registration, picked by a hash of its device ID, which spreads D365FO's
+per-registration limits. If Azure AD throttles one, the device uses the next. App tokens are
+cached until 5 minutes before they expire, so Azure AD sees about one request per registration
+per hour.
 
 ## Set up (customer's Azure admin)
 
@@ -34,9 +40,8 @@ The script creates:
 
 - a resource group;
 - a storage account;
-- a Key Vault (RBAC);
-- a Linux Python 3.11 Function App (Consumption) with a managed identity that can read the vault;
-- the app registrations, whose secrets go straight into the vault and are never printed.
+- a Linux Python 3.11 Function App (Consumption) with a system-assigned managed identity;
+- the app registrations, each trusting that identity (no client secrets).
 
 It then deploys the code. At the end it prints the token service URL and the client IDs.
 
@@ -47,14 +52,16 @@ Then, in D365FO:
 2. **Mobile devices › Device setup codes › New device setup code.** Enter the URL as *Token
    service*. Handhelds scan the QR code.
 
-Re-running the script is safe. `-AppCount 5` adds registrations. `-RotateSecrets` makes new
-secrets: the old ones stay valid until they expire, so the change is not disruptive.
+Re-running the script is safe. `-AppCount 5` adds registrations. If the Function App is ever
+recreated (a new identity), re-run the script: it replaces the trust. `-RemoveSecrets` deletes
+client secrets made by an older version of this script.
 
 | Setting | Value |
 |---|---|
 | `TENANT_ID` | The customer's tenant. |
 | `D365_URLS` | Comma-separated list of the D365FO environments this service may hand out tokens for. A request for any other URL is refused. |
-| `APP_REGISTRATIONS` | Key Vault reference to `[{"id","secret"}, ...]`. |
+| `APP_REGISTRATIONS` | `["client-id", ...]` - not secret. (`[{"id","secret"}]` from an older setup still works.) |
+| `IDENTITY_ENDPOINT`, `IDENTITY_HEADER` | Set by Azure for the managed identity. |
 | `AzureWebJobsStorage` | Set by Azure. Holds the `UsedNonces` table that the replay check uses. |
 
 ## Test locally

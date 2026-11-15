@@ -47,12 +47,24 @@ class FakeCloud:
         self.aad_calls = []
         self.d365_calls = []
         self.throttled_apps = set()
+        self.identity_calls = 0
+
+    def get(self, url, headers, timeout):
+        """The Function App's managed identity endpoint."""
+        assert headers["X-IDENTITY-HEADER"] == "id-header"
+        assert "resource=api%3A%2F%2FAzureADTokenExchange" in url
+        self.identity_calls += 1
+        return 200, {}, json.dumps({"access_token": "mi-assertion", "expires_on": str(NOW + 3600)}).encode()
 
     def post(self, url, body, headers, timeout):
         if "login.microsoftonline.com" in url:
             form = urllib.parse.parse_qs(body.decode())
             app = form["client_id"][0]
             self.aad_calls.append(app)
+            # No secret: Azure AD accepts the managed identity's token as the credential.
+            if "client_secret" not in form:
+                assert form["client_assertion"] == ["mi-assertion"], form
+                assert form["client_assertion_type"] == [ts.ASSERTION_TYPE]
             if app in self.throttled_apps:
                 return 429, {"Retry-After": "20"}, b"{}"
             return 200, {}, json.dumps({"access_token": "tok-" + app, "expires_in": 3600}).encode()
@@ -85,10 +97,11 @@ class MemoryNonces:
         return True
 
 
-def service(cloud, apps=2, clock=lambda: NOW):
+def service(cloud, apps=2, clock=lambda: NOW, registrations=None):
     config = ts.Config.from_settings("tenant-1", D365 + "/", json.dumps(
-        [{"id": f"app{i}", "secret": f"s{i}"} for i in range(apps)]))
-    return ts.TokenService(config, cloud, MemoryNonces(), clock)
+        registrations if registrations is not None else [f"app{i}" for i in range(apps)]))
+    identity = ts.ManagedIdentity(cloud, "http://localhost:8081/msi/token", "id-header", clock)
+    return ts.TokenService(config, cloud, MemoryNonces(), clock, identity=identity)
 
 
 class TokenServiceTest(unittest.TestCase):
@@ -164,9 +177,26 @@ class TokenServiceTest(unittest.TestCase):
         r = svc.token(devices[0].token_body("v"))
         self.assertEqual((429, "20"), (r.http_status, r.headers["Retry-After"]))
 
+    def test_managed_identity_token_is_reused(self):
+        cloud = FakeCloud()
+        svc = service(cloud, apps=3)
+        cloud.codes["GOODCODE"] = 6
+        devices = [Device(f"d{i}") for i in range(6)]
+        for i, d in enumerate(devices):
+            svc.register(d.register_body("GOODCODE"))
+            self.assertEqual(200, svc.token(d.token_body(f"m{i}")).http_status)
+        self.assertEqual(1, cloud.identity_calls, "one identity token for every registration")
+
+    def test_a_registration_with_a_secret_still_works(self):
+        cloud, device = FakeCloud(), Device("dev-1")
+        svc = service(cloud, registrations=[{"id": "app0", "secret": "s0"}])
+        svc.register(device.register_body("GOODCODE"))
+        self.assertEqual(200, svc.token(device.token_body()).http_status)
+        self.assertEqual(0, cloud.identity_calls)
+
     def test_config_needs_everything(self):
         with self.assertRaises(ValueError):
-            ts.Config.from_settings("", D365, '[{"id":"a","secret":"b"}]')
+            ts.Config.from_settings("", D365, '["a"]')
         with self.assertRaises(ValueError):
             ts.Config.from_settings("t", D365, "[]")
 
