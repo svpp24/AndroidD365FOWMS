@@ -1,5 +1,6 @@
 package com.d365fo.mobileops.presentation.modules.stepflow
 
+import androidx.compose.material.icons.filled.CheckCircle
 import com.d365fo.mobileops.presentation.common.components.BarcodeFieldIcon
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.size
@@ -319,21 +320,29 @@ private fun WarehousePickerDialog(
 
                 LazyColumn(modifier = Modifier.heightIn(max = 360.dp)) {
                     items(shown, key = { it.warehouseId }) { warehouse ->
-                        Text(
-                            text = warehouse.label,
-                            style = MaterialTheme.typography.bodyLarge,
-                            fontWeight = if (warehouse.warehouseId == selected) {
-                                FontWeight.Bold
-                            } else {
-                                FontWeight.Normal
-                            },
+                        androidx.compose.foundation.layout.Row(
+                            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
                             modifier = Modifier
                                 .fillMaxWidth()
                                 // 48dp: this is tapped in gloves.
                                 .heightIn(min = 48.dp)
                                 .clickable { onPick(warehouse.warehouseId) }
-                                .padding(vertical = 12.dp),
-                        )
+                                .padding(vertical = 10.dp),
+                        ) {
+                            Text(
+                                text = buildAnnotatedStringFor(warehouse.warehouseId, warehouse.warehouseName),
+                                style = MaterialTheme.typography.bodyLarge,
+                                modifier = Modifier.weight(1f),
+                            )
+                            if (warehouse.warehouseId == selected) {
+                                androidx.compose.material3.Icon(
+                                    androidx.compose.material.icons.Icons.Filled.CheckCircle,
+                                    contentDescription = "Selected",
+                                    tint = com.d365fo.mobileops.presentation.common.theme.FocusColors.okIcon,
+                                )
+                            }
+                        }
+                        HorizontalDivider()
                     }
                 }
 
@@ -378,3 +387,12 @@ internal fun OnHandFocusSample(kind: Int) {
         scanPill = { com.d365fo.mobileops.presentation.common.focus.ScanPill(onTap = {}) },
     ) { OnHandBody(state) }
 }
+
+/** "AAC · American Academy..." - the code in the code font, then the name. */
+private fun buildAnnotatedStringFor(code: String, name: String): androidx.compose.ui.text.AnnotatedString =
+    androidx.compose.ui.text.buildAnnotatedString {
+        pushStyle(androidx.compose.ui.text.SpanStyle(fontFamily = com.d365fo.mobileops.presentation.common.theme.CodeFont, fontWeight = FontWeight.Bold, fontSize = androidx.compose.ui.unit.TextUnit(19f, androidx.compose.ui.unit.TextUnitType.Sp)))
+        append(code)
+        pop()
+        name.trim().takeIf { it.isNotBlank() && !it.equals(code, ignoreCase = true) }?.let { append("  ·  $it") }
+    }

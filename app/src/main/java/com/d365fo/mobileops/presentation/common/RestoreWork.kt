@@ -144,7 +144,7 @@ fun RestoreWorkCard(modifier: Modifier = Modifier, viewModel: RestoreWorkViewMod
         AlertDialog(
             onDismissRequest = { confirmDiscard = false },
             title = { Text("Remove saved work?") },
-            text = { Text("It is deleted from D365FO and can't be restored.") },
+            text = { Text("Deleted from D365FO for good.") },
             confirmButton = {
                 DialogButtonRow(
                     dismiss = {

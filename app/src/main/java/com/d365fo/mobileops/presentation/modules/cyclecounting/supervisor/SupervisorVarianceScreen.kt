@@ -87,7 +87,7 @@ fun SupervisorVarianceScreen(
             title = { Text("Post ${state.journalId}?") },
             text = {
                 Text(
-                    "On-hand is adjusted. This can't be undone.",
+                    "Adjusts on-hand. Can't be undone.",
                 )
             },
             confirmButton = {
@@ -389,8 +389,8 @@ private fun DecisionDialog(
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(
                     when (action) {
-                        ReviewAction.APPROVE -> "$count line${if (count == 1) "" else "s"} will post with the counted quantity."
-                        ReviewAction.RECOUNT -> "$count line${if (count == 1) "" else "s"} will be counted again, blind."
+                        ReviewAction.APPROVE -> "$count line${if (count == 1) "" else "s"} post with the counted quantity."
+                        ReviewAction.RECOUNT -> "$count line${if (count == 1) "" else "s"} counted again, blind."
                         ReviewAction.INVESTIGATE -> "$count line${if (count == 1) "" else "s"} held."
                         ReviewAction.REJECT -> "$count line${if (count == 1) "" else "s"} to recount."
                     },

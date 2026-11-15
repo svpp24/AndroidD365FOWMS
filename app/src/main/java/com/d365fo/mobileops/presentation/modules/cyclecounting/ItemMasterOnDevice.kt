@@ -208,7 +208,7 @@ private fun FullResyncAction(onFullSync: () -> Unit, enabled: Boolean) {
         androidx.compose.material3.AlertDialog(
             onDismissRequest = { confirm = false },
             title = { Text("Full re-sync?") },
-            text = { Text("Downloads the whole item list again - every item, barcode and variant. It takes longer and uses more data than Sync; use Wi-Fi.") },
+            text = { Text("The whole item list again. Use Wi-Fi.") },
             confirmButton = {
                 com.d365fo.mobileops.presentation.common.components.DialogButtonRow(
                     dismiss = {

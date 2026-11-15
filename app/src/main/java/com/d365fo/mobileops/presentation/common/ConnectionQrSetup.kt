@@ -260,7 +260,7 @@ private fun PinDialog(wrongPin: Boolean, onPin: (String) -> Unit, onCancel: () -
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(
-                    if (wrongPin) "That PIN did not open the code. Try again."
+                    if (wrongPin) "Wrong PIN. Try again."
                     else "Enter the setup PIN.",
                 )
                 OutlinedTextField(

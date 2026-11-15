@@ -1,5 +1,7 @@
 package com.d365fo.mobileops.presentation.recovery
 
+import androidx.compose.foundation.clickable
+import com.d365fo.mobileops.presentation.common.components.bleed
 import androidx.compose.foundation.background
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FileUpload
@@ -179,12 +181,16 @@ fun WorkSaveButtons(viewModel: WorkSaveViewModel = hiltViewModel(), showImport: 
     }
     LaunchedEffect(Unit) { viewModel.refreshSummary() }
 
+    // The result in a band, not a popup (user, 15 Nov 2026): green for done, red for a problem.
     state.message?.let { message ->
-        AlertDialog(
-            onDismissRequest = viewModel::dismissMessage,
-            title = { Text("Unsent work") },
-            text = { Text(message) },
-            confirmButton = { ConfirmButton(onClick = viewModel::dismissMessage) { Text("OK") } },
+        val failed = message.startsWith("Couldn't") || message.startsWith("Wrong")
+        com.d365fo.mobileops.presentation.common.focus.ResultBand(
+            com.d365fo.mobileops.presentation.common.focus.BandState(
+                if (failed) com.d365fo.mobileops.presentation.common.focus.BandKind.Bad else com.d365fo.mobileops.presentation.common.focus.BandKind.Ok,
+                message.substringBefore(". "),
+                message.substringAfter(". ", "").ifBlank { null },
+            ),
+            modifier = Modifier.padding(bottom = 10.dp).bleed(20.dp).clickable(onClickLabel = "Dismiss", onClick = viewModel::dismissMessage),
         )
     }
     pinFor?.let { purpose ->
@@ -348,7 +354,7 @@ private fun PinDialog(purpose: PinPurpose, onPin: (String) -> Unit, onCancel: ()
         title = { Text(if (export) "Choose a PIN" else "File PIN") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(if (export) "At least 4 digits. Needed to open the file." else "The PIN chosen when the file was saved.")
+                Text(if (export) "At least 4 digits." else "The PIN chosen when the file was saved.")
                 OutlinedTextField(
                     value = pin,
                     onValueChange = { pin = it.filter(Char::isDigit) },

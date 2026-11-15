@@ -18,7 +18,7 @@ fun UnsentWorkDialog(description: String, onKeep: () -> Unit, onDelete: () -> Un
         title = { Text("Work not yet in D365FO") },
         text = {
             Text(
-                "$description is still unsent and will be lost. Send it first.",
+                "$description isn't sent yet and will be lost.",
             )
         },
         confirmButton = {

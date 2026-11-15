@@ -169,7 +169,7 @@ fun DualCountReviewScreen(
         AlertDialog(
             onDismissRequest = viewModel::cancelPost,
             title = { Text("Post ${state.journalId}?") },
-            text = { Text("On-hand is adjusted. This can't be undone.") },
+            text = { Text("Adjusts on-hand. Can't be undone.") },
             confirmButton = {
                 DialogButtonRow(
                     dismiss = {

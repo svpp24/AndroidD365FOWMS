@@ -157,8 +157,8 @@ fun PoConfirmScreen(onBack: () -> Unit, viewModel: PoConfirmViewModel = hiltView
             text = {
                 Text(
                     "${s.vendorAccount} ${s.vendorName} · ${linesText(detail.lines.size)} · " +
-                        "${amountText(detail.lines.sumOf { it.lineAmount })} ${s.currencyCode}.\n\n" +
-                        if (online) "Confirm now?" else "Offline - confirmed when back.",
+                        "${amountText(detail.lines.sumOf { it.lineAmount })} ${s.currencyCode}" +
+                        if (online) "" else "\nOffline - confirmed when back.",
                 )
             },
             confirmButton = {

@@ -166,7 +166,7 @@ fun SettingsScreen(
         AlertDialog(
             onDismissRequest = { confirmSignOut = false },
             title = { Text("Sign out?") },
-            text = { Text("Posted work still goes to D365FO. Unposted scans stay here.") },
+            text = { Text("Unposted scans stay on this device.") },
             confirmButton = {
                 com.d365fo.mobileops.presentation.common.components.DialogButtonRow(
                     dismiss = { com.d365fo.mobileops.presentation.common.components.CancelOutlinedButton(onClick = { confirmSignOut = false }, modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget)) { Text("Cancel") } },
@@ -186,13 +186,11 @@ fun SettingsScreen(
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
-                        "Orders, counts, the item master, offline sign-ins and sync history are " +
-                            "removed from this device, and you are signed out. Nothing in D365FO is " +
-                            "changed. The connection setup is kept.",
+                        "Everything on this device goes; you're signed out. D365FO isn't changed.",
                     )
                     unsent?.let {
                         Text(
-                            "Not sent to D365FO yet, and lost: $it",
+                            "Lost: $it",
                             color = WarehouseStatusColors.red,
                             fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
                         )
@@ -775,13 +773,11 @@ private fun ConnectionProfiles(
             title = { Text("Delete $label?") },
             text = {
                 Text(
-                    "Removes $label from this device." +
-                        if (isActive) {
-                            " " + (next?.let { "Switches to $it" } ?: "No connection until a QR code is scanned") +
-                                "; data here is cleared."
-                        } else {
-                            ""
-                        },
+                    if (isActive) {
+                        (next?.let { "Switches to $it" } ?: "No connection until a QR code is scanned") + "; data here is cleared."
+                    } else {
+                        ""
+                    },
                 )
             },
             confirmButton = {
@@ -918,8 +914,8 @@ private fun ConnectionReset(hasCredentials: Boolean, viewModel: SettingsViewMode
         title = { Text("Reset connection?") },
         text = {
             Text(
-                "Scan a connection QR code afterwards to use the device again." +
-                    (unsent?.let { " $it stays here and is sent later." } ?: ""),
+                "Scan a connection QR code after." +
+                    (unsent?.let { " $it stays and sends later." } ?: ""),
             )
         },
         confirmButton = {

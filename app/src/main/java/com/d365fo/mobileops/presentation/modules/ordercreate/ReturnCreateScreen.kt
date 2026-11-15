@@ -317,7 +317,7 @@ private fun ReturnDialogs(state: ReturnCreateState, viewModel: ReturnCreateViewM
             title = { Text("Vendor's RMA number") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Vendor's return number (optional).", style = MaterialTheme.typography.bodyMedium)
+                    Text("Optional.", style = MaterialTheme.typography.bodyMedium)
                     OutlinedTextField(value = value, onValueChange = { value = it.take(10) }, singleLine = true, label = { Text("RMA number (up to 10)") })
                 }
             },

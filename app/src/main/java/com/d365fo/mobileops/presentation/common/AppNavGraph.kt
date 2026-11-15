@@ -1,5 +1,6 @@
 package com.d365fo.mobileops.presentation.common
 
+import androidx.compose.foundation.layout.heightIn
 import com.d365fo.mobileops.presentation.common.components.LineIcons
 import androidx.compose.runtime.CompositionLocalProvider
 import com.d365fo.mobileops.presentation.common.tour.AppTourOverlay
@@ -296,7 +297,7 @@ fun AppNavGraph(
             title = { androidx.compose.material3.Text("Switched off") },
             text = { androidx.compose.material3.Text(notice) },
             confirmButton = {
-                com.d365fo.mobileops.presentation.common.components.ConfirmButton(onClick = { switchedOffNotice = null }) {
+                com.d365fo.mobileops.presentation.common.components.ConfirmButton(onClick = { switchedOffNotice = null }, modifier = androidx.compose.ui.Modifier.fillMaxWidth().heightIn(min = com.d365fo.mobileops.presentation.common.theme.WarehouseDimens.MinTouchTarget)) {
                     androidx.compose.material3.Text("OK")
                 }
             },

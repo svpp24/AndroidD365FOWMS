@@ -256,7 +256,7 @@ internal fun DiscardDialog(what: String, lines: Int, onKeep: () -> Unit, onDisca
     AlertDialog(
         onDismissRequest = onKeep,
         title = { Text("Discard this $what?") },
-        text = { Text("${linesText(lines)} removed. Nothing was sent.") },
+        text = { Text("${linesText(lines)} · nothing was sent.") },
         confirmButton = {
             com.d365fo.mobileops.presentation.common.components.DialogButtonRow(
                 dismiss = { com.d365fo.mobileops.presentation.common.components.CancelOutlinedButton(onClick = onKeep, modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget)) { Text("Keep") } },

@@ -131,7 +131,7 @@ fun CountingJournalListScreen(
             title = { Text("Reopen counting?") },
             text = {
                 Text(
-                    "Counts stay. Fix or add, then End count again.",
+                    "Counts stay.",
                 )
             },
             confirmButton = {

@@ -349,7 +349,7 @@ private fun CountingDialogs(state: CountingScanState, viewModel: CountingScanVie
         AlertDialog(
             onDismissRequest = viewModel::cancelAddBin,
             title = { Text("Add bin $bin?") },
-            text = { Text("$bin is not on this store's list. Add it, and count in it now?") },
+            text = { Text("Not on this store's list.") },
             confirmButton = {
                 com.d365fo.mobileops.presentation.common.components.DialogButtonRow(
                     dismiss = {
@@ -442,7 +442,6 @@ private fun CountingDialogs(state: CountingScanState, viewModel: CountingScanVie
                 var filter by remember(choice) { mutableStateOf("") }
                 val shown = choice.variants.filter { filter.isBlank() || it.matches(filter.trim()) || it.label.contains(filter.trim(), ignoreCase = true) }
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Which variant?", style = MaterialTheme.typography.bodyMedium)
                     if (choice.variants.size > 5) {
                         OutlinedTextField(
                             value = filter,
@@ -520,7 +519,6 @@ private fun ChoiceDialog(lines: List<CountLine>, onPick: (String) -> Unit, onCan
         title = { Text("${lines.first().itemId} is on ${lines.size} lines") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Pick the location, variant or batch to count.", style = MaterialTheme.typography.bodyMedium)
                 if (lines.size > CHOICE_FILTER_FROM) {
                     OutlinedTextField(
                         value = filter,
@@ -538,28 +536,30 @@ private fun ChoiceDialog(lines: List<CountLine>, onPick: (String) -> Unit, onCan
                         color = WarehouseStatusColors.text3,
                     )
                 }
-                androidx.compose.foundation.lazy.LazyColumn(
-                    modifier = Modifier.heightIn(max = 420.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
+                androidx.compose.foundation.lazy.LazyColumn(modifier = Modifier.heightIn(max = 420.dp)) {
                     items(shown, key = { it.journalLineId }) { line ->
-                        Card(modifier = Modifier.fillMaxWidth().clickable { onPick(line.journalLineId) }) {
-                            Row(
-                                modifier = Modifier.padding(12.dp).fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            ) {
-                                Text(
-                                    text = whereLine(line) ?: "Line ${line.lineNumber}",
-                                    style = MaterialTheme.typography.bodyLarge,
-                                    fontWeight = FontWeight.SemiBold,
-                                    modifier = Modifier.weight(1f),
-                                )
-                                Text(
-                                    text = line.countedQuantity ?: "-",
-                                    style = MaterialTheme.typography.titleMedium,
-                                )
-                            }
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 52.dp)
+                                .clickable { onPick(line.journalLineId) }
+                                .padding(vertical = 10.dp),
+                        ) {
+                            Text(
+                                text = whereLine(line) ?: "Line ${line.lineNumber}",
+                                style = MaterialTheme.typography.bodyLarge,
+                                fontWeight = FontWeight.SemiBold,
+                                modifier = Modifier.weight(1f),
+                            )
+                            Text(
+                                text = line.countedQuantity ?: "–",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                            )
                         }
+                        androidx.compose.material3.HorizontalDivider(color = WarehouseStatusColors.border)
                     }
                 }
             }
@@ -665,17 +665,10 @@ private fun UnexpectedItemDialog(
             }
         },
         confirmButton = {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                com.d365fo.mobileops.presentation.common.components.DockOutlinedButton(
-                    onClick = onCancel,
-                    text = "Cancel",
-                    modifier = Modifier.weight(1f),
-                )
-                com.d365fo.mobileops.presentation.common.components.GradientButton(
-                    onClick = { onSave(item, location, quantity, batch, serial, note, variant) },
-                    modifier = Modifier.weight(1f),
-                ) { Text("Record") }
-            }
+            com.d365fo.mobileops.presentation.common.components.DialogButtonRow(
+                dismiss = { com.d365fo.mobileops.presentation.common.components.CancelOutlinedButton(onClick = onCancel, modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget)) { Text("Cancel") } },
+                confirm = { com.d365fo.mobileops.presentation.common.components.ConfirmButton(onClick = { onSave(item, location, quantity, batch, serial, note, variant) }, modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget)) { Text("Record") } },
+            )
         },
     )
 }
@@ -740,23 +733,17 @@ private fun NotOnJournalQuantityDialog(
                     { quantity = it.filter(Char::isDigit).take(12) },
                     keyboard = KeyboardOptions(keyboardType = KeyboardType.Number),
                 )
-                androidx.compose.material3.TextButton(onClick = onRemove) {
-                    Text("Remove from the list", color = WarehouseStatusColors.red, fontWeight = FontWeight.Bold)
-                }
             }
         },
         confirmButton = {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                com.d365fo.mobileops.presentation.common.components.DockOutlinedButton(
-                    onClick = onCancel,
-                    text = "Cancel",
-                    modifier = Modifier.weight(1f),
+            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+                com.d365fo.mobileops.presentation.common.components.DialogButtonRow(
+                    dismiss = { com.d365fo.mobileops.presentation.common.components.CancelOutlinedButton(onClick = onCancel, modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget)) { Text("Cancel") } },
+                    confirm = { com.d365fo.mobileops.presentation.common.components.ConfirmButton(onClick = { onOk(quantity) }, enabled = quantity.isNotBlank(), modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget)) { Text("OK") } },
                 )
-                com.d365fo.mobileops.presentation.common.components.GradientButton(
-                    onClick = { onOk(quantity) },
-                    enabled = quantity.isNotBlank(),
-                    modifier = Modifier.weight(1f),
-                ) { Text("OK") }
+                androidx.compose.material3.TextButton(onClick = onRemove, modifier = Modifier.heightIn(min = WarehouseDimens.MinTouchTarget)) {
+                    Text("Remove from the list", color = WarehouseStatusColors.red, fontWeight = FontWeight.Bold)
+                }
             }
         },
     )

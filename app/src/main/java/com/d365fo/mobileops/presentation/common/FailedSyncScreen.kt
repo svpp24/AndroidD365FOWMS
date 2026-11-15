@@ -254,7 +254,7 @@ fun FailedSyncScreen(
             title = { Text("Switched off") },
             text = { Text(notice) },
             confirmButton = {
-                com.d365fo.mobileops.presentation.common.components.ConfirmButton(onClick = { switchedOffNotice = null }) { Text("OK") }
+                com.d365fo.mobileops.presentation.common.components.ConfirmButton(onClick = { switchedOffNotice = null }, modifier = androidx.compose.ui.Modifier.fillMaxWidth().heightIn(min = com.d365fo.mobileops.presentation.common.theme.WarehouseDimens.MinTouchTarget)) { Text("OK") }
             },
         )
     }

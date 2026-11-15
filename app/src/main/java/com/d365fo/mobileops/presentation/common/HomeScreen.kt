@@ -291,7 +291,7 @@ fun HomeScreen(
         AlertDialog(
             onDismissRequest = { confirmSignOut = false },
             title = { Text("Sign out?") },
-            text = { Text("Posted work still goes to D365FO. Unposted scans stay here.") },
+            text = { Text("Unposted scans stay on this device.") },
             confirmButton = {
                 com.d365fo.mobileops.presentation.common.components.DialogButtonRow(
                     dismiss = { com.d365fo.mobileops.presentation.common.components.CancelOutlinedButton(onClick = { confirmSignOut = false }, modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget)) { Text("Cancel") } },
@@ -403,13 +403,13 @@ internal fun ModuleInfoDialog(module: ModuleTile, enabled: Boolean, onDismiss: (
                 // no workflow to be blocked on in the first place.
                 if (!module.available) {
                     Text(
-                        text = "This module is not built yet.",
+                        text = "Not built yet.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.error,
                     )
                 } else if (!enabled) {
                     Text(
-                        text = "Ask your supervisor to enable this module.",
+                        text = "Ask your supervisor.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.error,
                     )

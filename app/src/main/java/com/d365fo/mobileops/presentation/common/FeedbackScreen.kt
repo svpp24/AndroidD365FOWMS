@@ -337,11 +337,6 @@ private fun EditFeedbackDialog(state: FeedbackState, viewModel: FeedbackViewMode
         title = { Text("Change feedback") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text(
-                    "About ${state.editing?.screen.orEmpty()}.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = WarehouseStatusColors.text3,
-                )
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     FeedbackType.entries.forEach { type ->
                         com.d365fo.mobileops.presentation.common.focus.FocusChip(type.label, selected = state.editType == type, onClick = { viewModel.setEditType(type) })
