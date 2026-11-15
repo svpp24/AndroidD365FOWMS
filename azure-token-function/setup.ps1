@@ -4,7 +4,8 @@
 
 .DESCRIPTION
   Run by the customer's Azure admin, signed in with `az login` to the right tenant and subscription.
-  Creates: a resource group, a storage account, a Python Function App with a managed identity, and
+  Creates: a resource group, a storage account, a C# (.NET 10 isolated) Function App on the Flex
+  Consumption plan - inside the monthly free grant for a fleet of handhelds - with a managed identity, and
   1-10 app registrations for D365FO. No secrets: each app registration trusts the Function App's
   managed identity (a federated credential), so there is nothing to store, leak or renew. Then
   deploys this folder's code.
@@ -17,8 +18,16 @@
   Re-running is safe: existing resources are kept; -AppCount above the current number adds
   registrations. -RemoveSecrets deletes client secrets an older version of this script made.
 
+  Free-grant settings: on-demand only (no always-ready instances - those are billed), 512 MB
+  instances, at most -MaxInstances instances. Each token request costs about 0.1 GB-s; 100
+  handhelds use about 7,000 GB-s and 75,000 executions a month of the 100,000 GB-s and 250,000
+  executions free per subscription. The storage account costs cents a month.
+
+  The code: token-function.zip next to this script (built with publish.ps1), else it publishes
+  TokenFunction with the .NET 10 SDK.
+
 .EXAMPLE
-  ./setup.ps1 -Name contoso-mobileops -Location westeurope -D365Urls https://contoso.operations.dynamics.com -AppCount 3
+  ./setup.ps1 -Name func-contoso-mobileops-token-prod-weu -ResourceGroup rg-contoso-mobileops-prod-weu -Location westeurope -D365Urls https://contoso.operations.dynamics.com -AppCount 3
 #>
 param(
     [Parameter(Mandatory)] [ValidatePattern('^[a-z0-9-]{3,40}$')] [string] $Name,
@@ -26,6 +35,7 @@ param(
     [Parameter(Mandatory)] [string[]] $D365Urls,
     [ValidateRange(1, 10)] [int] $AppCount = 2,
     [string] $ResourceGroup = "$Name-rg",
+    [ValidateRange(1, 100)] [int] $MaxInstances = 10,
     [switch] $RemoveSecrets
 )
 $ErrorActionPreference = 'Stop'
@@ -37,16 +47,18 @@ $subscription = Az account show --query id -o tsv
 Write-Host "Tenant $tenant, subscription $subscription"
 foreach ($u in $D365Urls) { if ($u -notmatch '^https://') { throw "D365FO URL must start with https://: $u" } }
 
-# Storage account names: 3-24 lower-case letters and digits.
-$storage = (($Name -replace '-', '') + 'st').Substring(0, [Math]::Min(24, ($Name -replace '-', '').Length + 2))
+# Storage account names: 3-24 lower-case letters and digits ("st" + the name without "func-").
+$plain = ($Name -replace '^func-', '') -replace '-', ''
+$storage = ('st' + $plain).Substring(0, [Math]::Min(24, $plain.Length + 2))
 
 Az group create -n $ResourceGroup -l $Location -o none
 if (-not (Exists storage account show -n $storage -g $ResourceGroup)) {
     Az storage account create -n $storage -g $ResourceGroup -l $Location --sku Standard_LRS --min-tls-version TLS1_2 --allow-blob-public-access false -o none
 }
 if (-not (Exists functionapp show -n $Name -g $ResourceGroup)) {
-    Az functionapp create -n $Name -g $ResourceGroup --storage-account $storage --consumption-plan-location $Location `
-        --runtime python --runtime-version 3.11 --functions-version 4 --os-type Linux --https-only true -o none
+    Az functionapp create -n $Name -g $ResourceGroup --storage-account $storage --flexconsumption-location $Location `
+        --runtime dotnet-isolated --runtime-version 10.0 --instance-memory 512 --maximum-instance-count $MaxInstances `
+        --https-only true -o none
 }
 $principal = Az functionapp identity assign -n $Name -g $ResourceGroup --query principalId -o tsv
 
@@ -86,14 +98,12 @@ $json = ConvertTo-Json -InputObject @($apps) -Compress
 
 Az functionapp config appsettings set -n $Name -g $ResourceGroup -o none --settings `
     "TENANT_ID=$tenant" "D365_URLS=$($D365Urls -join ',')" `
-    "APP_REGISTRATIONS=$json" "SCM_DO_BUILD_DURING_DEPLOYMENT=true"
+    "APP_REGISTRATIONS=$json"
 
-# Deploy this folder (remote build installs requirements.txt).
-$zip = Join-Path ([IO.Path]::GetTempPath()) "$Name-token-service.zip"
-Remove-Item $zip -ErrorAction SilentlyContinue
-Compress-Archive -Path (Join-Path $PSScriptRoot 'function_app.py'), (Join-Path $PSScriptRoot 'tokenservice.py'), `
-    (Join-Path $PSScriptRoot 'host.json'), (Join-Path $PSScriptRoot 'requirements.txt') -DestinationPath $zip
-Az functionapp deployment source config-zip -n $Name -g $ResourceGroup --src $zip --build-remote true -o none
+# Deploy the built code (token-function.zip, or publish it now).
+$zip = Join-Path $PSScriptRoot 'token-function.zip'
+if (-not (Test-Path $zip)) { & (Join-Path $PSScriptRoot 'publish.ps1') }
+Az functionapp deployment source config-zip -n $Name -g $ResourceGroup --src $zip -o none
 
 $url = "https://" + (Az functionapp show -n $Name -g $ResourceGroup --query defaultHostName -o tsv)
 Write-Host ""

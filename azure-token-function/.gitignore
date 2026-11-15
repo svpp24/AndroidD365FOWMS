@@ -1,6 +1,6 @@
 local.settings.json
-.venv/
-__pycache__/
-.python_packages/
 bin/
 obj/
+publish/
+token-function.zip
+TestResults/
