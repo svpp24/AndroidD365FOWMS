@@ -71,6 +71,16 @@ class OfflineSignIn internal constructor(
 
     /** Called after an online sign-in (or password change) that D365FO accepted. */
     @Synchronized
+    /**
+     * The name D365FO gave [userName] at their last online sign-in on this device - for a session
+     * that was not opened online (the debug build's stand-in) and only knows the user ID.
+     */
+    fun displayNameOf(userName: String): String? =
+        storage.get(KEY_PREFIX + normalise(userName))
+            ?.let { raw -> runCatching { json.decodeFromString(Ticket.serializer(), raw) }.getOrNull() }
+            ?.session?.displayName
+            ?.takeIf { it.isNotBlank() && !it.equals(userName, ignoreCase = true) }
+
     fun remember(userName: String, password: String, session: WorkerSession) {
         val salt = ByteArray(SALT_BYTES).also { SecureRandom().nextBytes(it) }
         val ticket = Ticket(

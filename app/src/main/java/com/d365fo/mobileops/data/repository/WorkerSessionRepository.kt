@@ -75,8 +75,17 @@ class WorkerSessionRepository @Inject constructor(
         // nothing about who is signed in has actually changed, which forces a human to type
         // real credentials back in after every single build. A release build never reads this
         // key, so production behaviour - in-memory only, gone on restart - is unchanged.
-        if (BuildConfig.DEBUG) restoreDebugSession() else null,
+        if (BuildConfig.DEBUG) restoreDebugSession()?.withKnownName() else null,
     )
+
+    /**
+     * A session that only knows the user ID as its name (the debug build's stand-in session, or
+     * one D365FO sent without a name) takes the name from this worker's last online sign-in here:
+     * Home's circle shows "DS" for Demo1Supervisor, not "00" for 002 (user, 15 Nov 2026).
+     */
+    private fun WorkerSession.withKnownName(): WorkerSession =
+        if (displayName.isNotBlank() && !displayName.equals(userName, ignoreCase = true)) this
+        else offlineSignIn.displayNameOf(userName)?.let { copy(displayName = it) } ?: this
     val session: StateFlow<WorkerSession?> = _session.asStateFlow()
 
     /**
