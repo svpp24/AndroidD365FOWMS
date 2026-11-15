@@ -19,7 +19,8 @@
   <ItemGroup>
     <PackageReference Include="Azure.Data.Tables" Version="12.13.0" />
     <PackageReference Include="Azure.Identity" Version="1.21.0" />
-    <PackageReference Include="Microsoft.ApplicationInsights.WorkerService" Version="3.2.0" />
+    <!-- 2.x: Microsoft.Azure.Functions.Worker.ApplicationInsights needs it; 3.x fails at start (ITelemetryInitializer gone). -->
+    <PackageReference Include="Microsoft.ApplicationInsights.WorkerService" Version="2.23.0" />
     <PackageReference Include="Microsoft.Azure.Functions.Worker" Version="2.52.0" />
     <PackageReference Include="Microsoft.Azure.Functions.Worker.ApplicationInsights" Version="2.51.0" />
     <PackageReference Include="Microsoft.Azure.Functions.Worker.Extensions.Http" Version="3.3.0" />
