@@ -847,7 +847,7 @@ private fun ProfileSheet(
                     "No sign-in details",
                     "Scan a connection QR code for ${profile.host.substringBefore('.')}.",
                 ),
-                modifier = Modifier.padding(horizontal = -SIDE),
+                modifier = Modifier.bleed(SIDE),
             )
         } else if (inUse) {
             when (test) {
@@ -858,11 +858,11 @@ private fun ProfileSheet(
                 }
                 is ConnectionTest.Ok -> com.d365fo.mobileops.presentation.common.focus.ResultBand(
                     com.d365fo.mobileops.presentation.common.focus.BandState(com.d365fo.mobileops.presentation.common.focus.BandKind.Ok, "Connected", test.detail),
-                    modifier = Modifier.padding(horizontal = -SIDE),
+                    modifier = Modifier.bleed(SIDE),
                 )
                 is ConnectionTest.Failed -> com.d365fo.mobileops.presentation.common.focus.ResultBand(
                     com.d365fo.mobileops.presentation.common.focus.BandState(com.d365fo.mobileops.presentation.common.focus.BandKind.Bad, "Not connected", test.reason),
-                    modifier = Modifier.padding(horizontal = -SIDE),
+                    modifier = Modifier.bleed(SIDE),
                 )
             }
         } else {
