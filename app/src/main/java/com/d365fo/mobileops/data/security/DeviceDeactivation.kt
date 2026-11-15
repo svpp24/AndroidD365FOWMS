@@ -40,7 +40,19 @@ class DeviceDeactivation @Inject constructor(
      * then goes through the token service's backup endpoint, signed with the device key,
      * before the key is deleted - so work captured offline is not lost.
      */
-    suspend fun wipe(saveFirst: Boolean = true) = withContext(Dispatchers.IO) {
+    suspend fun wipe(saveFirst: Boolean = true) {
+        // Once: the token refusal and the session check can both see it.
+        if (!wiping.compareAndSet(false, true)) return
+        try {
+            wipeOnce(saveFirst)
+        } finally {
+            wiping.set(false)
+        }
+    }
+
+    private val wiping = java.util.concurrent.atomic.AtomicBoolean(false)
+
+    private suspend fun wipeOnce(saveFirst: Boolean) = withContext(Dispatchers.IO) {
         Timber.w("device deactivated in D365FO: removing local data")
         // The device's data goes; its D365FO copy stays for a supervisor (WorkBackup.keepBeforeWipe).
         // No D365FO token (the token service refused it): the last set goes through the token service.

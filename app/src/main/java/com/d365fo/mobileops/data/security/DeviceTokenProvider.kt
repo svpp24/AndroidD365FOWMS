@@ -2,6 +2,7 @@ package com.d365fo.mobileops.data.security
 
 import com.d365fo.mobileops.util.AppFailure
 import com.d365fo.mobileops.util.NetworkResult
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import timber.log.Timber
@@ -25,6 +26,7 @@ class DeviceTokenProvider @Inject constructor(
     private val deviceKey: DeviceKey,
     private val secureStore: SecureStore,
     private val deactivation: Provider<DeviceDeactivation>,
+    private val scope: kotlinx.coroutines.CoroutineScope,
 ) : TokenProvider {
 
     private val mutex = Mutex()
@@ -100,7 +102,10 @@ class DeviceTokenProvider @Inject constructor(
         Timber.w("device token: refused %s %s", answer.httpStatus, answer.code)
         return when {
             answer.code == "DEVICE_INACTIVE" -> {
-                deactivation.get().wipe(saveFirst = false)
+                // Not here: this runs under the token lock, and the wipe first saves the unsent
+                // work - which can wait on a backup that is itself waiting for a token. Both
+                // stopped (deadlock, 15 Nov 2026: refused at 18:18, nothing saved, nothing wiped).
+                scope.launch { deactivation.get().wipe(saveFirst = false) }
                 NetworkResult.Error(AppFailure.Authentication(DeviceDeactivation.MESSAGE))
             }
             answer.httpStatus == 429 || answer.httpStatus >= 500 -> NetworkResult.Error(

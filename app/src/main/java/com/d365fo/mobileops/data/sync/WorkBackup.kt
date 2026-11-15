@@ -298,12 +298,12 @@ class WorkBackup @Inject constructor(
             viaTokenService -> withTimeoutOrNull(KEEP_TIMEOUT_MS) { runCatching { backUpViaTokenService() }.getOrDefault(false) } ?: false
             else -> false
         }
-        lock.withLock {
-            val generation = (secureStore.getString(KEY_GENERATION)?.toIntOrNull() ?: 0) + 1
-            secureStore.putString(KEY_GENERATION, generation.toString())
-            secureStore.remove(KEY_HASH)
-            Timber.w("work backup: local wipe - D365FO copy kept (saved now: %s), backing up as %s", saved, backupDeviceId())
-        }
+        // Not under [lock]: a backup holding it may be waiting for a token the wipe has just been
+        // refused - waiting here too left the device neither saved nor wiped (15 Nov 2026).
+        val generation = (secureStore.getString(KEY_GENERATION)?.toIntOrNull() ?: 0) + 1
+        secureStore.putString(KEY_GENERATION, generation.toString())
+        secureStore.remove(KEY_HASH)
+        Timber.w("work backup: local wipe - D365FO copy kept (saved now: %s), backing up as %s", saved, backupDeviceId())
     }
 
     /**
