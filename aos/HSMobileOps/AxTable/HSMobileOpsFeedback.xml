@@ -31,6 +31,24 @@ public class HSMobileOpsFeedback extends common
     }
 ]]></Source>
 			</Method>
+			<Method>
+				<Name>delete</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Deletes the feedback's other pictures (HSMobileOpsFeedbackPicture) with it.
+    /// </summary>
+    public void delete()
+    {
+        HSMobileOpsFeedbackPicture picture;
+
+        ttsbegin;
+        delete_from picture where picture.FeedbackId == this.FeedbackId;
+        super();
+        ttscommit;
+    }
+]]></Source>
+			</Method>
 		</Methods>
 	</SourceCode>
 	<Label>Mobile feedback</Label>
@@ -130,7 +148,7 @@ public class HSMobileOpsFeedback extends common
 			i:type="AxTableFieldEnum">
 			<Name>HasScreenshot</Name>
 			<AllowEdit>No</AllowEdit>
-			<HelpText>The screenshot is a document attachment of this record (Attachments).</HelpText>
+			<HelpText>A picture was sent with this feedback - on the Screenshot tab, and any others on More pictures.</HelpText>
 			<Label>Screenshot attached</Label>
 			<EnumType>NoYes</EnumType>
 		</AxTableField>
