@@ -260,6 +260,11 @@ class WorkBackup @Inject constructor(
         val itemsJson = json.encodeToString(ListSerializer(DeviceWorkItemDto.serializer()), items)
         val hash = sha256("$company|$itemsJson")
         if (hash == secureStore.getString(KEY_HASH)) {
+            // D365FO already has exactly this set: its copy is current as of now (the band said
+            // the time of the earlier save, which read as if this one had not happened).
+            val now = System.currentTimeMillis()
+            secureStore.putString(KEY_LAST_AT, now.toString())
+            _lastBackupAt.value = now
             _waiting.value = false
             return@withLock true
         }

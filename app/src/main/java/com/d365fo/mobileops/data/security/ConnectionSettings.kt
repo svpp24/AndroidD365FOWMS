@@ -110,6 +110,7 @@ class ConnectionSettings @Inject constructor(
         // init-order lesson learned the hard way elsewhere in this app (see
         // ReceivingFlowViewModel's own two-init-block comment).
         ensureSeeded()
+        mergeDuplicateProfiles()
         // The removed device-code sign-in kept a refresh token here; a token nothing uses any
         // more is still a credential, so it does not stay on the device.
         SecureStore.LEGACY_DEVICE_CODE_KEYS.forEach(secureStore::remove)
@@ -373,6 +374,30 @@ class ConnectionSettings @Inject constructor(
             ?.map { it.trim() }
             ?.filter { it.isNotBlank() }
             ?: emptyList()
+
+    /**
+     * Profiles saved before scans were matched by environment + legal entity (15 Nov 2026) can
+     * be duplicates - two "DEV" rows for one server. Keeps the active one (or the one with a
+     * sign-in), drops the others. Connection details only: no work is keyed by a profile label.
+     */
+    private fun mergeDuplicateProfiles() {
+        val active = secureStore.getString(KEY_ACTIVE_LABEL)
+        val all = loadProfileLabels().mapNotNull(::readProfile)
+        val drop = all.groupBy { it.host.lowercase() + "|" + it.company.uppercase() }
+            .filterKeys { !it.startsWith("|") }
+            .values.filter { it.size > 1 }
+            .flatMap { group ->
+                val keep = group.firstOrNull { it.label == active }
+                    ?: group.firstOrNull { it.tenantId.isNotBlank() } ?: group.first()
+                group.filter { it.label != keep.label }.map { it.label }
+            }
+        if (drop.isEmpty()) return
+        secureStore.putString(KEY_PROFILE_LABELS, (loadProfileLabels() - drop.toSet()).joinToString(","))
+        drop.forEach { label ->
+            clearProfileFields(label)
+            secureStore.remove(postingKey(label))
+        }
+    }
 
     private fun loadPosting(label: String): Boolean =
         secureStore.getString(postingKey(label))?.toBooleanStrictOrNull() ?: false

@@ -561,10 +561,43 @@ class TransferFlowViewModel @Inject constructor(
                     )
                 },
             )
+            // Slow D365FO: say so when it is in (see ReceivingFlowViewModel.watchResult).
+            if (!postedLive && !held && rejectedReason == null) {
+                val done = if (capture.mode == TransferMode.SHIP) "shipped" else "posted"
+                watchResult(dataAreaId, idempotencyKey, "$transferId · $lineWord $done")
+            }
         }
     }
 
     fun dismissPostNotice() = _state.update { it.copy(postNotice = null) }
+
+    private var resultWatch: kotlinx.coroutines.Job? = null
+
+    /** Every 10 s for up to 15 min: the queued notice turns into "shipped/posted" or "refused". */
+    private fun watchResult(company: String, key: String, doneText: String) {
+        resultWatch?.cancel()
+        resultWatch = viewModelScope.launch {
+            val until = System.currentTimeMillis() + 15 * 60_000L
+            while (System.currentTimeMillis() < until && _state.value.postNotice?.kind == PostNoticeKind.QUEUED) {
+                kotlinx.coroutines.delay(10_000L)
+                val row = (postingDispatcher.postingResults(company, listOf(key)) as? NetworkResult.Success)?.data
+                    ?.firstOrNull { it.idempotencyKey == key } ?: continue
+                when (row.status) {
+                    "Registered" -> {
+                        _state.update { it.copy(postNotice = PostNotice(PostNoticeKind.SENT, doneText)) }
+                        scanFeedback.success()
+                        return@launch
+                    }
+                    "Failed" -> {
+                        val reason = row.errorMessage?.ifBlank { null } ?: "D365FO could not post it"
+                        _state.update { it.copy(postNotice = PostNotice(PostNoticeKind.REFUSED, "Refused: $reason. Fix it in Activity.")) }
+                        scanFeedback.error()
+                        return@launch
+                    }
+                }
+            }
+        }
+    }
 
     /** See ReceivingFlowViewModel.persist: fire-and-forget, never blocking a scan. */
     private fun persist() {

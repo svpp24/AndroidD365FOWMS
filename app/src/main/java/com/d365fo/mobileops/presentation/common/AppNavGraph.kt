@@ -644,6 +644,7 @@ fun AppNavGraph(
                     ReceivingFlowScreen(
                         onBack = { navController.popBackStack() },
                         onManualEntryRequested = { navController.navigate(Routes.RECEIVE_FLOW_ENTRY) },
+                        onActivity = { navController.navigate(Routes.FAILED_SYNC) },
                     )
                 }
 
@@ -759,7 +760,7 @@ private const val OFFLINE_DIALOG_GRACE_MS = 2_000L
 
 /** The screen a route shows, as a worker would name it - for feedback (see FeedbackOrigin). */
 internal fun screenLabel(route: String?): String = when {
-    route == null -> "General"
+    route == null -> "Home"
     route == Routes.HOME -> "Home"
     route.startsWith("menu/") -> "Menu"
     route == Routes.RECEIVE_FLOW || route == Routes.RECEIVE_FLOW_ENTRY -> "PO receiving"

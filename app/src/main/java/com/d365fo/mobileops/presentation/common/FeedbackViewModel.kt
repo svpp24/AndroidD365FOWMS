@@ -76,7 +76,8 @@ class FeedbackViewModel @Inject constructor(
     init {
         // Opened from Home's menu only now (user, 15 Nov 2026): pictures come from the gallery.
         val (screen, _) = origin.consume()
-        _state.update { it.copy(screen = screen ?: "General") }
+        // Opened from Home's menu (the only place now): name it Home, not "General".
+        _state.update { it.copy(screen = screen ?: "Home") }
         refreshMine()
         // Feedback is sent in the background: once one leaves the device, D365FO's list has it.
         viewModelScope.launch {

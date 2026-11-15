@@ -1,5 +1,6 @@
 package com.d365fo.mobileops.presentation.modules.stepflow
 
+import androidx.compose.ui.unit.sp
 import com.d365fo.mobileops.presentation.common.focus.BandKind
 import com.d365fo.mobileops.presentation.common.focus.BandState
 import com.d365fo.mobileops.presentation.common.focus.FocusCenter
@@ -111,6 +112,8 @@ import java.math.BigDecimal
 fun ReceivingFlowScreen(
     onBack: () -> Unit,
     onManualEntryRequested: () -> Unit,
+    /** Opens Activity - from a refused receipt's result. */
+    onActivity: (() -> Unit)? = null,
     viewModel: ReceivingFlowViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -308,7 +311,7 @@ fun ReceivingFlowScreen(
         }
         when {
             inPost -> Box(Modifier.weight(1f).padding(horizontal = 16.dp)) {
-                PostStatus(state = state, onDone = viewModel::dismissPostOutcome, onRetry = viewModel::retryPost)
+                PostStatus(state = state, onDone = viewModel::dismissPostOutcome, onRetry = viewModel::retryPost, onActivity = onActivity)
             }
             state.showingCaptured -> Box(Modifier.weight(1f).padding(horizontal = 16.dp)) {
                 CapturedLines(
@@ -492,24 +495,26 @@ private fun PostStatus(
     state: ReceivingFlowState,
     onDone: () -> Unit,
     onRetry: () -> Unit,
+    onActivity: (() -> Unit)? = null,
 ) {
     val outcome = state.postOutcome
+    val colors = com.d365fo.mobileops.presentation.common.theme.FocusColors
+    val type = com.d365fo.mobileops.presentation.common.theme.FocusType
 
-    Column(
-        modifier = Modifier.fillMaxSize(),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        if (outcome == null) {
-            CircularProgressIndicator()
+    if (outcome == null) {
+        Column(
+            modifier = Modifier.fillMaxSize(),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            CircularProgressIndicator(color = colors.navy)
             Text(
-                text = "Registering ${state.captured.size} " +
-                    (if (state.captured.size == 1) "line" else "lines") + "…",
-                style = MaterialTheme.typography.titleMedium,
+                text = "Registering ${state.captured.size} " + (if (state.captured.size == 1) "line" else "lines") + "…",
+                style = type.rowTitle,
+                color = colors.ink,
                 modifier = Modifier.padding(top = 16.dp),
             )
-            // Post immediately can take a minute or two after an AOS restart - see
-            // LIVE_POST_NOW_TIMEOUT_MS. Said only once it is slow, so a normal post stays quiet.
+            // Post immediately can take a minute or two after an AOS restart - said only once slow.
             var slow by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
             androidx.compose.runtime.LaunchedEffect(Unit) {
                 kotlinx.coroutines.delay(10_000L)
@@ -518,98 +523,74 @@ private fun PostStatus(
             if (slow) {
                 Text(
                     text = "D365FO is still working on it. This can take up to 2 minutes - please wait.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = type.rowDetail,
+                    color = colors.muted,
                     textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                     modifier = Modifier.padding(top = 8.dp, start = 24.dp, end = 24.dp),
                 )
             }
-        } else {
-            val rejected = outcome.rejectedReason
-            Icon(
-                when {
-                    rejected != null -> Icons.Default.ErrorOutline
-                    outcome.postedLive -> Icons.Default.CloudDone
-                    else -> Icons.Default.CloudQueue
-                },
-                contentDescription = null,
-                tint = when {
-                    rejected != null -> MaterialTheme.colorScheme.error
-                    outcome.postedLive -> MaterialTheme.colorScheme.primary
-                    else -> MaterialTheme.colorScheme.tertiary
-                },
-                modifier = Modifier.size(48.dp),
+        }
+        return
+    }
+
+    // The result in the app's style (user, 16 Nov 2026): a band that says what happened, the
+    // document in the code font, the buttons at the bottom.
+    val rejected = outcome.rejectedReason
+    val online = com.d365fo.mobileops.presentation.common.components.LocalSyncStatus.current?.fullyOnline != false
+    val lines = "${outcome.lineCount} " + (if (outcome.lineCount == 1) "line" else "lines")
+    val time = Formatters.clockTime(outcome.postedAtEpochMs)
+    val band = when {
+        rejected != null -> com.d365fo.mobileops.presentation.common.focus.BandState(
+            com.d365fo.mobileops.presentation.common.focus.BandKind.Bad, "Not registered", "Refused: $rejected. Fix it in Activity.",
+        )
+        outcome.grnId != null || outcome.postedNow -> com.d365fo.mobileops.presentation.common.focus.BandState(
+            com.d365fo.mobileops.presentation.common.focus.BandKind.Ok, "Received", "$lines · $time",
+        )
+        outcome.postedLive -> com.d365fo.mobileops.presentation.common.focus.BandState(
+            com.d365fo.mobileops.presentation.common.focus.BandKind.Ok, "Sent to D365FO", "Posts in a few minutes.",
+        )
+        else -> com.d365fo.mobileops.presentation.common.focus.BandState(
+            com.d365fo.mobileops.presentation.common.focus.BandKind.Warn,
+            "Saved on this device",
+            when {
+                outcome.held -> "Posting is off - held here."
+                online -> "D365FO is still working on it - this updates when it is done."
+                else -> "Offline - sent when back."
+            },
+        )
+    }
+    Column(modifier = Modifier.fillMaxSize()) {
+        com.d365fo.mobileops.presentation.common.focus.ResultBand(band, modifier = Modifier.padding(top = 8.dp))
+        Column(
+            modifier = Modifier.weight(1f).fillMaxWidth(),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            com.d365fo.mobileops.presentation.common.focus.FocusCaption(if (outcome.grnId != null) "GRN" else "Purchase order")
+            Text(
+                (outcome.grnId ?: outcome.purchId).replace("-", "-\u200B"),
+                style = type.rowCode.copy(fontSize = 34.sp, lineHeight = 38.sp),
+                color = colors.ink,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
             )
             Text(
-                text = when {
-                    rejected != null -> "Not registered"
-                    // Sent, not posted: D365FO stages it, and its batch job (or Process pending) registers it.
-                    outcome.grnId != null -> "Received - GRN ${outcome.grnId}"
-                    outcome.postedNow -> "Registered in D365FO"
-                    outcome.postedLive -> "Sent to D365FO"
-                    else -> "Saved on this device"
-                },
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.padding(top = 12.dp),
+                if (outcome.grnId != null) outcome.purchId else "$lines · $time",
+                style = type.rowDetail,
+                color = colors.muted,
             )
-            Text(
-                text = "${outcome.lineCount} " + (if (outcome.lineCount == 1) "line" else "lines") +
-                    " · ${outcome.purchId} · ${Formatters.clockTime(outcome.postedAtEpochMs)}",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 4.dp),
-            )
-            if (rejected != null) {
-                Text(
-                    text = "Refused: $rejected. Fix it in Activity.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 8.dp, start = 24.dp, end = 24.dp),
-                )
-            } else if (outcome.postedNow) {
-                // Registered there and then - nothing more to say, and certainly not that
-                // D365FO "did not answer in time", which the branch below used to show here.
-            } else if (outcome.postedLive) {
-                Text(
-                    text = "Posts in a few minutes.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 8.dp, start = 24.dp, end = 24.dp),
-                )
-            } else {
-                val online = com.d365fo.mobileops.presentation.common.components.LocalSyncStatus.current?.fullyOnline != false
-                Text(
-                    text = if (outcome.held) {
-                        "Posting is off - held here."
-                    } else if (online) {
-                        // Not "did not answer in time": this branch is also what a receipt saved
-                        // offline shows once the connection is back - by then it may already be in
-                        // D365FO (seen 11 Oct, PO 161714). Activity has its real status.
-                        "Queued - see Activity."
-                    } else {
-                        "Offline - sent when back."
-                    },
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 8.dp, start = 24.dp, end = 24.dp),
-                )
-                // Nothing to retry while posting is switched off - it is held, not failing.
-                if (!outcome.held) {
-                    OutlinedButton(
-                        onClick = onRetry,
-                        modifier = Modifier.padding(top = 16.dp).heightIn(min = WarehouseDimens.MinTouchTarget),
-                    ) {
-                        Text("Retry now")
-                    }
-                }
+        }
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 16.dp),
+        ) {
+            when {
+                rejected != null && onActivity != null ->
+                    com.d365fo.mobileops.presentation.common.focus.FocusButton("Activity", onClick = onActivity, modifier = Modifier.weight(1f))
+                rejected == null && !outcome.postedLive && !outcome.held ->
+                    com.d365fo.mobileops.presentation.common.focus.FocusButton("Retry now", onClick = onRetry, modifier = Modifier.weight(1f))
             }
-            Button(
-                onClick = onDone,
-                modifier = Modifier.padding(top = 12.dp).fillMaxWidth().heightIn(min = WarehouseDimens.MinTouchTarget),
-            ) {
-                Text("Done")
-            }
+            com.d365fo.mobileops.presentation.common.focus.FocusButton("Done", onClick = onDone, primary = true, modifier = Modifier.weight(1f))
         }
     }
 }

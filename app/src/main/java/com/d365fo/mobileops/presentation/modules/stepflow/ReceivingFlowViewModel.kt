@@ -52,6 +52,10 @@ private const val DUPLICATE_SCAN_WINDOW_MS = 1500L
  */
 private const val LIVE_POST_TIMEOUT_MS = 10_000L
 
+/** A queued receipt's result asks D365FO this often, for this long. */
+private const val RESULT_POLL_MS = 10_000L
+private const val RESULT_WATCH_MS = 15 * 60_000L
+
 /**
  * The same wait with Post immediately on (6 Nov): D365FO does the work in this call, and with Auto
  * GRN that includes the product receipt - about 4 s warm, 1 min 44 s first after an AOS restart.
@@ -582,6 +586,9 @@ class ReceivingFlowViewModel @Inject constructor(
                     ),
                 )
             }
+            // D365FO can take longer than the wait (16 Nov 2026: PO 161676 took 2 min 17 s after an
+            // AOS restart) - the screen kept saying "Saved on this device" for a receipt already in.
+            if (!postedLive && !held && rejectedReason == null) watchResult(payload.dataAreaId, payload.idempotencyKey)
         }
     }
 
@@ -591,6 +598,33 @@ class ReceivingFlowViewModel @Inject constructor(
      * PO). The lines just registered count as staged, so they cannot be received twice. Without
      * an order in hand, a fresh order prompt.
      */
+    private var resultWatch: kotlinx.coroutines.Job? = null
+
+    /** Every RESULT_POLL_MS for up to RESULT_WATCH_MS: Registered -> Received (with the GRN), Failed -> refused. */
+    private fun watchResult(company: String, key: String) {
+        resultWatch?.cancel()
+        resultWatch = viewModelScope.launch {
+            val until = System.currentTimeMillis() + RESULT_WATCH_MS
+            while (System.currentTimeMillis() < until && _state.value.postOutcome?.let { !it.postedLive && it.rejectedReason == null } == true) {
+                kotlinx.coroutines.delay(RESULT_POLL_MS)
+                val row = (postingDispatcher.postingResults(company, listOf(key)) as? NetworkResult.Success)?.data
+                    ?.firstOrNull { it.idempotencyKey == key } ?: continue
+                when (row.status) {
+                    "Registered" -> {
+                        _state.update { st -> st.copy(postOutcome = st.postOutcome?.copy(postedLive = true, postedNow = true, grnId = row.grnId ?: st.postOutcome.grnId)) }
+                        scanFeedback.success()
+                        return@launch
+                    }
+                    "Failed" -> {
+                        _state.update { st -> st.copy(postOutcome = st.postOutcome?.copy(rejectedReason = row.errorMessage?.ifBlank { null } ?: "D365FO could not post it")) }
+                        scanFeedback.error()
+                        return@launch
+                    }
+                }
+            }
+        }
+    }
+
     fun dismissPostOutcome() {
         val s = _state.value
         val purchId = s.postOutcome?.purchId ?: s.capture.purchId
