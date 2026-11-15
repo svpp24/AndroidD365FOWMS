@@ -57,9 +57,13 @@ class DeviceDeactivation @Inject constructor(
         // The device's data goes; its D365FO copy stays for a supervisor (WorkBackup.keepBeforeWipe).
         // No D365FO token (the token service refused it): the last set goes through the token service.
         runCatching { workBackup.get().keepBeforeWipe(saveFirst, viaTokenService = !saveFirst) }
+        // The database holds this environment's data only (switching environments empties it).
+        // Its key and connection go; the device's keys and connections for the other
+        // environments stay (user, 15 Nov 2026).
+        val host = connectionSettings.tenant.value.host
         runCatching { database.clearAllTables() }.onFailure { Timber.e(it, "deactivation: database wipe failed") }
-        deviceKey.delete()
-        connectionSettings.clearAllCredentials()
+        deviceKey.delete(host)
+        connectionSettings.clearActiveCredentials()
         secureStore.putBoolean(KEY_DEACTIVATED, true)
         runCatching { workerSessions.get().signOut(reason = "Device deactivated") }
         _deactivated.value = true
@@ -74,7 +78,7 @@ class DeviceDeactivation @Inject constructor(
     }
 
     companion object {
-        const val MESSAGE = "This device has been deactivated in D365FO. Its local data was removed. " +
+        const val MESSAGE = "This device has been deactivated in this D365FO environment. Its local data was removed. " +
             "Ask your administrator for a new device setup code."
         private const val KEY_DEACTIVATED = "device_deactivated"
     }

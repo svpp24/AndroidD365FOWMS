@@ -58,7 +58,7 @@ class DeviceTokenProvider @Inject constructor(
             if (config.tokenServiceUrl.isBlank()) {
                 return@withLock NetworkResult.Error(AppFailure.Authentication("No token service configured. Scan a device setup code."))
             }
-            if (!deviceKey.exists()) {
+            if (!deviceKey.exists(config.host)) {
                 return@withLock NetworkResult.Error(AppFailure.Authentication("This device has no device key. Scan a device setup code."))
             }
             val deviceId = secureStore.deviceId()
@@ -66,7 +66,7 @@ class DeviceTokenProvider @Inject constructor(
             val timestamp = System.currentTimeMillis() / 1000
             val nonce = java.util.UUID.randomUUID().toString().replace("-", "")
             val signature = runCatching {
-                deviceKey.sign(TokenServiceClient.tokenText(deviceId, resource, timestamp, nonce))
+                deviceKey.sign(config.host, TokenServiceClient.tokenText(deviceId, resource, timestamp, nonce))
             }.getOrElse {
                 Timber.e(it, "device token: signing failed")
                 return@withLock NetworkResult.Error(AppFailure.Authentication("The device key could not sign: ${it.message}"))

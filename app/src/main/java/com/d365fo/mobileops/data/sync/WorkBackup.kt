@@ -313,7 +313,7 @@ class WorkBackup @Inject constructor(
      */
     private suspend fun backUpViaTokenService(): Boolean = lock.withLock {
         val config = connectionSettings.tenant.value
-        if (config.tokenServiceUrl.isBlank() || !deviceKey.exists()) return@withLock false
+        if (config.tokenServiceUrl.isBlank() || !deviceKey.exists(config.host)) return@withLock false
         val company = company() ?: return@withLock false
         val items = snapshot()
         val itemsJson = json.encodeToString(ListSerializer(DeviceWorkItemDto.serializer()), items)
@@ -324,6 +324,7 @@ class WorkBackup @Inject constructor(
         val nonce = java.util.UUID.randomUUID().toString().replace("-", "")
         val backupId = backupDeviceId()
         val signature = deviceKey.sign(
+            config.host,
             com.d365fo.mobileops.data.security.TokenServiceClient.backupText(deviceId, resource, timestamp, nonce, backupId, company, itemsJson),
         )
         val answer = tokenService.backup(

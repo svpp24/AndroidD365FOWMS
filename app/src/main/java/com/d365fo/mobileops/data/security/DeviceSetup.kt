@@ -41,13 +41,13 @@ class DeviceSetup @Inject constructor(
         val deviceId = secureStore.deviceId()
 
         val registered = withContext(Dispatchers.Default) {
-            deviceKey.delete()
-            val publicKey = deviceKey.publicKeyBase64()
+            deviceKey.delete(config.host)
+            val publicKey = deviceKey.publicKeyBase64(config.host)
             val request = TokenServiceClient.RegisterRequest(
                 code = payload.code.trim().uppercase(),
                 deviceId = deviceId,
                 publicKey = publicKey,
-                signature = deviceKey.sign(TokenServiceClient.registerText(payload.code, deviceId, publicKey)),
+                signature = deviceKey.sign(config.host, TokenServiceClient.registerText(payload.code, deviceId, publicKey)),
                 deviceBrand = android.os.Build.MANUFACTURER.orEmpty(),
                 deviceModel = android.os.Build.MODEL.orEmpty(),
                 platform = "Android",
@@ -66,7 +66,7 @@ class DeviceSetup @Inject constructor(
             }
             is TokenServiceClient.Answer.Refused -> {
                 Timber.w("device setup: refused %s %s", registered.httpStatus, registered.code)
-                deviceKey.delete()
+                deviceKey.delete(config.host)
                 return Result.Failed(registered.message.ifBlank { "The setup code was refused (${registered.code})." })
             }
         }

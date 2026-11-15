@@ -244,17 +244,30 @@ class ConnectionSettings @Inject constructor(
      * connection QR code is scanned again.
      */
     fun clearAllCredentials() {
-        loadProfileLabels().forEach { label ->
-            secureStore.remove(tenantIdKey(label))
-            secureStore.remove(clientIdKey(label))
-            secureStore.remove(clientSecretKey(label))
-            secureStore.remove(poolKey(label))
-            secureStore.remove(authTypeKey(label))
-            secureStore.remove(tokenServiceKey(label))
-        }
+        loadProfileLabels().forEach(::removeCredentials)
         val label = _tenant.value.label
         _tenant.value = readProfile(label) ?: TenantConfig(label = label)
         _profiles.value = loadProfileLabels().mapNotNull(::readProfile)
+    }
+
+    /**
+     * As [clearAllCredentials], for the active profile only: the device was deactivated in that
+     * environment, and its connections to the others stay (user, 15 Nov 2026).
+     */
+    fun clearActiveCredentials() {
+        val label = _tenant.value.label
+        removeCredentials(label)
+        _tenant.value = readProfile(label) ?: TenantConfig(label = label)
+        _profiles.value = loadProfileLabels().mapNotNull(::readProfile)
+    }
+
+    private fun removeCredentials(label: String) {
+        secureStore.remove(tenantIdKey(label))
+        secureStore.remove(clientIdKey(label))
+        secureStore.remove(clientSecretKey(label))
+        secureStore.remove(poolKey(label))
+        secureStore.remove(authTypeKey(label))
+        secureStore.remove(tokenServiceKey(label))
     }
 
     fun setPostingEnabled(enabled: Boolean) {
