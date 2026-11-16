@@ -20,3 +20,8 @@ ios/InventoryHub/Info.plist
 ios/build/
 ios/DerivedData/
 ios/*.xcresult
+
+# License files, signing keys and release builds stay on this machine only (16 Nov 2026)
+licensing/clients/*/licenses/
+licensing/status/
+release/
