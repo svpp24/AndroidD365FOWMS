@@ -216,6 +216,14 @@ class FailedSyncViewModel @Inject constructor(
     fun acknowledge(failureId: String) {
         viewModelScope.launch { syncQueue.acknowledgeFailure(failureId) }
     }
+
+    /**
+     * Drops an acknowledged refusal from this device (user, 16 Nov 2026) - for one D365FO never
+     * took into its Posting queue, so nothing there will ever clear it. Never sent again.
+     */
+    fun remove(failureId: String) {
+        viewModelScope.launch { syncQueue.removeFailure(failureId) }
+    }
 }
 
 /**
@@ -350,6 +358,7 @@ fun FailedSyncScreen(
                         failure = failure,
                         onResubmit = { viewModel.resubmit(failure.failureId) },
                         onAcknowledge = { viewModel.acknowledge(failure.failureId) },
+                        onRemove = { viewModel.remove(failure.failureId) },
                     )
                 }
             }
@@ -377,6 +386,7 @@ fun FailedSyncScreen(
                         failure = failure,
                         onResubmit = { viewModel.resubmit(failure.failureId) },
                         onAcknowledge = { viewModel.acknowledge(failure.failureId) },
+                        onRemove = { viewModel.remove(failure.failureId) },
                     )
                 }
             }
@@ -606,7 +616,28 @@ private fun FailureCard(
     failure: FailedSyncEntity,
     onResubmit: () -> Unit,
     onAcknowledge: () -> Unit,
+    onRemove: () -> Unit,
 ) {
+    var confirmRemove by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+    if (confirmRemove) {
+        // The "Remove this line?" style: the destructive action red, left; Keep outlined, right.
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { confirmRemove = false },
+            title = { Text("Remove this posting?") },
+            text = {
+                Text(
+                    "${failure.aggregateId} · ${operationLabel(failure.operation)}\n" +
+                        "It is dropped from this device and never sent to D365FO. Anything it held must be captured again.",
+                )
+            },
+            confirmButton = {
+                com.d365fo.mobileops.presentation.common.components.DialogButtonRow(
+                    dismiss = { com.d365fo.mobileops.presentation.common.components.CancelOutlinedButton(onClick = { confirmRemove = false }, modifier = Modifier.weight(1f)) { Text("Keep") } },
+                    confirm = { com.d365fo.mobileops.presentation.common.components.CancelButton(onClick = { confirmRemove = false; onRemove() }, modifier = Modifier.weight(1f)) { Text("Remove") } },
+                )
+            },
+        )
+    }
     com.d365fo.mobileops.presentation.common.components.ListCard {
         com.d365fo.mobileops.presentation.common.components.LineRow(
             title = failure.aggregateId,
@@ -627,13 +658,19 @@ private fun FailureCard(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
                 ) {
-                    // Acknowledged cards stay listed (Resubmit still works) but must look seen.
+                    // Acknowledged cards stay listed (Resubmit still works) but must look seen - and
+                    // can now be removed, after a confirmation (user, 16 Nov 2026).
                     if (!failure.acknowledged) {
                         com.d365fo.mobileops.presentation.common.components.DockOutlinedButton(
                             onClick = onAcknowledge,
                             text = "Acknowledge",
                             modifier = Modifier.weight(1f),
                         )
+                    } else {
+                        com.d365fo.mobileops.presentation.common.components.CancelOutlinedButton(
+                            onClick = { confirmRemove = true },
+                            modifier = Modifier.weight(1f),
+                        ) { Text("Remove") }
                     }
                     com.d365fo.mobileops.presentation.common.components.GradientButton(
                         onClick = onResubmit,
