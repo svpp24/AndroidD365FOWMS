@@ -201,7 +201,7 @@ fun PriceCheckScreen(
             )
             else -> null
         },
-        scanPill = { ScanPillField(enabled = !state.busy) },
+        scanPill = { ScanPillField(label = "Scan an item to see its price", enabled = !state.busy) },
         topBarTrailing = {
             IconButton(onClick = { showCamera = true }, modifier = Modifier.heightIn(min = 48.dp)) {
                 Icon(Icons.Default.PhotoCamera, contentDescription = "Camera scan", tint = FocusColors.ink)

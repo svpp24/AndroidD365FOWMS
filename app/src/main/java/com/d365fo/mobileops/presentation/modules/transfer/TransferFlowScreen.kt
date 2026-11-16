@@ -290,7 +290,7 @@ fun TransferFlowScreen(
             null
         },
         scanPill = if (state.showingCaptured || state.lineChoices.isNotEmpty()) null else {
-            { com.d365fo.mobileops.presentation.common.focus.ScanPillField(enabled = !state.busy) }
+            { com.d365fo.mobileops.presentation.common.focus.ScanPillField(label = transferScanLabel(state.step), enabled = !state.busy) }
         },
         topBarTrailing = if (state.showingCaptured) null else toolsMenu,
         sidePane = if (state.showingCaptured) null else { {
@@ -1032,3 +1032,13 @@ fun TransferEntryScreen(
     )
 }
 
+/** What the scan box asks for at each transfer step (#30, user 16 Nov 2026). */
+internal fun transferScanLabel(step: TransferStep): String = when (step) {
+    TransferStep.TRANSFER_ORDER -> "Scan the transfer number"
+    TransferStep.ITEM -> "Scan an item on this transfer"
+    TransferStep.QUANTITY -> "Type the quantity"
+    TransferStep.LOCATION -> "Scan the location"
+    TransferStep.BATCH -> "Scan the batch number"
+    TransferStep.SERIAL -> "Scan the serial number"
+    TransferStep.CONFIRM -> "Scan the next item"
+}

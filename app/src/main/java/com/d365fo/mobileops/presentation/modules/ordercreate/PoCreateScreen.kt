@@ -191,7 +191,7 @@ fun PoCreateScreen(
         },
         band = poBand(state, lastAdded),
         remaining = orderSize(draft.lines, total),
-        scanPill = { ScanPillField(enabled = !state.busy) },
+        scanPill = { ScanPillField(label = "Scan an item to order", enabled = !state.busy) },
         topBarTrailing = {
             OrderToolsMenu(
                 listOfNotNull(

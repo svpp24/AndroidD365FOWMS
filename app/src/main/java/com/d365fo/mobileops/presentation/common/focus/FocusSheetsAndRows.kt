@@ -322,7 +322,7 @@ fun HomeOnHandPanel(modifier: Modifier = Modifier, icon: ImageVector, onSubmit: 
             }
         }
         // Typing an item here is a scan: Home routes it to On-hand like a trigger scan.
-        ScanPillField(label = "Scan or type item", onPanel = true, onSubmit = onSubmit, modifier = Modifier.padding(top = 16.dp))
+        ScanPillField(label = "Scan an item to see its stock", onPanel = true, onSubmit = onSubmit, modifier = Modifier.padding(top = 16.dp))
     }
 }
 

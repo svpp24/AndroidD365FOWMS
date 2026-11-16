@@ -190,7 +190,7 @@ fun CountCreateScreen(onBack: () -> Unit, viewModel: CountCreateViewModel = hilt
             wallToWall -> BandState(BandKind.Info, state.warehouseId, "Every counter of ${state.warehouseId} counts it, location by location.")
             else -> BandState(BandKind.Info, state.warehouseId, "Add categories, or scan items. Every counter here sees the count.")
         },
-        scanPill = if (!wallToWall && state.created == null) { { ScanPillField(label = "Scan or type an item", enabled = !state.busy) } } else null,
+        scanPill = if (!wallToWall && state.created == null) { { ScanPillField(label = "Scan an item to add to the count", enabled = !state.busy) } } else null,
         actions = {
             if (state.created != null) {
                 FocusButton("Done", onClick = onBack, primary = true, modifier = Modifier.weight(1f))

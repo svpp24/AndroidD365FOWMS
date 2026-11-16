@@ -780,7 +780,16 @@ fun StoreCountScreen(onBack: () -> Unit, viewModel: StoreCountViewModel = hiltVi
         // No "28 on this device" line (user, 10 Nov).
         remaining = null,
         scanPill = if (counting && !state.countClosed) {
-            { com.d365fo.mobileops.presentation.common.focus.ScanPillField(enabled = !state.busy) }
+            {
+                com.d365fo.mobileops.presentation.common.focus.ScanPillField(
+                    label = when {
+                        state.needsLocation -> "Scan the location"
+                        state.needsBin -> "Scan the bin"
+                        else -> "Scan an item to count"
+                    },
+                    enabled = !state.busy,
+                )
+            }
         } else {
             null
         },

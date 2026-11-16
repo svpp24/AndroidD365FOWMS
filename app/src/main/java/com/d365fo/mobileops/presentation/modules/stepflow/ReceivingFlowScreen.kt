@@ -284,7 +284,7 @@ fun ReceivingFlowScreen(
             null
         },
         scanPill = if (inPost || state.showingCaptured || state.lineChoices.isNotEmpty()) null else {
-            { com.d365fo.mobileops.presentation.common.focus.ScanPillField(enabled = !state.busy) }
+            { com.d365fo.mobileops.presentation.common.focus.ScanPillField(label = receivingScanLabel(state.step), enabled = !state.busy) }
         },
         topBarTrailing = toolsMenu,
         sidePane = if (inPost || state.showingCaptured) null else { {
@@ -1122,4 +1122,17 @@ internal fun ReceivingFocusSample(kind: Int) {
     ) {
         ReceivingCenter(state, onQuantityTap = {})
     }
+}
+
+/** What the scan box asks for at each receiving step (#30, user 16 Nov 2026). */
+internal fun receivingScanLabel(step: com.d365fo.mobileops.domain.model.ReceivingStep): String = when (step) {
+    com.d365fo.mobileops.domain.model.ReceivingStep.PURCHASE_ORDER -> "Scan the PO number"
+    com.d365fo.mobileops.domain.model.ReceivingStep.PACKING_SLIP -> "Scan or type the packing slip"
+    com.d365fo.mobileops.domain.model.ReceivingStep.ITEM -> "Scan an item on this PO"
+    com.d365fo.mobileops.domain.model.ReceivingStep.QUANTITY -> "Type the quantity"
+    com.d365fo.mobileops.domain.model.ReceivingStep.LOCATION -> "Scan the location to put it"
+    com.d365fo.mobileops.domain.model.ReceivingStep.BATCH -> "Scan the batch number"
+    com.d365fo.mobileops.domain.model.ReceivingStep.BATCH_EXPIRY_DATE -> "Scan or type the expiry date"
+    com.d365fo.mobileops.domain.model.ReceivingStep.SERIAL -> "Scan the serial number"
+    com.d365fo.mobileops.domain.model.ReceivingStep.CONFIRM -> "Scan the next item"
 }

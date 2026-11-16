@@ -106,7 +106,7 @@ fun OnHandInquiryScreen(
         onBack = onBack,
         counter = if (state.thisWarehouseOnly) state.homeWarehouseId else state.scopeLabel,
         band = onHandBand(state),
-        scanPill = { com.d365fo.mobileops.presentation.common.focus.ScanPillField(enabled = !state.busy) },
+        scanPill = { com.d365fo.mobileops.presentation.common.focus.ScanPillField(label = "Scan an item to see its stock", enabled = !state.busy) },
         topBarTrailing = {
             Box {
                 IconButton(onClick = { menuOpen = true }, modifier = Modifier.size(48.dp)) {

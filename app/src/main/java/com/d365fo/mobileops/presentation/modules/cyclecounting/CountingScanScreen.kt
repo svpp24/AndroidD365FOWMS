@@ -180,7 +180,7 @@ fun CountingScanScreen(
         } else {
             null
         },
-        scanPill = { ScanPillField(enabled = !state.locked) },
+        scanPill = { ScanPillField(label = if (choosingLocation) "Scan the location" else "Scan an item to count", enabled = !state.locked) },
         topBarTrailing = if (state.locked) null else { {
             Box {
                 IconButton(onClick = { menuOpen = true }, modifier = Modifier.size(48.dp)) {

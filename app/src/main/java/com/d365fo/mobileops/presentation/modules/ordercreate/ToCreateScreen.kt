@@ -191,7 +191,7 @@ fun ToCreateScreen(onBack: () -> Unit, onShip: () -> Unit, viewModel: ToCreateVi
             ?: BandState(BandKind.Info, "New transfer · $route", "Ship date ${draft.shipDate}" + if (draft.lines.isEmpty()) " · no lines yet" else ""),
         remaining = orderSize(draft.lines),
         // Says what to do first while the transfer is empty (user, 15 Nov); same look as always.
-        scanPill = { ScanPillField(label = if (draft.lines.isEmpty()) "Scan an item" else "Scan or type", enabled = !state.busy) },
+        scanPill = { ScanPillField(label = "Scan an item to send", enabled = !state.busy) },
         topBarTrailing = {
             OrderToolsMenu(
                 listOfNotNull(

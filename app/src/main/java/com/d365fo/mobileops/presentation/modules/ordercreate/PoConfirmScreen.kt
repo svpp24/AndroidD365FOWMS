@@ -66,7 +66,7 @@ fun PoConfirmScreen(onBack: () -> Unit, viewModel: PoConfirmViewModel = hiltView
         title = detail?.summary?.purchId ?: "PO confirmation",
         onBack = { if (detail != null) viewModel.closeDetail() else onBack() },
         // The list takes a scanned or typed PO number in the pill; one order's page does not.
-        scanPill = if (detail != null) null else { { com.d365fo.mobileops.presentation.common.focus.ScanPillField(enabled = !state.opening) } },
+        scanPill = if (detail != null) null else { { com.d365fo.mobileops.presentation.common.focus.ScanPillField(label = "Scan the PO number to confirm", enabled = !state.opening) } },
         topBarTrailing = {
             if (detail == null) {
                 IconButton(onClick = { showCamera = true }, modifier = Modifier.heightIn(min = 48.dp)) {
