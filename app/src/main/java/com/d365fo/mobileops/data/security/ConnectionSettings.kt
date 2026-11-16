@@ -305,10 +305,10 @@ class ConnectionSettings @Inject constructor(
         secureStore.remove(tokenServiceKey(label))
     }
 
+    /** Posting cannot be switched off any more (user, 16 Nov 2026) - kept for callers, always on. */
+    @Suppress("UNUSED_PARAMETER")
     fun setPostingEnabled(enabled: Boolean) {
-        val label = _tenant.value.label
-        secureStore.putString(postingKey(label), enabled.toString())
-        _postingEnabled.value = enabled
+        _postingEnabled.value = true
     }
 
     fun canGoLive(): Boolean = _tenant.value.isComplete
@@ -412,8 +412,9 @@ class ConnectionSettings @Inject constructor(
         }
     }
 
-    private fun loadPosting(label: String): Boolean =
-        secureStore.getString(postingKey(label))?.toBooleanStrictOrNull() ?: false
+    /** Always on (user, 16 Nov 2026): work is never held on the device for want of a switch. */
+    @Suppress("UNUSED_PARAMETER")
+    private fun loadPosting(label: String): Boolean = true
 
     /**
      * Runs once, ever, the first time this class loads on a given install.

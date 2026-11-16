@@ -282,18 +282,15 @@ fun SettingsScreen(
                         test = test,
                         viewModel = viewModel,
                     )
-                    // Commissioning switches for this device (moved here from the Settings tab).
-                    Caption("This device")
-                    ToggleRow(
-                        title = "Allow posting to D365FO" + tenant.label.takeIf { it.isNotBlank() }?.let { " · $it" }.orEmpty(),
-                        detail = if (postingEnabled) "Work is sent to D365FO." else "Off: work is held here until switched on.",
-                        checked = postingEnabled,
-                        onToggle = { viewModel.setPostingEnabled(!postingEnabled) },
-                    )
-                    ConnectionReset(
-                        hasCredentials = profiles.any { it.clientId.isNotBlank() || it.tenantId.isNotBlank() || it.usesTokenService },
-                        viewModel = viewModel,
-                    )
+                    // Posting to D365FO is always on and not a setting (user, 16 Nov 2026). With no
+                    // profile there is nothing to reset either - only where the QR code comes from.
+                    if (profiles.isEmpty()) {
+                        Caption("Where to get the QR code")
+                        SetupStep(1, "In D365FO open Device setup codes.")
+                        SetupStep(2, "New device setup code - its QR code shows.")
+                        SetupStep(3, "Tap Scan connection QR below and point at it.")
+                    }
+                    // Reset connection is a button beside Scan connection QR (user, 16 Nov 2026).
                 }
 
                 SettingsMenuItem.Appearance -> if (onSignOut == null) {
@@ -374,6 +371,11 @@ fun SettingsScreen(
         actions = if (connectionOpen) {
             {
                 LaunchedEffect(Unit) { labelsBeforeScan = profiles.map { it.label }.toSet() }
+                // Reset beside Scan, the safe one left (user, 16 Nov 2026) - only with something to reset.
+                val hasCredentials = profiles.any { it.clientId.isNotBlank() || it.tenantId.isNotBlank() || it.usesTokenService }
+                if (profiles.isNotEmpty() && hasCredentials) {
+                    ConnectionReset(viewModel = viewModel, modifier = Modifier.weight(1f))
+                }
                 ConnectionQrSetup(
                     modifier = Modifier.weight(1f),
                     onConnected = {
@@ -692,6 +694,27 @@ private fun LogEntry.toLogLine(): String =
  * an unused one can be switched to. Switching or deleting the one in use clears order and item
  * data, so both ask first (and the view model checks for unsent work - see guardUnsent).
  */
+/** One numbered step of the empty Connection & profile screen. */
+@Composable
+private fun SetupStep(number: Int, text: String) {
+    val colors = com.d365fo.mobileops.presentation.common.theme.FocusColors
+    androidx.compose.foundation.layout.Row(
+        horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(12.dp),
+        verticalAlignment = androidx.compose.ui.Alignment.Top,
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp),
+    ) {
+        androidx.compose.foundation.layout.Box(
+            contentAlignment = androidx.compose.ui.Alignment.Center,
+            modifier = Modifier
+                .size(26.dp)
+                .background(colors.navy, androidx.compose.foundation.shape.CircleShape),
+        ) {
+            Text(number.toString(), style = com.d365fo.mobileops.presentation.common.theme.FocusType.caption, color = colors.surface)
+        }
+        Text(text, style = com.d365fo.mobileops.presentation.common.theme.FocusType.rowDetail, color = colors.ink, modifier = Modifier.weight(1f))
+    }
+}
+
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 private fun ConnectionProfiles(
@@ -908,24 +931,20 @@ private fun SheetValue(label: String, value: String) {
 
 /** Clears the credentials of every profile - see SettingsViewModel.resetConnection. Data stays. */
 @Composable
-private fun ConnectionReset(hasCredentials: Boolean, viewModel: SettingsViewModel) {
+private fun ConnectionReset(viewModel: SettingsViewModel, modifier: Modifier = Modifier) {
     var confirm by remember { mutableStateOf(false) }
     var unsent by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(confirm) { unsent = if (confirm) viewModel.unsentDescription() else null }
 
-    com.d365fo.mobileops.presentation.common.focus.FocusListRow(
-        title = "Reset connection",
-        subtitle = "Clears secrets and offline sign-ins. Profiles and data stay.",
-        icon = androidx.compose.material.icons.Icons.Filled.RestartAlt,
-        onClick = if (hasCredentials) ({ confirm = true }) else null,
-    )
+    // What it clears is said in the dialog ("Clears secrets and offline sign-ins...").
+    RedOutlineButton("Reset connection", onClick = { confirm = true }, modifier = modifier)
     if (!confirm) return
     AlertDialog(
         onDismissRequest = { confirm = false },
         title = { Text("Reset connection?") },
         text = {
             Text(
-                "Scan a connection QR code after." +
+                "Clears secrets and offline sign-ins; profiles and data stay. Scan a connection QR code after." +
                     (unsent?.let { " $it stays and sends later." } ?: ""),
             )
         },
