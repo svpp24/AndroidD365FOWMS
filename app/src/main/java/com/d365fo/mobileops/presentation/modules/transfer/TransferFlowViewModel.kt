@@ -212,11 +212,16 @@ class TransferFlowViewModel @Inject constructor(
         // Back to the order prompt starts over - see ReceivingFlowViewModel.back. The banked
         // lines are saved per order and come back when it is scanned again.
         val toOrder = previous == TransferStep.TRANSFER_ORDER
+        if (toOrder) {
+            // A fresh order prompt, as receiving: no counter left from the order, today's list read again.
+            _state.value = TransferFlowState(capture = TransferCapture(mode = current.capture.mode), todays = current.todays)
+            loadTodays()
+            return
+        }
         _state.update {
             it.copy(
                 capture = it.capture.cleared(previous),
                 step = previous,
-                captured = if (toOrder) emptyList() else it.captured,
                 error = null,
                 busy = false,
             )

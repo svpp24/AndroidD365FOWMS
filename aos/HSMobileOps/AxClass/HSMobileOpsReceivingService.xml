@@ -669,7 +669,9 @@ class HSMobileOpsReceivingService
     /// </summary>
     private static int inlineLineLimit()
     {
-        return 50;
+        // 200 (16 Nov 2026, was 50): a 110-line PO came without its lines, so the handheld had
+        // no PO items list to show.
+        return 200;
     }
 ]]></Source>
 			</Method>

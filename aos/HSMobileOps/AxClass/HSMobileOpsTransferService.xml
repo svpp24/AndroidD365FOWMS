@@ -24,7 +24,8 @@
 /// </summary>
 class HSMobileOpsTransferService
 {
-    private const int InlineLineLimit = 50;
+    // 200 (16 Nov 2026, was 50), as receiving: larger transfers come with their lines too.
+    private const int InlineLineLimit = 200;
 
 }
 ]]></Declaration>

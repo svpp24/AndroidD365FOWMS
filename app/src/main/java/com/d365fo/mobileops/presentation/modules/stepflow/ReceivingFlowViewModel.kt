@@ -267,12 +267,17 @@ class ReceivingFlowViewModel @Inject constructor(
         // again; left here, they showed a Register button that could not post them, because
         // the order they belong to had just been cleared.
         val toOrder = previous == ReceivingStep.PURCHASE_ORDER
+        if (toOrder) {
+            // A fresh order prompt: nothing of the order left (its "0 / 3" counter stayed), and
+            // today's list read again (user, 16 Nov 2026: it said 0 after Back).
+            _state.value = ReceivingFlowState(todaysOrders = current.todaysOrders)
+            loadTodaysOrders()
+            return
+        }
         _state.update {
             it.copy(
                 capture = it.capture.cleared(previous),
                 step = previous,
-                captured = if (toOrder) emptyList() else it.captured,
-                stagedElsewhere = if (toOrder) emptyMap() else it.stagedElsewhere,
                 error = null,
                 busy = false,
             )

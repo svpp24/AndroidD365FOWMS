@@ -289,7 +289,7 @@ fun AppNavGraph(
         val workflow = workflowForRoute(currentRoute?.route) ?: return@LaunchedEffect
         val message = switchedOff[workflow] ?: return@LaunchedEffect
         switchedOffNotice = "${workflow.label}: $message"
-        if (!navController.popBackStack()) navigateToTabSafely(navController, Routes.HOME)
+        if (!navController.popBackStackSafely()) navigateToTabSafely(navController, Routes.HOME)
     }
     switchedOffNotice?.let { notice ->
         androidx.compose.material3.AlertDialog(
@@ -349,7 +349,7 @@ fun AppNavGraph(
                             if (wide && (route.startsWith(ModuleGroup.ROUTE_PREFIX) || route == Routes.SERVICES)) pane = route else navController.navigate(route)
                         },
                         onSignOut = onSignOut,
-                        onChangeWarehouse = { navController.navigate(Routes.CHANGE_WAREHOUSE) },
+                        onChangeWarehouse = { navController.navigate(Routes.CHANGE_WAREHOUSE) { launchSingleTop = true } },
                         failedCount = syncStatus.failedCount,
                         online = syncStatus.fullyOnline,
                         onSettings = { navController.navigate(Routes.SETTINGS) },
@@ -391,7 +391,7 @@ fun AppNavGraph(
                     val homeEntry = remember(it) { runCatching { navController.getBackStackEntry(Routes.HOME) }.getOrNull() }
                     ServicesScreen(
                         onModuleSelected = { route -> navController.navigate(route) },
-                        onBack = { navController.popBackStack() },
+                        onBack = { navController.popBackStackSafely() },
                         accessViewModel = if (homeEntry != null) hiltViewModel(homeEntry) else hiltViewModel(),
                     )
                 }
@@ -404,7 +404,7 @@ fun AppNavGraph(
                     val homeEntry = remember(entry) { runCatching { navController.getBackStackEntry(Routes.HOME) }.getOrNull() }
                     ModuleGroupScreen(
                         groupId = entry.arguments?.getString("groupId").orEmpty(),
-                        onBack = { navController.popBackStack() },
+                        onBack = { navController.popBackStackSafely() },
                         onModuleSelected = { route -> navController.navigate(route) },
                         accessViewModel = if (homeEntry != null) hiltViewModel(homeEntry) else hiltViewModel(),
                     )
@@ -421,17 +421,17 @@ fun AppNavGraph(
                         menuId = entry.arguments?.getString("menuId").orEmpty(),
                         accessViewModel = if (homeEntry != null) hiltViewModel(homeEntry) else hiltViewModel(),
                         onModuleSelected = { navController.navigate(it) },
-                        onBack = { navController.popBackStack() },
+                        onBack = { navController.popBackStackSafely() },
                     )
                 }
 
                 composable(Routes.CHANGE_WAREHOUSE) {
-                    ChangeWarehouseScreen(onDone = { navController.popBackStack() })
+                    ChangeWarehouseScreen(onDone = { navController.popBackStackSafely() })
                 }
 
                 composable(Routes.INQUIRY_LOCATION) {
                     LocationInquiryScreen(
-                        onBack = { navController.popBackStack() },
+                        onBack = { navController.popBackStackSafely() },
                         onManualEntryRequested = { navController.navigate(Routes.INQUIRY_LOCATION_ENTRY) },
                     )
                 }
@@ -439,20 +439,20 @@ fun AppNavGraph(
                 composable(Routes.INQUIRY_LOCATION_ENTRY) { entry ->
                     LocationEntryScreen(
                         viewModel = hiltViewModel(remember(entry) { navController.getBackStackEntry(Routes.INQUIRY_LOCATION) }),
-                        onBack = { navController.popBackStack() },
+                        onBack = { navController.popBackStackSafely() },
                     )
                 }
 
                 composable(Routes.INQUIRY_PO_TODAY) {
                     PoOfTodayScreen(
-                        onBack = { navController.popBackStack() },
+                        onBack = { navController.popBackStackSafely() },
                         onReceive = { navController.navigate(Routes.RECEIVE_FLOW) },
                     )
                 }
 
                 composable(Routes.SEARCH) {
                     com.d365fo.mobileops.presentation.common.search.SearchScreen(
-                        onBack = { navController.popBackStack() },
+                        onBack = { navController.popBackStackSafely() },
                         onOpenReceiving = { navController.navigate(Routes.RECEIVE_FLOW) },
                         onOpenShip = { navController.navigate(Routes.TRANSFER_SHIP) },
                         onOpenTransferReceive = { navController.navigate(Routes.TRANSFER_RECEIVE) },
@@ -463,13 +463,13 @@ fun AppNavGraph(
 
                 composable(Routes.INQUIRY_PRICE) {
                     com.d365fo.mobileops.presentation.modules.dataenquiry.PriceCheckScreen(
-                        onBack = { navController.popBackStack() },
+                        onBack = { navController.popBackStackSafely() },
                     )
                 }
 
                 composable(Routes.INQUIRY_ITEMS) {
                     com.d365fo.mobileops.presentation.modules.dataenquiry.ItemCategoryScreen(
-                        onBack = { navController.popBackStack() },
+                        onBack = { navController.popBackStackSafely() },
                         onCategory = { navController.navigate(Routes.itemsCategory(it)) },
                         onItem = { navController.navigate(Routes.itemDetail(it)) },
                     )
@@ -480,7 +480,7 @@ fun AppNavGraph(
                     arguments = listOf(navArgument("path") { type = NavType.StringType }),
                 ) {
                     com.d365fo.mobileops.presentation.modules.dataenquiry.ItemCategoryScreen(
-                        onBack = { navController.popBackStack() },
+                        onBack = { navController.popBackStackSafely() },
                         onCategory = { navController.navigate(Routes.itemsCategory(it)) },
                         onItem = { navController.navigate(Routes.itemDetail(it)) },
                     )
@@ -491,13 +491,13 @@ fun AppNavGraph(
                     arguments = listOf(navArgument("itemId") { type = NavType.StringType }),
                 ) {
                     com.d365fo.mobileops.presentation.modules.dataenquiry.ItemDetailScreen(
-                        onBack = { navController.popBackStack() },
+                        onBack = { navController.popBackStackSafely() },
                     )
                 }
 
                 composable(Routes.INQUIRY_TRANSFERS) {
                     com.d365fo.mobileops.presentation.modules.dataenquiry.TransferOrdersScreen(
-                        onBack = { navController.popBackStack() },
+                        onBack = { navController.popBackStackSafely() },
                         onOpenShip = { navController.navigate(Routes.TRANSFER_SHIP) },
                         onOpenReceive = { navController.navigate(Routes.TRANSFER_RECEIVE) },
                     )
@@ -509,7 +509,7 @@ fun AppNavGraph(
 
                 composable(Routes.COUNTING_HUB) {
                     com.d365fo.mobileops.presentation.modules.cyclecounting.CountingHubScreen(
-                        onBack = { navController.popBackStack() },
+                        onBack = { navController.popBackStackSafely() },
                         onStoreCount = { navController.navigate(Routes.COUNTING_STORE) },
                         onJournals = { kind -> navController.navigate(Routes.countingJournals(kind)) },
                         onAccuracy = { navController.navigate(Routes.COUNTING_ACCURACY) },
@@ -522,7 +522,7 @@ fun AppNavGraph(
                     arguments = listOf(navArgument("type") { type = NavType.StringType }),
                 ) {
                     com.d365fo.mobileops.presentation.modules.cyclecounting.counts.CountListScreen(
-                        onBack = { navController.popBackStack() },
+                        onBack = { navController.popBackStackSafely() },
                         onCount = { masterId, type -> navController.navigate(Routes.countingStore(masterId, type)) },
                         onResults = { masterId -> navController.navigate(Routes.countingResults(masterId)) },
                         onCategories = { masterId -> navController.navigate(Routes.countingCategories(masterId)) },
@@ -535,7 +535,7 @@ fun AppNavGraph(
                     arguments = listOf(navArgument("type") { type = NavType.StringType }),
                 ) {
                     com.d365fo.mobileops.presentation.modules.cyclecounting.counts.CountCreateScreen(
-                        onBack = { navController.popBackStack() },
+                        onBack = { navController.popBackStackSafely() },
                     )
                 }
 
@@ -544,7 +544,7 @@ fun AppNavGraph(
                     arguments = listOf(navArgument("masterId") { type = NavType.StringType }),
                 ) {
                     com.d365fo.mobileops.presentation.modules.cyclecounting.counts.CountCategoriesScreen(
-                        onBack = { navController.popBackStack() },
+                        onBack = { navController.popBackStackSafely() },
                     )
                 }
 
@@ -553,7 +553,7 @@ fun AppNavGraph(
                     arguments = listOf(navArgument("masterId") { type = NavType.StringType }),
                 ) {
                     com.d365fo.mobileops.presentation.modules.cyclecounting.counts.CountResultsScreen(
-                        onBack = { navController.popBackStack() },
+                        onBack = { navController.popBackStackSafely() },
                     )
                 }
 
@@ -563,7 +563,7 @@ fun AppNavGraph(
                 ) { entry ->
                     CountingJournalListScreen(
                         kind = com.d365fo.mobileops.domain.model.CountKind.fromRoute(entry.arguments?.getString("kind")),
-                        onBack = { navController.popBackStack() },
+                        onBack = { navController.popBackStackSafely() },
                         onViewLines = { journalId ->
                             navController.navigate(Routes.countingLines(journalId))
                         },
@@ -585,21 +585,21 @@ fun AppNavGraph(
                     Routes.COUNTING_CAPTURE,
                     arguments = listOf(navArgument("journalId") { type = NavType.StringType }),
                 ) {
-                    CountingScanScreen(onBack = { navController.popBackStack() })
+                    CountingScanScreen(onBack = { navController.popBackStackSafely() })
                 }
 
                 composable(
                     Routes.COUNTING_LINES,
                     arguments = listOf(navArgument("journalId") { type = NavType.StringType }),
                 ) {
-                    CountingCaptureScreen(onBack = { navController.popBackStack() })
+                    CountingCaptureScreen(onBack = { navController.popBackStackSafely() })
                 }
 
                 composable(
                     Routes.COUNTING_VARIANCE,
                     arguments = listOf(navArgument("journalId") { type = NavType.StringType }),
                 ) {
-                    SupervisorVarianceScreen(onBack = { navController.popBackStack() })
+                    SupervisorVarianceScreen(onBack = { navController.popBackStackSafely() })
                 }
 
                 composable(
@@ -607,12 +607,12 @@ fun AppNavGraph(
                     arguments = listOf(navArgument("journalId") { type = NavType.StringType }),
                 ) {
                     com.d365fo.mobileops.presentation.modules.cyclecounting.supervisor.DualCountReviewScreen(
-                        onBack = { navController.popBackStack() },
+                        onBack = { navController.popBackStackSafely() },
                     )
                 }
 
                 composable(Routes.COUNTING_ACCURACY) {
-                    AccuracyReportScreen(onBack = { navController.popBackStack() })
+                    AccuracyReportScreen(onBack = { navController.popBackStackSafely() })
                 }
 
                 composable(
@@ -623,26 +623,26 @@ fun AppNavGraph(
                     ),
                 ) {
                     com.d365fo.mobileops.presentation.modules.cyclecounting.store.StoreCountScreen(
-                        onBack = { navController.popBackStack() },
+                        onBack = { navController.popBackStackSafely() },
                     )
                 }
 
                 composable(Routes.SETTINGS) {
                     SettingsScreen(
-                        onBack = { navController.popBackStack() },
+                        onBack = { navController.popBackStackSafely() },
                         onSignOut = onSignOut,
-                        onChangeWarehouse = { navController.navigate(Routes.CHANGE_WAREHOUSE) },
+                        onChangeWarehouse = { navController.navigate(Routes.CHANGE_WAREHOUSE) { launchSingleTop = true } },
                         onFeedback = { navController.navigate(Routes.FEEDBACK) },
                     )
                 }
 
                 composable(Routes.FEEDBACK) {
-                    FeedbackScreen(onBack = { navController.popBackStack() })
+                    FeedbackScreen(onBack = { navController.popBackStackSafely() })
                 }
 
                 composable(Routes.RECEIVE_FLOW) {
                     ReceivingFlowScreen(
-                        onBack = { navController.popBackStack() },
+                        onBack = { navController.popBackStackSafely() },
                         onManualEntryRequested = { navController.navigate(Routes.RECEIVE_FLOW_ENTRY) },
                         onActivity = { navController.navigate(Routes.FAILED_SYNC) },
                     )
@@ -651,21 +651,21 @@ fun AppNavGraph(
                 composable(Routes.RECEIVE_FLOW_ENTRY) { entry ->
                     ReceivingEntryScreen(
                         viewModel = hiltViewModel(remember(entry) { navController.getBackStackEntry(Routes.RECEIVE_FLOW) }),
-                        onBack = { navController.popBackStack() },
+                        onBack = { navController.popBackStackSafely() },
                     )
                 }
 
                 composable(Routes.TRANSFER_SHIP) {
                     TransferFlowScreen(
                         mode = TransferMode.SHIP,
-                        onBack = { navController.popBackStack() },
+                        onBack = { navController.popBackStackSafely() },
                         onManualEntryRequested = { navController.navigate(Routes.TRANSFER_SHIP_ENTRY) },
                     )
                 }
 
                 composable(Routes.PO_CREATE) {
                     PoCreateScreen(
-                        onBack = { navController.popBackStack() },
+                        onBack = { navController.popBackStackSafely() },
                         onConfirm = { purchId -> navController.navigate(Routes.poConfirm(purchId)) },
                     )
                 }
@@ -680,16 +680,16 @@ fun AppNavGraph(
                         },
                     ),
                 ) {
-                    com.d365fo.mobileops.presentation.modules.ordercreate.PoConfirmScreen(onBack = { navController.popBackStack() })
+                    com.d365fo.mobileops.presentation.modules.ordercreate.PoConfirmScreen(onBack = { navController.popBackStackSafely() })
                 }
 
                 composable(Routes.PURCHASE_RETURN) {
-                    com.d365fo.mobileops.presentation.modules.ordercreate.ReturnCreateScreen(onBack = { navController.popBackStack() })
+                    com.d365fo.mobileops.presentation.modules.ordercreate.ReturnCreateScreen(onBack = { navController.popBackStackSafely() })
                 }
 
                 composable(Routes.TO_CREATE) {
                     ToCreateScreen(
-                        onBack = { navController.popBackStack() },
+                        onBack = { navController.popBackStackSafely() },
                         onShip = { navController.navigate(Routes.TRANSFER_SHIP) },
                     )
                 }
@@ -697,14 +697,14 @@ fun AppNavGraph(
                 composable(Routes.TRANSFER_SHIP_ENTRY) { entry ->
                     TransferEntryScreen(
                         viewModel = hiltViewModel(remember(entry) { navController.getBackStackEntry(Routes.TRANSFER_SHIP) }),
-                        onBack = { navController.popBackStack() },
+                        onBack = { navController.popBackStackSafely() },
                     )
                 }
 
                 composable(Routes.TRANSFER_RECEIVE) {
                     TransferFlowScreen(
                         mode = TransferMode.RECEIVE,
-                        onBack = { navController.popBackStack() },
+                        onBack = { navController.popBackStackSafely() },
                         onManualEntryRequested = { navController.navigate(Routes.TRANSFER_RECEIVE_ENTRY) },
                     )
                 }
@@ -712,13 +712,13 @@ fun AppNavGraph(
                 composable(Routes.TRANSFER_RECEIVE_ENTRY) { entry ->
                     TransferEntryScreen(
                         viewModel = hiltViewModel(remember(entry) { navController.getBackStackEntry(Routes.TRANSFER_RECEIVE) }),
-                        onBack = { navController.popBackStack() },
+                        onBack = { navController.popBackStackSafely() },
                     )
                 }
 
                 composable(Routes.ON_HAND) {
                     OnHandInquiryScreen(
-                        onBack = { navController.popBackStack() },
+                        onBack = { navController.popBackStackSafely() },
                         onManualEntryRequested = { navController.navigate(Routes.ON_HAND_ENTRY) },
                     )
                 }
@@ -726,16 +726,16 @@ fun AppNavGraph(
                 composable(Routes.ON_HAND_ENTRY) { entry ->
                     OnHandEntryScreen(
                         viewModel = hiltViewModel(remember(entry) { navController.getBackStackEntry(Routes.ON_HAND) }),
-                        onBack = { navController.popBackStack() },
+                        onBack = { navController.popBackStackSafely() },
                     )
                 }
 
                 composable(Routes.FAILED_SYNC) {
                     val homeEntry = remember(it) { runCatching { navController.getBackStackEntry(Routes.HOME) }.getOrNull() }
                     FailedSyncScreen(
-                        onBack = { navController.popBackStack() },
+                        onBack = { navController.popBackStackSafely() },
                         onOpen = { route -> navController.navigate(route) },
-                        onChangeWarehouse = { navController.navigate(Routes.CHANGE_WAREHOUSE) },
+                        onChangeWarehouse = { navController.navigate(Routes.CHANGE_WAREHOUSE) { launchSingleTop = true } },
                         accessViewModel = if (homeEntry != null) hiltViewModel(homeEntry) else hiltViewModel(),
                     )
                 }
@@ -782,3 +782,11 @@ internal fun screenLabel(route: String?): String = when {
     route == Routes.INQUIRY_TRANSFERS -> "Transfer orders"
     else -> route
 }
+
+/**
+ * Back that never removes the last screen (user, 16 Nov 2026: a quick double tap at the top
+ * left - Home's avatar, then the back arrow drawn in the same place - left the app blank). The
+ * second pop found only Home on the stack and took it, leaving nothing to show.
+ */
+internal fun androidx.navigation.NavController.popBackStackSafely(): Boolean =
+    if (previousBackStackEntry == null) false else popBackStack()

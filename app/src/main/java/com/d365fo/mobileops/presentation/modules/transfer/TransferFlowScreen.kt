@@ -305,6 +305,7 @@ fun TransferFlowScreen(
         actions = transferActions(
             state, mode, onLines = { viewModel.showCaptured(true) }, onPost = viewModel::postTransfer, onUndo = stepBack, onSkip = viewModel::skipStep,
             showTodays = showTodays, onToggleTodays = { showTodays = !showTodays },
+            onItems = { showItemSearch = true },
         ),
     ) {
         if (state.busy) {
@@ -757,6 +758,7 @@ private fun transferActions(
     onSkip: () -> Unit,
     showTodays: Boolean = false,
     onToggleTodays: () -> Unit = {},
+    onItems: () -> Unit = {},
 ): (@Composable androidx.compose.foundation.layout.RowScope.() -> Unit)? {
     if (state.showingCaptured || state.lineChoices.isNotEmpty()) return null
     return when (state.step) {
@@ -771,15 +773,32 @@ private fun transferActions(
                 )
             }
         }
-        TransferStep.ITEM -> if (state.captured.isEmpty()) null else {
+        // The transfer's items under the scan bar once it is open, as PO items (user, 16 Nov 2026).
+        TransferStep.ITEM -> if (state.captured.isEmpty()) {
+            if (state.openLines.isEmpty()) null else {
+                {
+                    com.d365fo.mobileops.presentation.common.focus.FocusButton(
+                        "Transfer items", onClick = onItems, icon = Icons.Default.Search,
+                        enabled = !state.busy, modifier = Modifier.weight(1f),
+                    )
+                }
+            }
+        } else {
             {
+                val three = state.openLines.isNotEmpty()
+                if (three) {
+                    com.d365fo.mobileops.presentation.common.focus.FocusButton(
+                        "Items", onClick = onItems, icon = Icons.Default.Search,
+                        enabled = !state.busy, compact = true, modifier = Modifier.weight(0.8f),
+                    )
+                }
                 com.d365fo.mobileops.presentation.common.focus.FocusButton(
                     "Lines", onClick = onLines, icon = Icons.AutoMirrored.Filled.ListAlt,
-                    enabled = !state.busy, modifier = Modifier.weight(1f),
+                    enabled = !state.busy, compact = three, modifier = Modifier.weight(if (three) 0.8f else 1f),
                 )
                 com.d365fo.mobileops.presentation.common.focus.HoldToConfirmButton(
                     if (mode == TransferMode.SHIP) "Hold to ship" else "Hold to receive",
-                    onConfirm = onPost, enabled = !state.busy, modifier = Modifier.weight(1f),
+                    onConfirm = onPost, enabled = !state.busy, compact = three, modifier = Modifier.weight(if (three) 1.4f else 1f),
                 )
             }
         }

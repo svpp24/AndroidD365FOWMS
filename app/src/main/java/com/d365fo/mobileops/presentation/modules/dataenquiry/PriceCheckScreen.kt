@@ -116,21 +116,36 @@ class PriceCheckViewModel @Inject constructor(
             }
             scanFeedback.success()
             val entity = itemDao.getItem(item.itemId)
-            // The item's own units first (sales, then inventory and purchase), then any other it converts to.
+            // The item's own units first (sales, then inventory and purchase) - from the device, at
+            // once; the others it converts to come from D365FO and are added when they arrive.
             val own = listOfNotNull(entity?.salesUnit, entity?.inventoryUnit, entity?.purchaseUnit, scanned?.scanUnit)
-            val converted = runCatching { units.unitsFor(item.itemId, item.variant, emptyList()).map { it.unitId } }.getOrDefault(emptyList())
-            val choices = (own + converted).filter { it.isNotBlank() }.distinctBy { it.uppercase() }
+                .filter { it.isNotBlank() }.distinctBy { it.uppercase() }
             val startUnit = scanned?.scanUnit?.takeIf { it.isNotBlank() } ?: entity?.salesUnit ?: entity?.inventoryUnit.orEmpty()
             val startQty = scanned?.quantityPerScan?.toBigDecimalOrNull()?.stripTrailingZeros()?.toPlainString() ?: "1"
             _state.update {
-                it.copy(item = item, units = choices, unit = startUnit, quantity = startQty, quote = null, error = null)
+                it.copy(item = item, units = own, unit = startUnit, quantity = startQty, quote = null, error = null)
+            }
+            // The price straight away, for the scanned unit and quantity (user, 16 Nov 2026: the
+            // units came slowly, then the price took seconds more after tapping Check price).
+            checkPrice()
+            launch {
+                val converted = runCatching { units.unitsFor(item.itemId, item.variant, emptyList()).map { it.unitId } }.getOrDefault(emptyList())
+                if (_state.value.item?.itemId == item.itemId) {
+                    _state.update { st -> st.copy(units = (st.units + converted).filter { it.isNotBlank() }.distinctBy { it.uppercase() }) }
+                }
             }
         }
     }
 
     fun setQuantity(value: String) = _state.update { it.copy(quantity = value.filter { c -> c.isDigit() || c == '.' }, quote = null) }
 
-    fun setUnit(unit: String) = _state.update { it.copy(unit = unit, quote = null) }
+    /** Another unit: its price at once - no second tap on Check price. */
+    fun setUnit(unit: String) {
+        _state.update { it.copy(unit = unit, quote = null) }
+        checkPrice()
+    }
+
+    private var priceJob: kotlinx.coroutines.Job? = null
 
     fun checkPrice() {
         val s = _state.value
@@ -145,9 +160,13 @@ class PriceCheckViewModel @Inject constructor(
             _state.update { it.copy(error = "Enter a quantity above 0") }
             return
         }
-        viewModelScope.launch {
+        // Only the latest question's answer counts: a unit changed mid-check asks again.
+        priceJob?.cancel()
+        priceJob = viewModelScope.launch {
             _state.update { it.copy(busy = true, error = null, quote = null) }
-            when (val r = enquiry.checkPrice(warehouse, item.itemId, item.variant, qty, s.unit)) {
+            val r = enquiry.checkPrice(warehouse, item.itemId, item.variant, qty, s.unit)
+            if (_state.value.item?.itemId != item.itemId || _state.value.unit != s.unit) return@launch
+            when (r) {
                 is NetworkResult.Success -> _state.update { it.copy(busy = false, quote = r.data) }
                 is NetworkResult.Error -> _state.update { it.copy(busy = false, error = r.failure.message) }
                 NetworkResult.Loading -> Unit
