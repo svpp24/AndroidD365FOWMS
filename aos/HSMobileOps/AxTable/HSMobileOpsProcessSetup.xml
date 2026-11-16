@@ -218,9 +218,9 @@ public class HSMobileOpsProcessSetup extends common
 		<AxTableField xmlns=""
 			i:type="AxTableFieldEnum">
 			<Name>RequireLocationCapture</Name>
-			<EnumType>NoYes</EnumType>
 			<HelpText>When a line does not already carry a put-away location, whether this process still asks the operator to scan one. Ignored for a line that already has one - see HSMobileOpsPurchOrderResponse.RequireLocationCapture.</HelpText>
 			<Label>Require location capture</Label>
+			<EnumType>NoYes</EnumType>
 		</AxTableField>
 		<AxTableField xmlns=""
 			i:type="AxTableFieldEnum">

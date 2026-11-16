@@ -115,8 +115,8 @@ public class HSMobileOpsUserWarehouse extends common
 		<AxTableField xmlns=""
 			i:type="AxTableFieldEnum">
 			<Name>IsDefault</Name>
-			<EnumType>NoYes</EnumType>
 			<Label>Default</Label>
+			<EnumType>NoYes</EnumType>
 		</AxTableField>
 	</Fields>
 	<FullTextIndexes />

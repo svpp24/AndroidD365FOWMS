@@ -203,7 +203,6 @@ public class HSMobileOpsDeviceWork extends FormRun
 			<AxFormControl xmlns=""
 				i:type="AxFormGroupControl">
 				<Name>Content</Name>
-				<Caption>Content</Caption>
 				<Type>Group</Type>
 				<WidthMode>SizeToAvailable</WidthMode>
 				<FormControlExtension
@@ -221,6 +220,7 @@ public class HSMobileOpsDeviceWork extends FormRun
 						<MultiLine>Yes</MultiLine>
 					</AxFormControl>
 				</Controls>
+				<Caption>Content</Caption>
 				<ColumnsMode>Fill</ColumnsMode>
 				<FrameType>None</FrameType>
 			</AxFormControl>

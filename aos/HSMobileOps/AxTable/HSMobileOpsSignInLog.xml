@@ -165,9 +165,9 @@ public class HSMobileOpsSignInLog extends common
 			i:type="AxTableFieldEnum">
 			<Name>SignedInOffline</Name>
 			<AllowEdit>No</AllowEdit>
-			<EnumType>NoYes</EnumType>
 			<HelpText>Signed in on the handheld while D365FO could not be reached.</HelpText>
 			<Label>Offline sign-in</Label>
+			<EnumType>NoYes</EnumType>
 		</AxTableField>
 	</Fields>
 	<FullTextIndexes />

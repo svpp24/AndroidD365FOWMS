@@ -326,9 +326,9 @@ public class HSMobileOpsDeviceSync extends common
 			i:type="AxTableFieldEnum">
 			<Name>LastFull</Name>
 			<AllowEdit>No</AllowEdit>
-			<EnumType>NoYes</EnumType>
 			<HelpText>Yes: the last successful sync downloaded every item again. No: only the changes.</HelpText>
 			<Label>Full sync</Label>
+			<EnumType>NoYes</EnumType>
 		</AxTableField>
 		<AxTableField xmlns=""
 			i:type="AxTableFieldInt">
@@ -380,9 +380,9 @@ public class HSMobileOpsDeviceSync extends common
 			i:type="AxTableFieldEnum">
 			<Name>HealthStatus</Name>
 			<AllowEdit>No</AllowEdit>
-			<EnumType>HSMobileOpsDeviceHealth</EnumType>
 			<HelpText>Worked out at each report and check-in, and every hour by the device health job.</HelpText>
 			<Label>Health status</Label>
+			<EnumType>HSMobileOpsDeviceHealth</EnumType>
 		</AxTableField>
 		<AxTableField xmlns=""
 			i:type="AxTableFieldUtcDateTime">

@@ -190,7 +190,6 @@ public class HSMobileOpsSkuSnapshot extends FormRun
 			<AxFormControl xmlns=""
 				i:type="AxFormGroupControl">
 				<Name>FilesGroup</Name>
-				<Caption>Files</Caption>
 				<Type>Group</Type>
 				<WidthMode>SizeToAvailable</WidthMode>
 				<FormControlExtension
@@ -252,6 +251,7 @@ public class HSMobileOpsSkuSnapshot extends FormRun
 						<DataSource>HSMobileOpsSkuSnapshotFile</DataSource>
 					</AxFormControl>
 				</Controls>
+				<Caption>Files</Caption>
 				<FrameType>None</FrameType>
 			</AxFormControl>
 		</Controls>

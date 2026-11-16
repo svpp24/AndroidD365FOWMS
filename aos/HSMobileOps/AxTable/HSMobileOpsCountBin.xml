@@ -56,8 +56,8 @@ public class HSMobileOpsCountBin extends common
 			i:type="AxTableFieldString">
 			<Name>BinId</Name>
 			<Mandatory>Yes</Mandatory>
-			<StringSize>20</StringSize>
 			<Label>Bin</Label>
+			<StringSize>20</StringSize>
 		</AxTableField>
 		<AxTableField xmlns=""
 			i:type="AxTableFieldString">
@@ -68,8 +68,8 @@ public class HSMobileOpsCountBin extends common
 		<AxTableField xmlns=""
 			i:type="AxTableFieldEnum">
 			<Name>Active</Name>
-			<EnumType>NoYes</EnumType>
 			<Label>Active</Label>
+			<EnumType>NoYes</EnumType>
 		</AxTableField>
 		<AxTableField xmlns=""
 			i:type="AxTableFieldString">

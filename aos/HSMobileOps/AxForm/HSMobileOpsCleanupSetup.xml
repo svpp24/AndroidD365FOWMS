@@ -16,6 +16,30 @@ public class HSMobileOpsCleanupSetup extends FormRun
 }
 ]]></Source>
 			</Method>
+			<Method>
+				<Name>init</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The form showed nothing while the company had no row yet (16 Nov 2026): the data source
+    /// may not create one, so InsertIfEmpty never could. The row is made here, with its defaults.
+    /// </summary>
+    public void init()
+    {
+        HSMobileOpsCleanupSetup row;
+
+        select firstonly RecId from row;
+        if (!row.RecId)
+        {
+            ttsbegin;
+            row.initValue();
+            row.insert();
+            ttscommit;
+        }
+        super();
+    }
+]]></Source>
+			</Method>
 		</Methods>
 		<DataSources xmlns="" />
 		<DataControls xmlns="" />
@@ -40,7 +64,6 @@ public class HSMobileOpsCleanupSetup extends FormRun
 		<ShowNewButton xmlns="">No</ShowNewButton>
 		<UseCaptionFromMenuItem xmlns="">Yes</UseCaptionFromMenuItem>
 		<ViewEditMode xmlns="">Edit</ViewEditMode>
-		<TitleDataSource xmlns="">HSMobileOpsCleanupSetup</TitleDataSource>
 		<Controls xmlns="">
 			<AxFormControl xmlns=""
 				i:type="AxFormActionPaneControl">
@@ -82,7 +105,6 @@ public class HSMobileOpsCleanupSetup extends FormRun
 			<AxFormControl xmlns=""
 				i:type="AxFormGroupControl">
 				<Name>Server</Name>
-				<Caption>D365FO - kept for (days)</Caption>
 				<Type>Group</Type>
 				<WidthMode>SizeToAvailable</WidthMode>
 				<FormControlExtension
@@ -152,13 +174,13 @@ public class HSMobileOpsCleanupSetup extends FormRun
 						<DataSource>HSMobileOpsCleanupSetup</DataSource>
 					</AxFormControl>
 				</Controls>
+				<Caption>D365FO - kept for (days)</Caption>
 				<ColumnsMode>Fill</ColumnsMode>
 				<FrameType>None</FrameType>
 			</AxFormControl>
 			<AxFormControl xmlns=""
 				i:type="AxFormGroupControl">
 				<Name>Device</Name>
-				<Caption>Handhelds - kept for (days)</Caption>
 				<Type>Group</Type>
 				<WidthMode>SizeToAvailable</WidthMode>
 				<FormControlExtension
@@ -201,13 +223,13 @@ public class HSMobileOpsCleanupSetup extends FormRun
 						<DataSource>HSMobileOpsCleanupSetup</DataSource>
 					</AxFormControl>
 				</Controls>
+				<Caption>Handhelds - kept for (days)</Caption>
 				<ColumnsMode>Fill</ColumnsMode>
 				<FrameType>None</FrameType>
 			</AxFormControl>
 			<AxFormControl xmlns=""
 				i:type="AxFormGroupControl">
 				<Name>LastRun</Name>
-				<Caption>Last run</Caption>
 				<Type>Group</Type>
 				<WidthMode>SizeToAvailable</WidthMode>
 				<FormControlExtension
@@ -232,6 +254,7 @@ public class HSMobileOpsCleanupSetup extends FormRun
 						<DataSource>HSMobileOpsCleanupSetup</DataSource>
 					</AxFormControl>
 				</Controls>
+				<Caption>Last run</Caption>
 				<ColumnsMode>Fill</ColumnsMode>
 				<FrameType>None</FrameType>
 			</AxFormControl>

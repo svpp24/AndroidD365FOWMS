@@ -357,9 +357,9 @@ public class HSMobileOpsDevice extends common
 		<AxTableField xmlns=""
 			i:type="AxTableFieldEnum">
 			<Name>IsActive</Name>
-			<EnumType>NoYes</EnumType>
 			<HelpText>Deactivate a device that has been retired or lost. It can still sign in - this is not a remote lock on that device itself - but it drops off the active-fleet view, and, unlike before licensing existed, deactivating it now also frees up one of the license's device slots for a replacement handheld. See HSMobileOpsLicense.</HelpText>
 			<Label>Active</Label>
+			<EnumType>NoYes</EnumType>
 		</AxTableField>
 		<AxTableField xmlns=""
 			i:type="AxTableFieldString">

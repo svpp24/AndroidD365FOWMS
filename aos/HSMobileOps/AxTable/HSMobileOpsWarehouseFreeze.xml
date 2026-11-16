@@ -136,8 +136,8 @@ public class HSMobileOpsWarehouseFreeze extends common
 			i:type="AxTableFieldEnum">
 			<Name>Status</Name>
 			<AllowEdit>No</AllowEdit>
-			<EnumType>HSMobileOpsFreezeStatus</EnumType>
 			<Label>Status</Label>
+			<EnumType>HSMobileOpsFreezeStatus</EnumType>
 		</AxTableField>
 		<AxTableField xmlns=""
 			i:type="AxTableFieldString">

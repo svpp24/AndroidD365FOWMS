@@ -41,8 +41,8 @@ public class HSMobileOpsCountBinLine extends common
 			i:type="AxTableFieldString">
 			<Name>BinId</Name>
 			<AllowEdit>No</AllowEdit>
-			<StringSize>20</StringSize>
 			<Label>Bin</Label>
+			<StringSize>20</StringSize>
 		</AxTableField>
 		<AxTableField xmlns=""
 			i:type="AxTableFieldReal">
@@ -82,8 +82,8 @@ public class HSMobileOpsCountBinLine extends common
 			i:type="AxTableFieldString">
 			<Name>SubmissionId</Name>
 			<AllowEdit>No</AllowEdit>
-			<StringSize>64</StringSize>
 			<Label>Submission</Label>
+			<StringSize>64</StringSize>
 		</AxTableField>
 	</Fields>
 	<FullTextIndexes />

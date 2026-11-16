@@ -91,15 +91,15 @@ public class HSMobileOpsUser extends common
 			i:type="AxTableFieldString">
 			<Name>PasswordHash</Name>
 			<Label>Password hash</Label>
-			<StringSize>128</StringSize>
 			<Visible>No</Visible>
+			<StringSize>128</StringSize>
 		</AxTableField>
 		<AxTableField xmlns=""
 			i:type="AxTableFieldString">
 			<Name>PasswordSalt</Name>
 			<Label>Password salt</Label>
-			<StringSize>64</StringSize>
 			<Visible>No</Visible>
+			<StringSize>64</StringSize>
 		</AxTableField>
 		<AxTableField xmlns=""
 			i:type="AxTableFieldInt">
@@ -110,8 +110,8 @@ public class HSMobileOpsUser extends common
 		<AxTableField xmlns=""
 			i:type="AxTableFieldEnum">
 			<Name>IsActive</Name>
-			<EnumType>NoYes</EnumType>
 			<Label>Active</Label>
+			<EnumType>NoYes</EnumType>
 		</AxTableField>
 		<AxTableField xmlns=""
 			i:type="AxTableFieldString">
@@ -126,22 +126,22 @@ public class HSMobileOpsUser extends common
 		<AxTableField xmlns=""
 			i:type="AxTableFieldEnum">
 			<Name>IsSupervisor</Name>
-			<EnumType>NoYes</EnumType>
 			<Label>Supervisor</Label>
+			<EnumType>NoYes</EnumType>
 		</AxTableField>
 		<AxTableField xmlns=""
 			i:type="AxTableFieldEnum">
 			<Name>IsCycleCountSupervisor</Name>
-			<EnumType>NoYes</EnumType>
 			<HelpText>May review and approve inventory count variances. Distinct from Supervisor above - a worker can hold either, both, or neither.</HelpText>
 			<Label>Cycle count supervisor</Label>
+			<EnumType>NoYes</EnumType>
 		</AxTableField>
 		<AxTableField xmlns=""
 			i:type="AxTableFieldEnum">
 			<Name>IsExternalCounter</Name>
-			<EnumType>NoYes</EnumType>
 			<HelpText>A third-party counter: sees only counting journals assigned to their counter team, never prices, values or supervisor screens. Enforced by the counting services.</HelpText>
 			<Label>External counter</Label>
+			<EnumType>NoYes</EnumType>
 		</AxTableField>
 		<AxTableField xmlns=""
 			i:type="AxTableFieldString">
@@ -174,8 +174,8 @@ public class HSMobileOpsUser extends common
 		<AxTableField xmlns=""
 			i:type="AxTableFieldEnum">
 			<Name>MustChangePassword</Name>
-			<EnumType>NoYes</EnumType>
 			<Label>Must change PIN</Label>
+			<EnumType>NoYes</EnumType>
 		</AxTableField>
 		<AxTableField xmlns=""
 			i:type="AxTableFieldInt">

@@ -70,8 +70,8 @@ public class HSMobileOpsUserModulePermission extends common
 		<AxTableField xmlns=""
 			i:type="AxTableFieldEnum">
 			<Name>Module</Name>
-			<EnumType>HSMobileOpsModule</EnumType>
 			<Mandatory>Yes</Mandatory>
+			<EnumType>HSMobileOpsModule</EnumType>
 		</AxTableField>
 		<AxTableField xmlns=""
 			i:type="AxTableFieldEnum">
