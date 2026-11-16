@@ -741,9 +741,11 @@ private fun NotOnJournalQuantityDialog(
                     dismiss = { com.d365fo.mobileops.presentation.common.components.CancelOutlinedButton(onClick = onCancel, modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget)) { Text("Cancel") } },
                     confirm = { com.d365fo.mobileops.presentation.common.components.ConfirmButton(onClick = { onOk(quantity) }, enabled = quantity.isNotBlank(), modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget)) { Text("OK") } },
                 )
-                androidx.compose.material3.TextButton(onClick = onRemove, modifier = Modifier.heightIn(min = WarehouseDimens.MinTouchTarget)) {
-                    Text("Remove from the list", color = WarehouseStatusColors.red, fontWeight = FontWeight.Bold)
-                }
+                // A red outline button, not plain red text (user, 16 Nov 2026).
+                com.d365fo.mobileops.presentation.common.components.CancelOutlinedButton(
+                    onClick = onRemove,
+                    modifier = Modifier.fillMaxWidth().padding(top = 12.dp).heightIn(min = WarehouseDimens.MinTouchTarget),
+                ) { Text("Remove from the list") }
             }
         },
     )

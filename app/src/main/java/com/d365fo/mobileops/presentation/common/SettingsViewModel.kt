@@ -73,6 +73,7 @@ class SettingsViewModel @Inject constructor(
     @dagger.hilt.android.qualifiers.ApplicationContext private val appContext: android.content.Context,
     private val workBackup: dagger.Lazy<com.d365fo.mobileops.data.sync.WorkBackup>,
     private val tokenProvider: com.d365fo.mobileops.data.security.TokenProvider,
+    private val licenseRepository: com.d365fo.mobileops.data.repository.LicenseRepository,
 ) : ViewModel() {
 
     /**
@@ -263,7 +264,7 @@ class SettingsViewModel @Inject constructor(
             _test.value = when (val result = clientCredentialsTokenProvider.acquireSilent()) {
                 is NetworkResult.Error -> ConnectionTest.Failed(result.failure.message)
                 NetworkResult.Loading -> ConnectionTest.Running
-                is NetworkResult.Success -> ConnectionTest.Ok("Signed in with client secret.")
+                is NetworkResult.Success -> askD365("Client secret")
             }
         }
     }
@@ -280,10 +281,18 @@ class SettingsViewModel @Inject constructor(
             _test.value = when (val result = tokenProvider.acquireSilent()) {
                 is NetworkResult.Error -> ConnectionTest.Failed(result.failure.message)
                 NetworkResult.Loading -> ConnectionTest.Running
-                is NetworkResult.Success -> ConnectionTest.Ok(
-                    "Device key · " + java.time.LocalTime.now().format(java.time.format.DateTimeFormatter.ofPattern("HH:mm")),
-                )
+                is NetworkResult.Success -> askD365("Device key")
             }
+        }
+    }
+
+    /** Signed in: now one call to D365FO itself (user, 16 Nov 2026), so "Connected" means D365FO answered. */
+    private suspend fun askD365(how: String): ConnectionTest {
+        val at = java.time.LocalTime.now().format(java.time.format.DateTimeFormatter.ofPattern("HH:mm"))
+        return when (val r = licenseRepository.pingD365()) {
+            is NetworkResult.Success -> ConnectionTest.Ok("$how · D365FO answered · $at")
+            is NetworkResult.Error -> ConnectionTest.Failed("Signed in, but D365FO didn't answer: " + r.failure.message)
+            NetworkResult.Loading -> ConnectionTest.Running
         }
     }
 }

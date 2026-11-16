@@ -93,7 +93,7 @@ fun SupervisorVarianceScreen(
             confirmButton = {
                 com.d365fo.mobileops.presentation.common.components.DialogButtonRow(
                     dismiss = { com.d365fo.mobileops.presentation.common.components.CancelOutlinedButton(onClick = viewModel::cancelPost, modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget)) { Text("Cancel") } },
-                    confirm = { com.d365fo.mobileops.presentation.common.components.ConfirmButton(onClick = viewModel::post, modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget)) { Text("Post journal") } },
+                    confirm = { com.d365fo.mobileops.presentation.common.components.CancelButton(onClick = viewModel::post, modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget)) { Text("Post journal") } },
                 )
             },
         )
@@ -437,7 +437,14 @@ private fun DecisionDialog(
         confirmButton = {
             com.d365fo.mobileops.presentation.common.components.DialogButtonRow(
                 dismiss = { com.d365fo.mobileops.presentation.common.components.CancelOutlinedButton(onClick = onDismiss, modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget)) { Text("Cancel") } },
-                confirm = { com.d365fo.mobileops.presentation.common.components.ConfirmButton(onClick = { onConfirm(reason, comment, assignTo) }, modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget)) { Text(verb) } },
+                confirm = {
+                    // Reject is destructive: red, like "Remove this line?" (user, 16 Nov 2026).
+                    if (action == ReviewAction.REJECT) {
+                        com.d365fo.mobileops.presentation.common.components.CancelButton(onClick = { onConfirm(reason, comment, assignTo) }, modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget)) { Text(verb) }
+                    } else {
+                        com.d365fo.mobileops.presentation.common.components.ConfirmButton(onClick = { onConfirm(reason, comment, assignTo) }, modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget)) { Text(verb) }
+                    }
+                },
             )
         },
     )

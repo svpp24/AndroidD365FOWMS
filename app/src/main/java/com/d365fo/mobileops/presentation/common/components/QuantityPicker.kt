@@ -109,8 +109,9 @@ fun QuantityPicker(
                 }
                 extras?.invoke()
                 if (removeLabel != null && onRemove != null) {
-                    SquareTextButton(onClick = onRemove, modifier = Modifier.fillMaxWidth()) {
-                        Text(removeLabel, color = WarehouseStatusColors.red)
+                    // A red outline button, not plain red text (user, 16 Nov 2026).
+                    CancelOutlinedButton(onClick = onRemove, modifier = Modifier.fillMaxWidth().heightIn(min = WarehouseDimens.MinTouchTarget)) {
+                        Text(removeLabel)
                     }
                 }
             }

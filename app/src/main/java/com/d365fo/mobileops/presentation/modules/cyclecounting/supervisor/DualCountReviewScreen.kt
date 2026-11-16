@@ -179,7 +179,8 @@ fun DualCountReviewScreen(
                         ) { Text("Cancel") }
                     },
                     confirm = {
-                        ConfirmButton(
+                        // Can't be undone: red, like "Remove this line?" (user, 16 Nov 2026).
+                        com.d365fo.mobileops.presentation.common.components.CancelButton(
                             onClick = viewModel::post,
                             modifier = Modifier.weight(1f).heightIn(min = WarehouseDimens.MinTouchTarget),
                         ) { Text("Post journal") }

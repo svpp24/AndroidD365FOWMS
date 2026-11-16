@@ -279,4 +279,16 @@ class LicenseRepository @Inject constructor(
          *  live check genuinely cannot be reached - see the class doc's step 7 and [failOrGrace]. */
         const val GRACE_PERIOD_MS = 72 * 60 * 60 * 1000L
     }
+
+    /**
+     * Settings > Test connection (user, 16 Nov 2026): one real call to D365FO - getLicense, a
+     * pure read that works before sign-in - so the test proves sign-in AND the D365FO service,
+     * not only the token.
+     */
+    suspend fun pingD365(): NetworkResult<Unit> =
+        when (val r = errorMapper.safeCall { service.getLicense(GetLicenseServiceRequest(GetLicenseRequestBody(company()))) }) {
+            is NetworkResult.Success -> NetworkResult.Success(Unit)
+            is NetworkResult.Error -> r
+            NetworkResult.Loading -> NetworkResult.Loading
+        }
 }
