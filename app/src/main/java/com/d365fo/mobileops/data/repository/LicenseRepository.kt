@@ -35,7 +35,9 @@ sealed interface LicenseState {
      *  reached, or a genuine connectivity failure outside the offline grace period. Never
      *  recoverable by retrying the same input; the message is shown as-is, it already names
      *  the specific reason. */
-    data class Blocked(val message: String) : LicenseState
+    /** [code]: D365FO's (NO_LICENSE, LICENSE_EXPIRED, DEVICE_LIMIT_REACHED, LICENSE_INVALID) or
+     *  this app's (OFFLINE, CLOCK) - which band and steps the license screen shows. */
+    data class Blocked(val message: String, val code: String = "LICENSE_INVALID", val expiry: String? = null) : LicenseState
 
     /** Either a real full validation just succeeded, or a connectivity failure landed within
      *  the offline grace period of the last real success - see [LicenseRepository.GRACE_PERIOD_MS]. */
@@ -71,6 +73,7 @@ class LicenseRepository @Inject constructor(
     private val secureStore: SecureStore,
     private val integrityTokenProvider: PlayIntegrityTokenProvider,
     private val connectionSettings: com.d365fo.mobileops.data.security.ConnectionSettings,
+    private val expiryNotice: LicenseExpiryNotice,
 ) {
 
     private val _state = MutableStateFlow<LicenseState>(LicenseState.Checking)
@@ -140,7 +143,8 @@ class LicenseRepository @Inject constructor(
             // A real answer from AOS (NO_LICENSE/LICENSE_INVALID/LICENSE_EXPIRED), not a
             // transport failure - never grace-covered.
             return LicenseState.Blocked(
-                licenseResponse.message ?: "License not valid - contact your administrator.",
+                licenseResponse.message ?: "License not valid.",
+                code = licenseResponse.errorCode?.takeIf { it.isNotBlank() } ?: "LICENSE_INVALID",
             )
         }
 
@@ -153,9 +157,7 @@ class LicenseRepository @Inject constructor(
         if (lastTrusted != null) {
             val deviceNowMillis = System.currentTimeMillis()
             if (serverNow.toEpochMilli() < lastTrusted || deviceNowMillis < lastTrusted) {
-                return LicenseState.Blocked(
-                    "Clock moved backward - contact your administrator.",
-                )
+                return LicenseState.Blocked("The clock moved backward on this device or D365FO.", code = "CLOCK")
             }
         }
 
@@ -184,8 +186,13 @@ class LicenseRepository @Inject constructor(
 
         val expiry = runCatching { Instant.parse(licensePayload.expiryUtc) }.getOrNull()
             ?: return LicenseState.Blocked("The license on file has an unreadable expiry date.")
+        expiryNotice.record(licensePayload.expiryUtc)
         if (serverNow.isAfter(expiry)) {
-            return LicenseState.Blocked("This app's license expired on ${licensePayload.expiryUtc}. Contact your administrator.")
+            return LicenseState.Blocked(
+                "This app's license expired on ${licensePayload.expiryUtc}.",
+                code = "LICENSE_EXPIRED",
+                expiry = licensePayload.expiryUtc,
+            )
         }
 
         // Step 6. The Play Integrity token is best-effort - a null here still calls registerDevice,
@@ -217,7 +224,8 @@ class LicenseRepository @Inject constructor(
 
         if (!registerResponse.success) {
             return LicenseState.Blocked(
-                registerResponse.message ?: "Device not registered - contact your administrator.",
+                registerResponse.message ?: "This device could not be registered.",
+                code = registerResponse.errorCode?.takeIf { it.isNotBlank() } ?: "LICENSE_INVALID",
             )
         }
 
@@ -240,7 +248,7 @@ class LicenseRepository @Inject constructor(
             Timber.w("license check failed (%s) - within grace period, proceeding", reason)
             return LicenseState.Ok
         }
-        return LicenseState.Blocked(reason ?: "Can't verify the license - check the connection.")
+        return LicenseState.Blocked(reason ?: "Can't reach D365FO to check the license.", code = "OFFLINE")
     }
 
     private companion object {

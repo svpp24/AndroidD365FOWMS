@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Warning
@@ -78,7 +79,13 @@ private fun BandKind.look() = when (this) {
  * the next scan replaces it. Announced to TalkBack when it changes.
  */
 @Composable
-fun ResultBand(state: BandState, modifier: Modifier = Modifier, remaining: (() -> Float)? = null) {
+fun ResultBand(
+    state: BandState,
+    modifier: Modifier = Modifier,
+    remaining: (() -> Float)? = null,
+    /** An x at the end - Home's license-expiry band (hidden until tomorrow). */
+    onDismiss: (() -> Unit)? = null,
+) {
     val look = state.kind.look()
     Box(
         modifier = modifier
@@ -101,6 +108,11 @@ fun ResultBand(state: BandState, modifier: Modifier = Modifier, remaining: (() -
                 Text(state.title, style = FocusType.bandTitle, color = look.text)
                 state.detail?.takeIf { it.isNotBlank() }?.let {
                     Text(it, style = FocusType.bandDetail, color = look.text)
+                }
+            }
+            onDismiss?.let { dismiss ->
+                androidx.compose.material3.IconButton(onClick = dismiss, modifier = Modifier.size(48.dp)) {
+                    Icon(androidx.compose.material.icons.Icons.Default.Close, contentDescription = "Hide until tomorrow", tint = look.text)
                 }
             }
         }

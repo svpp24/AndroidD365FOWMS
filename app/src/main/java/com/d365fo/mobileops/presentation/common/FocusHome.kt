@@ -89,6 +89,9 @@ internal fun FocusHome(
 ) {
     val session by sessionViewModel.session.collectAsStateWithLifecycle()
     val band by scanViewModel.band.collectAsStateWithLifecycle()
+    // The license-expiry band, once a day for the last 30 days (user, 16 Nov 2026).
+    val licenseNotice: com.d365fo.mobileops.presentation.auth.LicenseNoticeViewModel = hiltViewModel()
+    val licenseBand by licenseNotice.band.collectAsStateWithLifecycle()
     var notAvailable by remember { mutableStateOf<BandState?>(null) }
 
     // Scans reach Home only while it is in front.
@@ -96,7 +99,7 @@ internal fun FocusHome(
     DisposableEffect(lifecycle) {
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
-                Lifecycle.Event.ON_RESUME -> scanViewModel.attach()
+                Lifecycle.Event.ON_RESUME -> { scanViewModel.attach(); licenseNotice.refresh() }
                 Lifecycle.Event.ON_PAUSE -> scanViewModel.detach()
                 else -> Unit
             }
@@ -157,7 +160,8 @@ internal fun FocusHome(
         warehouseName = session?.selected?.warehouseName?.trim()?.takeIf { it.isNotBlank() } ?: code,
         userLabel = user,
         online = online,
-        band = notAvailable ?: band,
+        band = notAvailable ?: band ?: licenseBand,
+        onBandDismiss = if (notAvailable == null && band == null && licenseBand != null) licenseNotice::hideToday else null,
         rows = rows,
         onSettings = onSettings,
         onFeedback = { onOpen(Routes.FEEDBACK) },
@@ -208,6 +212,8 @@ internal fun FocusHomeLayout(
     warehouseName: String,
     online: Boolean,
     band: BandState?,
+    /** An x on [band]: the license-expiry band only. */
+    onBandDismiss: (() -> Unit)? = null,
     rows: List<HomeEntry>,
     onSettings: () -> Unit,
     onSignOut: (() -> Unit)?,
@@ -283,7 +289,7 @@ internal fun FocusHomeLayout(
             ),
         )
 
-        band?.let { ResultBand(it, modifier = Modifier.padding(bottom = 12.dp)) }
+        band?.let { ResultBand(it, modifier = Modifier.padding(bottom = 12.dp), onDismiss = onBandDismiss) }
 
         val area = LocalHomeArea.current
         if (area != null) {

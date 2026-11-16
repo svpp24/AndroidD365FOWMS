@@ -111,6 +111,8 @@ fun AppRoot(
         SettingsScreen(
             onBack = {
                 settingsWhileSignedOut = false
+                // Back from the license screen's menu too: check again (another profile, say).
+                if (licenseState is LicenseState.Blocked) licenseViewModel.validate()
                 // Re-evaluate: the tenant may have just been filled in, which turns
                 // NotConfigured into SignedOut and makes the sign-in button live.
                 sessionViewModel.refresh()
@@ -133,8 +135,10 @@ fun AppRoot(
 
         session is SessionState.Ready && licenseState is LicenseState.Blocked ->
             LicenseInvalidScreen(
-                message = (licenseState as LicenseState.Blocked).message,
+                state = licenseState as LicenseState.Blocked,
+                connectedTo = listOf(tenant.label, tenant.company).filter { it.isNotBlank() }.joinToString(" · "),
                 onRetry = licenseViewModel::validate,
+                onOpenSettings = { settingsWhileSignedOut = true },
             )
 
         // Checking gets its own spinner rather than falling through to WorkerLoginScreen and
@@ -171,11 +175,14 @@ fun AppRoot(
             // Shown once, right where a worker lands after signing in, for as long as the
             // license's renewal-warning window lasts - dismissed here, not auto-hidden, so it
             // doesn't disappear before anyone reads it. See WorkerSessionRepository.signIn.
-            licenseWarning?.let { message ->
-                WarningBanner(
-                    message = message,
-                    onDismiss = workerSessionViewModel::dismissLicenseWarning,
-                )
+            // D365FO's renewal warning at sign-in: its date feeds Home's daily band (user, 16 Nov
+            // 2026) - no banner here any more, see LicenseExpiryNotice.
+            val licenseNotice: com.d365fo.mobileops.presentation.auth.LicenseNoticeViewModel = hiltViewModel()
+            LaunchedEffect(licenseWarning) {
+                licenseWarning?.let { message ->
+                    licenseNotice.recordFromWarning(message)
+                    workerSessionViewModel.dismissLicenseWarning()
+                }
             }
             // The item list has not synced for two days (D365FO's Mobile sync health calls the
             // device stale by the same rule): scans may miss new items and barcodes.
