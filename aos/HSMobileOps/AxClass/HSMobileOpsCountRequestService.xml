@@ -842,7 +842,9 @@ class HSMobileOpsCountRequestService
                 response.parmMessage(strFmt('%1 item(s) are not in D365FO: %2. Nothing was created.', unknownCount, unknown));
                 return response;
             }
-            if (!itemIds.elements())
+            // A blind count needs no categories (user, 16 Nov 2026): the supervisor tells the
+            // worker what to count, and a count with no item rows takes any item.
+            if (!itemIds.elements() && type != HSMobileOpsCountMasterType::Blind)
             {
                 response.parmErrorCode('NO_ITEMS');
                 response.parmMessage('Pick at least one category with items, or an item.');

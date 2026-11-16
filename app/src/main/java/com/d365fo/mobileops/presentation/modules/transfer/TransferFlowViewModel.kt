@@ -1167,7 +1167,8 @@ class TransferFlowViewModel @Inject constructor(
             persist()
         } else {
             scanFeedback.success()
-            _state.update { it.copy(step = next) }
+            _state.update { it.copy(step = next, batchChoices = emptyList()) }
+            if (next == TransferStep.BATCH && _state.value.capture.mode == TransferMode.SHIP) loadBatchChoices()
             // A GS1 scan already answered this step: apply it, after this submit has finished.
             gs1Answers.remove(next)?.let { answer ->
                 viewModelScope.launch {
@@ -1177,6 +1178,37 @@ class TransferFlowViewModel @Inject constructor(
                 }
             }
         }
+    }
+
+    /**
+     * Shipping asks for a batch (user, 16 Nov 2026): the item's batches available at From, the
+     * earliest expiry first (no expiry last), so the worker picks one instead of guessing.
+     */
+    private fun loadBatchChoices() {
+        val capture = _state.value.capture
+        val line = capture.line ?: return
+        val from = capture.fromWarehouseId?.takeIf { it.isNotBlank() } ?: line.fromWarehouseId ?: return
+        val v = line.variant
+        viewModelScope.launch {
+            val result = orderCreation.stock(
+                line.itemId,
+                com.d365fo.mobileops.data.repository.OrderVariant(v.configId.orEmpty(), v.sizeId.orEmpty(), v.colorId.orEmpty(), v.styleId.orEmpty()),
+                from,
+            )
+            val rows = (result as? com.d365fo.mobileops.util.NetworkResult.Success)?.data.orEmpty()
+            val choices = rows.filter { it.batchId.isNotBlank() }
+                .groupBy { it.batchId }
+                .map { (batch, r) -> BatchChoice(batch, r.firstNotNullOfOrNull { it.expiry }, r.sumOf { it.available }) }
+                .filter { it.available > 0 }
+                .sortedWith(compareBy<BatchChoice>({ it.expiry == null }, { it.expiry }, { it.batchId }))
+            // Still on this line's batch step - the worker may have scanned one meanwhile.
+            _state.update { s -> if (s.step == TransferStep.BATCH && s.capture.line?.lineNumber == line.lineNumber) s.copy(batchChoices = choices) else s }
+        }
+    }
+
+    fun chooseBatch(batchId: String) {
+        _state.update { it.copy(batchChoices = emptyList()) }
+        submit(batchId)
     }
 
     private fun fail(message: String) {
@@ -1206,6 +1238,8 @@ data class TransferFlowState(
     val postNotice: PostNotice? = null,
     /** Today's transfers for this direction - see TransferFlowViewModel.loadTodays. */
     val todays: List<com.d365fo.mobileops.data.repository.TransferOrderSummary> = emptyList(),
+    /** Shipping's batch step: the batches available at From, earliest expiry first. */
+    val batchChoices: List<BatchChoice> = emptyList(),
 ) {
     /**
      * Lines still to scan: the server's count, less the lines this session has scanned in full.
@@ -1231,6 +1265,9 @@ data class TransferFlowState(
 }
 
 enum class PostNoticeKind { SENT, QUEUED, REFUSED }
+
+/** One batch to ship from: its expiry, and how much is available at From. */
+data class BatchChoice(val batchId: String, val expiry: java.time.LocalDate?, val available: Double)
 
 data class PostNotice(val kind: PostNoticeKind, val message: String)
 

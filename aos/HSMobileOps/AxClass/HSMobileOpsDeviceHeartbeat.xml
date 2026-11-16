@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsDeviceHeartbeat</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// A handheld's check-in - see HSMobileOpsSkuPageService::heartbeat: it is on, and what waits in
+/// its posting queue (OldestQueuedSeconds: how long the oldest has waited).
+/// </summary>
+[DataContractAttribute]
+class HSMobileOpsDeviceHeartbeat
+{
+    str dataAreaId;
+    str deviceId;
+    str warehouse;
+    int queuePending;
+    int queueFailed;
+    int oldestQueuedSeconds;
+    str appVersion;
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmDataAreaId</Name>
+				<Source><![CDATA[
+    [DataMemberAttribute('DataAreaId')]
+    public str parmDataAreaId(str _value = dataAreaId)
+    {
+        dataAreaId = _value;
+        return dataAreaId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmDeviceId</Name>
+				<Source><![CDATA[
+    [DataMemberAttribute('DeviceId')]
+    public str parmDeviceId(str _value = deviceId)
+    {
+        deviceId = _value;
+        return deviceId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmWarehouse</Name>
+				<Source><![CDATA[
+    [DataMemberAttribute('Warehouse')]
+    public str parmWarehouse(str _value = warehouse)
+    {
+        warehouse = _value;
+        return warehouse;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmQueuePending</Name>
+				<Source><![CDATA[
+    [DataMemberAttribute('QueuePending')]
+    public int parmQueuePending(int _value = queuePending)
+    {
+        queuePending = _value;
+        return queuePending;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmQueueFailed</Name>
+				<Source><![CDATA[
+    [DataMemberAttribute('QueueFailed')]
+    public int parmQueueFailed(int _value = queueFailed)
+    {
+        queueFailed = _value;
+        return queueFailed;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmOldestQueuedSeconds</Name>
+				<Source><![CDATA[
+    [DataMemberAttribute('OldestQueuedSeconds')]
+    public int parmOldestQueuedSeconds(int _value = oldestQueuedSeconds)
+    {
+        oldestQueuedSeconds = _value;
+        return oldestQueuedSeconds;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmAppVersion</Name>
+				<Source><![CDATA[
+    [DataMemberAttribute('AppVersion')]
+    public str parmAppVersion(str _value = appVersion)
+    {
+        appVersion = _value;
+        return appVersion;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

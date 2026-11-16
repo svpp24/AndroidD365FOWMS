@@ -35,12 +35,20 @@ class TransactionPushWorker @AssistedInject constructor(
     private val notifier: SyncNotifier,
     private val connectionSettings: com.d365fo.mobileops.data.security.ConnectionSettings,
     private val followUp: com.d365fo.mobileops.data.sync.PostingFollowUp,
+    private val heartbeat: com.d365fo.mobileops.data.sync.DeviceHeartbeat,
 ) : CoroutineWorker(context, params) {
 
     private var sentThisRun = 0
 
     override suspend fun doWork(): Result {
         val result = drain()
+        // Sync health's check-in, at most every 15 minutes (16 Nov 2026). Never fails the run.
+        try {
+            heartbeat.sendIfDue()
+        } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
+            Timber.w(e, "device check-in failed")
+        }
         // What became of what was sent, this run or before. Never fails the run: it is asked again.
         // A run that sent nothing asks at most every 5 minutes - the follow-up job asks every 2
         // while anything sent is recent (calls, 10 Nov).

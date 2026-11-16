@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxMenuItemAction xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsDeviceHealthRun</Name>
+	<Label>Check device health now</Label>
+	<HelpText>Works out every handheld's health now, alerts the Mobile administrators about the ones that just turned bad, and schedules the hourly job if there is none.</HelpText>
+	<Object>HSMobileOpsDeviceHealthBatch</Object>
+	<ObjectType>Class</ObjectType>
+</AxMenuItemAction>

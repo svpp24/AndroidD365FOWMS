@@ -470,6 +470,12 @@ interface MobileOpsServiceApi {
         @Body body: com.d365fo.mobileops.data.remote.dto.SkuSyncReportServiceRequest,
     ): Response<com.d365fo.mobileops.data.remote.dto.SkuPageServiceResponse>
 
+    /** The device's check-in - seen now, and its posting queue - for Sync health in D365FO. */
+    @POST("HSMobileOpsServiceGroup/HSMobileOpsSkuPageSvc/heartbeat")
+    suspend fun deviceHeartbeat(
+        @Body body: com.d365fo.mobileops.data.remote.dto.DeviceHeartbeatServiceRequest,
+    ): Response<com.d365fo.mobileops.data.remote.dto.SkuPageServiceResponse>
+
     /** One page of the offline item / barcode / variant cache - see SkuSyncRepository. */
     @POST("HSMobileOpsServiceGroup/HSMobileOpsSkuPageSvc/getSkuPage")
     suspend fun getSkuPage(

@@ -76,6 +76,27 @@ class CountListViewModel @Inject constructor(
     )
     val state = _state.asStateFlow()
 
+    /**
+     * A blind count straight away (user, 16 Nov 2026): no categories - the supervisor tells the
+     * worker what to count. A worker then counts it ([onCreated] with its id); a supervisor sees
+     * it in the list.
+     */
+    fun startBlind(onCreated: (String) -> Unit) {
+        val wh = warehouse ?: return
+        if (_state.value.loading) return
+        _state.update { it.copy(loading = true, error = null) }
+        viewModelScope.launch {
+            when (val r = requests.create(CountType.BLIND, wh, emptyList(), emptyList())) {
+                is NetworkResult.Success -> {
+                    refresh()
+                    if (!_state.value.supervisor && r.data.masterId.isNotBlank()) onCreated(r.data.masterId)
+                }
+                is NetworkResult.Error -> _state.update { it.copy(loading = false, error = r.failure.message) }
+                NetworkResult.Loading -> Unit
+            }
+        }
+    }
+
     fun refresh() {
         val wh = warehouse ?: return _state.update { it.copy(loading = false, error = "No warehouse is assigned to you.") }
         _state.update { it.copy(loading = true, error = null) }
@@ -138,12 +159,16 @@ fun CountListScreen(
                     title = if (state.type == CountType.WALL_TO_WALL) "Open a wall to wall count" else "New ${state.type.label.lowercase()}",
                     subtitle = if (state.type == CountType.WALL_TO_WALL) {
                         "The whole of ${state.warehouseId.orEmpty()}, for every counter here."
+                    } else if (state.type == CountType.BLIND) {
+                        if (state.supervisor) "Starts at once. Tell the counter what to count." else "Starts at once. Count what your supervisor asked for."
                     } else {
                         "By category or item. Every counter of ${state.warehouseId.orEmpty()} sees it."
                     },
                     icon = androidx.compose.material.icons.Icons.Default.Add,
                     chevron = true,
-                    onClick = { onCreate(state.type) },
+                    onClick = {
+                        if (state.type == CountType.BLIND) viewModel.startBlind { id -> onCount(id, CountType.BLIND) } else onCreate(state.type)
+                    },
                 )
             }
             if (state.type == CountType.WALL_TO_WALL && !state.supervisor) {

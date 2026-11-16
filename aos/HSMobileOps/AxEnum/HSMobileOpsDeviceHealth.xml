@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxEnum xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsDeviceHealth</Name>
+	<Label>Health</Label>
+	<HelpText>How a handheld is doing: its item sync, its postings and when it was last seen. Higher values need a look first.</HelpText>
+	<EnumValues>
+		<AxEnumValue>
+			<Name>Ok</Name>
+			<Label>OK</Label>
+			<Value>0</Value>
+		</AxEnumValue>
+		<AxEnumValue>
+			<Name>NeverSynced</Name>
+			<Label>No successful sync yet</Label>
+			<Value>1</Value>
+		</AxEnumValue>
+		<AxEnumValue>
+			<Name>Offline</Name>
+			<Label>Not seen</Label>
+			<Value>2</Value>
+		</AxEnumValue>
+		<AxEnumValue>
+			<Name>Stale</Name>
+			<Label>Stale</Label>
+			<Value>3</Value>
+		</AxEnumValue>
+		<AxEnumValue>
+			<Name>QueueStuck</Name>
+			<Label>Postings stuck</Label>
+			<Value>4</Value>
+		</AxEnumValue>
+		<AxEnumValue>
+			<Name>Failing</Name>
+			<Label>Failing</Label>
+			<Value>5</Value>
+		</AxEnumValue>
+		<AxEnumValue>
+			<Name>Retired</Name>
+			<Label>Retired</Label>
+			<Value>6</Value>
+		</AxEnumValue>
+	</EnumValues>
+</AxEnum>

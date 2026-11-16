@@ -1,0 +1,271 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsDeviceHealthBatch</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Device health (16 Nov 2026): every hour, works out each handheld's health in every company
+/// (HSMobileOpsDeviceSync.HealthStatus) and sends the Mobile administrators one Action center
+/// notification listing the devices that just turned failing, postings stuck, stale or not seen.
+///
+/// "Check device health now" on Sync health runs it at once and schedules the hourly job if there
+/// is none. Withholding or changing the job under System administration > Batch jobs is respected.
+/// </summary>
+class HSMobileOpsDeviceHealthBatch extends RunBaseBatch
+{
+    #define.CurrentVersion(1)
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>main</Name>
+				<Source><![CDATA[
+    public static void main(Args _args)
+    {
+        boolean scheduled = HSMobileOpsDeviceHealthBatch::ensureScheduled();
+        info(HSMobileOpsDeviceHealthBatch::check());
+        if (scheduled)
+        {
+            info(strFmt('Batch job "%1" scheduled: every hour.', HSMobileOpsDeviceHealthBatch::caption()));
+        }
+        Object caller = _args ? _args.caller() : null;
+        if (caller && caller is FormRun && formHasMethod(caller, identifierStr(refreshAll)))
+        {
+            caller.refreshAll();
+        }
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>check</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// One pass over every company. Returns what it found.
+    /// </summary>
+    public static str check()
+    {
+        DataArea                dataArea;
+        HSMobileOpsDeviceSync   row;
+        HSMobileOpsDeviceSync   upd;
+        HSMobileOpsDeviceHealth health;
+        str                     turned;
+        int                     devices;
+        int                     needLook;
+        int                     newlyBad;
+
+        while select Id from dataArea
+            where dataArea.isVirtual == NoYes::No
+        {
+            changecompany (dataArea.Id)
+            {
+                row = null;
+                while select row
+                {
+                    devices++;
+                    health = row.computeHealth();
+                    if (health != HSMobileOpsDeviceHealth::Ok && health != HSMobileOpsDeviceHealth::Retired)
+                    {
+                        needLook++;
+                    }
+                    if (health != row.HealthStatus)
+                    {
+                        if (HSMobileOpsDeviceHealthBatch::isAlert(health))
+                        {
+                            newlyBad++;
+                            if (newlyBad <= 10)
+                            {
+                                turned += strFmt('%1%2 (%3): %4', turned ? '; ' : '', row.deviceName() ? row.deviceName() : row.DeviceId, dataArea.Id, row.health());
+                            }
+                        }
+                        ttsbegin;
+                        select forUpdate firstOnly upd
+                            where upd.RecId == row.RecId;
+                        if (upd.RecId)
+                        {
+                            upd.HealthStatus = health;
+                            upd.doUpdate();
+                        }
+                        ttscommit;
+                    }
+                }
+            }
+        }
+        if (newlyBad)
+        {
+            HSMobileOpsDeviceHealthBatch::alert(newlyBad, turned + (newlyBad > 10 ? strFmt('; and %1 more', newlyBad - 10) : ''));
+        }
+        return strFmt('Device health: %1 devices, %2 need a look, %3 just turned bad.', devices, needLook, newlyBad);
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>isAlert</Name>
+				<Source><![CDATA[
+    private static boolean isAlert(HSMobileOpsDeviceHealth _health)
+    {
+        return _health == HSMobileOpsDeviceHealth::Failing
+            || _health == HSMobileOpsDeviceHealth::QueueStuck
+            || _health == HSMobileOpsDeviceHealth::Stale
+            || _health == HSMobileOpsDeviceHealth::Offline;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>alert</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// One Action center notification to every user with the Mobile administrator role. Never fails the job.
+    /// </summary>
+    private static void alert(int _count, str _devices)
+    {
+        SecurityRole                   role;
+        SecurityUserRole               userRole;
+        SystemNotificationDataContract notification;
+        int                            n;
+
+        try
+        {
+            notification = new SystemNotificationDataContract();
+            while select User from userRole
+                group by userRole.User
+                exists join role
+                    where role.RecId   == userRole.SecurityRole
+                       && role.AotName == 'HSMobileOpsAdministrator'
+            {
+                n++;
+                notification.Users().value(n, userRole.User);
+            }
+            if (!n)
+            {
+                return;
+            }
+            notification.Title(strFmt('%1 handheld(s) need a look', _count));
+            notification.Message(strFmt('%1. See Sync health > Devices.', subStr(_devices, 1, 900)));
+            notification.RuleId('ExcelStaticExport');
+            notification.ExpirationDateTime(DateTimeUtil::addHours(DateTimeUtil::utcNow(), 24));
+            SystemNotificationsManager::AddSystemNotification(notification);
+        }
+        catch
+        {
+            // An alert that cannot be sent must not fail the health check.
+        }
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>caption</Name>
+				<Source><![CDATA[
+    public static str caption()
+    {
+        return 'Mobile ops: device health';
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>isScheduled</Name>
+				<Source><![CDATA[
+    public static boolean isScheduled()
+    {
+        Batch    batch;
+        BatchJob batchJob;
+
+        select firstOnly RecId from batch
+            where batch.ClassNumber == classNum(HSMobileOpsDeviceHealthBatch)
+            exists join batchJob
+                where batchJob.RecId  == batch.BatchJobId
+                   && batchJob.Status != BatchStatus::Canceled
+                   && batchJob.Status != BatchStatus::Finished;
+
+        return batch.RecId != 0;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>ensureScheduled</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Creates the hourly job - starting in an hour, no end - unless one exists. True when this
+    /// call created it.
+    /// </summary>
+    public static boolean ensureScheduled()
+    {
+        BatchHeader       batchHeader;
+        SysRecurrenceData recurrence;
+
+        if (HSMobileOpsDeviceHealthBatch::isScheduled())
+        {
+            return false;
+        }
+
+        recurrence = SysRecurrence::defaultRecurrence();
+        recurrence = SysRecurrence::setRecurrenceStartDateTime(recurrence, DateTimeUtil::addHours(DateTimeUtil::utcNow(), 1));
+        recurrence = SysRecurrence::setRecurrenceNoEnd(recurrence);
+        recurrence = SysRecurrence::setRecurrenceUnit(recurrence, SysRecurrenceUnit::Hour, 1);
+
+        batchHeader = BatchHeader::construct();
+        batchHeader.parmCaption(HSMobileOpsDeviceHealthBatch::caption());
+        batchHeader.parmRecurrenceData(recurrence);
+        batchHeader.addTask(new HSMobileOpsDeviceHealthBatch());
+        batchHeader.save();
+
+        return true;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>run</Name>
+				<Source><![CDATA[
+    public void run()
+    {
+        HSMobileOpsDeviceHealthBatch::check();
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>pack</Name>
+				<Source><![CDATA[
+    public container pack()
+    {
+        return [#CurrentVersion];
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>unpack</Name>
+				<Source><![CDATA[
+    public boolean unpack(container _packedClass)
+    {
+        return RunBase::getVersion(_packedClass) == #CurrentVersion;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>canGoBatch</Name>
+				<Source><![CDATA[
+    public boolean canGoBatch()
+    {
+        return true;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>runsImpersonated</Name>
+				<Source><![CDATA[
+    public boolean runsImpersonated()
+    {
+        return true;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>description</Name>
+				<Source><![CDATA[
+    public static ClassDescription description()
+    {
+        return HSMobileOpsDeviceHealthBatch::caption();
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

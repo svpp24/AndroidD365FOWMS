@@ -21,5 +21,9 @@
 			<Name>reportSync</Name>
 			<Method>reportSync</Method>
 		</AxServiceOperation>
+		<AxServiceOperation>
+			<Name>heartbeat</Name>
+			<Method>heartbeat</Method>
+		</AxServiceOperation>
 	</ServiceOperations>
 </AxService>

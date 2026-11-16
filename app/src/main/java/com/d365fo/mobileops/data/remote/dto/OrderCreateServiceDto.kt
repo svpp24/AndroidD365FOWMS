@@ -58,6 +58,8 @@ data class OrderLineDto(
     @SerialName("ColorId") val colorId: String = "",
     @SerialName("StyleId") val styleId: String = "",
     @SerialName("BatchId") val batchId: String = "",
+    /** getStock: the batch's expiry, yyyy-MM-dd; blank without one. */
+    @SerialName("ExpiryDate") val expiryDate: String = "",
     @SerialName("SerialId") val serialId: String = "",
     @SerialName("LocationId") val locationId: String = "",
     @SerialName("Qty") val qty: Double = 0.0,

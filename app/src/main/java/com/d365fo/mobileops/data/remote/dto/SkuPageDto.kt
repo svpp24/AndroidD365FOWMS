@@ -56,6 +56,22 @@ data class SkuSyncReportBody(
     @SerialName("AppVersion") val appVersion: String = "",
 )
 
+/** HSMobileOpsSkuPageSvc/heartbeat - the device's check-in, for Sync health in D365FO (16 Nov 2026). */
+@Serializable
+data class DeviceHeartbeatServiceRequest(@SerialName("_request") val request: DeviceHeartbeatBody)
+
+@Serializable
+data class DeviceHeartbeatBody(
+    @SerialName("DataAreaId") val dataAreaId: String,
+    @SerialName("DeviceId") val deviceId: String,
+    @SerialName("Warehouse") val warehouse: String = "",
+    @SerialName("QueuePending") val queuePending: Int = 0,
+    @SerialName("QueueFailed") val queueFailed: Int = 0,
+    /** How long the oldest waiting posting has waited; 0 with none waiting. */
+    @SerialName("OldestQueuedSeconds") val oldestQueuedSeconds: Int = 0,
+    @SerialName("AppVersion") val appVersion: String = "",
+)
+
 /**
  * getSkuSnapshot's RowsJson: the company's current item snapshot (Mobile item snapshot in D365FO) -
  * each area's whole feed as one gzip file, one getSkuPage page of rows per line.

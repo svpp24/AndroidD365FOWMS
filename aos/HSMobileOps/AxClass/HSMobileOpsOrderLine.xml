@@ -9,6 +9,7 @@
 [DataContractAttribute]
 class HSMobileOpsOrderLine
 {
+    str expiryDate;
     real lineNumber;
     str itemId;
     str itemName;
@@ -375,6 +376,19 @@ class HSMobileOpsOrderLine
     {
         locationId = _value;
         return locationId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmExpiryDate</Name>
+				<Source><![CDATA[
+
+    /// <summary>The batch's expiry date, yyyy-MM-dd - getStock, so a handheld can offer the earliest first.</summary>
+    [DataMemberAttribute('ExpiryDate')]
+    public str parmExpiryDate(str _value = expiryDate)
+    {
+        expiryDate = _value;
+        return expiryDate;
     }
 ]]></Source>
 			</Method>

@@ -256,6 +256,34 @@ class HSMobileOpsSkuPageService
 ]]></Source>
 			</Method>
 			<Method>
+				<Name>heartbeat</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// A handheld's check-in, every 15 minutes or so (16 Nov 2026): seen now, and its posting queue -
+    /// what Sync health shows. Bookkeeping only.
+    /// </summary>
+    public HSMobileOpsSkuPageResponse heartbeat(HSMobileOpsDeviceHeartbeat _request)
+    {
+        HSMobileOpsSkuPageResponse response = new HSMobileOpsSkuPageResponse();
+
+        response.parmSuccess(false);
+        response.parmServerUtc(DateTimeUtil::toStr(DateTimeUtil::utcNow()));
+        if (!_request || !_request.parmDeviceId() || strLen(_request.parmDeviceId()) > 64
+            || !_request.parmDataAreaId() || !CompanyInfo::findDataArea(_request.parmDataAreaId()).RecId)
+        {
+            response.parmErrorCode('INVALID_REQUEST');
+            return response;
+        }
+        changecompany (_request.parmDataAreaId())
+        {
+            HSMobileOpsDeviceSync::heartbeat(_request);
+        }
+        response.parmSuccess(true);
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
 				<Name>snapshotAreas</Name>
 				<Source><![CDATA[
 

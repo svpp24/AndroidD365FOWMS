@@ -48,6 +48,7 @@ public class HSMobileOpsDeviceSync extends common
         row.Scope         = _report.parmScope();
         row.AppVersion    = subStr(_report.parmAppVersion(), 1, 32);
         row.LastReportUtc = now;
+        row.LastSeenUtc   = now;
         if (_report.parmSucceeded())
         {
             row.LastSuccessUtc = now;
@@ -61,6 +62,7 @@ public class HSMobileOpsDeviceSync extends common
             row.LastErrorUtc = now;
             row.LastError    = subStr(_report.parmMessage(), 1, 250);
         }
+        row.HealthStatus = row.computeHealth();
         if (row.RecId)
         {
             row.update();
@@ -99,31 +101,148 @@ public class HSMobileOpsDeviceSync extends common
 			<Method>
 				<Name>health</Name>
 				<Source><![CDATA[
-
-    /// <summary>What an administrator needs first: OK, failing (with why) or stale (since when).</summary>
+    /// <summary>What needs a look, in words - see computeHealth.</summary>
     public display str health()
     {
-        str  text;
         int64 hours;
 
+        switch (this.computeHealth())
+        {
+            case HSMobileOpsDeviceHealth::Retired:
+                return 'Retired device';
+            case HSMobileOpsDeviceHealth::Failing:
+                return 'Failing: ' + this.LastError;
+            case HSMobileOpsDeviceHealth::QueueStuck:
+                return this.QueueFailed
+                    ? strFmt('%1 postings refused - see Posting queue', this.QueueFailed)
+                    : strFmt('%1 postings waiting since %2', this.QueuePending, this.OldestQueuedUtc);
+            case HSMobileOpsDeviceHealth::NeverSynced:
+                return 'No successful item sync yet';
+            case HSMobileOpsDeviceHealth::Stale:
+                hours = DateTimeUtil::getDifference(DateTimeUtil::utcNow(), this.LastSuccessUtc) div 3600;
+                return hours >= 48 ? strFmt('Stale: last sync %1 days ago', hours div 24) : strFmt('Stale: last sync %1 hours ago', hours);
+            case HSMobileOpsDeviceHealth::Offline:
+                hours = DateTimeUtil::getDifference(DateTimeUtil::utcNow(), this.lastSeen()) div 3600;
+                return strFmt('Not seen for %1 hours', hours);
+        }
+        return 'OK';
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>computeHealth</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// The device's health now (16 Nov 2026), the worst first: retired (Hub devices, not active),
+    /// failing (last sync failed), postings stuck (any refused, or one waiting over stuckMinutes),
+    /// no sync yet, stale (no successful sync for staleHours), not seen (nothing for offlineHours).
+    /// </summary>
+    public HSMobileOpsDeviceHealth computeHealth()
+    {
+        HSMobileOpsDevice device;
+        utcdatetime       now = DateTimeUtil::utcNow();
+        utcdatetime       seen = this.lastSeen();
+
+        select firstOnly RecId, IsActive from device
+            where device.DeviceId == this.DeviceId;
+        if (device.RecId && device.IsActive == NoYes::No)
+        {
+            return HSMobileOpsDeviceHealth::Retired;
+        }
         if (this.isFailing())
         {
-            text = 'Failing: ' + this.LastError;
+            return HSMobileOpsDeviceHealth::Failing;
         }
-        else if (!this.LastSuccessUtc)
+        if (this.QueueFailed > 0
+            || (this.QueuePending > 0 && this.OldestQueuedUtc
+                && DateTimeUtil::getDifference(now, this.OldestQueuedUtc) > HSMobileOpsDeviceSync::stuckMinutes() * 60))
         {
-            text = 'Never finished a sync';
+            return HSMobileOpsDeviceHealth::QueueStuck;
         }
-        else if (this.isStale())
+        if (!this.LastSuccessUtc)
         {
-            hours = DateTimeUtil::getDifference(DateTimeUtil::utcNow(), this.LastSuccessUtc) div 3600;
-            text  = hours >= 48 ? strFmt('Stale: last sync %1 days ago', hours div 24) : strFmt('Stale: last sync %1 hours ago', hours);
+            return HSMobileOpsDeviceHealth::NeverSynced;
+        }
+        if (this.isStale())
+        {
+            return HSMobileOpsDeviceHealth::Stale;
+        }
+        if (!seen || DateTimeUtil::getDifference(now, seen) > HSMobileOpsDeviceSync::offlineHours() * 3600)
+        {
+            return HSMobileOpsDeviceHealth::Offline;
+        }
+        return HSMobileOpsDeviceHealth::Ok;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>lastSeen</Name>
+				<Source><![CDATA[
+    /// <summary>The later of the last check-in and the last sync report.</summary>
+    public utcdatetime lastSeen()
+    {
+        return this.LastSeenUtc > this.LastReportUtc ? this.LastSeenUtc : this.LastReportUtc;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>offlineHours</Name>
+				<Source><![CDATA[
+    public static int offlineHours()
+    {
+        return 24;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>stuckMinutes</Name>
+				<Source><![CDATA[
+    public static int stuckMinutes()
+    {
+        return 30;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>heartbeat</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// A device's check-in (16 Nov 2026): seen now, with what waits in its posting queue. The caller
+    /// has checked the company and the device id.
+    /// </summary>
+    public static void heartbeat(HSMobileOpsDeviceHeartbeat _beat)
+    {
+        HSMobileOpsDeviceSync row;
+        utcdatetime           now = DateTimeUtil::utcNow();
+
+        ttsbegin;
+        select forUpdate firstOnly row
+            where row.DeviceId == _beat.parmDeviceId();
+        row.DeviceId     = _beat.parmDeviceId();
+        if (_beat.parmWarehouse())
+        {
+            row.Warehouse = _beat.parmWarehouse();
+        }
+        if (_beat.parmAppVersion())
+        {
+            row.AppVersion = subStr(_beat.parmAppVersion(), 1, 32);
+        }
+        row.LastSeenUtc     = now;
+        row.QueuePending    = max(0, _beat.parmQueuePending());
+        row.QueueFailed     = max(0, _beat.parmQueueFailed());
+        row.OldestQueuedUtc = row.QueuePending > 0 && _beat.parmOldestQueuedSeconds() > 0
+            ? DateTimeUtil::addSeconds(now, -_beat.parmOldestQueuedSeconds())
+            : DateTimeUtil::minValue();
+        row.HealthStatus    = row.computeHealth();
+        if (row.RecId)
+        {
+            row.update();
         }
         else
         {
-            text = 'OK';
+            row.insert();
         }
-        return text;
+        ttscommit;
     }
 ]]></Source>
 			</Method>
@@ -256,6 +375,42 @@ public class HSMobileOpsDeviceSync extends common
 			<AllowEdit>No</AllowEdit>
 			<Label>App version</Label>
 			<StringSize>32</StringSize>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldEnum">
+			<Name>HealthStatus</Name>
+			<AllowEdit>No</AllowEdit>
+			<EnumType>HSMobileOpsDeviceHealth</EnumType>
+			<HelpText>Worked out at each report and check-in, and every hour by the device health job.</HelpText>
+			<Label>Health status</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldUtcDateTime">
+			<Name>LastSeenUtc</Name>
+			<AllowEdit>No</AllowEdit>
+			<HelpText>The device's last item sync report or check-in. Not seen: nothing for 24 hours.</HelpText>
+			<Label>Last seen</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldInt">
+			<Name>QueuePending</Name>
+			<AllowEdit>No</AllowEdit>
+			<HelpText>Postings on the device waiting to reach D365FO, at its last check-in.</HelpText>
+			<Label>Postings waiting</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldInt">
+			<Name>QueueFailed</Name>
+			<AllowEdit>No</AllowEdit>
+			<HelpText>Postings D365FO refused that the device still shows in Activity, at its last check-in.</HelpText>
+			<Label>Postings refused</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldUtcDateTime">
+			<Name>OldestQueuedUtc</Name>
+			<AllowEdit>No</AllowEdit>
+			<HelpText>Since when the oldest waiting posting has waited. Postings stuck: more than 30 minutes.</HelpText>
+			<Label>Oldest waiting since</Label>
 		</AxTableField>
 	</Fields>
 	<FullTextIndexes />

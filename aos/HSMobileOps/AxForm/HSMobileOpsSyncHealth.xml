@@ -14,6 +14,7 @@
 [Form]
 public class HSMobileOpsSyncHealth extends FormRun
 {
+    QueryBuildRange retiredRange;
 }
 ]]></Source>
 			</Method>
@@ -25,8 +26,12 @@ public class HSMobileOpsSyncHealth extends FormRun
     {
         HSMobileOpsWarehouseControl::fillWarehouses();
         super();
-        // The devices that need a look first: oldest successful sync on top.
+        // The devices that need a look first: worst health, then oldest successful sync. Retired
+        // devices hidden unless Show retired is ticked (16 Nov 2026).
+        HSMobileOpsDeviceSync_ds.queryBuildDataSource().addSortField(fieldNum(HSMobileOpsDeviceSync, HealthStatus), SortOrder::Descending);
         HSMobileOpsDeviceSync_ds.queryBuildDataSource().addSortField(fieldNum(HSMobileOpsDeviceSync, LastSuccessUtc), SortOrder::Ascending);
+        retiredRange = HSMobileOpsDeviceSync_ds.queryBuildDataSource().addRange(fieldNum(HSMobileOpsDeviceSync, HealthStatus));
+        retiredRange.value(SysQuery::valueNot(HSMobileOpsDeviceHealth::Retired));
         HSMobileOpsSkuSnapshot_ds.queryBuildDataSource().addSortField(fieldNum(HSMobileOpsSkuSnapshot, BuiltAtUtc), SortOrder::Descending);
         this.showSummary();
     }
@@ -42,6 +47,7 @@ public class HSMobileOpsSyncHealth extends FormRun
         HSMobileOpsSkuSnapshot      snapshot;
         HSMobileOpsSkuSnapshot      company = HSMobileOpsSkuSnapshot::current('');
         HSMobileOpsDeviceSync       device;
+        HSMobileOpsDeviceHealth     health;
         HSMobileOpsWarehouseControl control;
         int                         ready;
         int                         building;
@@ -94,20 +100,43 @@ public class HSMobileOpsSyncHealth extends FormRun
 
         while select device
         {
+            health = device.computeHealth();
+            if (health == HSMobileOpsDeviceHealth::Retired)
+            {
+                continue;
+            }
+            switch (health)
+            {
+                case HSMobileOpsDeviceHealth::Failing:
+                case HSMobileOpsDeviceHealth::QueueStuck:
+                    failing++;
+                    break;
+                case HSMobileOpsDeviceHealth::Stale:
+                case HSMobileOpsDeviceHealth::Offline:
+                case HSMobileOpsDeviceHealth::NeverSynced:
+                    stale++;
+                    break;
+            }
             devices++;
-            if (device.isFailing())
-            {
-                failing++;
-            }
-            else if (device.isStale())
-            {
-                stale++;
-            }
         }
-        line3 = strFmt('Devices that reported an item sync: %1. OK: %2, failing: %3, stale (no successful sync for %4 hours): %5.',
-            devices, devices - failing - stale, failing, HSMobileOpsDeviceSync::staleHours(), stale);
+        line3 = strFmt('Devices: %1. OK: %2, failing or postings stuck: %3, stale or not seen: %4. Checked every hour; Mobile administrators get an alert.',
+            devices, devices - failing - stale, failing, stale);
 
         Summary.text(line1 + '\n' + line2 + '\n' + line3);
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>refreshAll</Name>
+				<Source><![CDATA[
+
+    /// <summary>Everything read again - after Refresh or Check device health now.</summary>
+    public void refreshAll()
+    {
+        HSMobileOpsWarehouseControl_ds.research(true);
+        HSMobileOpsDeviceSync_ds.research(true);
+        HSMobileOpsSkuSnapshot_ds.research(true);
+        this.showSummary();
     }
 ]]></Source>
 			</Method>
@@ -124,10 +153,26 @@ public class HSMobileOpsSyncHealth extends FormRun
         public void clicked()
         {
             super();
-            HSMobileOpsWarehouseControl_ds.research(true);
+            element.refreshAll();
+        }
+
+]]></Source>
+					</Method>
+				</Methods>
+			</Control>
+			<Control>
+				<Name>ShowRetired</Name>
+				<Type>CheckBox</Type>
+				<Methods>
+					<Method>
+						<Name>modified</Name>
+						<Source><![CDATA[
+        public boolean modified()
+        {
+            boolean ret = super();
+            retiredRange.value(this.value() ? '' : SysQuery::valueNot(HSMobileOpsDeviceHealth::Retired));
             HSMobileOpsDeviceSync_ds.research(true);
-            HSMobileOpsSkuSnapshot_ds.research(true);
-            element.showSummary();
+            return ret;
         }
 
 ]]></Source>
@@ -221,6 +266,17 @@ public class HSMobileOpsSyncHealth extends FormRun
 								<ButtonDisplay>TextOnly</ButtonDisplay>
 								<MenuItemName>HSMobileOpsSkuSnapshot</MenuItemName>
 								<Text>Item snapshot</Text>
+							</AxFormControl>
+							<AxFormControl xmlns=""
+								i:type="AxFormMenuFunctionButtonControl">
+								<Name>DeviceHealthButton</Name>
+								<Type>MenuFunctionButton</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<ButtonDisplay>TextOnly</ButtonDisplay>
+								<MenuItemName>HSMobileOpsDeviceHealthRun</MenuItemName>
+								<MenuItemType>Action</MenuItemType>
+								<Text>Check device health now</Text>
 							</AxFormControl>
 						</Controls>
 					</AxFormControl>
@@ -330,11 +386,21 @@ public class HSMobileOpsSyncHealth extends FormRun
 					<AxFormControl xmlns=""
 						i:type="AxFormTabPageControl">
 						<Name>DevicesPage</Name>
-						<HelpText>Every handheld that reported an item sync, the oldest successful sync first. Stale: no successful sync for 48 hours.</HelpText>
+						<HelpText>Every handheld, the worst health first. Stale: no successful sync for 48 hours. Not seen: no check-in for 24 hours. Postings stuck: any refused, or one waiting over 30 minutes.</HelpText>
 						<Type>TabPage</Type>
 						<FormControlExtension
 							i:nil="true" />
 						<Controls>
+							<AxFormControl xmlns=""
+								i:type="AxFormCheckBoxControl">
+								<Name>ShowRetired</Name>
+								<AutoDeclaration>Yes</AutoDeclaration>
+								<Type>CheckBox</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<HelpText>Also list devices that are not active in Hub devices.</HelpText>
+								<Label>Show retired devices</Label>
+							</AxFormControl>
 							<AxFormControl xmlns=""
 								i:type="AxFormGridControl">
 								<Name>DeviceGrid</Name>
@@ -342,6 +408,16 @@ public class HSMobileOpsSyncHealth extends FormRun
 								<FormControlExtension
 									i:nil="true" />
 								<Controls>
+								<AxFormControl xmlns=""
+									i:type="AxFormComboBoxControl">
+									<Name>D_HealthStatus</Name>
+									<Type>ComboBox</Type>
+									<FormControlExtension
+										i:nil="true" />
+									<DataField>HealthStatus</DataField>
+									<DataSource>HSMobileOpsDeviceSync</DataSource>
+									<Items />
+								</AxFormControl>
 								<AxFormControl xmlns=""
 									i:type="AxFormStringControl">
 									<Name>D_Health</Name>
@@ -398,6 +474,42 @@ public class HSMobileOpsSyncHealth extends FormRun
 									<FormControlExtension
 										i:nil="true" />
 									<DataField>LastSuccessUtc</DataField>
+									<DataSource>HSMobileOpsDeviceSync</DataSource>
+								</AxFormControl>
+								<AxFormControl xmlns=""
+									i:type="AxFormDateTimeControl">
+									<Name>D_LastSeen</Name>
+									<Type>DateTime</Type>
+									<FormControlExtension
+										i:nil="true" />
+									<DataField>LastSeenUtc</DataField>
+									<DataSource>HSMobileOpsDeviceSync</DataSource>
+								</AxFormControl>
+								<AxFormControl xmlns=""
+									i:type="AxFormIntegerControl">
+									<Name>D_QueuePending</Name>
+									<Type>Integer</Type>
+									<FormControlExtension
+										i:nil="true" />
+									<DataField>QueuePending</DataField>
+									<DataSource>HSMobileOpsDeviceSync</DataSource>
+								</AxFormControl>
+								<AxFormControl xmlns=""
+									i:type="AxFormIntegerControl">
+									<Name>D_QueueFailed</Name>
+									<Type>Integer</Type>
+									<FormControlExtension
+										i:nil="true" />
+									<DataField>QueueFailed</DataField>
+									<DataSource>HSMobileOpsDeviceSync</DataSource>
+								</AxFormControl>
+								<AxFormControl xmlns=""
+									i:type="AxFormDateTimeControl">
+									<Name>D_OldestQueued</Name>
+									<Type>DateTime</Type>
+									<FormControlExtension
+										i:nil="true" />
+									<DataField>OldestQueuedUtc</DataField>
 									<DataSource>HSMobileOpsDeviceSync</DataSource>
 								</AxFormControl>
 								<AxFormControl xmlns=""

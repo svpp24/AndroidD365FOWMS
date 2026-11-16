@@ -326,6 +326,33 @@ fun TransferFlowScreen(
             state.lineChoices.isNotEmpty() -> Box(Modifier.weight(1f).padding(horizontal = 16.dp)) {
                 LineChoice(state.lineChoices, viewModel::chooseLine)
             }
+            // Shipping asks for a batch: the ones in stock, earliest expiry first (16 Nov 2026).
+            state.step == TransferStep.BATCH && mode == TransferMode.SHIP && state.batchChoices.isNotEmpty() ->
+                Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
+                    com.d365fo.mobileops.presentation.common.focus.FocusCaption(
+                        "Batches at ${state.capture.fromWarehouseId.orEmpty()} · earliest expiry first",
+                        modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 6.dp),
+                    )
+                    val today = java.time.LocalDate.now()
+                    val ordered = state.capture.line?.lineBatchId
+                    state.batchChoices.forEach { b ->
+                        val expiry = b.expiry?.let { d ->
+                            (if (d.isBefore(today)) "Expired " else "Expires ") +
+                                d.format(java.time.format.DateTimeFormatter.ofPattern("d MMM yyyy", java.util.Locale.ENGLISH))
+                        } ?: "No expiry date"
+                        com.d365fo.mobileops.presentation.common.focus.FocusListRow(
+                            title = b.batchId,
+                            titleIsCode = true,
+                            subtitle = listOfNotNull(
+                                expiry,
+                                java.math.BigDecimal.valueOf(b.available).stripTrailingZeros().toPlainString() + " available",
+                                if (b.batchId == ordered) "ordered" else null,
+                            ).joinToString(" · "),
+                            chevron = true,
+                            onClick = { if (!state.busy) viewModel.chooseBatch(b.batchId) },
+                        )
+                    }
+                }
             state.step == TransferStep.TRANSFER_ORDER && showTodays && state.todays.isNotEmpty() ->
                 Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
                     state.todays.forEach { t ->

@@ -90,7 +90,14 @@ data class OrderVariant(
 }
 
 /** One available stock row at a warehouse - batch and serial blank for untracked items; the bin only when asked for. */
-data class StockRow(val batchId: String, val serialId: String, val available: Double, val locationId: String = "") {
+data class StockRow(
+    val batchId: String,
+    val serialId: String,
+    val available: Double,
+    val locationId: String = "",
+    /** The batch's expiry date, when it has one. */
+    val expiry: java.time.LocalDate? = null,
+) {
     val label: String
         get() = listOfNotNull(
             locationId.takeIf { it.isNotBlank() }?.let { "Location $it" },
@@ -498,7 +505,9 @@ class OrderCreationRepository @Inject constructor(
             ),
         )
         return when (val result = errorMapper.safeCall { api.getStock(request) }) {
-            is NetworkResult.Success -> NetworkResult.Success(result.data.lines.map { StockRow(it.batchId, it.serialId, it.available, it.locationId) })
+            is NetworkResult.Success -> NetworkResult.Success(result.data.lines.map {
+                StockRow(it.batchId, it.serialId, it.available, it.locationId, runCatching { java.time.LocalDate.parse(it.expiryDate) }.getOrNull())
+            })
             is NetworkResult.Error -> result
             NetworkResult.Loading -> NetworkResult.Error(AppFailure.Fatal("unexpected Loading"))
         }

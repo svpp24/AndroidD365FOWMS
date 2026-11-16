@@ -553,6 +553,7 @@ class HSMobileOpsOrderCreateService
         InventSum                inventSum;
         InventDim                stock;
         HSMobileOpsOrderLine     row;
+        TransDate                expDate;
 
         if (!HSMobileOpsOrderCreateService::validCompany(_request) || !_request.parmItemId() || !_request.parmWarehouseId())
         {
@@ -588,6 +589,16 @@ class HSMobileOpsOrderCreateService
                 row.parmSerialId(stock.InventSerialId);
                 row.parmLocationId(stock.wMSLocationId);
                 row.parmAvailable(inventSum.AvailPhysical);
+                // The batch's expiry (16 Nov 2026): shipping lists the batches, earliest first.
+                if (stock.InventBatchId)
+                {
+                    expDate = InventBatch::find(stock.InventBatchId, _request.parmItemId()).expDate;
+                    if (expDate)
+                    {
+                        row.parmExpiryDate(date2Str(expDate, 321, DateDay::Digits2, DateSeparator::Hyphen,
+                            DateMonth::Digits2, DateSeparator::Hyphen, DateYear::Digits4, DateFlags::None));
+                    }
+                }
                 response.parmLines().addEnd(row);
             }
         }
