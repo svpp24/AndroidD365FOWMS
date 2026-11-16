@@ -23,6 +23,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ListAlt
@@ -272,6 +273,7 @@ fun TransferFlowScreen(
             }
         }
     }
+    var showTodays by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableStateOf(false) }
     com.d365fo.mobileops.presentation.common.focus.FocusScreen(
         title = when {
             state.showingCaptured -> "Transfer lines"
@@ -300,7 +302,10 @@ fun TransferFlowScreen(
                 empty = "Nothing scanned yet.",
             )
         } },
-        actions = transferActions(state, mode, onLines = { viewModel.showCaptured(true) }, onPost = viewModel::postTransfer, onUndo = stepBack, onSkip = viewModel::skipStep),
+        actions = transferActions(
+            state, mode, onLines = { viewModel.showCaptured(true) }, onPost = viewModel::postTransfer, onUndo = stepBack, onSkip = viewModel::skipStep,
+            showTodays = showTodays, onToggleTodays = { showTodays = !showTodays },
+        ),
     ) {
         if (state.busy) {
             androidx.compose.material3.LinearProgressIndicator(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp))
@@ -320,6 +325,19 @@ fun TransferFlowScreen(
             state.lineChoices.isNotEmpty() -> Box(Modifier.weight(1f).padding(horizontal = 16.dp)) {
                 LineChoice(state.lineChoices, viewModel::chooseLine)
             }
+            state.step == TransferStep.TRANSFER_ORDER && showTodays && state.todays.isNotEmpty() ->
+                Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
+                    state.todays.forEach { t ->
+                        com.d365fo.mobileops.presentation.common.focus.FocusListRow(
+                            title = t.transferId,
+                            titleIsCode = true,
+                            subtitle = (if (mode == TransferMode.SHIP) "To ${t.toWarehouseId}" else "From ${t.fromWarehouseId}") +
+                                " · " + (if (t.lineCount == 1) "1 line" else "${t.lineCount} lines"),
+                            chevron = true,
+                            onClick = { if (!state.busy) { showTodays = false; viewModel.pickTodays(t.transferId) } },
+                        )
+                    }
+                }
             else -> TransferCenter(state, mode, onQuantityTap = { showQuantity = true })
         }
     }
@@ -737,10 +755,22 @@ private fun transferActions(
     onPost: () -> Unit,
     onUndo: () -> Unit,
     onSkip: () -> Unit,
+    showTodays: Boolean = false,
+    onToggleTodays: () -> Unit = {},
 ): (@Composable androidx.compose.foundation.layout.RowScope.() -> Unit)? {
     if (state.showingCaptured || state.lineChoices.isNotEmpty()) return null
     return when (state.step) {
-        TransferStep.TRANSFER_ORDER -> null
+        // Today's transfers, as PO receiving's Today's POs (user, 16 Nov 2026).
+        TransferStep.TRANSFER_ORDER -> if (state.todays.isEmpty()) null else {
+            {
+                com.d365fo.mobileops.presentation.common.focus.FocusButton(
+                    if (showTodays) "Close list" else "Today's transfers",
+                    onClick = onToggleTodays,
+                    icon = Icons.Default.CalendarMonth,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+        }
         TransferStep.ITEM -> if (state.captured.isEmpty()) null else {
             {
                 com.d365fo.mobileops.presentation.common.focus.FocusButton(
@@ -775,7 +805,10 @@ private fun androidx.compose.foundation.layout.ColumnScope.TransferCenter(state:
     val c = state.capture
     val ship = mode == TransferMode.SHIP
     when (state.step) {
-        TransferStep.TRANSFER_ORDER -> FocusCenter(caption = "Transfer", code = "Not open")
+        TransferStep.TRANSFER_ORDER -> FocusCenter(
+            caption = if (ship) "Transfers to ship today" else "Transfers to receive today",
+            code = state.todays.size.toString(),
+        )
         TransferStep.ITEM -> {
             val last = state.captured.lastOrNull()
             if (last == null) {

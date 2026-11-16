@@ -16,6 +16,7 @@ class HSMobileOpsGetLicenseResponse
     str     errorCode;
     str     message;
     str     licenseKey;
+    str     certificate;
     str     serverUtcNow;
 
 }
@@ -76,6 +77,23 @@ class HSMobileOpsGetLicenseResponse
     {
         licenseKey = _value;
         return licenseKey;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmCertificate</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The WMSCERT1... certificate from the uploaded license file (16 Nov 2026): a device with
+    /// none stored activates itself with it - it still verifies it against the root key compiled
+    /// into the app, so it trusts this no more than a scanned activation QR code.
+    /// </summary>
+    [DataMemberAttribute('Certificate')]
+    public str parmCertificate(str _value = certificate)
+    {
+        certificate = _value;
+        return certificate;
     }
 ]]></Source>
 			</Method>

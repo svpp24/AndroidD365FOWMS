@@ -74,6 +74,8 @@ class HSMobileOpsLicenseService
         // HSMobileOpsUserService::signIn's own license check documents.
         setup = HSMobileOpsLicenseSetup::find();
         response.parmLicenseKey(setup.LicenseKey);
+        // So a device activates itself - no activation QR code to scan (user, 16 Nov 2026).
+        response.parmCertificate(setup.CertificateString);
         response.parmSuccess(true);
 
         return response;

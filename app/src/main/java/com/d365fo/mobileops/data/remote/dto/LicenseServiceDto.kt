@@ -28,6 +28,8 @@ data class GetLicenseServiceResponse(
     /** The raw WMSLIC1... string, exactly as imported. Verified client-side against the
      *  device's own already-activated certificate - never trusted on [success] alone. */
     @SerialName("LicenseKey") val licenseKey: String? = null,
+    /** The certificate from D365FO's license file - activates a device with none stored. */
+    @SerialName("Certificate") val certificate: String? = null,
     /** This server's own UTC clock, ISO 8601 - what the clock-rollback check anchors to. */
     @SerialName("ServerUtcNow") val serverUtcNow: String? = null,
 )

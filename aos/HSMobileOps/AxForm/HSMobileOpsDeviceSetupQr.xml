@@ -38,6 +38,28 @@ public class HSMobileOpsDeviceSetupQr extends FormRun
 		<DataSources xmlns="" />
 		<DataControls xmlns="">
 			<Control>
+				<Name>DownloadButton</Name>
+				<Type>Button</Type>
+				<Methods>
+					<Method>
+						<Name>clicked</Name>
+						<Source><![CDATA[
+        /// <summary>
+        /// The QR code as a PNG file (user, 16 Nov 2026) - to print or send to whoever sets up
+        /// the handheld. The same code as on screen: it works until it is used or reissued.
+        /// </summary>
+        public void clicked()
+        {
+            super();
+            container png = HSMobileOpsDeviceSetupCodeNew::qrPng(QrText.text(), 600);
+            System.IO.Stream stream = Binary::constructFromContainer(png).getMemoryStream();
+            File::SendFileToUser(stream, 'device-setup-code-' + date2Str(today(), 321, DateDay::Digits2, DateSeparator::Hyphen, DateMonth::Digits2, DateSeparator::Hyphen, DateYear::Digits4, DateFlags::None) + '.png');
+        }
+]]></Source>
+					</Method>
+				</Methods>
+			</Control>
+			<Control>
 				<Name>CloseButton</Name>
 				<Type>Button</Type>
 				<Methods>
@@ -98,6 +120,15 @@ public class HSMobileOpsDeviceSetupQr extends FormRun
 				<FormControlExtension
 					i:nil="true" />
 				<Controls>
+					<AxFormControl xmlns=""
+						i:type="AxFormButtonControl">
+						<Name>DownloadButton</Name>
+						<HelpText>Saves this QR code as a PNG image, to print or send. It is the same code: it stops working once used or reissued.</HelpText>
+						<Type>Button</Type>
+						<FormControlExtension
+							i:nil="true" />
+						<Text>Download image</Text>
+					</AxFormControl>
 					<AxFormControl xmlns=""
 						i:type="AxFormButtonControl">
 						<Name>CloseButton</Name>

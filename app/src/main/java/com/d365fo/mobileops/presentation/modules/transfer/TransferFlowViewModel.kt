@@ -76,6 +76,7 @@ class TransferFlowViewModel @Inject constructor(
     private val picker: com.d365fo.mobileops.data.sync.TransferPicker,
     private val orderCreation: com.d365fo.mobileops.data.repository.OrderCreationRepository,
     private val freezes: com.d365fo.mobileops.data.repository.WarehouseFreezeRepository,
+    private val transferList: com.d365fo.mobileops.data.repository.TransferListRepository,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(TransferFlowState())
@@ -101,6 +102,7 @@ class TransferFlowViewModel @Inject constructor(
     fun setMode(mode: TransferMode) {
         if (_state.value.capture.mode == mode && _state.value.capture.transferId != null) return
         _state.value = TransferFlowState(capture = TransferCapture(mode = mode))
+        loadTodays()
 
         // See the identical hand-off in ReceivingFlowViewModel.init and PendingFlowResume - the
         // direction is not known until setMode runs (it arrives as a LaunchedEffect(mode) from
@@ -114,6 +116,28 @@ class TransferFlowViewModel @Inject constructor(
     }
 
     fun onManualEntry(value: String) = submit(value)
+
+    /**
+     * Today's transfers - the ones Home counts under Ship / Receive (user, 16 Nov 2026: Home said
+     * 1, the screen listed nothing): to ship, ship date today; to receive, receive date today.
+     */
+    fun loadTodays() {
+        val warehouse = sessions.session.value?.selected?.warehouseId?.takeIf { it.isNotBlank() } ?: return
+        val ship = _state.value.capture.mode == TransferMode.SHIP
+        viewModelScope.launch {
+            val today = java.time.LocalDate.now().toString()
+            val open = (transferList.openTransferOrders(warehouse, fresh = true) as? NetworkResult.Success)?.data ?: return@launch
+            val todays = open.filter { t ->
+                if (ship) t.outbound && t.shipDate.take(10) == today else !t.outbound && t.receiveDate.take(10) == today
+            }
+            if (_state.value.capture.mode == (if (ship) TransferMode.SHIP else TransferMode.RECEIVE)) {
+                _state.update { it.copy(todays = todays) }
+            }
+        }
+    }
+
+    /** One of today's transfers - the same as scanning its number. */
+    fun pickTodays(transferId: String) = submit(transferId)
 
     /**
      * The line picked in the item search, so the "which line?" step takes it rather than asking
@@ -401,7 +425,8 @@ class TransferFlowViewModel @Inject constructor(
 
     private fun resetNow() {
         val capture = _state.value.capture
-        _state.value = TransferFlowState(capture = TransferCapture(mode = capture.mode))
+        _state.value = TransferFlowState(capture = TransferCapture(mode = capture.mode), todays = _state.value.todays)
+        loadTodays()
 
         // Abandoning means abandoning; the saved copy goes with it.
         capture.transferId?.takeIf { it.isNotBlank() }?.let { id ->
@@ -1174,6 +1199,8 @@ data class TransferFlowState(
     val lineNotice: com.d365fo.mobileops.presentation.common.components.QuickNoticeMessage? = null,
     /** What the last post did, shown on the fresh order prompt until dismissed or the next order. */
     val postNotice: PostNotice? = null,
+    /** Today's transfers for this direction - see TransferFlowViewModel.loadTodays. */
+    val todays: List<com.d365fo.mobileops.data.repository.TransferOrderSummary> = emptyList(),
 ) {
     /**
      * Lines still to scan: the server's count, less the lines this session has scanned in full.

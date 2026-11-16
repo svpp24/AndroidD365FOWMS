@@ -116,8 +116,31 @@ class LicenseRepository @Inject constructor(
     }
 
     private suspend fun validateInternal(): LicenseState {
+        // Step 2 first (16 Nov 2026): D365FO's answer carries the certificate from the uploaded
+        // license file, so a device with none stored activates itself - no activation QR code.
+        val licenseResponse = when (
+            val result = errorMapper.safeCall {
+                service.getLicense(GetLicenseServiceRequest(GetLicenseRequestBody(company())))
+            }
+        ) {
+            is NetworkResult.Error ->
+                return if (secureStore.licenseCertificate() == null) LicenseState.NeedsActivation else failOrGrace(result.failure.message)
+            NetworkResult.Loading -> return failOrGrace("unexpected Loading")
+            is NetworkResult.Success -> result.data
+        }
+
+        // A certificate from D365FO that verifies against the compiled root key replaces the
+        // stored one (a renewed certificate, or the first one); anything else is ignored.
+        licenseResponse.certificate?.trim()?.takeIf { it.isNotEmpty() && it != secureStore.licenseCertificate() }?.let { fromServer ->
+            if (LicenseCrypto.verifyCertificate(fromServer) is LicenseVerifyResult.Valid) {
+                secureStore.setLicenseCertificate(fromServer)
+            }
+        }
         val storedCertificate = secureStore.licenseCertificate()
-            ?: return LicenseState.NeedsActivation
+            ?: return if (licenseResponse.success) LicenseState.NeedsActivation else LicenseState.Blocked(
+                licenseResponse.message ?: "License not valid.",
+                code = licenseResponse.errorCode?.takeIf { it.isNotBlank() } ?: "LICENSE_INVALID",
+            )
 
         // Step 1 - a definitive local check, never grace-covered: a certificate that fails to
         // re-verify against the compiled root key means corrupted storage or tampering, not a
@@ -126,17 +149,6 @@ class LicenseRepository @Inject constructor(
             is LicenseVerifyResult.Invalid ->
                 return LicenseState.Blocked("The stored certificate is no longer valid: ${certResult.reason}. Re-activate this device.")
             is LicenseVerifyResult.Valid -> certResult.payload
-        }
-
-        // Step 2.
-        val licenseResponse = when (
-            val result = errorMapper.safeCall {
-                service.getLicense(GetLicenseServiceRequest(GetLicenseRequestBody(company())))
-            }
-        ) {
-            is NetworkResult.Error -> return failOrGrace(result.failure.message)
-            NetworkResult.Loading -> return failOrGrace("unexpected Loading")
-            is NetworkResult.Success -> result.data
         }
 
         if (!licenseResponse.success) {

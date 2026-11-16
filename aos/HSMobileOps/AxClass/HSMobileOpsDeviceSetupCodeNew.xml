@@ -151,17 +151,18 @@ class HSMobileOpsDeviceSetupCodeNew
     /// <summary>
     /// The QR code of _text as a PNG, for HSMobileOpsDeviceSetupQr (the encoder ApplicationSuite ships).
     /// </summary>
-    internal static container qrPng(str _text)
+    internal static container qrPng(str _text, int _pixels = 300)
     {
         Microsoft.Dynamics.ApplicationSuite.QRCode.Encoder encoder = new Microsoft.Dynamics.ApplicationSuite.QRCode.Encoder();
         System.Drawing.Bitmap                              bitmap;
         System.IO.MemoryStream                             memory = new System.IO.MemoryStream();
         int                                                cellSize;
 
-        // About 300 px whatever the text's length, so it fits the dialog and still scans.
+        // About _pixels wide whatever the text's length: 300 fits the dialog, the downloaded
+        // image is larger so a printed copy still scans.
         encoder.set_CellSize(1);
         bitmap = encoder.Encode(_text);
-        cellSize = max(2, min(8, 300 div max(1, bitmap.get_Width())));
+        cellSize = max(2, min(20, _pixels div max(1, bitmap.get_Width())));
         encoder.set_CellSize(cellSize);
         bitmap = encoder.Encode(_text);
         bitmap.Save(memory, System.Drawing.Imaging.ImageFormat::get_Png());
