@@ -4,7 +4,7 @@
 	<SourceCode>
 		<Declaration><![CDATA[
 /// <summary>
-/// Mobile warehouse control: one row per warehouse of the company (the form adds the missing ones
+/// Warehouse control: one row per warehouse of the company (the form adds the missing ones
 /// when it opens), the starting point for per-warehouse settings of the handhelds.
 ///
 /// Sync by assortment: off (the default), a handheld working in the warehouse keeps every item of
@@ -234,7 +234,7 @@ public class HSMobileOpsWarehouseControl extends common
 			</Method>
 		</Methods>
 	</SourceCode>
-	<Label>Mobile warehouse control</Label>
+	<Label>Warehouse control</Label>
 	<TitleField1>Warehouse</TitleField1>
 	<TitleField2>SyncByAssortment</TitleField2>
 	<CacheLookup>Found</CacheLookup>

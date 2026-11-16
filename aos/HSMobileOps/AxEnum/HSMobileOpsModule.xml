@@ -2,7 +2,7 @@
 <AxEnum xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
 	<Name>HSMobileOpsModule</Name>
 	<Label>Mobile module</Label>
-	<HelpText>A handheld app menu (module) an administrator allows or blocks per worker, on the Mobile device users form (Menu access). Element names are also the wire format - see HSMobileOpsModulePermission::parmModule and the app's own WarehouseWorkflow enum, which matches these names exactly rather than translating between the two.</HelpText>
+	<HelpText>A handheld app menu (module) an administrator allows or blocks per worker, on the Hub users form (Menu access). Element names are also the wire format - see HSMobileOpsModulePermission::parmModule and the app's own WarehouseWorkflow enum, which matches these names exactly rather than translating between the two.</HelpText>
 	<EnumValues>
 		<AxEnumValue>
 			<Name>PO_RECEIVING</Name>

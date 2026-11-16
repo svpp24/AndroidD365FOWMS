@@ -7,7 +7,7 @@
 				<Name>classDeclaration</Name>
 				<Source><![CDATA[
 /// <summary>
-/// Mobile process setup (Setup): one row per handheld process - Receiving, TransferShip,
+/// Process setup (Setup): one row per handheld process - Receiving, TransferShip,
 /// TransferReceive - with its concurrency mode, location capture and, for Receiving, Auto GRN.
 /// The rows are created on open; see HSMobileOpsProcessSetup.
 /// </summary>
@@ -46,7 +46,7 @@ public class HSMobileOpsProcessSetup extends FormRun
 		</AxFormDataSource>
 	</DataSources>
 	<Design>
-		<Caption xmlns="">Mobile process setup</Caption>
+		<Caption xmlns="">Process setup</Caption>
 		<DataSource xmlns="">HSMobileOpsProcessSetup</DataSource>
 		<ShowNewButton xmlns="">No</ShowNewButton>
 		<ShowDeleteButton xmlns="">No</ShowDeleteButton>

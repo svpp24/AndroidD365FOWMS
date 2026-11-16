@@ -7,7 +7,7 @@
 /// Unsent work saved from a handheld (HSMobileOpsDeviceWorkSvc): one row per posting waiting or
 /// refused, unfinished job, order draft or count not yet accepted, per device. Removed as the
 /// device reports it done. What a worker restores after a reinstall or on a new device, and what
-/// a supervisor can see on Mobile unsent work. One list for the environment, like the device fleet.
+/// a supervisor can see on Unsent work. One list for the environment, like the device fleet.
 /// </summary>
 public class HSMobileOpsDeviceWork extends common
 {
@@ -16,7 +16,7 @@ public class HSMobileOpsDeviceWork extends common
 		<Methods>
 		</Methods>
 	</SourceCode>
-	<Label>Mobile unsent work</Label>
+	<Label>Unsent work</Label>
 	<TitleField1>Reference</TitleField1>
 	<TitleField2>UserName</TitleField2>
 	<CacheLookup>NotInTTS</CacheLookup>
@@ -136,7 +136,7 @@ public class HSMobileOpsDeviceWork extends common
 			i:type="AxTableFieldEnum">
 			<Name>Stale</Name>
 			<AllowEdit>No</AllowEdit>
-			<HelpText>The handheld hasn't reported for longer than Mobile clean-up allows - check whether this work is still wanted.</HelpText>
+			<HelpText>The handheld hasn't reported for longer than Clean-up allows - check whether this work is still wanted.</HelpText>
 			<Label>Device not seen</Label>
 			<EnumType>NoYes</EnumType>
 		</AxTableField>

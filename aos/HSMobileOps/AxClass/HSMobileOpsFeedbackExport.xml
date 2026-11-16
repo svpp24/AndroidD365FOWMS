@@ -4,7 +4,7 @@
 	<SourceCode>
 		<Declaration><![CDATA[
 /// <summary>
-/// Export feedback (Mobile feedback form): downloads mobile-feedback-[date].zip with
+/// Export feedback (Feedback form): downloads mobile-feedback-[date].zip with
 /// feedback.md - every record the form shows, with its filters, as one Markdown document meant
 /// to be handed to an AI assistant or a developer - and screenshots/[FeedbackId].jpg for the
 /// records that have one. Read-only: nothing is marked or changed.
@@ -99,7 +99,7 @@ internal final class HSMobileOpsFeedbackExport
     private static str header(int _count, int _withShot)
     {
         return strFmt('# Inventory hub - feedback from the handheld app\n\n'
-            + 'Exported %1 from D365FO (Inventory hub > Inquiries > Mobile feedback): %2 item(s), %3 with a screenshot.\n\n'
+            + 'Exported %1 from D365FO (Inventory hub > Inquiries > Feedback): %2 item(s), %3 with a screenshot.\n\n'
             + 'Inventory hub is an Android warehouse app for Dynamics 365 Finance & Operations. Each item below was sent '
             + 'by a warehouse worker from the feedback button in the app, on the screen named under Screen. It carries the '
             + 'app version, device and warehouse, the words of the worker, the status and reply of the team so far, and the '

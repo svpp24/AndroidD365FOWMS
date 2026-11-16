@@ -10,7 +10,7 @@
 /// in on. The device sends its whole set whenever it changes and it has a connection; the device's
 /// own copy stays the one that counts until D365FO has the posting.
 ///
-/// Every answer also carries the modules switched off on Mobile module switches, for the app
+/// Every answer also carries the modules switched off on Module switches, for the app
 /// version asking - a broken module can be stopped from here without touching a handheld.
 ///
 /// Registered in HSMobileOpsServiceGroup - needs a full service group build, not a class-only build.
@@ -97,7 +97,7 @@ class HSMobileOpsDeviceWorkService
                 work.AppVersion  = _request.parmAppVersion();
                 work.DeviceModel = _request.parmDeviceModel();
                 work.UpdatedUtc  = now;
-                // Archived: old work the device tidied away (Mobile clean-up) - kept here only.
+                // Archived: old work the device tidied away (Clean-up) - kept here only.
                 work.Archived    = strUpr(HSMobileOpsDeviceWorkService::jsonStr(jItem, 'Archived')) == 'TRUE' ? NoYes::Yes : NoYes::No;
                 work.Stale       = NoYes::No;
                 if (work.RecId)
@@ -233,12 +233,12 @@ class HSMobileOpsDeviceWorkService
 
         response.parmSuccess(false);
         response.parmStored(0);
-        // The handhelds' own clean-up (Mobile clean-up, Handhelds) - on every answer.
+        // The handhelds' own clean-up (Clean-up, Handhelds) - on every answer.
         response.parmDeviceCleanup(cleanup.DeviceCleanup == NoYes::Yes);
         response.parmFinishedJournalDays(cleanup.DeviceFinishedJournalDays);
         response.parmOrderHistoryDays(cleanup.DeviceOrderHistoryDays);
         response.parmOldWorkDays(cleanup.DeviceOldWorkDays);
-        // Mobile item snapshot, Ask all devices to full re-sync.
+        // Item snapshot, Ask all devices to full re-sync.
         resync = HSMobileOpsSkuSnapshotSetup::find().ResyncRequestedUtc;
         response.parmFullResyncAfterUtc(resync ? DateTimeUtil::toStr(resync) : '');
         response.parmItems(new List(Types::Class));

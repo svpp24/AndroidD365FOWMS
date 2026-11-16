@@ -7,7 +7,7 @@
 				<Name>classDeclaration</Name>
 				<Source><![CDATA[
 /// <summary>
-/// Mobile item snapshot (Setup): the builds of this company's handheld item snapshot, newest
+/// Item snapshot (Setup): the builds of this company's handheld item snapshot, newest
 /// first, and the files of the selected one. Rebuild snapshot now; Ask all devices to full re-sync.
 /// </summary>
 [Form]
@@ -49,7 +49,7 @@ public class HSMobileOpsSkuSnapshot extends FormRun
 		</AxFormDataSource>
 	</DataSources>
 	<Design>
-		<Caption xmlns="">Mobile item snapshot</Caption>
+		<Caption xmlns="">Item snapshot</Caption>
 		<DataSource xmlns="">HSMobileOpsSkuSnapshot</DataSource>
 		<ShowNewButton xmlns="">No</ShowNewButton>
 		<ShowDeleteButton xmlns="">No</ShowDeleteButton>

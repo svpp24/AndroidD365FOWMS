@@ -383,14 +383,27 @@ class ConnectionSettings @Inject constructor(
     private fun mergeDuplicateProfiles() {
         val active = secureStore.getString(KEY_ACTIVE_LABEL)
         val all = loadProfileLabels().mapNotNull(::readProfile)
-        val drop = all.groupBy { it.host.lowercase() + "|" + it.company.uppercase() }
-            .filterKeys { !it.startsWith("|") }
-            .values.filter { it.size > 1 }
-            .flatMap { group ->
-                val keep = group.firstOrNull { it.label == active }
-                    ?: group.firstOrNull { it.tenantId.isNotBlank() } ?: group.first()
-                group.filter { it.label != keep.label }.map { it.label }
-            }
+        // Same server, and the same legal entity or one of them has none (as in matched()).
+        val drop = all.filter { it.host.isNotBlank() }.groupBy { it.host.lowercase() }.values
+            .flatMap { sameHost ->
+                val dropped = mutableListOf<String>()
+                val byCompany = sameHost.groupBy { it.company.uppercase() }.filterKeys { it.isNotBlank() }.values
+                byCompany.forEach { group ->
+                    // A profile without a legal entity is only a duplicate when the server has one.
+                    val withBlank = if (byCompany.size == 1) group + sameHost.filter { it.company.isBlank() } else group
+                    val keep = withBlank.firstOrNull { it.label == active }
+                        ?: withBlank.firstOrNull { it.tenantId.isNotBlank() } ?: withBlank.first()
+                    dropped += withBlank.filter { it.label != keep.label }.map { it.label }
+                }
+                // Blank-company profiles only (no legal entity anywhere): one survives.
+                if (sameHost.all { it.company.isBlank() } && sameHost.size > 1) {
+                    val keep = sameHost.firstOrNull { it.label == active } ?: sameHost.first()
+                    dropped += sameHost.filter { it.label != keep.label }.map { it.label }
+                }
+                dropped
+            }.distinct()
+            // Never drop the active one (it could be kept by one legal entity's group and not another's).
+            .filter { it != active }
         if (drop.isEmpty()) return
         secureStore.putString(KEY_PROFILE_LABELS, (loadProfileLabels() - drop.toSet()).joinToString(","))
         drop.forEach { label ->

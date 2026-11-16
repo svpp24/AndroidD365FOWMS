@@ -324,13 +324,34 @@ def cmd_sign_license(args: argparse.Namespace) -> None:
     licenses_dir = client_dir / "licenses"
     licenses_dir.mkdir(parents=True, exist_ok=True)
     license_path = licenses_dir / f"{expiry.date().isoformat()}.txt"
-    license_path.write_text(license_string, encoding="utf-8")
+    # One combined file (16 Nov 2026): '#' lines for people (D365FO ignores them), then the
+    # certificate, then the license. Uploaded as is on D365FO's License page.
+    cert_path = client_dir / "certificate.txt"
+    cert_string = cert_path.read_text(encoding="utf-8").strip() if cert_path.exists() else ""
+    header = [
+        "# ForeFront Mobile license",
+        f"# Customer: {args.client}",
+        f"# Valid until: {expiry.date().isoformat()}",
+        f"# Devices: {args.max_devices}",
+        f"# Issued: {issued.date().isoformat()}",
+        "# Upload this file in D365FO: License > Upload license file. Do not edit it.",
+    ]
+    if not cert_string:
+        header.append("# No certificate in this file: D365FO keeps the one it already has.")
+    lines = header + ([cert_string] if cert_string else []) + [license_string]
+    license_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
-    print(f"License written to {license_path}")
-    print()
-    print("Paste this into the F&O license import form (Certificate + License fields):")
-    print()
-    print(license_string)
+    print(f"License file written to {license_path}" + ("" if cert_string else " (license only - no certificate.txt)"))
+    print("Upload it on D365FO's License page (Upload license file).")
+
+
+def read_signed(path: str, prefix: str) -> str:
+    """The [prefix] line of a combined license file, or a file holding only that string."""
+    text = Path(path).read_text(encoding="utf-8")
+    for line in text.splitlines():
+        if line.strip().startswith(prefix):
+            return line.strip()
+    return text.strip()
 
 
 def cmd_verify(args: argparse.Namespace) -> None:
@@ -340,7 +361,7 @@ def cmd_verify(args: argparse.Namespace) -> None:
         sys.exit(1)
     root_public_key = load_public_key_pem(root_public_key_path.read_text(encoding="utf-8"))
 
-    cert_string = Path(args.certificate).read_text(encoding="utf-8").strip()
+    cert_string = read_signed(args.certificate, CERT_PREFIX)
     prefix, cert_payload, cert_payload_b64, cert_sig_b64 = parse_signed_string(cert_string)
     if prefix != CERT_PREFIX:
         print(f"FAIL: certificate has wrong prefix '{prefix}', expected '{CERT_PREFIX}'")
@@ -361,7 +382,7 @@ def cmd_verify(args: argparse.Namespace) -> None:
 
     customer_public_key = rsa_public_key_from_xml(cert_payload["customerPublicKeyXml"])
 
-    license_string = Path(args.license).read_text(encoding="utf-8").strip()
+    license_string = read_signed(args.license, LICENSE_PREFIX)
     prefix, license_payload, license_payload_b64, license_sig_b64 = parse_signed_string(license_string)
     if prefix != LICENSE_PREFIX:
         print(f"FAIL: license has wrong prefix '{prefix}', expected '{LICENSE_PREFIX}'")

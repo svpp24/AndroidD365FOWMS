@@ -4,7 +4,7 @@
 	<SourceCode>
 		<Declaration><![CDATA[
 /// <summary>
-/// Cancel posting on the Mobile posting queue form: closes the selected failed postings, one or
+/// Cancel posting on the Posting queue form: closes the selected failed postings, one or
 /// many, with one reason. Nothing is posted, and the handhelds holding them clear their cards. Each
 /// row is cancelled on its own, and a selected row that is not Failed is left as it is and counted.
 /// </summary>

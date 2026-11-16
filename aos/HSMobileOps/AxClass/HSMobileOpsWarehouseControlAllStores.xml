@@ -4,7 +4,7 @@
 	<SourceCode>
 		<Declaration><![CDATA[
 /// <summary>
-/// Mobile warehouse control, "Sync all stores by assortment": a batch job that switches Sync by
+/// Warehouse control, "Sync all stores by assortment": a batch job that switches Sync by
 /// assortment on for every warehouse of a retail store, filling each store's item list, and logs
 /// how long each store took. Warehouses that are not a store's are left as they are.
 /// </summary>

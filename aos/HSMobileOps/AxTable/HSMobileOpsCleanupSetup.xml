@@ -4,7 +4,7 @@
 	<SourceCode>
 		<Declaration><![CDATA[
 /// <summary>
-/// How long Mobile ops records are kept (Mobile clean-up, Setup) - one row for the environment.
+/// How long Mobile ops records are kept (Clean-up, Setup) - one row for the environment.
 /// The D365FO days are applied by the daily HSMobileOpsCleanupBatch; the handheld days go to every
 /// device with each HSMobileOpsDeviceWorkSvc answer. 0 days means never.
 /// </summary>
@@ -83,7 +83,7 @@ public class HSMobileOpsCleanupSetup extends common
 			</Method>
 		</Methods>
 	</SourceCode>
-	<Label>Mobile clean-up</Label>
+	<Label>Clean-up</Label>
 	<CacheLookup>Found</CacheLookup>
 	<SaveDataPerCompany>No</SaveDataPerCompany>
 	<Fields>
@@ -134,7 +134,7 @@ public class HSMobileOpsCleanupSetup extends common
 		<AxTableField xmlns=""
 			i:type="AxTableFieldInt">
 			<Name>DeviceWorkStaleDays</Name>
-			<HelpText>Days without a report before a handheld's unsent work is marked Device not seen on Mobile unsent work. Nothing is deleted. 0: never.</HelpText>
+			<HelpText>Days without a report before a handheld's unsent work is marked Device not seen on Unsent work. Nothing is deleted. 0: never.</HelpText>
 			<Label>Unsent work - device not seen</Label>
 		</AxTableField>
 		<AxTableField xmlns=""
@@ -152,7 +152,7 @@ public class HSMobileOpsCleanupSetup extends common
 		<AxTableField xmlns=""
 			i:type="AxTableFieldInt">
 			<Name>DeviceOldWorkDays</Name>
-			<HelpText>Days an untouched unfinished job, or a refused posting, stays on the handheld. It is kept in Mobile unsent work (Archived) before it is removed from the device. 0: never.</HelpText>
+			<HelpText>Days an untouched unfinished job, or a refused posting, stays on the handheld. It is kept in Unsent work (Archived) before it is removed from the device. 0: never.</HelpText>
 			<Label>Old unfinished work</Label>
 		</AxTableField>
 		<AxTableField xmlns=""

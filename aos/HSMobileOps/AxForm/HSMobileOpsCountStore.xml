@@ -33,7 +33,7 @@ public class HSMobileOpsCountStore extends FormRun
 		</AxFormDataSource>
 	</DataSources>
 	<Design>
-		<Caption xmlns="">Mobile count stores</Caption>
+		<Caption xmlns="">Count stores</Caption>
 		<DataSource xmlns="">HSMobileOpsCountStore</DataSource>
 		<Controls xmlns="">
 			<AxFormControl xmlns=""

@@ -4,7 +4,7 @@
 	<SourceCode>
 		<Declaration><![CDATA[
 /// <summary>
-/// Modules switched off in the handheld app (Mobile module switches, Setup), for every worker and
+/// Modules switched off in the handheld app (Module switches, Setup), for every worker and
 /// device - to stop a broken module until a fixed app is installed. AppVersions limits it to the
 /// listed versions (comma separated, e.g. 1.1.35,1.1.36); blank means every version. The app
 /// picks it up within a few minutes and keeps the last answer for when it is offline.

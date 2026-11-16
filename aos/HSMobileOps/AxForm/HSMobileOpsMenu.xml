@@ -7,10 +7,10 @@
 				<Name>classDeclaration</Name>
 				<Source><![CDATA[
 /// <summary>
-/// Mobile device menus: the handheld's Home organised into menus and sub-menus, like the
+/// Menus: the handheld's Home organised into menus and sub-menus, like the
 /// mobile device menus of Warehouse management. Each line opens an app module or another menu,
 /// in Sequence order. The default menu is Home for every worker without a menu of their own
-/// (Mobile device users, Handheld menu). Menu access still hides the modules a worker may not use.
+/// (Hub users, Handheld menu). Menu access still hides the modules a worker may not use.
 /// </summary>
 [Form]
 public class HSMobileOpsMenu extends FormRun
@@ -212,7 +212,7 @@ public class HSMobileOpsMenu extends FormRun
 		</AxFormDataSource>
 	</DataSources>
 	<Design>
-		<Caption xmlns="">Mobile menus</Caption>
+		<Caption xmlns="">Menus</Caption>
 		<DataSource xmlns="">HSMobileOpsMenu</DataSource>
 		<Pattern xmlns="">SimpleListDetails</Pattern>
 		<PatternVersion xmlns="">1.3</PatternVersion>

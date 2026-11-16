@@ -5,7 +5,7 @@
 		<Declaration><![CDATA[
 /// <summary>
 /// Each handheld's item sync as it last reported it (HSMobileOpsSkuPageSvc/reportSync): sent by
-/// the app at the end of every item sync, finished or failed. Mobile sync health reads it to show
+/// the app at the end of every item sync, finished or failed. Sync health reads it to show
 /// which devices are up to date, which are failing and which have gone quiet.
 ///
 /// One row per device and company. A device that cannot reach D365FO cannot report; it shows up

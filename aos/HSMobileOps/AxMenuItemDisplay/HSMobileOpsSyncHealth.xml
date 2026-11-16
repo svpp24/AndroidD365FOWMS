@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <AxMenuItemDisplay xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
 	<Name>HSMobileOpsSyncHealth</Name>
-	<Label>Mobile sync health</Label>
+	<Label>Sync health</Label>
 	<HelpText>One screen for the handhelds' item sync: snapshots, warehouses and every device's last sync.</HelpText>
 	<Object>HSMobileOpsSyncHealth</Object>
 	<ObjectType>Form</ObjectType>

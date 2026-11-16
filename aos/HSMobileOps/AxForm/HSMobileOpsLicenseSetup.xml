@@ -7,27 +7,31 @@
 				<Name>classDeclaration</Name>
 				<Source><![CDATA[
 /// <summary>
-/// Where an administrator pastes the certificate and license the vendor issued - see
-/// HSMobileOpsLicenseSetup and HSMobileOpsLicense. One row for the whole environment;
-/// InsertIfEmpty means it always shows something to edit even before anyone has ever pasted
-/// anything in.
+/// The License page (user, 16 Nov 2026): the license is changed only by uploading the license
+/// file the vendor sends (HSMobileOpsLicenseFile) - the certificate and license key show masked
+/// and cannot be edited here. Every upload, accepted or refused, is listed under License uploads.
 ///
-/// Both fields are ordinary editable bound fields on this form - the verification that keeps
-/// this table from ever holding a certificate/license pair that would not actually verify lives
-/// in HSMobileOpsLicenseSetup's own insert()/update() overrides, not in the form. A save that
-/// does not verify throws rather than persisting, the same shape the earlier design already
-/// used here for encrypting PublicKeyXml on save.
-///
-/// LicenseStatus and DeviceUsage are read-only display methods (HSMobileOpsLicenseSetup table) -
-/// not stored fields, see that table's class doc on why expiry/device-limit are never kept as
-/// their own editable columns. They re-run the exact same HSMobileOpsLicense::verify() /
-/// HSMobileOpsDevice::activeDeviceCount() calls HSMobileOpsUserService::signIn() itself uses, so
-/// what shows here can never drift from what a worker actually experiences at sign-in.
+/// License status and Devices in use are display methods on HSMobileOpsLicenseSetup that re-run
+/// the same HSMobileOpsLicense::verify() a sign-in does, so this page never drifts from what a
+/// worker sees.
 /// </summary>
 [Form]
 public class HSMobileOpsLicenseSetup extends FormRun
 {
 }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>init</Name>
+				<Source><![CDATA[
+
+    public void init()
+    {
+        super();
+        // Newest upload first.
+        HSMobileOpsLicenseUpload_ds.queryBuildDataSource().addSortField(fieldNum(HSMobileOpsLicenseUpload, UploadedUtc), SortOrder::Descending);
+    }
+
 ]]></Source>
 			</Method>
 		</Methods>
@@ -39,32 +43,35 @@ public class HSMobileOpsLicenseSetup extends FormRun
 		<AxFormDataSource xmlns="">
 			<Name>HSMobileOpsLicenseSetup</Name>
 			<Table>HSMobileOpsLicenseSetup</Table>
-			<Fields>
-				<AxFormDataSourceField>
-					<DataField>CertificateString</DataField>
-				</AxFormDataSourceField>
-				<AxFormDataSourceField>
-					<DataField>LicenseKey</DataField>
-				</AxFormDataSourceField>
-			</Fields>
+			<Fields />
 			<ReferencedDataSources />
 			<AllowCreate>No</AllowCreate>
 			<AllowDelete>No</AllowDelete>
-			<InsertIfEmpty>Yes</InsertIfEmpty>
+			<AllowEdit>No</AllowEdit>
+			<InsertIfEmpty>No</InsertIfEmpty>
+			<DataSourceLinks />
+			<DerivedDataSources />
+		</AxFormDataSource>
+		<AxFormDataSource xmlns="">
+			<Name>HSMobileOpsLicenseUpload</Name>
+			<Table>HSMobileOpsLicenseUpload</Table>
+			<Fields />
+			<ReferencedDataSources />
+			<AllowCreate>No</AllowCreate>
+			<AllowDelete>No</AllowDelete>
+			<AllowEdit>No</AllowEdit>
+			<InsertIfEmpty>No</InsertIfEmpty>
 			<DataSourceLinks />
 			<DerivedDataSources />
 		</AxFormDataSource>
 	</DataSources>
 	<Design>
-		<Caption xmlns="">Mobile license</Caption>
+		<Caption xmlns="">License</Caption>
 		<DataSource xmlns="">HSMobileOpsLicenseSetup</DataSource>
-		<Pattern xmlns="">SimpleListDetails</Pattern>
-		<PatternVersion xmlns="">1.3</PatternVersion>
+		<Pattern xmlns="">Custom</Pattern>
+		<ShowDeleteButton xmlns="">No</ShowDeleteButton>
 		<ShowNewButton xmlns="">No</ShowNewButton>
-		<Style xmlns="">SimpleListDetails</Style>
 		<UseCaptionFromMenuItem xmlns="">Yes</UseCaptionFromMenuItem>
-		<ViewEditMode xmlns="">Edit</ViewEditMode>
-		<TitleDataSource xmlns="">HSMobileOpsLicenseSetup</TitleDataSource>
 		<Controls xmlns="">
 			<AxFormControl xmlns=""
 				i:type="AxFormActionPaneControl">
@@ -72,85 +79,36 @@ public class HSMobileOpsLicenseSetup extends FormRun
 				<Type>ActionPane</Type>
 				<FormControlExtension
 					i:nil="true" />
-				<Controls />
+				<Controls>
+					<AxFormControl xmlns=""
+						i:type="AxFormButtonGroupControl">
+						<Name>LicenseGroup</Name>
+						<Type>ButtonGroup</Type>
+						<FormControlExtension
+							i:nil="true" />
+						<Controls>
+							<AxFormControl xmlns=""
+								i:type="AxFormMenuFunctionButtonControl">
+								<Name>UploadLicense</Name>
+								<Type>MenuFunctionButton</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<ButtonDisplay>TextOnly</ButtonDisplay>
+								<MenuItemName>HSMobileOpsLicenseUpload</MenuItemName>
+								<MenuItemType>Action</MenuItemType>
+								<NeedsRecord>No</NeedsRecord>
+								<SaveRecord>No</SaveRecord>
+							</AxFormControl>
+						</Controls>
+					</AxFormControl>
+				</Controls>
 				<AlignChild>No</AlignChild>
 				<AlignChildren>No</AlignChildren>
 				<ArrangeMethod>Vertical</ArrangeMethod>
 			</AxFormControl>
 			<AxFormControl xmlns=""
 				i:type="AxFormGroupControl">
-				<Name>GridContainer1</Name>
-				<HeightMode>SizeToAvailable</HeightMode>
-				<Type>Group</Type>
-				<FormControlExtension
-					i:nil="true" />
-				<Controls>
-					<AxFormControl>
-						<Name>QuickFilterControl1</Name>
-						<WidthMode>SizeToAvailable</WidthMode>
-						<FormControlExtension>
-							<Name>QuickFilterControl</Name>
-							<ExtensionComponents />
-							<ExtensionProperties>
-								<AxFormControlExtensionProperty>
-									<Name>targetControlName</Name>
-									<Type>String</Type>
-								</AxFormControlExtensionProperty>
-								<AxFormControlExtensionProperty>
-									<Name>placeholderText</Name>
-									<Type>String</Type>
-								</AxFormControlExtensionProperty>
-								<AxFormControlExtensionProperty>
-									<Name>defaultColumnName</Name>
-									<Type>String</Type>
-								</AxFormControlExtensionProperty>
-							</ExtensionProperties>
-						</FormControlExtension>
-					</AxFormControl>
-					<AxFormControl xmlns=""
-						i:type="AxFormGridControl">
-						<Name>FormGridControl1</Name>
-						<AllowEdit>No</AllowEdit>
-						<Type>Grid</Type>
-						<WidthMode>SizeToContent</WidthMode>
-						<FormControlExtension
-							i:nil="true" />
-						<Controls>
-							<AxFormControl xmlns=""
-								i:type="AxFormStringControl">
-								<Name>Grid_CertificateString</Name>
-								<Type>String</Type>
-								<WidthMode>SizeToAvailable</WidthMode>
-								<FormControlExtension
-									i:nil="true" />
-								<DataField>CertificateString</DataField>
-								<DataSource>HSMobileOpsLicenseSetup</DataSource>
-							</AxFormControl>
-							<AxFormControl xmlns=""
-								i:type="AxFormStringControl">
-								<Name>Grid_LicenseKey</Name>
-								<Type>String</Type>
-								<WidthMode>SizeToAvailable</WidthMode>
-								<FormControlExtension
-									i:nil="true" />
-								<DataField>LicenseKey</DataField>
-								<DataSource>HSMobileOpsLicenseSetup</DataSource>
-							</AxFormControl>
-						</Controls>
-						<DataSource>HSMobileOpsLicenseSetup</DataSource>
-						<MultiSelect>No</MultiSelect>
-						<ShowRowLabels>No</ShowRowLabels>
-						<Style>List</Style>
-					</AxFormControl>
-				</Controls>
-				<FrameType>None</FrameType>
-				<Style>SidePanel</Style>
-			</AxFormControl>
-			<AxFormControl xmlns=""
-				i:type="AxFormGroupControl">
-				<Name>DetailsHeader</Name>
-				<Pattern>FieldsFieldGroups</Pattern>
-				<PatternVersion>1.1</PatternVersion>
+				<Name>LicenseDetails</Name>
 				<Type>Group</Type>
 				<WidthMode>SizeToAvailable</WidthMode>
 				<FormControlExtension
@@ -158,26 +116,9 @@ public class HSMobileOpsLicenseSetup extends FormRun
 				<Controls>
 					<AxFormControl xmlns=""
 						i:type="AxFormStringControl">
-						<Name>CertificateString</Name>
-						<Type>String</Type>
-						<FormControlExtension
-							i:nil="true" />
-						<DataField>CertificateString</DataField>
-						<DataSource>HSMobileOpsLicenseSetup</DataSource>
-					</AxFormControl>
-					<AxFormControl xmlns=""
-						i:type="AxFormStringControl">
-						<Name>LicenseKey</Name>
-						<Type>String</Type>
-						<FormControlExtension
-							i:nil="true" />
-						<DataField>LicenseKey</DataField>
-						<DataSource>HSMobileOpsLicenseSetup</DataSource>
-					</AxFormControl>
-					<AxFormControl xmlns=""
-						i:type="AxFormStringControl">
 						<Name>LicenseStatus</Name>
 						<Type>String</Type>
+						<WidthMode>SizeToAvailable</WidthMode>
 						<FormControlExtension
 							i:nil="true" />
 						<DataMethod>licenseStatus</DataMethod>
@@ -188,39 +129,136 @@ public class HSMobileOpsLicenseSetup extends FormRun
 						i:type="AxFormStringControl">
 						<Name>DeviceUsage</Name>
 						<Type>String</Type>
+						<WidthMode>SizeToAvailable</WidthMode>
 						<FormControlExtension
 							i:nil="true" />
 						<DataMethod>deviceUsage</DataMethod>
 						<DataSource>HSMobileOpsLicenseSetup</DataSource>
 						<Label>Devices in use</Label>
 					</AxFormControl>
+					<AxFormControl xmlns=""
+						i:type="AxFormStringControl">
+						<Name>CertificateString</Name>
+						<AllowEdit>No</AllowEdit>
+						<Type>String</Type>
+						<WidthMode>SizeToAvailable</WidthMode>
+						<FormControlExtension
+							i:nil="true" />
+						<DataField>CertificateString</DataField>
+						<DataSource>HSMobileOpsLicenseSetup</DataSource>
+						<PasswordStyle>Yes</PasswordStyle>
+					</AxFormControl>
+					<AxFormControl xmlns=""
+						i:type="AxFormStringControl">
+						<Name>LicenseKey</Name>
+						<AllowEdit>No</AllowEdit>
+						<Type>String</Type>
+						<WidthMode>SizeToAvailable</WidthMode>
+						<FormControlExtension
+							i:nil="true" />
+						<DataField>LicenseKey</DataField>
+						<DataSource>HSMobileOpsLicenseSetup</DataSource>
+						<PasswordStyle>Yes</PasswordStyle>
+					</AxFormControl>
+					<AxFormControl xmlns=""
+						i:type="AxFormStaticTextControl">
+						<Name>ChangeNote</Name>
+						<Type>StaticText</Type>
+						<WidthMode>SizeToAvailable</WidthMode>
+						<FormControlExtension
+							i:nil="true" />
+						<Text>Change it by uploading a new license file.</Text>
+					</AxFormControl>
 				</Controls>
-				<ColumnsMode>Fill</ColumnsMode>
-				<FrameType>None</FrameType>
+				<Caption>License</Caption>
 			</AxFormControl>
-			<!-- Required by the SimpleListDetails - List Grid pattern (flagged "Missing" by the
-			     designer's own pattern check without it) even though this form has nothing more
-			     to put in it beyond what DetailsHeader already shows. -->
 			<AxFormControl xmlns=""
-				i:type="AxFormTabControl">
-				<Name>Tab</Name>
-				<Type>Tab</Type>
+				i:type="AxFormGroupControl">
+				<Name>Uploads</Name>
+				<HeightMode>SizeToAvailable</HeightMode>
+				<Type>Group</Type>
+				<WidthMode>SizeToAvailable</WidthMode>
 				<FormControlExtension
 					i:nil="true" />
 				<Controls>
 					<AxFormControl xmlns=""
-						i:type="AxFormTabPageControl">
-						<Name>FormTabPageControl1</Name>
-						<Type>TabPage</Type>
+						i:type="AxFormGridControl">
+						<Name>UploadGrid</Name>
+						<HeightMode>SizeToAvailable</HeightMode>
+						<Type>Grid</Type>
+						<WidthMode>SizeToAvailable</WidthMode>
 						<FormControlExtension
 							i:nil="true" />
-						<Controls />
+						<Controls>
+							<AxFormControl xmlns=""
+								i:type="AxFormDateTimeControl">
+								<Name>U_Uploaded</Name>
+								<Type>DateTime</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<DataField>UploadedUtc</DataField>
+								<DataSource>HSMobileOpsLicenseUpload</DataSource>
+							</AxFormControl>
+							<AxFormControl xmlns=""
+								i:type="AxFormStringControl">
+								<Name>U_By</Name>
+								<Type>String</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<DataField>UploadedBy</DataField>
+								<DataSource>HSMobileOpsLicenseUpload</DataSource>
+							</AxFormControl>
+							<AxFormControl xmlns=""
+								i:type="AxFormStringControl">
+								<Name>U_File</Name>
+								<Type>String</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<DataField>FileName</DataField>
+								<DataSource>HSMobileOpsLicenseUpload</DataSource>
+							</AxFormControl>
+							<AxFormControl xmlns=""
+								i:type="AxFormStringControl">
+								<Name>U_Result</Name>
+								<Type>String</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<DataField>Result</DataField>
+								<DataSource>HSMobileOpsLicenseUpload</DataSource>
+							</AxFormControl>
+							<AxFormControl xmlns=""
+								i:type="AxFormStringControl">
+								<Name>U_Reason</Name>
+								<Type>String</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<DataField>Reason</DataField>
+								<DataSource>HSMobileOpsLicenseUpload</DataSource>
+							</AxFormControl>
+							<AxFormControl xmlns=""
+								i:type="AxFormStringControl">
+								<Name>U_ValidUntil</Name>
+								<Type>String</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<DataField>ValidUntil</DataField>
+								<DataSource>HSMobileOpsLicenseUpload</DataSource>
+							</AxFormControl>
+							<AxFormControl xmlns=""
+								i:type="AxFormIntegerControl">
+								<Name>U_Devices</Name>
+								<Type>Integer</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<DataField>Devices</DataField>
+								<DataSource>HSMobileOpsLicenseUpload</DataSource>
+							</AxFormControl>
+						</Controls>
+						<DataSource>HSMobileOpsLicenseUpload</DataSource>
+						<Style>Tabular</Style>
 					</AxFormControl>
 				</Controls>
-				<AlignChild>No</AlignChild>
-				<ArrangeMethod>Vertical</ArrangeMethod>
-				<DataSource>HSMobileOpsLicenseSetup</DataSource>
-				<Style>FastTabs</Style>
+				<Caption>License uploads</Caption>
 			</AxFormControl>
 		</Controls>
 	</Design>

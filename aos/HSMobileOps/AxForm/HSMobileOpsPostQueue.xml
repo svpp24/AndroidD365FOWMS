@@ -7,7 +7,7 @@
 				<Name>classDeclaration</Name>
 				<Source><![CDATA[
 /// <summary>
-/// Mobile posting queue (Inquiries): every posting handed over by a handheld in this company,
+/// Posting queue (Inquiries): every posting handed over by a handheld in this company,
 /// newest first - what it became, the reason if it failed, and the GRN if Auto GRN posted one.
 /// Read only, apart from its actions on a failed posting, all from the lines staged on its row:
 /// Retry (also on the handheld), and for supervisors Change quantity and Cancel posting.
@@ -48,7 +48,7 @@ public class HSMobileOpsPostQueue extends FormRun
 		</AxFormDataSource>
 	</DataSources>
 	<Design>
-		<Caption xmlns="">Mobile posting queue</Caption>
+		<Caption xmlns="">Posting queue</Caption>
 		<DataSource xmlns="">HSMobileOpsPostQueue</DataSource>
 		<ShowNewButton xmlns="">No</ShowNewButton>
 		<ShowDeleteButton xmlns="">No</ShowDeleteButton>

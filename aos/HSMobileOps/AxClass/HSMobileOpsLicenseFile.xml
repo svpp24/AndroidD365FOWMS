@@ -1,0 +1,189 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsLicenseFile</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Uploads a license file on the License page (user, 16 Nov 2026) - instead of pasting strings.
+///
+/// The file is plain text: '#' lines for people (ignored here), then a WMSCERT1 line (the
+/// certificate) and a WMSLIC1 line (the license) - see licensing/wms_license_tool.py
+/// sign-license. A file with only a license is accepted while a certificate is already stored.
+/// The pair is saved through HSMobileOpsLicenseSetup, whose insert()/update() run the full check
+/// (certificate against the root key, license against the customer key, Entra tenant, expiry);
+/// a refused file is logged in HSMobileOpsLicenseUpload and the current license stays.
+/// </summary>
+public final class HSMobileOpsLicenseFile
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>main</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Upload license file on the License page (menu item HSMobileOpsLicenseUpload); refreshes
+    /// the page afterwards so the new license and the log row show.
+    /// </summary>
+    public static void main(Args _args)
+    {
+        HSMobileOpsLicenseFile::upload();
+        FormRun caller = _args ? _args.caller() as FormRun : null;
+        if (caller)
+        {
+            for (int i = 1; i <= caller.dataSourceCount(); i++)
+            {
+                caller.dataSource(i).research(true);
+            }
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>upload</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Asks for the file (browse dialog, Upload / Cancel), checks and saves it, logs the result.
+    /// </summary>
+    /// <returns>true when a file was accepted.</returns>
+    internal static boolean upload()
+    {
+        FileUploadTemporaryStorageResult result = File::GetFileFromUser() as FileUploadTemporaryStorageResult;
+        if (!result || !result.getUploadStatus())
+        {
+            return false;   // Cancel
+        }
+        str text;
+        System.IO.StreamReader reader = new System.IO.StreamReader(result.openResult());
+        try
+        {
+            text = reader.ReadToEnd();
+        }
+        finally
+        {
+            reader.Dispose();
+        }
+        return HSMobileOpsLicenseFile::apply(result.getFileName(), text);
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>apply</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Saves the certificate and license in [_text] when they check out; logs either way.
+    /// </summary>
+    internal static boolean apply(str _fileName, str _text)
+    {
+        str cert, lic, reason;
+        container lines = HSMobileOpsLicenseFile::lines(_text);
+        for (int i = 1; i <= conLen(lines); i++)
+        {
+            str line = strLTrim(strRTrim(conPeek(lines, i)));
+            if (!line || subStr(line, 1, 1) == '#')
+            {
+                continue;
+            }
+            if (subStr(line, 1, 8) == 'WMSCERT1')
+            {
+                cert = line;
+            }
+            else if (subStr(line, 1, 7) == 'WMSLIC1')
+            {
+                lic = line;
+            }
+        }
+
+        if (!lic)
+        {
+            reason = 'No license in this file.';
+        }
+        else
+        {
+            HSMobileOpsLicenseSetup current = HSMobileOpsLicenseSetup::find();
+            if (!cert)
+            {
+                cert = current.CertificateString;
+            }
+            if (!cert)
+            {
+                reason = 'No certificate in this file, and none is stored yet.';
+            }
+        }
+
+        if (!reason)
+        {
+            int infoFrom = infologLine();
+            try
+            {
+                ttsbegin;
+                HSMobileOpsLicenseSetup setup = HSMobileOpsLicenseSetup::find(true);
+                setup.CertificateString = cert;
+                setup.LicenseKey        = lic;
+                if (setup.RecId)
+                {
+                    setup.update();
+                }
+                else
+                {
+                    setup.insert();
+                }
+                ttscommit;
+            }
+            catch (Exception::Error)
+            {
+                reason = infologLine() > infoFrom ? infolog.text(infologLine()) : 'This license did not verify.';
+            }
+        }
+
+        HSMobileOpsLicenseUpload log;
+        log.UploadedUtc = DateTimeUtil::utcNow();
+        log.UploadedBy  = curUserId();
+        log.FileName    = _fileName;
+        if (reason)
+        {
+            log.Result = 'Refused';
+            log.Reason = subStr(reason, 1, 500);
+        }
+        else
+        {
+            HSMobileOpsLicenseStatus status = HSMobileOpsLicense::verify();
+            log.Result     = 'Accepted';
+            log.ValidUntil = status.parmExpiryUtc();
+            log.Devices    = status.parmMaxDevices();
+        }
+        ttsbegin;
+        log.insert();
+        ttscommit;
+
+        if (reason)
+        {
+            warning(strFmt('License file refused: %1 The current license is unchanged.', reason));
+            return false;
+        }
+        info(strFmt('License uploaded. Valid until %1, %2 devices.', log.ValidUntil, log.Devices));
+        return true;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>lines</Name>
+				<Source><![CDATA[
+
+    private static container lines(str _text)
+    {
+        str text = strReplace(_text, '\r', '');
+        return str2con(text, '\n', false);
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

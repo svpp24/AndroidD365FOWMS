@@ -13,7 +13,7 @@
 ///
 /// **Prices are D365FO's, set at creation.** createLine searches trade agreements (vendor, price
 /// group, all) the way the purchase order form does; priceLines shows the same result in advance
-/// while the device is online. A supervisor's price override (Mobile device users > IsSupervisor)
+/// while the device is online. A supervisor's price override (Hub users > IsSupervisor)
 /// replaces it on that line only.
 ///
 /// **Both creates need explicit Menu access** (PO_CREATE, TO_CREATE): unlike the other modules,
@@ -580,7 +580,7 @@ class HSMobileOpsOrderCreateService
              || !HSMobileOpsOrderCreateService::isAssigned(user, _request.parmToWarehouseId()))
             {
                 response.parmErrorCode('WAREHOUSE_NOT_ASSIGNED');
-                response.parmMessage('Both warehouses must be assigned to you in Mobile device users');
+                response.parmMessage('Both warehouses must be assigned to you in Hub users');
                 return response;
             }
 

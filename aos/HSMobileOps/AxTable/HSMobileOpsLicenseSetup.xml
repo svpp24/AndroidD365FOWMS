@@ -118,7 +118,7 @@ public class HSMobileOpsLicenseSetup extends common
         {
             throw error(
                 'This certificate did not verify against the root key, or is outside its '
-              + 'validity window. Check it was pasted in full, with no extra whitespace.');
+              + 'validity window. Check the file is the one the vendor sent, unchanged.');
         }
         customerPublicKeyXml = conPeek(certResult, 1);
         certCustomerId       = conPeek(certResult, 2);
@@ -130,7 +130,7 @@ public class HSMobileOpsLicenseSetup extends common
         {
             throw error(
                 'This license did not verify against the customer key carried by that '
-              + 'certificate. Check it was pasted in full, and that it was issued for this certificate.');
+              + 'certificate. Check it was issued for this certificate.');
         }
         licCustomerId = conPeek(licResult, 1);
         licTenantId   = conPeek(licResult, 2);
@@ -213,7 +213,7 @@ public class HSMobileOpsLicenseSetup extends common
 			</Method>
 		</Methods>
 	</SourceCode>
-	<Label>Mobile license</Label>
+	<Label>License</Label>
 	<TitleField1>LicenseKey</TitleField1>
 	<CacheLookup>NotInTTS</CacheLookup>
 	<!-- One row for the whole environment, not one per legal entity - see the class doc. -->
@@ -223,14 +223,14 @@ public class HSMobileOpsLicenseSetup extends common
 			i:type="AxTableFieldString">
 			<Name>CertificateString</Name>
 			<Label>Certificate</Label>
-			<HelpText>The WMSCERT1... certificate string the vendor issued during onboarding, signed with the vendor's root key and carrying this environment's own customer public key. Paste it here together with a matching license string - see licensing/README.md. A pair that does not verify together is refused on save, not silently accepted.</HelpText>
+			<HelpText>The WMSCERT1... certificate string the vendor issued during onboarding, signed with the vendor's root key and carrying this environment's own customer public key. It comes in the license file uploaded on this page (Upload license file) and cannot be edited here.</HelpText>
 			<StringSize>3000</StringSize>
 		</AxTableField>
 		<AxTableField xmlns=""
 			i:type="AxTableFieldString">
 			<Name>LicenseKey</Name>
 			<Label>License key</Label>
-			<HelpText>The WMSLIC1... signed license string provided by the vendor - pasted together with a matching certificate above. Encodes its own expiry date and device limit; nothing here can change what it grants without a new signed key. A pair that does not verify together is refused on save, not silently accepted.</HelpText>
+			<HelpText>The WMSLIC1... signed license string provided by the vendor in the license file (Upload license file). Encodes its own expiry date and device limit; nothing here can change what it grants without a new signed key. A file that does not verify is refused and logged.</HelpText>
 			<StringSize>1500</StringSize>
 		</AxTableField>
 		<AxTableField xmlns=""

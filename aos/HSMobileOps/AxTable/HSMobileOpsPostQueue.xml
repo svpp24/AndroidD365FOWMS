@@ -240,7 +240,7 @@ public class HSMobileOpsPostQueue extends common
 			</Method>
 		</Methods>
 	</SourceCode>
-	<Label>Mobile posting queue</Label>
+	<Label>Posting queue</Label>
 	<TitleField1>SourceId</TitleField1>
 	<TitleField2>Status</TitleField2>
 	<CacheLookup>NotInTTS</CacheLookup>

@@ -4,7 +4,7 @@
 	<SourceCode>
 		<Declaration><![CDATA[
 /// <summary>
-/// Mobile clean-up: once a day, removes Mobile ops records older than their days on Mobile clean-up
+/// Clean-up: once a day, removes Mobile ops records older than their days on Clean-up
 /// (HSMobileOpsCleanupSetup) - registered and failed postings in the posting queue of every
 /// company, the sign-in log, closed feedback, the counted lines of transferred or cancelled stock
 /// counts - and marks unsent work from handhelds that stopped reporting. 0 days skips a kind.

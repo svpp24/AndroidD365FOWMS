@@ -14,7 +14,7 @@ public class HSMobileOpsFeedbackPicture extends common
 ]]></Declaration>
 		<Methods />
 	</SourceCode>
-	<Label>Mobile feedback picture</Label>
+	<Label>Feedback picture</Label>
 	<TitleField1>FeedbackId</TitleField1>
 	<TitleField2>PictureNum</TitleField2>
 	<CacheLookup>NotInTTS</CacheLookup>

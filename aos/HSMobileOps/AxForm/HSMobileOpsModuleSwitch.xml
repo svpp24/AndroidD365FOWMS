@@ -7,7 +7,7 @@
 				<Name>classDeclaration</Name>
 				<Source><![CDATA[
 /// <summary>
-/// Mobile module switches (Setup): switch a handheld module off for every worker - for every app
+/// Module switches (Setup): switch a handheld module off for every worker - for every app
 /// version, or only those listed - until a fixed app is installed. Devices pick it up within a
 /// few minutes.
 /// </summary>
@@ -34,7 +34,7 @@ public class HSMobileOpsModuleSwitch extends FormRun
 		</AxFormDataSource>
 	</DataSources>
 	<Design>
-		<Caption xmlns="">Mobile module switches</Caption>
+		<Caption xmlns="">Module switches</Caption>
 		<DataSource xmlns="">HSMobileOpsModuleSwitch</DataSource>
 		<Controls xmlns="">
 			<AxFormControl xmlns=""

@@ -43,7 +43,7 @@ public class HSMobileOpsCountTolerance extends FormRun
 		</AxFormDataSource>
 	</DataSources>
 	<Design>
-		<Caption xmlns="">Mobile count tolerance</Caption>
+		<Caption xmlns="">Count tolerance</Caption>
 		<DataSource xmlns="">HSMobileOpsCountTolerance</DataSource>
 		<ShowNewButton xmlns="">No</ShowNewButton>
 		<UseCaptionFromMenuItem xmlns="">Yes</UseCaptionFromMenuItem>

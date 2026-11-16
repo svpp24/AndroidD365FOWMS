@@ -4,7 +4,7 @@
 	<SourceCode>
 		<Declaration><![CDATA[
 /// <summary>
-/// Create default menus (Mobile device menus form): a Main menu (made the default when there is
+/// Create default menus (Menus form): a Main menu (made the default when there is
 /// none) opening Inbound, Outbound, Inventory management and Inquiries, each holding the modules
 /// that belong there. A menu ID that already exists is left exactly as it is, so running it
 /// again only adds what is missing. Lines saved before Sequence and Opens existed get them filled.

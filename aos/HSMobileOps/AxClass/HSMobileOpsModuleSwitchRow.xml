@@ -4,7 +4,7 @@
 	<SourceCode>
 		<Declaration><![CDATA[
 /// <summary>
-/// A module switched off on Mobile module switches: Module is the HSMobileOpsModule element name (the app's WarehouseWorkflow), Message what the worker is told.
+/// A module switched off on Module switches: Module is the HSMobileOpsModule element name (the app's WarehouseWorkflow), Message what the worker is told.
 /// </summary>
 [DataContractAttribute]
 class HSMobileOpsModuleSwitchRow

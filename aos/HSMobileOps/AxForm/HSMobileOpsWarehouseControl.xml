@@ -6,7 +6,7 @@
 			<Method>
 				<Name>classDeclaration</Name>
 				<Source><![CDATA[
-/// <summary>Mobile warehouse control: every warehouse of the company, with the handhelds' settings for it.</summary>
+/// <summary>Warehouse control: every warehouse of the company, with the handhelds' settings for it.</summary>
 [Form]
 public class HSMobileOpsWarehouseControl extends FormRun
 {
@@ -44,7 +44,7 @@ public class HSMobileOpsWarehouseControl extends FormRun
 		</AxFormDataSource>
 	</DataSources>
 	<Design>
-		<Caption xmlns="">Mobile warehouse control</Caption>
+		<Caption xmlns="">Warehouse control</Caption>
 		<DataSource xmlns="">HSMobileOpsWarehouseControl</DataSource>
 		<ViewEditMode xmlns="">Edit</ViewEditMode>
 		<Controls xmlns="">

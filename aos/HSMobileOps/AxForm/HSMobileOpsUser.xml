@@ -7,7 +7,7 @@
 				<Name>classDeclaration</Name>
 				<Source><![CDATA[
 /// <summary>
-/// Mobile device users, and the warehouses each may work in.
+/// Hub users, and the warehouses each may work in.
 ///
 /// The only place these accounts are created, reset and deactivated. The handheld deliberately has
 /// no administration screen: user setup belongs where D365FO's own security governs who may do it,
@@ -96,7 +96,7 @@ public class HSMobileOpsUser extends FormRun
 		</AxFormDataSource>
 	</DataSources>
 	<Design>
-		<Caption xmlns="">Mobile users</Caption>
+		<Caption xmlns="">Hub users</Caption>
 		<DataSource xmlns="">HSMobileOpsUser</DataSource>
 		<Pattern xmlns="">SimpleListDetails</Pattern>
 		<PatternVersion xmlns="">1.3</PatternVersion>
@@ -322,7 +322,7 @@ public class HSMobileOpsUser extends FormRun
 					<AxFormControl xmlns=""
 						i:type="AxFormStringControl">
 						<Name>MenuId</Name>
-						<HelpText>The handheld menu this worker sees as Home. Blank uses the default menu (Mobile device menus).</HelpText>
+						<HelpText>The handheld menu this worker sees as Home. Blank uses the default menu (Menus).</HelpText>
 						<Type>String</Type>
 						<FormControlExtension
 							i:nil="true" />

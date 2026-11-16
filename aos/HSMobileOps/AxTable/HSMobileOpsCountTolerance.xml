@@ -5,7 +5,7 @@
 		<Declaration><![CDATA[
 /// <summary>
 /// Counting variance tolerance, one row per company (none = defaults, see find). Edited on
-/// the Mobile count tolerance form (Setup). A line within
+/// the Count tolerance form (Setup). A line within
 /// tolerance is MINOR_VARIANCE and needs no approval; outside it is RECOUNT_REQUIRED.
 /// </summary>
 public class HSMobileOpsCountTolerance extends common
@@ -103,7 +103,7 @@ public class HSMobileOpsCountTolerance extends common
 			</Method>
 		</Methods>
 	</SourceCode>
-	<Label>Mobile count tolerance</Label>
+	<Label>Count tolerance</Label>
 	<CacheLookup>Found</CacheLookup>
 	<Fields>
 		<AxTableField xmlns=""

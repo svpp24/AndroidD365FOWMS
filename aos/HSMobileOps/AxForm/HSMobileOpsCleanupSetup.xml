@@ -7,7 +7,7 @@
 				<Name>classDeclaration</Name>
 				<Source><![CDATA[
 /// <summary>
-/// Mobile clean-up (Setup): how many days Mobile ops records are kept, in D365FO and on the
+/// Clean-up (Setup): how many days Mobile ops records are kept, in D365FO and on the
 /// handhelds. One row; InsertIfEmpty creates it with the defaults. 0 days means never.
 /// </summary>
 [Form]
@@ -35,7 +35,7 @@ public class HSMobileOpsCleanupSetup extends FormRun
 		</AxFormDataSource>
 	</DataSources>
 	<Design>
-		<Caption xmlns="">Mobile clean-up</Caption>
+		<Caption xmlns="">Clean-up</Caption>
 		<DataSource xmlns="">HSMobileOpsCleanupSetup</DataSource>
 		<ShowNewButton xmlns="">No</ShowNewButton>
 		<UseCaptionFromMenuItem xmlns="">Yes</UseCaptionFromMenuItem>

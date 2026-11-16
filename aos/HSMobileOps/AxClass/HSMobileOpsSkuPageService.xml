@@ -51,7 +51,7 @@ class HSMobileOpsSkuPageService
     /// barcodes - the device drops what a full refresh did not send. A delta still sends a change
     /// to stopped or blocked, so the device marks it inactive the same day.
     ///
-    /// Warehouse: a warehouse that syncs by assortment (Mobile warehouse control) gets only the
+    /// Warehouse: a warehouse that syncs by assortment (Warehouse control) gets only the
     /// items of its store's item list, and their barcodes, variants, units and categories; Scope
     /// says which. Every other warehouse runs the company-wide queries, unchanged.
     /// </summary>
@@ -81,7 +81,7 @@ class HSMobileOpsSkuPageService
 
         changecompany (_request.parmDataAreaId())
         {
-            // The warehouse's store assortment, or '' for every item - Mobile warehouse control.
+            // The warehouse's store assortment, or '' for every item - Warehouse control.
             InventLocationId scope = HSMobileOpsWarehouseControl::itemScope(_request.parmWarehouse());
             response.parmScope(scope);
             switch (_request.parmFeed())
@@ -146,7 +146,7 @@ class HSMobileOpsSkuPageService
             if (!snapshot.RecId)
             {
                 response.parmErrorCode('NO_SNAPSHOT');
-                response.parmMessage('No item snapshot is ready - Mobile item snapshot, Rebuild snapshot now.');
+                response.parmMessage('No item snapshot is ready - Item snapshot, Rebuild snapshot now.');
                 return response;
             }
             json.Append('{"builtAtUtc":');

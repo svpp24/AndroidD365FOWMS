@@ -6,7 +6,7 @@
 /// <summary>
 /// Feedback sent from the handheld (Problem / Idea / Question), with the screen, app version,
 /// worker and warehouse it came from, the app's recent log and a screenshot (JPEG, in the
-/// record). Reviewed on the Mobile feedback form; Status and Reply go back to the worker.
+/// record). Reviewed on the Feedback form; Status and Reply go back to the worker.
 /// One list for the environment, like the device fleet.
 /// </summary>
 public class HSMobileOpsFeedback extends common
@@ -51,7 +51,7 @@ public class HSMobileOpsFeedback extends common
 			</Method>
 		</Methods>
 	</SourceCode>
-	<Label>Mobile feedback</Label>
+	<Label>Feedback</Label>
 	<TitleField1>Screen</TitleField1>
 	<TitleField2>UserName</TitleField2>
 	<CacheLookup>NotInTTS</CacheLookup>

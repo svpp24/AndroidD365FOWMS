@@ -4,7 +4,7 @@
 	<SourceCode>
 		<Declaration><![CDATA[
 /// <summary>
-/// A device setup code (Mobile devices, New device setup code): what a new handheld scans to
+/// A device setup code (Hub devices, New device setup code): what a new handheld scans to
 /// join the fleet instead of a connection code with a client secret. Only the SHA-256 of the code
 /// is kept; the code itself is shown once, in its QR code. A code works until it expires or has
 /// been used MaxUses times. See HSMobileOpsDeviceSetupService and docs/device-setup.md.

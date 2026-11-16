@@ -4,7 +4,7 @@
 	<SourceCode>
 		<Declaration><![CDATA[
 /// <summary>
-/// Change quantity on the Mobile posting queue form: the correct quantities for a failed posting,
+/// Change quantity on the Posting queue form: the correct quantities for a failed posting,
 /// with a reason, then worked at once from the lines staged in D365FO. Nothing is rescanned. Cannot
 /// go above what is left on the order - see HSMobileOpsPostingService::changeQuantities.
 /// </summary>

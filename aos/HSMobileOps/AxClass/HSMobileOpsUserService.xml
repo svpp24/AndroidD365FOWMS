@@ -522,11 +522,11 @@ class HSMobileOpsUserService
     {
         HSMobileOpsSetModulePermissionResponse response = new HSMobileOpsSetModulePermissionResponse();
 
-        // Menu access is maintained in D365FO only (Mobile device users, Menu access tab). The
+        // Menu access is maintained in D365FO only (Hub users, Menu access tab). The
         // operation is no longer published on HSMobileOpsUserSvc; this refuses any other caller.
         response.parmSuccess(false);
         response.parmErrorCode('MANAGED_IN_D365');
-        response.parmMessage('Menu access is set up in D365FO on the Mobile device users form.');
+        response.parmMessage('Menu access is set up in D365FO on the Hub users form.');
         return response;
     }
 ]]></Source>

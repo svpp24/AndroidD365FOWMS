@@ -4,14 +4,14 @@
 	<SourceCode>
 		<Declaration><![CDATA[
 /// <summary>
-/// Builds the Mobile item snapshot of the company it runs in - nightly, and on "Rebuild snapshot
+/// Builds the Item snapshot of the company it runs in - nightly, and on "Rebuild snapshot
 /// now". The files are the getSkuPage feeds of a full refresh, ZIP (one .jsonl entry), one page of rows per line.
 /// In batch the build is split into tasks by key range (HSMobileOpsSkuSnapshotTask) that run side by
 /// side on the batch threads; the last one to end completes the build. Outside batch it runs in turn.
 /// A deploy or restart ends the batch job part way: the next build marks a Building snapshot whose
 /// job no longer runs as Failed (interrupted) and removes its files, so it never blocks a rebuild.
 ///
-/// Stores that sync by assortment (Mobile warehouse control) get a snapshot of their own, of their
+/// Stores that sync by assortment (Warehouse control) get a snapshot of their own, of their
 /// item list only. The company's tasks are queued first and the stores' item lists refreshed
 /// meanwhile; once the company snapshot is Ready, each store's is cut from its files
 /// (HSMobileOpsSkuStoreFilter) - no queries or unit conversions again. Stores with the same
@@ -890,7 +890,7 @@ class HSMobileOpsSkuSnapshotBuild extends RunBaseBatch
                 return;
             }
             notification.Title(strFmt('%1 failed (%2)', _what, curExt()));
-            notification.Message(strFmt('%1. Devices page through the items until the next build succeeds. See Mobile sync health.', subStr(_result, 1, 200)));
+            notification.Message(strFmt('%1. Devices page through the items until the next build succeeds. See Sync health.', subStr(_result, 1, 200)));
             notification.RuleId('ExcelStaticExport');
             notification.ExpirationDateTime(DateTimeUtil::addHours(DateTimeUtil::utcNow(), 72));
             SystemNotificationsManager::AddSystemNotification(notification);

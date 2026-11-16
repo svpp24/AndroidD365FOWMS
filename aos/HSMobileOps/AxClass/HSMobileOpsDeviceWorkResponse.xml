@@ -112,7 +112,7 @@ class HSMobileOpsDeviceWorkResponse
 				<Source><![CDATA[
 
     /// <summary>
-    /// Mobile item snapshot, Ask all devices to full re-sync: a device whose last full download
+    /// Item snapshot, Ask all devices to full re-sync: a device whose last full download
     /// is older does one. Blank when never asked.
     /// </summary>
     [DataMemberAttribute('FullResyncAfterUtc')]

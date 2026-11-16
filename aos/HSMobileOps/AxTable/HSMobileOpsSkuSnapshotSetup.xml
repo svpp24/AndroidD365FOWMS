@@ -56,7 +56,7 @@ public class HSMobileOpsSkuSnapshotSetup extends common
 			</Method>
 		</Methods>
 	</SourceCode>
-	<Label>Mobile item snapshot setup</Label>
+	<Label>Item snapshot setup</Label>
 	<CacheLookup>Found</CacheLookup>
 	<SaveDataPerCompany>No</SaveDataPerCompany>
 	<Fields>

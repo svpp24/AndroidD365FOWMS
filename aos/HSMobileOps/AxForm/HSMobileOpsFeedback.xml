@@ -150,7 +150,7 @@ public class HSMobileOpsFeedback extends FormRun
 		</AxFormDataSource>
 	</DataSources>
 	<Design>
-		<Caption xmlns="">Mobile feedback</Caption>
+		<Caption xmlns="">Feedback</Caption>
 		<DataSource xmlns="">HSMobileOpsFeedback</DataSource>
 		<Pattern xmlns="">SimpleListDetails</Pattern>
 		<PatternVersion xmlns="">1.3</PatternVersion>

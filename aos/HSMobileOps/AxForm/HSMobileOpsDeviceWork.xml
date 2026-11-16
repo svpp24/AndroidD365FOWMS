@@ -7,7 +7,7 @@
 				<Name>classDeclaration</Name>
 				<Source><![CDATA[
 /// <summary>
-/// Mobile unsent work (Inquiries): what each handheld holds that D365FO has not posted yet - the
+/// Unsent work (Inquiries): what each handheld holds that D365FO has not posted yet - the
 /// copy a worker restores after a reinstall or on another device. Read only; a row can be
 /// deleted once the work is known to be done or not wanted.
 /// </summary>
@@ -36,7 +36,7 @@ public class HSMobileOpsDeviceWork extends FormRun
 		</AxFormDataSource>
 	</DataSources>
 	<Design>
-		<Caption xmlns="">Mobile unsent work</Caption>
+		<Caption xmlns="">Unsent work</Caption>
 		<DataSource xmlns="">HSMobileOpsDeviceWork</DataSource>
 		<Controls xmlns="">
 			<AxFormControl xmlns=""

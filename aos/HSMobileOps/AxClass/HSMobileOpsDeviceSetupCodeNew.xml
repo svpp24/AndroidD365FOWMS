@@ -4,7 +4,7 @@
 	<SourceCode>
 		<Declaration><![CDATA[
 /// <summary>
-/// New device setup code (Mobile devices, Device setup codes): asks what the code is for, its
+/// New device setup code (Hub devices, Device setup codes): asks what the code is for, its
 /// company, how many devices and for how many days, and the token service address; makes a
 /// random code, keeps only its hash, and shows its QR code (HSMobileOpsDeviceSetupQr). Show QR code
 /// (HSMobileOpsDeviceSetupCodeShowQr) shows it again by giving the code a new random value.

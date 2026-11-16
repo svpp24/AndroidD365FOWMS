@@ -174,7 +174,7 @@ public class HSMobileOpsProcessSetup extends common
 
         if (!this.GrnNumberSequence)
         {
-            throw error('Auto GRN is on, but Mobile process setup has no GRN number sequence for Receiving');
+            throw error('Auto GRN is on, but Process setup has no GRN number sequence for Receiving');
         }
 
         select firstOnly RecId from sequence
@@ -200,7 +200,7 @@ public class HSMobileOpsProcessSetup extends common
 			</Method>
 		</Methods>
 	</SourceCode>
-	<Label>Mobile process setup</Label>
+	<Label>Process setup</Label>
 	<TitleField1>ProcessType</TitleField1>
 	<TitleField2>AutoGrn</TitleField2>
 	<CacheLookup>NotInTTS</CacheLookup>

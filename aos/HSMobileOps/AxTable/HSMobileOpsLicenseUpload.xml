@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxTable xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsLicenseUpload</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Every license file uploaded on the License page, accepted or refused (user, 16 Nov 2026): who,
+/// when, which file, the result and - when accepted - what it grants. Written only by
+/// HSMobileOpsLicenseFile; a refused upload is logged here and leaves the current license as it was.
+/// </summary>
+public class HSMobileOpsLicenseUpload extends common
+{
+}
+]]></Declaration>
+		<Methods />
+	</SourceCode>
+	<Label>License upload</Label>
+	<TitleField1>FileName</TitleField1>
+	<TitleField2>Result</TitleField2>
+	<CacheLookup>None</CacheLookup>
+	<SaveDataPerCompany>No</SaveDataPerCompany>
+	<Fields>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldUtcDateTime">
+			<Name>UploadedUtc</Name>
+			<AllowEdit>No</AllowEdit>
+			<ExtendedDataType>TransDateTime</ExtendedDataType>
+			<Label>Uploaded</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>UploadedBy</Name>
+			<AllowEdit>No</AllowEdit>
+			<ExtendedDataType>UserId</ExtendedDataType>
+			<Label>By</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>FileName</Name>
+			<AllowEdit>No</AllowEdit>
+			<Label>File</Label>
+			<StringSize>255</StringSize>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>Result</Name>
+			<AllowEdit>No</AllowEdit>
+			<Label>Result</Label>
+			<StringSize>20</StringSize>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>Reason</Name>
+			<AllowEdit>No</AllowEdit>
+			<Label>Reason</Label>
+			<StringSize>500</StringSize>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>ValidUntil</Name>
+			<AllowEdit>No</AllowEdit>
+			<Label>Valid until</Label>
+			<StringSize>30</StringSize>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldInt">
+			<Name>Devices</Name>
+			<AllowEdit>No</AllowEdit>
+			<Label>Devices</Label>
+		</AxTableField>
+	</Fields>
+	<FullTextIndexes />
+	<Indexes>
+		<AxTableIndex>
+			<Name>UploadedIdx</Name>
+			<AllowDuplicates>Yes</AllowDuplicates>
+			<Fields>
+				<AxTableIndexField>
+					<DataField>UploadedUtc</DataField>
+				</AxTableIndexField>
+			</Fields>
+		</AxTableIndex>
+	</Indexes>
+	<Mappings />
+	<Relations />
+	<StateMachines />
+</AxTable>

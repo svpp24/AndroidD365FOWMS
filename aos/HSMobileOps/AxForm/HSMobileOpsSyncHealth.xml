@@ -7,7 +7,7 @@
 				<Name>classDeclaration</Name>
 				<Source><![CDATA[
 /// <summary>
-/// Mobile sync health: one screen for the handhelds' item sync - a summary on top, then every
+/// Sync health: one screen for the handhelds' item sync - a summary on top, then every
 /// warehouse (what its devices get, its snapshot, its devices), every device (oldest successful
 /// sync first) and every item snapshot build.
 /// </summary>
@@ -176,7 +176,7 @@ public class HSMobileOpsSyncHealth extends FormRun
 		</AxFormDataSource>
 	</DataSources>
 	<Design>
-		<Caption xmlns="">Mobile sync health</Caption>
+		<Caption xmlns="">Sync health</Caption>
 		<DataSource xmlns="">HSMobileOpsWarehouseControl</DataSource>
 		<Controls xmlns="">
 			<AxFormControl xmlns=""
@@ -210,7 +210,7 @@ public class HSMobileOpsSyncHealth extends FormRun
 									i:nil="true" />
 								<ButtonDisplay>TextOnly</ButtonDisplay>
 								<MenuItemName>HSMobileOpsWarehouseControl</MenuItemName>
-								<Text>Mobile warehouse control</Text>
+								<Text>Warehouse control</Text>
 							</AxFormControl>
 							<AxFormControl xmlns=""
 								i:type="AxFormMenuFunctionButtonControl">
@@ -220,7 +220,7 @@ public class HSMobileOpsSyncHealth extends FormRun
 									i:nil="true" />
 								<ButtonDisplay>TextOnly</ButtonDisplay>
 								<MenuItemName>HSMobileOpsSkuSnapshot</MenuItemName>
-								<Text>Mobile item snapshot</Text>
+								<Text>Item snapshot</Text>
 							</AxFormControl>
 						</Controls>
 					</AxFormControl>

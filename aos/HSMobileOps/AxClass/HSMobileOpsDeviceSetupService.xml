@@ -9,7 +9,7 @@
 /// - registerDeviceKey: a new device scanned a setup code. Checks the code, the license and the
 ///   device limit, keeps the device's public key, marks the device active and counts the use.
 /// - getDeviceKey: the token service checks a device's signed token request against this key
-///   and gives no token to an inactive device (Mobile devices, Activate / deactivate).
+///   and gives no token to an inactive device (Hub devices, Activate / deactivate).
 /// See docs/device-setup.md.
 /// </summary>
 class HSMobileOpsDeviceSetupService
@@ -75,7 +75,7 @@ class HSMobileOpsDeviceSetupService
         {
             ttsabort;
             return HSMobileOpsDeviceSetupService::fail(response, 'DEVICE_LIMIT_REACHED', strFmt(
-                'This app is licensed for %1 device(s), and that many are already active. Deactivate one in Mobile devices first.',
+                'This app is licensed for %1 device(s), and that many are already active. Deactivate one in Hub devices first.',
                 license.parmMaxDevices()));
         }
 
@@ -145,7 +145,7 @@ class HSMobileOpsDeviceSetupService
         else if (device.IsActive == NoYes::No)
         {
             response.parmErrorCode('DEVICE_INACTIVE');
-            response.parmMessage('This device has been deactivated in Mobile devices.');
+            response.parmMessage('This device has been deactivated in Hub devices.');
         }
         return response;
     }

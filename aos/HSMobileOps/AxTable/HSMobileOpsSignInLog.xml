@@ -108,7 +108,7 @@ public class HSMobileOpsSignInLog extends common
 			i:type="AxTableFieldString">
 			<Name>DeviceId</Name>
 			<AllowEdit>No</AllowEdit>
-			<HelpText>The handheld - see Mobile devices.</HelpText>
+			<HelpText>The handheld - see Hub devices.</HelpText>
 			<Label>Device ID</Label>
 			<StringSize>64</StringSize>
 		</AxTableField>

@@ -185,7 +185,7 @@ class HSMobileOpsPostingService
         // In the same transaction as the insert, holding the lines: a second worker's posting of
         // the same line waits here, then sees this row. Refused now, it costs them a message at
         // the door rather than a failed posting found later. Stored Failed, not dropped: a
-        // supervisor can then see it and act on it (Mobile posting queue) with nothing rescanned.
+        // supervisor can then see it and act on it (Posting queue) with nothing rescanned.
         problem = HSMobileOpsPostingService::stagingProblem(
             _documentType, _request.parmSourceId(), _request.parmLinesJson());
 
@@ -528,7 +528,7 @@ class HSMobileOpsPostingService
 				<Source><![CDATA[
 
     /// <summary>
-    /// Retry on the Mobile posting queue form: a Failed row reopened and worked now, from the
+    /// Retry on the Posting queue form: a Failed row reopened and worked now, from the
     /// lines staged on it - a big one is left Pending for the batch job. Called inside the row's
     /// company. The reason when it could not be reopened - not Failed, or the quantity has gone
     /// to someone else since - else blank.
@@ -707,7 +707,7 @@ class HSMobileOpsPostingService
 				<Source><![CDATA[
 
     /// <summary>
-    /// Change quantity on the Mobile posting queue form: new quantities for a Failed posting, one
+    /// Change quantity on the Posting queue form: new quantities for a Failed posting, one
     /// per line in the order of its lines, 0 removing a line. Checked exactly as a new posting is,
     /// so it cannot go above what is left on the order: over-delivery stays refused. Lowering one
     /// leaves the rest Ordered and open on the order. The device's lines stay in OriginalLinesJson.
@@ -784,7 +784,7 @@ class HSMobileOpsPostingService
 				<Source><![CDATA[
 
     /// <summary>
-    /// Cancel posting on the Mobile posting queue form: closes a Failed posting, posting nothing.
+    /// Cancel posting on the Posting queue form: closes a Failed posting, posting nothing.
     /// The handheld holding it clears its card (PostingFollowUp). The reason if not done.
     /// </summary>
     public static str cancelPosting(RecId _recId, str _reason)
@@ -1171,7 +1171,7 @@ class HSMobileOpsPostingService
                 }
             }
 
-            // Auto GRN (Mobile process setup, Receiving): the registered quantity is posted as a
+            // Auto GRN (Process setup, Receiving): the registered quantity is posted as a
             // product receipt in this same transaction - registered and received together, or
             // neither, so a failed GRN leaves nothing half done to find.
             if (!failMessage
@@ -1254,7 +1254,7 @@ class HSMobileOpsPostingService
 
     /// <summary>
     /// Auto GRN: posts the product receipt for the order's registered quantity (PurchUpdate::
-    /// Recorded), numbered from the GRN number sequence on Mobile process setup. Called inside
+    /// Recorded), numbered from the GRN number sequence on Process setup. Called inside
     /// processReceiptQueueEntry's transaction, right after the lines registered. Throws when
     /// nothing was posted, so the registration rolls back with it.
     /// </summary>
