@@ -10,6 +10,7 @@ import com.d365fo.mobileops.presentation.common.scan.ScanFeedback
 import com.d365fo.mobileops.util.NetworkResult
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -92,17 +93,23 @@ class LocationInquiryViewModel @Inject constructor(
         pending = viewModelScope.launch {
             _state.update { it.copy(busy = true, error = null, result = null, locationId = locationId, stock = emptyList(), stockError = null, categoryPath = "") }
 
+            // Both questions at once (user, 16 Nov 2026: Location inquiry was slow) - the location
+            // check and what is on it went one after the other, two round trips in a row.
+            val stockCall = async { enquiry.locationItems(warehouseId, locationId) }
             when (val result = lookups.lookupLocation(warehouseId, locationId)) {
                 is NetworkResult.Error -> {
+                    stockCall.cancel()
                     scanFeedback.error()
                     _state.update { it.copy(busy = false, error = result.failure.message) }
                 }
                 NetworkResult.Loading -> {
+                    stockCall.cancel()
                     _state.update { it.copy(busy = false, error = "Lookup did not complete") }
                 }
                 is NetworkResult.Success -> {
                     val facts = result.data
                     if (facts == null) {
+                        stockCall.cancel()
                         scanFeedback.error()
                         _state.update {
                             it.copy(
@@ -113,7 +120,7 @@ class LocationInquiryViewModel @Inject constructor(
                     } else {
                         scanFeedback.success()
                         _state.update { it.copy(busy = false, result = facts, stockLoading = true, stock = emptyList(), stockError = null) }
-                        loadStock(warehouseId, facts.locationId.ifBlank { locationId })
+                        showStock(stockCall.await())
                     }
                 }
             }
@@ -124,8 +131,8 @@ class LocationInquiryViewModel @Inject constructor(
      * What is on the location (user, 12 Nov), by category: D365FO's on-hand there, with names and
      * categories from the device's item list.
      */
-    private suspend fun loadStock(warehouseId: String, locationId: String) {
-        when (val r = enquiry.locationItems(warehouseId, locationId)) {
+    private suspend fun showStock(r: NetworkResult<List<com.d365fo.mobileops.data.repository.LocationStock>>) {
+        when (r) {
             is NetworkResult.Success -> {
                 val known = r.data.map { it.itemId }.distinct().chunked(500)
                     .flatMap { itemDao.itemsByIds(it) }.associateBy { it.itemId }
