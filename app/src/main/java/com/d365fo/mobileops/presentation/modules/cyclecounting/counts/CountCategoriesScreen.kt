@@ -112,7 +112,8 @@ fun CountCategoriesScreen(onBack: () -> Unit, viewModel: CountCategoriesViewMode
                     " · " + (if (state.itemCount == 1) "1 item" else "${state.itemCount} items"),
                 "${state.countedCount} counted so far. Tap a category to see its items.",
             )
-            else -> null
+            // Read only (user, 16 Nov 2026): the rows looked tappable and did nothing.
+            else -> BandState(BandKind.Info, "Progress only", "Counters count on their handhelds.")
         },
         topBarTrailing = {
             IconButton(onClick = viewModel::refresh) { Icon(Icons.Default.Refresh, contentDescription = "Refresh", tint = FocusColors.ink) }
@@ -139,8 +140,8 @@ fun CountCategoriesScreen(onBack: () -> Unit, viewModel: CountCategoriesViewMode
                             listOf(r.configId, r.sizeId, r.colorId, r.styleId).filter { it.isNotBlank() }.joinToString(" / ").ifBlank { null },
                             r.locationId.takeIf { it.isNotBlank() }?.let { "at $it" },
                         ).joinToString(" · ").ifBlank { null },
-                        state = if (r.countedByAnyone) RowState.Done else RowState.Open,
-                        count = if (r.countedByAnyone) "Counted" else null,
+                        count = if (r.countedByAnyone) "Counted" else "Not counted",
+                        countColor = if (r.countedByAnyone) FocusColors.okIcon else FocusColors.muted,
                     )
                 }
             }

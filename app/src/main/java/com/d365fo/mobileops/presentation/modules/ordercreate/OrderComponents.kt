@@ -459,3 +459,72 @@ fun TapToTypeField(value: String, onValueChange: (String) -> Unit, placeholder: 
 
 
 fun linesText(count: Int): String = if (count == 1) "1 line" else "$count lines"
+
+
+/**
+ * The items the chosen vendor is approved for today (D365FO's approved vendor list), with a
+ * search: tapping one does what scanning its item number does (user, 16 Nov 2026).
+ */
+@Composable
+internal fun VendorItemsScreen(
+    vendorName: String,
+    state: PoCreateState,
+    /** Quantity already on the order, by item - shown on the row. */
+    inOrder: Map<String, Double>,
+    onQuery: (String) -> Unit,
+    onRetry: () -> Unit,
+    onPick: (com.d365fo.mobileops.data.repository.VendorItem) -> Unit,
+    onClose: () -> Unit,
+) {
+    androidx.activity.compose.BackHandler(onBack = onClose)
+    val all = state.vendorItems.orEmpty()
+    val query = state.itemQuery.trim()
+    val shown = if (query.isBlank()) all else all.filter {
+        it.itemId.contains(query, ignoreCase = true) || it.name.contains(query, ignoreCase = true)
+    }
+    com.d365fo.mobileops.presentation.common.focus.FocusScreen(
+        title = "$vendorName's items",
+        onBack = onClose,
+        counter = state.vendorItems?.let { "%,d".format(it.size) },
+        band = when {
+            state.loadingVendorItems && state.vendorItems.isNullOrEmpty() -> com.d365fo.mobileops.presentation.common.focus.BandState(
+                com.d365fo.mobileops.presentation.common.focus.BandKind.Info, "Loading", "Asking D365FO for the items of $vendorName",
+            )
+            state.loadingVendorItems -> com.d365fo.mobileops.presentation.common.focus.BandState(
+                com.d365fo.mobileops.presentation.common.focus.BandKind.Info, "Loading more", "${"%,d".format(all.size)} so far - search works on these",
+            )
+            state.vendorItemsError != null -> com.d365fo.mobileops.presentation.common.focus.BandState(
+                com.d365fo.mobileops.presentation.common.focus.BandKind.Bad, "Not loaded", state.vendorItemsError,
+            )
+            state.vendorItems?.isEmpty() == true -> com.d365fo.mobileops.presentation.common.focus.BandState(
+                com.d365fo.mobileops.presentation.common.focus.BandKind.Warn, "No approved items", "Scan or type the item instead.",
+            )
+            else -> null
+        },
+        actions = if (state.vendorItemsError != null) { {
+            com.d365fo.mobileops.presentation.common.focus.FocusButton("Try again", onClick = onRetry, modifier = Modifier.weight(1f))
+        } } else null,
+    ) {
+        androidx.compose.foundation.lazy.LazyColumn(modifier = Modifier.weight(1f).fillMaxWidth()) {
+            item(key = "item-search") {
+                TapToTypeField(state.itemQuery, onQuery, "Type to search item or code", modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp))
+            }
+            if (all.isNotEmpty()) {
+                item(key = "item-caption") {
+                    ListCaption(if (query.isBlank()) "Approved for this vendor" else "${shown.size} found")
+                }
+            }
+            items(shown, key = { it.itemId }) { item ->
+                val qty = inOrder[item.itemId]
+                com.d365fo.mobileops.presentation.common.focus.FocusListRow(
+                    title = item.name,
+                    subtitle = listOf(item.itemId, item.unit).filter { it.isNotBlank() }.joinToString(" · "),
+                    count = qty?.let { "${java.math.BigDecimal.valueOf(it).stripTrailingZeros().toPlainString()} in order" },
+                    countColor = if (qty != null) com.d365fo.mobileops.presentation.common.theme.FocusColors.okIcon else com.d365fo.mobileops.presentation.common.theme.FocusColors.muted,
+                    chevron = qty == null,
+                    onClick = { onPick(item) },
+                )
+            }
+        }
+    }
+}

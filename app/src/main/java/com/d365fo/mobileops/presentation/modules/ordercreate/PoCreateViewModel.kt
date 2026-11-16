@@ -51,6 +51,11 @@ data class PoCreateState(
     val editingPrice: DraftLine? = null,
     /** The order just submitted - its card follows it from waiting to created. */
     val submittedId: String? = null,
+    /** The vendor's approved items (Items button), null until read from D365FO. */
+    val vendorItems: List<com.d365fo.mobileops.data.repository.VendorItem>? = null,
+    val loadingVendorItems: Boolean = false,
+    val vendorItemsError: String? = null,
+    val itemQuery: String = "",
 )
 
 /**
@@ -122,6 +127,7 @@ class PoCreateViewModel @Inject constructor(
                 priceAll(isOnline = online)
             }
             refreshVendors(force = false)
+            if (_state.value.draft.vendorAccount.isNotBlank()) loadVendorItems()
         }
         viewModelScope.launch { scannerBridge.scans.collect { onCode(it.value) } }
     }
@@ -159,9 +165,42 @@ class PoCreateViewModel @Inject constructor(
     fun pickVendor(vendor: VendorEntity) {
         updateDraft { it.copy(vendorAccount = vendor.accountNum, vendorName = vendor.name, currencyCode = vendor.currencyCode) }
         priceAll()
+        loadVendorItems()
     }
 
-    fun changeVendor() = updateDraft { it.copy(vendorAccount = "", vendorName = "", currencyCode = "") }
+    fun changeVendor() {
+        updateDraft { it.copy(vendorAccount = "", vendorName = "", currencyCode = "") }
+        _state.update { it.copy(vendorItems = null, vendorItemsError = null, itemQuery = "") }
+    }
+
+    // -- The vendor's items (user, 16 Nov 2026) ----------------------------------------------------
+
+    private var vendorItemsJob: kotlinx.coroutines.Job? = null
+
+    /** The items the vendor is approved for today - from D365FO, when asked or a vendor is chosen. */
+    fun loadVendorItems() {
+        val vendor = _state.value.draft.vendorAccount.takeIf { it.isNotBlank() } ?: return
+        vendorItemsJob?.cancel()
+        vendorItemsJob = viewModelScope.launch {
+            _state.update { it.copy(loadingVendorItems = true, vendorItemsError = null) }
+            val result = repository.vendorItems(vendor) { page ->
+                if (_state.value.draft.vendorAccount == vendor) _state.update { it.copy(vendorItems = page) }
+            }
+            if (_state.value.draft.vendorAccount != vendor) return@launch
+            _state.update {
+                when (result) {
+                    is NetworkResult.Success -> it.copy(loadingVendorItems = false, vendorItems = result.data)
+                    is NetworkResult.Error -> it.copy(loadingVendorItems = false, vendorItemsError = result.failure.message)
+                    NetworkResult.Loading -> it
+                }
+            }
+        }
+    }
+
+    fun onItemQuery(value: String) = _state.update { it.copy(itemQuery = value) }
+
+    /** A row of the Items list: the same as scanning its item number. */
+    fun pickVendorItem(item: com.d365fo.mobileops.data.repository.VendorItem) = onCode(item.itemId)
 
     // -- Lines ---------------------------------------------------------------------------------
 

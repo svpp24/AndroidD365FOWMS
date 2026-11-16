@@ -14,6 +14,11 @@ class ExpiryDateTest {
         assertThat(parseExpiry("31/12/2027")).isEqualTo("2027-12-31")
         assertThat(parseExpiry("5.3.2028")).isEqualTo("2028-03-05")
         assertThat(parseExpiry("31122027")).isEqualTo("2027-12-31")
+        // Six digits, day first, and two-digit years with separators.
+        assertThat(parseExpiry("311228")).isEqualTo("2028-12-31")
+        assertThat(parseExpiry("050328")).isEqualTo("2028-03-05")
+        assertThat(parseExpiry("31-12-28")).isEqualTo("2028-12-31")
+        assertThat(com.d365fo.mobileops.presentation.modules.stepflow.wordsDate("2028-12-31")).isEqualTo("31 Dec 2028")
     }
 
     @Test
@@ -26,6 +31,7 @@ class ExpiryDateTest {
         assertThat(parseExpiry("31-02-2027")).isNull()
         assertThat(parseExpiry("12-31-2027")).isNull()
         assertThat(parseExpiry("tomorrow")).isNull()
+        assertThat(parseExpiry("311328")).isNull()
     }
 
     @Test

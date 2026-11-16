@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.Inventory2
@@ -319,23 +320,25 @@ internal fun FocusHomeLayout(
             return@Column
         }
 
+        // The On-hand card stays put; only what is below it scrolls (user, 16 Nov 2026).
+        HomeOnHandPanel(
+            icon = Icons.Filled.Inventory2,
+            onSubmit = onPanelSubmit,
+            modifier = Modifier
+                .padding(horizontal = FocusDimens.side)
+                .padding(top = 4.dp)
+                .tourTarget("tab_onhand"),
+        )
         Column(
             modifier = Modifier
+                .padding(top = 8.dp)
                 .weight(1f)
                 .fillMaxWidth()
+                .clipToBounds()
                 .verticalScroll(rememberScrollState()),
         ) {
-            HomeOnHandPanel(
-                icon = Icons.Filled.Inventory2,
-                onSubmit = onPanelSubmit,
-                modifier = Modifier
-                    .padding(horizontal = FocusDimens.side)
-                    .padding(top = 4.dp)
-                    .tourTarget("tab_onhand"),
-            )
             // Work saved in D365FO from another device or an earlier install of this app.
             restoreCard(Modifier.padding(horizontal = FocusDimens.side, vertical = 8.dp))
-            Spacer(Modifier.height(8.dp))
             Column(Modifier.tourTarget("tiles")) {
                 val selected = LocalHomeSelected.current
                 rows.forEach { row ->

@@ -17,6 +17,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -105,6 +106,8 @@ fun CountListScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     LaunchedEffect(Unit) { viewModel.refresh() }
+    // A supervisor's wall to wall count is reviewed in D365FO; a tap says so (user, 16 Nov 2026).
+    var reviewHint by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<String?>(null) }
     FocusScreen(
         title = state.type.label,
         onBack = onBack,
@@ -114,6 +117,7 @@ fun CountListScreen(
             state.loading -> BandState(BandKind.Info, "Loading", "Asking D365FO for the counts of ${state.warehouseId.orEmpty()}")
             state.open.isEmpty() && state.type != CountType.WALL_TO_WALL ->
                 BandState(BandKind.Info, "Nothing to count", "No open ${state.type.label.lowercase()} in ${state.warehouseId.orEmpty()}")
+            reviewHint != null -> BandState(BandKind.Warn, "Review $reviewHint in D365FO", "Count control center")
             else -> null
         },
         topBarTrailing = {
@@ -151,7 +155,10 @@ fun CountListScreen(
                 )
             }
             if (state.open.isNotEmpty()) {
-                FocusCaption("Open", Modifier.padding(start = 16.dp, top = 16.dp, bottom = 4.dp))
+                FocusCaption(
+                    if (state.supervisor && state.type == CountType.WALL_TO_WALL) "Open · review in D365FO" else "Open",
+                    Modifier.padding(start = 16.dp, top = 16.dp, bottom = 4.dp),
+                )
                 state.open.forEach { c ->
                     FocusListRow(
                         title = c.masterId,
@@ -160,16 +167,18 @@ fun CountListScreen(
                         state = if (c.myStatus == "Submitted") RowState.Done else RowState.Open,
                         subtitle = summaryLine(c),
                         count = when {
+                            state.supervisor && c.type == CountType.WALL_TO_WALL -> "Control center"
                             state.supervisor -> null
                             c.myStatus == "Counting" -> "Yours"
                             c.myStatus == "Submitted" -> "Ended"
                             else -> null
                         },
+                        countColor = if (state.supervisor && c.type == CountType.WALL_TO_WALL) FocusColors.navy else FocusColors.muted,
                         chevron = !(state.supervisor && c.type == CountType.WALL_TO_WALL),
                         onClick = when {
                             // Hazard and blind: the supervisor sees the items by category.
                             state.supervisor && c.type != CountType.WALL_TO_WALL -> ({ onCategories(c.masterId) })
-                            state.supervisor -> null
+                            state.supervisor -> ({ reviewHint = c.masterId })
                             else -> ({ onCount(if (c.type == CountType.WALL_TO_WALL) null else c.masterId, c.type) })
                         },
                     )

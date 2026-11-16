@@ -396,6 +396,13 @@ interface MobileOpsServiceApi {
         @Tag tag: IdempotentRead = IdempotentRead,
     ): Response<com.d365fo.mobileops.data.remote.dto.OrderServiceResponse>
 
+    /** The items a vendor is approved for today, a page at a time - Create PO's Items list. */
+    @POST("HSMobileOpsServiceGroup/HSMobileOpsOrderCreateSvc/listVendorItems")
+    suspend fun listVendorItems(
+        @Body body: com.d365fo.mobileops.data.remote.dto.OrderServiceRequest,
+        @Tag tag: IdempotentRead = IdempotentRead,
+    ): Response<com.d365fo.mobileops.data.remote.dto.OrderServiceResponse>
+
     /** Units, active dimensions, valid variants and purchase order settings of an item. */
     @POST("HSMobileOpsServiceGroup/HSMobileOpsOrderCreateSvc/getOrderItem")
     suspend fun getOrderItem(

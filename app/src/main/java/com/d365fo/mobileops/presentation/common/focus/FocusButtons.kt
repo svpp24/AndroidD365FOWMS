@@ -89,6 +89,8 @@ fun FocusButton(
     icon: ImageVector? = null,
     enabled: Boolean = true,
     contentColor: Color = if (primary) FocusColors.surface else FocusColors.navy,
+    /** Three buttons in a row on a phone: no icon, less padding, so labels never break mid-word. */
+    compact: Boolean = false,
 ) {
     val bg = if (primary) FocusColors.action else FocusColors.surface
     Row(
@@ -101,9 +103,9 @@ fun FocusButton(
             .clip(FocusShapes.button)
             .background(bg)
             .clickable(enabled = enabled, role = Role.Button, onClick = guardedClick(onClick))
-            .padding(horizontal = 16.dp, vertical = 8.dp),
+            .padding(horizontal = if (compact) 8.dp else 16.dp, vertical = 8.dp),
     ) {
-        icon?.let { Icon(it, contentDescription = null, tint = contentColor, modifier = Modifier.size(22.dp)) }
+        if (!compact) icon?.let { Icon(it, contentDescription = null, tint = contentColor, modifier = Modifier.size(22.dp)) }
         Text(text, style = FocusType.button, color = contentColor, textAlign = TextAlign.Center)
     }
 }
@@ -123,6 +125,8 @@ fun HoldToConfirmButton(
     onConfirm: () -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
+    /** See [FocusButton]'s compact. */
+    compact: Boolean = false,
 ) {
     val view = LocalView.current
     val latestConfirm by rememberUpdatedState(onConfirm)
@@ -181,9 +185,9 @@ fun HoldToConfirmButton(
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                modifier = Modifier.padding(horizontal = if (compact) 8.dp else 16.dp, vertical = 8.dp),
             ) {
-                Icon(Icons.Filled.TouchApp, contentDescription = null, tint = FocusColors.surface, modifier = Modifier.size(22.dp))
+                if (!compact) Icon(Icons.Filled.TouchApp, contentDescription = null, tint = FocusColors.surface, modifier = Modifier.size(22.dp))
                 Text(label, style = FocusType.button, color = FocusColors.surface, textAlign = TextAlign.Center)
             }
         }

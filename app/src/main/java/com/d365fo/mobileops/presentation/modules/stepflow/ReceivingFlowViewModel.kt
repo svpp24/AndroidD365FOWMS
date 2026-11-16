@@ -319,8 +319,13 @@ class ReceivingFlowViewModel @Inject constructor(
                 captured = it.captured + entry,
                 lineNotice = com.d365fo.mobileops.presentation.common.components.QuickNoticeMessage(
                     id = System.nanoTime(),
+                    // The batch and expiry read back after " - " (the band's detail line).
                     text = "Received ${quantity.stripTrailingZeros().toPlainString()} × " +
-                        item.productName.ifBlank { item.itemNumber },
+                        item.productName.ifBlank { item.itemNumber } +
+                        listOfNotNull(
+                            capture.batchId?.takeIf { b -> b.isNotBlank() }?.let { b -> "Batch $b" },
+                            wordsDate(capture.batchExpiryDate?.takeIf { d -> d.isNotBlank() })?.let { d -> "expires $d" },
+                        ).joinToString(" · ").takeIf { d -> d.isNotBlank() }?.let { d -> " - $d" }.orEmpty(),
                 ),
                 capture = ReceivingCapture(
                     purchId = capture.purchId,
@@ -1278,7 +1283,7 @@ class ReceivingFlowViewModel @Inject constructor(
     }
 
     private fun onBatchExpiryDate(value: String) {
-        val parsed = parseExpiryDate(value) ?: return fail("$value is not a date - enter it as DD-MM-YYYY")
+        val parsed = parseExpiryDate(value) ?: return fail("$value is not a date - type 311228, 31122028 or 31-12-2028")
         // A new batch that has already expired is a typing slip far more often than real stock -
         // received as it is, it is unusable stock the moment it lands.
         if (parsed < java.time.LocalDate.now().toString()) {
@@ -1562,8 +1567,19 @@ internal fun parseExpiry(value: String): String? {
     val (day, month, year) = Regex("""(\d{4})-(\d{2})-(\d{2})""").matchEntire(text)?.destructured?.let { (y, m, d) -> Triple(d, m, y) }
         ?: Regex("""(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})""").matchEntire(text)?.destructured?.let { (d, m, y) -> Triple(d, m, y) }
         ?: Regex("""(\d{2})(\d{2})(\d{4})""").matchEntire(text)?.destructured?.let { (d, m, y) -> Triple(d, m, y) }
+        // Six digits, day first (user, 16 Nov 2026): 311228 is 31 Dec 2028 - easier on a keypad
+        // than dashes. Two-digit years are this century; also with separators (31-12-28).
+        ?: Regex("""(\d{2})(\d{2})(\d{2})""").matchEntire(text)?.destructured?.let { (d, m, y) -> Triple(d, m, "20$y") }
+        ?: Regex("""(\d{1,2})[-/.](\d{1,2})[-/.](\d{2})""").matchEntire(text)?.destructured?.let { (d, m, y) -> Triple(d, m, "20$y") }
         ?: return null
     return runCatching { java.time.LocalDate.of(year.toInt(), month.toInt(), day.toInt()).toString() }.getOrNull()
+}
+
+/** YYYY-MM-DD in words - "31 Dec 2028" - so a day/month mix-up shows before posting. */
+internal fun wordsDate(iso: String?): String? = iso?.let {
+    runCatching {
+        java.time.LocalDate.parse(it).format(java.time.format.DateTimeFormatter.ofPattern("d MMM yyyy", java.util.Locale.ENGLISH))
+    }.getOrDefault(it)
 }
 
 /** YYYY-MM-DD as DD-MM-YYYY, for showing; anything else unchanged. */

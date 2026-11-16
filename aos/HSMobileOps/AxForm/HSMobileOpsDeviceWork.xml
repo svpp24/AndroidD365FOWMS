@@ -17,6 +17,19 @@ public class HSMobileOpsDeviceWork extends FormRun
 }
 ]]></Source>
 			</Method>
+			<Method>
+				<Name>init</Name>
+				<Source><![CDATA[
+
+    public void init()
+    {
+        super();
+        // Latest first (user, 16 Nov 2026): old rows were hiding what a handheld sent today.
+        HSMobileOpsDeviceWork_ds.queryBuildDataSource().addSortField(fieldNum(HSMobileOpsDeviceWork, UpdatedUtc), SortOrder::Descending);
+    }
+
+]]></Source>
+			</Method>
 		</Methods>
 		<DataSources xmlns="" />
 		<DataControls xmlns="" />

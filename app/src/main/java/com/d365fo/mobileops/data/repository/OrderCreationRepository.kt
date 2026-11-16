@@ -202,6 +202,9 @@ data class PurchaseOrderLine(
 
 data class PurchaseOrderDetail(val summary: PurchaseOrderSummary, val lines: List<PurchaseOrderLine>)
 
+/** An item a vendor is approved for - Create PO's Items list. */
+data class VendorItem(val itemId: String, val name: String, val unit: String)
+
 /**
  * Purchase and transfer order creation on the handheld - offline first. Vendors and items come
  * from what the device has saved; prices and stock are D365FO's, looked up only while online.
@@ -285,6 +288,36 @@ class OrderCreationRepository @Inject constructor(
         }
         dao.replaceVendors(all, now)
         return NetworkResult.Success(all.size)
+    }
+
+    /**
+     * The items [vendorAccount] is approved for today (D365FO's approved vendor list), all pages -
+     * Create PO's Items list. Online only: it is read when asked, not kept on the device.
+     */
+    suspend fun vendorItems(
+        vendorAccount: String,
+        /** Each page as it arrives - the list shows the first ones while the rest load. */
+        onPage: (List<VendorItem>) -> Unit = {},
+    ): NetworkResult<List<VendorItem>> {
+        val all = mutableListOf<VendorItem>()
+        repeat(MAX_VENDOR_ITEM_PAGES) {
+            // Each page starts after the last item of the one before (see listVendorItems).
+            val after = all.lastOrNull()?.itemId.orEmpty()
+            val result = errorMapper.safeCall {
+                api.listVendorItems(OrderServiceRequest(OrderRequestBody(dataAreaId = company(), vendorAccount = vendorAccount, itemId = after, take = VENDOR_PAGE)))
+            }
+            when (result) {
+                is NetworkResult.Success -> {
+                    if (!result.data.success) return NetworkResult.Error(AppFailure.BusinessRule(result.data.message.ifBlank { "The vendor's items could not be read" }))
+                    all += result.data.lines.map { VendorItem(it.itemId, it.itemName.ifBlank { it.itemId }, it.unitId) }
+                    if (!result.data.hasMore || result.data.lines.isEmpty()) return NetworkResult.Success(all)
+                    onPage(all.toList())
+                }
+                is NetworkResult.Error -> return result
+                NetworkResult.Loading -> Unit
+            }
+        }
+        return NetworkResult.Success(all)
     }
 
     // -- Items -------------------------------------------------------------------------------
@@ -801,6 +834,7 @@ class OrderCreationRepository @Inject constructor(
     private companion object {
         const val VENDOR_PAGE = 1000
         const val MAX_VENDOR_PAGES = 50
+        const val MAX_VENDOR_ITEM_PAGES = 50
     }
 }
 

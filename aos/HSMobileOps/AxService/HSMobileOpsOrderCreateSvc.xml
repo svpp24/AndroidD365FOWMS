@@ -14,6 +14,10 @@
 			<Method>listVendors</Method>
 		</AxServiceOperation>
 		<AxServiceOperation>
+			<Name>listVendorItems</Name>
+			<Method>listVendorItems</Method>
+		</AxServiceOperation>
+		<AxServiceOperation>
 			<Name>getOrderItem</Name>
 			<Method>getOrderItem</Method>
 		</AxServiceOperation>

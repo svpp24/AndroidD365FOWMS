@@ -886,6 +886,10 @@ object DemoBackend {
                     obj("AccountNum" to id, "Name" to name, "CurrencyCode" to CURRENCY, "PaymentTerms" to terms, "DeliveryTerms" to "DAP", "DeliveryMode" to "Road")
                 },
             )
+            "listVendorItems" -> obj(
+                "Success" to true, "HasMore" to false,
+                "Lines" to items.filter { it.id > r.s("ItemId") }.map { obj("ItemId" to it.id, "ItemName" to it.name, "UnitId" to UNIT) },
+            )
             "getOrderItem" -> item(r.s("ItemId"))?.let {
                 obj("Success" to true, "Item" to obj(
                     "ItemId" to it.id, "ItemName" to it.name, "PurchUnit" to UNIT, "InventUnit" to UNIT,

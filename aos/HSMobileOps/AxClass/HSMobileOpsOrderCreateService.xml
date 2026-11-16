@@ -144,6 +144,88 @@ class HSMobileOpsOrderCreateService
 ]]></Source>
 			</Method>
 			<Method>
+				<Name>listVendorItems</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The items a vendor is approved for today (the approved vendor list by vendor), a page at a
+    /// time (Take up to 1000) in item order, each page starting after ItemId (the last item of the
+    /// page before - not Skip, which re-read every earlier row and made a 16,000-item vendor take
+    /// over a minute): Create PO's Items button (user, 16 Nov 2026).
+    /// Approvals not yet valid or expired are left out, and so are items stopped for purchase.
+    /// Items whose approved-vendor check is off are on no list - those are still scanned.
+    /// </summary>
+    public HSMobileOpsOrderResponse listVendorItems(HSMobileOpsOrderRequest _request)
+    {
+        HSMobileOpsOrderResponse response = HSMobileOpsOrderCreateService::newResponse();
+        PdsApprovedVendorList    approved;
+        InventTable              inventTable;
+        InventItemPurchSetup     stopped;
+        HSMobileOpsOrderLine     line;
+        TransDate                today = DateTimeUtil::getSystemDate(DateTimeUtil::getUserPreferredTimeZone());
+        InventDimId              blankDim = InventDim::inventDimIdBlank();
+        ItemId                   lastItem;
+        ItemId                   after = _request.parmItemId();
+        int                      skip;
+        int                      take;
+        int                      seen;
+        int                      added;
+
+        if (!HSMobileOpsOrderCreateService::validCompany(_request) || !_request.parmVendorAccount())
+        {
+            response.parmErrorCode('INVALID_REQUEST');
+            return response;
+        }
+
+        skip = max(0, _request.parmSkip());
+        take = _request.parmTake() > 0 ? min(_request.parmTake(), 1000) : 500;
+
+        changecompany (_request.parmDataAreaId())
+        {
+            while select ItemId, ValidFrom, ValidTo from approved
+                order by approved.ItemId
+                where approved.PdsApprovedVendor == _request.parmVendorAccount()
+                   && approved.ItemId > after
+                   && approved.ValidFrom <= today
+                   && (approved.ValidTo >= today || approved.ValidTo == dateNull())
+                join inventTable
+                    where inventTable.ItemId == approved.ItemId
+                notexists join stopped
+                    where stopped.ItemId      == approved.ItemId
+                       && stopped.InventDimId == blankDim
+                       && stopped.Stopped     == NoYes::Yes
+            {
+                // One row per item, however many approval periods it has.
+                if (approved.ItemId == lastItem)
+                {
+                    continue;
+                }
+                lastItem = approved.ItemId;
+                seen++;
+                if (seen <= skip)
+                {
+                    continue;
+                }
+                if (added >= take)
+                {
+                    response.parmHasMore(true);
+                    break;
+                }
+                line = new HSMobileOpsOrderLine();
+                line.parmItemId(inventTable.ItemId);
+                line.parmItemName(inventTable.itemName());
+                line.parmUnitId(inventTable.purchUnitId());
+                response.parmLines().addEnd(line);
+                added++;
+            }
+        }
+
+        response.parmSuccess(true);
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
 				<Name>getOrderItem</Name>
 				<Source><![CDATA[
 

@@ -301,6 +301,7 @@ fun ReceivingFlowScreen(
             showTodays = showTodays,
             onToggleTodays = { showTodays = !showTodays },
             onLines = { viewModel.showCaptured(true) },
+            onItems = { showItemSearch = true },
             onPost = viewModel::postReceipt,
             onUndo = stepBack,
             onSkip = viewModel::skipStep,
@@ -709,9 +710,7 @@ private fun CapturedLines(
                                 entry.locationId?.takeIf { it.isNotBlank() },
                                 entry.batchId?.takeIf { it.isNotBlank() }?.let { "Batch $it" },
                                 // A new batch's expiry, as typed - checked here before posting.
-                                entry.batchExpiryDate?.takeIf { it.isNotBlank() }?.let { iso ->
-                                    "expires " + iso.split('-').let { p -> if (p.size == 3) "${p[2]}-${p[1]}-${p[0]}" else iso }
-                                },
+                                wordsDate(entry.batchExpiryDate?.takeIf { it.isNotBlank() })?.let { "expires $it" },
                                 // The serial itself, as transfer does.
                                 when (entry.serialIds.size) {
                                     0 -> null
@@ -761,6 +760,9 @@ private fun receivingBand(state: ReceivingFlowState): BandState? {
     state.lineNotice?.let { return bandOf(if (it.hint) BandKind.Warn else BandKind.Ok, it.text) }
     return when {
         state.step == ReceivingStep.PURCHASE_ORDER -> BandState(BandKind.Info, "Ready", "No PO open")
+        // What to type, with the forms it takes (user, 16 Nov 2026).
+        state.step == ReceivingStep.BATCH_EXPIRY_DATE ->
+            BandState(BandKind.Info, "Scan or type the expiry date", "311228, 31122028 or 31-12-2028")
         state.step == ReceivingStep.ITEM && state.captured.isEmpty() && state.order != null -> state.order.let { o ->
             BandState(
                 BandKind.Info,
@@ -790,6 +792,7 @@ private fun receivingActions(
     onPost: () -> Unit,
     onUndo: () -> Unit,
     onSkip: () -> Unit,
+    onItems: () -> Unit = {},
 ): (@Composable androidx.compose.foundation.layout.RowScope.() -> Unit)? {
     if (state.posting || state.postOutcome != null || state.showingCaptured || state.lineChoices.isNotEmpty()) return null
     val step = state.step
@@ -804,14 +807,33 @@ private fun receivingActions(
                 )
             }
         }
-        step == ReceivingStep.ITEM -> if (state.captured.isEmpty()) null else {
+        // The PO's items under the scan bar once a PO is open (user, 16 Nov 2026) - the same list
+        // as the menu's "Search PO items".
+        step == ReceivingStep.ITEM && state.captured.isEmpty() -> if (!state.linesInline || state.openLines.isEmpty()) null else {
             {
                 com.d365fo.mobileops.presentation.common.focus.FocusButton(
-                    "Lines", onClick = onLines, icon = Icons.AutoMirrored.Filled.ListAlt,
+                    "PO items", onClick = onItems, icon = Icons.Default.Search,
                     enabled = !state.busy, modifier = Modifier.weight(1f),
                 )
+            }
+        }
+        step == ReceivingStep.ITEM -> {
+            {
+                // Three on a row: no icons, so no label breaks mid-word.
+                val three = state.linesInline && state.openLines.isNotEmpty()
+                if (three) {
+                    com.d365fo.mobileops.presentation.common.focus.FocusButton(
+                        "PO items", onClick = onItems, icon = Icons.Default.Search,
+                        enabled = !state.busy, compact = true, modifier = Modifier.weight(0.9f),
+                    )
+                }
+                com.d365fo.mobileops.presentation.common.focus.FocusButton(
+                    "Lines", onClick = onLines, icon = Icons.AutoMirrored.Filled.ListAlt,
+                    enabled = !state.busy, compact = three, modifier = Modifier.weight(if (three) 0.8f else 1f),
+                )
                 com.d365fo.mobileops.presentation.common.focus.HoldToConfirmButton(
-                    "Hold to post", onConfirm = onPost, enabled = !state.busy, modifier = Modifier.weight(1f),
+                    "Hold to post", onConfirm = onPost, enabled = !state.busy, compact = three,
+                    modifier = Modifier.weight(if (three) 1.3f else 1f),
                 )
             }
         }
@@ -868,6 +890,7 @@ private fun androidx.compose.foundation.layout.ColumnScope.ReceivingCenter(state
                     unitLine = listOfNotNull(
                         last.unitSymbol.takeIf { it.isNotBlank() },
                         last.batchId?.takeIf { it.isNotBlank() }?.let { "Batch $it" },
+                        wordsDate(last.batchExpiryDate?.takeIf { it.isNotBlank() })?.let { "Exp $it" },
                         last.locationId?.takeIf { it.isNotBlank() },
                     ).joinToString(" · "),
                 )
@@ -969,8 +992,8 @@ private fun hintFor(state: ReceivingFlowState): String? = when (state.step) {
         serialPrompt(state.capture.line?.rules?.serialPerUnit != false, state.capture.serialsOutstanding)
     }
 
-    ReceivingStep.BATCH_EXPIRY_DATE ->
-        "New batch - expiry DD-MM-YYYY"
+    // The band says it (receivingBand).
+    ReceivingStep.BATCH_EXPIRY_DATE -> null
 
     else -> null
 }

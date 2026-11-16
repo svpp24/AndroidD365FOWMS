@@ -63,6 +63,7 @@ fun PoCreateScreen(
         ) "Confirm it now" else null
     var showCamera by remember { mutableStateOf(false) }
     var showLines by rememberSaveable { mutableStateOf(false) }
+    var showItems by rememberSaveable { mutableStateOf(false) }
     var confirmDiscard by remember { mutableStateOf(false) }
     val draft = state.draft
     val lastAdded = rememberLastAdded(draft.lines)
@@ -88,6 +89,19 @@ fun PoCreateScreen(
             onLine = { viewModel.editLine(it) },
             onClose = { showLines = false },
             onRemove = { viewModel.removeLine(it) },
+        )
+        return
+    }
+
+    if (showItems && draft.vendorAccount.isNotBlank()) {
+        VendorItemsScreen(
+            vendorName = draft.vendorName.ifBlank { draft.vendorAccount },
+            state = state,
+            inOrder = draft.lines.groupBy { it.itemId }.mapValues { (_, l) -> l.sumOf { it.qty } },
+            onQuery = viewModel::onItemQuery,
+            onRetry = viewModel::loadVendorItems,
+            onPick = { showItems = false; viewModel.pickVendorItem(it) },
+            onClose = { showItems = false },
         )
         return
     }
@@ -188,15 +202,31 @@ fun PoCreateScreen(
             )
         },
         actions = {
+            // The vendor's approved items, left of the create button (user, 16 Nov 2026).
+            val phone = com.d365fo.mobileops.presentation.common.focus.tabletMode() == com.d365fo.mobileops.presentation.common.focus.TabletMode.Phone
+            val itemCount = state.vendorItems?.size
+            val three = phone && draft.lines.isNotEmpty()
+            FocusButton(
+                if (itemCount != null && (draft.lines.isEmpty() || !phone)) "Items · ${"%,d".format(itemCount)}" else "Items",
+                onClick = {
+                    if (state.vendorItems == null && !state.loadingVendorItems) viewModel.loadVendorItems()
+                    showItems = true
+                },
+                icon = Icons.AutoMirrored.Filled.ListAlt,
+                enabled = !state.busy,
+                compact = three,
+                modifier = Modifier.weight(if (three) 0.8f else 1f),
+            )
             if (draft.lines.isNotEmpty()) {
                 // A tablet shows the lines beside or under the scan, so no Lines button there.
-                if (com.d365fo.mobileops.presentation.common.focus.tabletMode() == com.d365fo.mobileops.presentation.common.focus.TabletMode.Phone) FocusButton("Lines", onClick = { showLines = true }, icon = Icons.AutoMirrored.Filled.ListAlt, modifier = Modifier.weight(1f))
+                if (com.d365fo.mobileops.presentation.common.focus.tabletMode() == com.d365fo.mobileops.presentation.common.focus.TabletMode.Phone) FocusButton("Lines", onClick = { showLines = true }, icon = Icons.AutoMirrored.Filled.ListAlt, compact = three, modifier = Modifier.weight(0.8f))
             }
             HoldToConfirmButton(
                 "Hold to create",
                 onConfirm = viewModel::create,
                 enabled = !state.busy && draft.lines.isNotEmpty(),
-                modifier = Modifier.weight(1f),
+                compact = three,
+                modifier = Modifier.weight(if (three) 1.4f else 1f),
             )
         },
     ) {
