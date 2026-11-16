@@ -77,8 +77,9 @@ public class HSMobileOpsProcessSetup extends FormRun
 						<FormControlExtension
 							i:nil="true" />
 						<AllowEdit>No</AllowEdit>
-						<DataField>ProcessType</DataField>
+						<DataMethod>processName</DataMethod>
 						<DataSource>HSMobileOpsProcessSetup</DataSource>
+						<Label>Process</Label>
 					</AxFormControl>
 					<AxFormControl xmlns=""
 						i:type="AxFormCheckBoxControl">

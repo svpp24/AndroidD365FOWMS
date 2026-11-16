@@ -238,6 +238,23 @@ public class HSMobileOpsPostQueue extends common
     }
 ]]></Source>
 			</Method>
+			<Method>
+				<Name>documentTypeName</Name>
+				<Source><![CDATA[
+    /// <summary>The document type in words, as the handheld's Activity shows it.</summary>
+    public display Name documentTypeName()
+    {
+        switch (this.DocumentType)
+        {
+            case 'Registration':     return 'PO receipt';
+            case 'TransferReceipt':  return 'Transfer receipt';
+            case 'TransferShipment': return 'Transfer shipment';
+            case 'ReturnCreate':     return 'Return to vendor';
+        }
+        return this.DocumentType;
+    }
+]]></Source>
+			</Method>
 		</Methods>
 	</SourceCode>
 	<Label>Posting queue</Label>

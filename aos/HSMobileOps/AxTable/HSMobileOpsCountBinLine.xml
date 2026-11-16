@@ -11,7 +11,18 @@ public class HSMobileOpsCountBinLine extends common
 {
 }
 ]]></Declaration>
-		<Methods />
+		<Methods>
+			<Method>
+				<Name>lineNo</Name>
+				<Source><![CDATA[
+    /// <summary>The journal line number as a whole number (the field is a real: 1.0000000000).</summary>
+    public display int lineNo()
+    {
+        return real2int(this.LineNum);
+    }
+]]></Source>
+			</Method>
+		</Methods>
 	</SourceCode>
 	<Label>Counted by bin</Label>
 	<TableGroup>Transaction</TableGroup>

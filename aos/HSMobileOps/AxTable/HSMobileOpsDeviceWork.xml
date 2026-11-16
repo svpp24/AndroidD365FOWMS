@@ -14,6 +14,24 @@ public class HSMobileOpsDeviceWork extends common
 }
 ]]></Declaration>
 		<Methods>
+			<Method>
+				<Name>kindName</Name>
+				<Source><![CDATA[
+    /// <summary>The kind of work in words - the grid shows this, not the code the handheld stores.</summary>
+    public display Name kindName()
+    {
+        switch (this.Kind)
+        {
+            case 'POSTING':     return 'Waiting to send';
+            case 'REFUSED':     return 'Refused by D365FO';
+            case 'JOB':         return 'Unfinished job';
+            case 'ORDER_DRAFT': return 'Order not sent';
+            case 'COUNT':       return 'Count not sent';
+        }
+        return this.Kind;
+    }
+]]></Source>
+			</Method>
 		</Methods>
 	</SourceCode>
 	<Label>Unsent work</Label>

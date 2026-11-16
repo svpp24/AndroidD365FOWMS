@@ -112,8 +112,9 @@ public class HSMobileOpsDeviceWork extends FormRun
 						<Type>String</Type>
 						<FormControlExtension
 							i:nil="true" />
-						<DataField>Kind</DataField>
+						<DataMethod>kindName</DataMethod>
 						<DataSource>HSMobileOpsDeviceWork</DataSource>
+						<Label>Kind</Label>
 					</AxFormControl>
 					<AxFormControl xmlns=""
 						i:type="AxFormStringControl">

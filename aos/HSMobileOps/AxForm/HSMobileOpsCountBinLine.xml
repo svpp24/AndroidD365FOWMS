@@ -66,15 +66,15 @@ public class HSMobileOpsCountBinLine extends FormRun
 						<DataSource>HSMobileOpsCountBinLine</DataSource>
 					</AxFormControl>
 					<AxFormControl xmlns=""
-						i:type="AxFormRealControl">
+						i:type="AxFormIntegerControl">
 						<Name>HSMobileOpsCountBinLine_LineNum</Name>
 						<AllowEdit>No</AllowEdit>
-						<Type>Real</Type>
+						<Type>Integer</Type>
 						<FormControlExtension
 							i:nil="true" />
-						<DataField>LineNum</DataField>
+						<DataMethod>lineNo</DataMethod>
 						<DataSource>HSMobileOpsCountBinLine</DataSource>
-						<NoOfDecimals>0</NoOfDecimals>
+						<Label>Line</Label>
 					</AxFormControl>
 					<AxFormControl xmlns=""
 						i:type="AxFormStringControl">

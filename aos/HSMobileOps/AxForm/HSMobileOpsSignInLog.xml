@@ -217,15 +217,6 @@ public class HSMobileOpsSignInLog extends FormRun
 								<DataSource>HSMobileOpsSignInLog</DataSource>
 							</AxFormControl>
 							<AxFormControl xmlns=""
-								i:type="AxFormRealControl">
-								<Name>Grid_DurationMinutes</Name>
-								<Type>Real</Type>
-								<FormControlExtension
-									i:nil="true" />
-								<DataField>DurationMinutes</DataField>
-								<DataSource>HSMobileOpsSignInLog</DataSource>
-							</AxFormControl>
-							<AxFormControl xmlns=""
 								i:type="AxFormStringControl">
 								<Name>Grid_EndReason</Name>
 								<Type>String</Type>

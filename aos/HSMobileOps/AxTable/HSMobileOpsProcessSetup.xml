@@ -198,6 +198,22 @@ public class HSMobileOpsProcessSetup extends common
     }
 ]]></Source>
 			</Method>
+			<Method>
+				<Name>processName</Name>
+				<Source><![CDATA[
+    /// <summary>The process in words.</summary>
+    public display Name processName()
+    {
+        switch (this.ProcessType)
+        {
+            case 'Receiving':       return 'PO receiving';
+            case 'TransferReceive': return 'Transfer receive';
+            case 'TransferShip':    return 'Transfer ship';
+        }
+        return this.ProcessType;
+    }
+]]></Source>
+			</Method>
 		</Methods>
 	</SourceCode>
 	<Label>Process setup</Label>
