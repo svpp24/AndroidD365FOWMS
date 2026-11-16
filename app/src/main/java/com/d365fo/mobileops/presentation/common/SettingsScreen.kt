@@ -446,15 +446,15 @@ internal fun profileLine(profile: TenantConfig, deviceCompany: String = ""): Str
  * app's Settings screen is small enough (four or five entries, fewer while signed out) that a
  * plain labelled row reads faster than a grid of icons would.
  */
-private enum class SettingsMenuItem(val title: String, val icon: androidx.compose.ui.graphics.vector.ImageVector) {
+internal enum class SettingsMenuItem(val title: String, val icon: androidx.compose.ui.graphics.vector.ImageVector) {
     ConnectionProfile("Connection & profile", LineIcons.Link),
     Appearance("Appearance", LineIcons.Palette),
-    Session("My warehouse & sign-in", LineIcons.Warehouse),
+    Session("My warehouse & sign-in", LineIcons.User),
     Lockout("Lockout settings", LineIcons.Lock),
     Logs("Logs", LineIcons.About),
     Feedback("Send feedback", LineIcons.Feedback),
     UnsentWork("Unsent work", LineIcons.Upload),
-    Sync("Sync", LineIcons.Upload),
+    Sync("Sync", LineIcons.Sync),
 }
 
 /**

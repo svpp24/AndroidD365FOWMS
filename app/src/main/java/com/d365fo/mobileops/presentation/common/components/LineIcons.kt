@@ -43,6 +43,17 @@ object LineIcons {
     private const val UPLOAD = "M12 16V6M7 11l5-5 5 5M4 20h16"
     private const val FOLDER = "M3 6h6l2 2h10v11H3z"
 
+    // No icon twice in any menu (user, 16 Nov 2026) - these five took over shared ones.
+    private const val BOX = "M4 8l8-4 8 4v8l-8 4-8-4zM4 8l8 4 8-4M12 12v8"
+    private const val CART = "M3 4h2l2.4 11h10.8L20 8H6.2M9 20a1 1 0 1 0 0-2 1 1 0 0 0 0 2zM17 20a1 1 0 1 0 0-2 1 1 0 0 0 0 2z"
+    private const val MOVE = "M2 13l3.5-3 3.5 3v7H2zM15 13l3.5-3 3.5 3v7h-7zM8 6h8M13.5 3.5L16 6l-2.5 2.5"
+    private const val TAG = "M3 12V4h8l10 10-8 8zM7.5 7.5h.01"
+    private const val SYNC = "M20 11a8 8 0 0 0-14.9-3M4 4v4h4M4 13a8 8 0 0 0 14.9 3M20 20v-4h-4"
+    private const val USER = "M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 20a8 8 0 0 1 16 0"
+
+    /** Each icon's path, by the icon - the menu test checks no menu shows the same drawing twice. */
+    internal val pathOf = HashMap<ImageVector, String>()
+
     private fun line(name: String, path: String, stroke: Float): ImageVector =
         ImageVector.Builder(name = name, defaultWidth = 24.dp, defaultHeight = 24.dp, viewportWidth = 24f, viewportHeight = 24f)
             .addPath(
@@ -54,6 +65,7 @@ object LineIcons {
                 strokeLineJoin = StrokeJoin.Round,
             )
             .build()
+            .also { pathOf[it] = path }
 
     private const val BADGE = 2.4f
     private const val THIN = 1.8f
@@ -73,6 +85,10 @@ object LineIcons {
     val Swap = line("Swap", SWAP, BADGE)
     val Serial = line("Serial", SERIAL, BADGE)
     val Folder = line("Folder", FOLDER, BADGE)
+    val Box = line("Box", BOX, BADGE)
+    val Cart = line("Cart", CART, BADGE)
+    val Move = line("Move", MOVE, BADGE)
+    val Tag = line("Tag", TAG, BADGE)
 
     // Thin weight - bottom bar, settings rows, search field.
     val Home = line("Home", HOME, THIN)
@@ -89,4 +105,6 @@ object LineIcons {
     val Palette = line("Palette", PALETTE, THIN)
     val Upload = line("Upload", UPLOAD, THIN)
     val SearchThin = line("SearchThin", SEARCH, THIN)
+    val Sync = line("Sync", SYNC, THIN)
+    val User = line("User", USER, THIN)
 }

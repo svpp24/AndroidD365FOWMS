@@ -138,19 +138,19 @@ internal fun FocusHome(
     }
     val rows = buildList {
         if (has(WarehouseWorkflow.PO_RECEIVING, WarehouseWorkflow.TRANSFER_RECEIVE)) {
-            add(HomeEntry(LineIcons.Receive, "Receive", receiveCount(figures, modules)) { openGroup(ModuleGroup.RECEIVE) })
+            add(HomeEntry(HOME_ICONS[0], "Receive", receiveCount(figures, modules)) { openGroup(ModuleGroup.RECEIVE) })
         }
         if (has(WarehouseWorkflow.TRANSFER_SHIP)) {
-            add(HomeEntry(LineIcons.Ship, "Ship", figures.transfersToShip?.toString()) { openGroup(ModuleGroup.SHIP) })
+            add(HomeEntry(HOME_ICONS[1], "Ship", figures.transfersToShip?.toString()) { openGroup(ModuleGroup.SHIP) })
         }
         if (has(WarehouseWorkflow.INVENTORY_COUNT)) {
-            add(HomeEntry(LineIcons.Count, "Count", figures.countsInProgress?.toString()) { openGroup(ModuleGroup.COUNT) })
+            add(HomeEntry(HOME_ICONS[2], "Count", figures.countsInProgress?.toString()) { openGroup(ModuleGroup.COUNT) })
         }
         if (has(WarehouseWorkflow.PO_CREATE, WarehouseWorkflow.TO_CREATE, WarehouseWorkflow.PURCHASE_RETURN)) {
-            add(HomeEntry(LineIcons.Create, "Create", null) { openGroup(ModuleGroup.CREATE) })
+            add(HomeEntry(HOME_ICONS[3], "Create", null) { openGroup(ModuleGroup.CREATE) })
         }
-        add(HomeEntry(LineIcons.ActivityThin, "Activity", failedCount.takeIf { it > 0 }?.toString(), alert = true) { onOpen(Routes.FAILED_SYNC) })
-        add(HomeEntry(LineIcons.SearchThin, "Enquiry", null, muted = true) { onOpen(Routes.SERVICES) })
+        add(HomeEntry(HOME_ICONS[4], "Activity", failedCount.takeIf { it > 0 }?.toString(), alert = true) { onOpen(Routes.FAILED_SYNC) })
+        add(HomeEntry(HOME_ICONS[5], "Enquiry", null, muted = true) { onOpen(Routes.SERVICES) })
     }
     val user = session?.displayName?.trim()?.takeIf { it.isNotBlank() } ?: session?.userName.orEmpty()
     val code = session?.selected?.warehouseId ?: warehouseId.orEmpty()
@@ -456,3 +456,8 @@ internal fun FocusHomeSample(band: Boolean = false) {
 @androidx.compose.ui.tooling.preview.Preview(name = "Home", widthDp = 360, heightDp = 640, showBackground = true)
 @Composable
 private fun FocusHomePreview() = com.d365fo.mobileops.presentation.common.focus.FocusPreviewSurface { FocusHomeSample() }
+
+/** Home's rows in order: Receive, Ship, Count, Create, Activity, Enquiry - see MenuIconsTest. */
+internal val HOME_ICONS = listOf(
+    LineIcons.Receive, LineIcons.Ship, LineIcons.Count, LineIcons.Create, LineIcons.ActivityThin, LineIcons.SearchThin,
+)
