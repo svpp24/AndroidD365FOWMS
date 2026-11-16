@@ -337,27 +337,6 @@ fun SettingsScreen(
                 // Before or after sign-in: a copy in D365FO, or a PIN-protected file (29 Oct).
                 SettingsMenuItem.UnsentWork -> com.d365fo.mobileops.presentation.recovery.UnsentWorkPanel()
 
-                // Signed in, so it can be changed during a shift (feedback 301e5d0e).
-                SettingsMenuItem.Posting -> if (onSignOut != null) {
-                    Caption("Posting")
-                    ToggleRow(
-                        title = "Post immediately",
-                        detail = if (postImmediately) "On: posts while you wait; a refusal shows at once." else "Off: posts in the background within minutes.",
-                        checked = postImmediately,
-                        onToggle = { viewModel.setPostImmediately(!postImmediately) },
-                    )
-                    if (!postingEnabled) {
-                        com.d365fo.mobileops.presentation.common.focus.ResultBand(
-                            com.d365fo.mobileops.presentation.common.focus.BandState(
-                                com.d365fo.mobileops.presentation.common.focus.BandKind.Warn,
-                                "Posting is off",
-                                "Work is held here. Turn it on in Connection settings.",
-                            ),
-                            modifier = Modifier.padding(top = 16.dp),
-                        )
-                    }
-                }
-
                 SettingsMenuItem.Feedback -> Unit
             }
     }
@@ -473,7 +452,6 @@ private enum class SettingsMenuItem(val title: String, val icon: androidx.compos
     Session("My warehouse & sign-in", LineIcons.Warehouse),
     Lockout("Lockout settings", LineIcons.Lock),
     Logs("Logs", LineIcons.About),
-    Posting("Data posting", LineIcons.Posting),
     Feedback("Send feedback", LineIcons.Feedback),
     UnsentWork("Unsent work", LineIcons.Upload),
     Sync("Sync", LineIcons.Upload),
@@ -508,14 +486,13 @@ private fun SettingsMenu(
         SettingsMenuItem.Appearance to "Text size ${displayScale.label}",
         SettingsMenuItem.Lockout to "After ${idleTimeout.label}",
         SettingsMenuItem.Session to listOfNotNull(session?.selected?.warehouseId, "offline use").joinToString(" · "),
-        SettingsMenuItem.Posting to if (!postingEnabled) "Posting is off" else "Post immediately: " + if (postImmediately) "on" else "off",
         SettingsMenuItem.UnsentWork to (workState.unsent ?: "Nothing unsent"),
         SettingsMenuItem.Sync to "Last and next sync of item data, orders and postings",
     )
     val items = buildList {
         if (showConnectionProfile) addAll(listOf(SettingsMenuItem.ConnectionProfile, SettingsMenuItem.Appearance, SettingsMenuItem.Lockout))
         if (showSignedInSections) {
-            addAll(listOf(SettingsMenuItem.Session, SettingsMenuItem.Sync, SettingsMenuItem.Posting, SettingsMenuItem.UnsentWork, SettingsMenuItem.Feedback, SettingsMenuItem.Logs))
+            addAll(listOf(SettingsMenuItem.Session, SettingsMenuItem.Sync, SettingsMenuItem.UnsentWork, SettingsMenuItem.Feedback, SettingsMenuItem.Logs))
         } else {
             addAll(listOf(SettingsMenuItem.UnsentWork, SettingsMenuItem.Logs))
         }

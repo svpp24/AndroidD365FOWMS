@@ -44,12 +44,14 @@ class NetworkPreferences @Inject constructor(
      * Pending and its batch job or "Process pending" posts it within minutes, so the worker
      * never waits on a slow posting.
      */
-    private val _postImmediately = MutableStateFlow(secureStore.getString(KEY_POST_IMMEDIATELY) == "1")
+    // Always off now (user, 16 Nov 2026): the Data posting menu is gone and posting always
+    // happens in the background - a device that had it on goes back to the default.
+    private val _postImmediately = MutableStateFlow(false)
     val postImmediately: StateFlow<Boolean> = _postImmediately.asStateFlow()
 
-    fun setPostImmediately(value: Boolean) {
-        secureStore.putString(KEY_POST_IMMEDIATELY, if (value) "1" else "0")
-        _postImmediately.value = value
+    fun setPostImmediately(@Suppress("UNUSED_PARAMETER") value: Boolean) {
+        secureStore.putString(KEY_POST_IMMEDIATELY, "0")
+        _postImmediately.value = false
     }
 
     private fun loadTimeout(): RequestTimeout =
