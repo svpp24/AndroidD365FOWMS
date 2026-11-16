@@ -95,8 +95,15 @@ class LocationInquiryViewModel @Inject constructor(
 
             // Both questions at once (user, 16 Nov 2026: Location inquiry was slow) - the location
             // check and what is on it went one after the other, two round trips in a row.
-            val stockCall = async { enquiry.locationItems(warehouseId, locationId) }
-            when (val result = lookups.lookupLocation(warehouseId, locationId)) {
+            // How long each part takes, in Settings > Logs (16 Nov 2026) - to find what is slow.
+            val started = System.currentTimeMillis()
+            var stockMs = 0L
+            val stockCall = async {
+                enquiry.locationItems(warehouseId, locationId).also { stockMs = System.currentTimeMillis() - started }
+            }
+            val result = lookups.lookupLocation(warehouseId, locationId)
+            timber.log.Timber.i("Location inquiry %s/%s: location check %d ms", warehouseId, locationId, System.currentTimeMillis() - started)
+            when (result) {
                 is NetworkResult.Error -> {
                     stockCall.cancel()
                     scanFeedback.error()
@@ -120,7 +127,15 @@ class LocationInquiryViewModel @Inject constructor(
                     } else {
                         scanFeedback.success()
                         _state.update { it.copy(busy = false, result = facts, stockLoading = true, stock = emptyList(), stockError = null) }
-                        showStock(stockCall.await())
+                        val stock = stockCall.await()
+                        val shown = System.currentTimeMillis()
+                        showStock(stock)
+                        timber.log.Timber.i(
+                            "Location inquiry %s/%s: stock from D365FO %d ms (%d items), names on the device %d ms, total %d ms",
+                            warehouseId, locationId, stockMs,
+                            (stock as? NetworkResult.Success)?.data?.size ?: -1,
+                            System.currentTimeMillis() - shown, System.currentTimeMillis() - started,
+                        )
                     }
                 }
             }
