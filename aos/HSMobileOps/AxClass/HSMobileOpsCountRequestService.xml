@@ -650,7 +650,9 @@ class HSMobileOpsCountRequestService
     [Wrappable(false), Hookable(false)]
     public HSMobileOpsCountReqResponse listCategories(HSMobileOpsCountReqRequest _request)
     {
-        HSMobileOpsCountReqResponse  response = HSMobileOpsCountRequestService::validateSupervisor(_request);
+        // Any active user (16 Nov 2026): a worker may create a blind count, and picks its
+        // categories here. Only reads the product hierarchy.
+        HSMobileOpsCountReqResponse  response = HSMobileOpsCountRequestService::validateUser(_request);
         TableId                      categoryTable = tableName2Id('EcoResCategory');
         Newtonsoft.Json.Linq.JArray  rows = new Newtonsoft.Json.Linq.JArray();
         Newtonsoft.Json.Linq.JObject row;
@@ -720,7 +722,11 @@ class HSMobileOpsCountRequestService
     [Wrappable(false), Hookable(false)]
     public HSMobileOpsCountReqResponse createCount(HSMobileOpsCountReqRequest _request)
     {
-        HSMobileOpsCountReqResponse  response = HSMobileOpsCountRequestService::validateSupervisor(_request);
+        // Counts are started by the supervisor; a blind count may be started by any worker
+        // (user, 16 Nov 2026).
+        HSMobileOpsCountReqResponse  response = (_request && _request.parmCountType() == 'Blind')
+            ? HSMobileOpsCountRequestService::validateUser(_request)
+            : HSMobileOpsCountRequestService::validateSupervisor(_request);
         HSMobileOpsCountMaster       master;
         HSMobileOpsCountItem         item;
         HSMobileOpsCountMasterType   type;

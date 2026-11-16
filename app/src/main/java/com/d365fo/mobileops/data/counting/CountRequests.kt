@@ -219,7 +219,7 @@ class CountRequestRepository @Inject constructor(
                         data.message?.takeIf { it.isNotBlank() } ?: when (data.errorCode) {
                             "NOT_ALLOWED" -> "You are not an active mobile user in D365FO."
                             "COUNT_NOT_FOUND" -> "This count is not in D365FO any more."
-                            "NOT_SUPERVISOR" -> "Only a cycle count supervisor can create counts."
+                            "NOT_SUPERVISOR" -> "Only a cycle count supervisor can create this count. Any worker can start a blind count."
                             else -> data.errorCode ?: "D365FO refused the request."
                         },
                         d365ErrorCode = data.errorCode,

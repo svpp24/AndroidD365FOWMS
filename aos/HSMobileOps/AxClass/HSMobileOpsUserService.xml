@@ -169,7 +169,10 @@ class HSMobileOpsUserService
             ttscommit;
 
             response.parmUserName(user.UserName);
-            response.parmDisplayName(user.DisplayName);
+            // No name on the hub user: the employee's (user, 16 Nov 2026) - the app shows its first letter.
+            response.parmDisplayName(user.DisplayName
+                ? user.DisplayName
+                : (user.PersonnelNumber ? HcmWorker::findByPersonnelNumber(user.PersonnelNumber).name() : ''));
             response.parmPersonnelNumber(user.PersonnelNumber);
             response.parmIsSupervisor(user.IsSupervisor == NoYes::Yes);
             response.parmIsCycleCountSupervisor(user.IsCycleCountSupervisor == NoYes::Yes);

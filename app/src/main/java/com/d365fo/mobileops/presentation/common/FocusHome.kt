@@ -138,13 +138,13 @@ internal fun FocusHome(
     }
     val rows = buildList {
         if (has(WarehouseWorkflow.PO_RECEIVING, WarehouseWorkflow.TRANSFER_RECEIVE)) {
-            add(HomeEntry(HOME_ICONS[0], "Receive", receiveCount(figures, modules)) { openGroup(ModuleGroup.RECEIVE) })
+            add(HomeEntry(HOME_ICONS[0], "Receive", null) { openGroup(ModuleGroup.RECEIVE) })
         }
         if (has(WarehouseWorkflow.TRANSFER_SHIP)) {
-            add(HomeEntry(HOME_ICONS[1], "Ship", figures.transfersToShip?.toString()) { openGroup(ModuleGroup.SHIP) })
+            add(HomeEntry(HOME_ICONS[1], "Ship", null) { openGroup(ModuleGroup.SHIP) })
         }
         if (has(WarehouseWorkflow.INVENTORY_COUNT)) {
-            add(HomeEntry(HOME_ICONS[2], "Count", figures.countsInProgress?.toString()) { openGroup(ModuleGroup.COUNT) })
+            add(HomeEntry(HOME_ICONS[2], "Count", null) { openGroup(ModuleGroup.COUNT) })
         }
         if (has(WarehouseWorkflow.PO_CREATE, WarehouseWorkflow.TO_CREATE, WarehouseWorkflow.PURCHASE_RETURN)) {
             add(HomeEntry(HOME_ICONS[3], "Create", null) { openGroup(ModuleGroup.CREATE) })
@@ -172,17 +172,13 @@ internal fun FocusHome(
 }
 
 /**
- * Two letters for the header circle: the first letters of the first two words ("Abdul Rahman" ->
- * AR), or of a one-word name its first letter and its next capital ("Demo1Supervisor" -> DS), or
- * its first two characters ("002" -> 00).
+ * The header circle: the first letter of the name (user, 16 Nov 2026) - the hub user's name, or
+ * the employee's when it has none ("Abdul Rahman" -> A). A name with no letter shows its first
+ * character ("002" -> 0).
  */
 internal fun initialsOf(name: String): String {
-    val words = name.trim().split(Regex("\\s+")).filter { it.isNotBlank() }
-    if (words.isEmpty()) return ""
-    if (words.size >= 2) return "${words[0].first()}${words[1].first()}".uppercase()
-    val word = words[0]
-    val capital = word.drop(1).firstOrNull { it.isUpperCase() }
-    return (if (capital != null) "${word.first()}$capital" else word.take(2)).uppercase()
+    val trimmed = name.trim()
+    return (trimmed.firstOrNull { it.isLetter() } ?: trimmed.firstOrNull())?.uppercase().orEmpty()
 }
 
 /** On a tablet, the Home row whose area is open on the right (its title), else null. */

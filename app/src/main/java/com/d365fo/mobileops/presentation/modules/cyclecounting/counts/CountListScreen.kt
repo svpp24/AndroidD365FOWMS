@@ -132,7 +132,8 @@ fun CountListScreen(
             }
             // A cycle count supervisor creates counts (user, 10 Nov) - a record in the control
             // center every counter of the warehouse sees here - and does not count.
-            if (state.supervisor) {
+            // Any worker may start a blind count (user, 16 Nov 2026); the others stay with the supervisor.
+            if (state.supervisor || state.type == CountType.BLIND) {
                 FocusListRow(
                     title = if (state.type == CountType.WALL_TO_WALL) "Open a wall to wall count" else "New ${state.type.label.lowercase()}",
                     subtitle = if (state.type == CountType.WALL_TO_WALL) {

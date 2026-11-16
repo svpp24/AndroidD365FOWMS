@@ -43,13 +43,19 @@ class TransferListRepository @Inject constructor(
 
     /** Shared for a short while by Home, Transfer orders, Create transfer and the prefetcher; [fresh] asks D365FO now. */
     suspend fun openTransferOrders(warehouseId: String, fresh: Boolean = false): NetworkResult<List<TransferOrderSummary>> {
-        val key = "transfers:${companyProvider().orEmpty().lowercase()}:${warehouseId.trim().uppercase()}"
+        val key = transfersKey(warehouseId)
         if (fresh) listCache.invalidate(key)
         return listCache.get(key) {
             call("Couldn't list transfer orders") { service.listTransferOrders(request(warehouseId)) }
                 .map { response -> response.orders.filter { it.transferId.isNotBlank() }.map(::toSummary) }
         }
     }
+
+    /** The last list this device got for [warehouseId], to show while D365FO is asked again. */
+    fun cachedTransferOrders(warehouseId: String): List<TransferOrderSummary>? = listCache.peek(transfersKey(warehouseId))
+
+    private fun transfersKey(warehouseId: String) =
+        "transfers:${companyProvider().orEmpty().lowercase()}:${warehouseId.trim().uppercase()}"
 
     private fun request(warehouseId: String, days: Int = 0, search: String = "") = TransferListServiceRequest(
         TransferListRequestBody(

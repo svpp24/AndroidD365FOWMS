@@ -46,21 +46,19 @@ class HSMobileOpsTransferListService
 
         changecompany (_request.parmDataAreaId())
         {
+            // One query with the line count joined (16 Nov 2026): it was one count per order, and
+            // the Transfer orders screen waited on hundreds of round trips. The inner join also
+            // leaves out a header with no lines (BSP-TO-000000022) - nothing to ship or receive.
             while select TransferId, InventLocationIdFrom, InventLocationIdTo, TransferStatus, ShipDate, ReceiveDate
                 from transferTable
-                order by ShipDate, TransferId
+                group by ShipDate, TransferId, InventLocationIdFrom, InventLocationIdTo, TransferStatus, ReceiveDate
                 where (transferTable.InventLocationIdFrom == warehouseId
                         && transferTable.TransferStatus == InventTransferStatus::Created)
                    || (transferTable.InventLocationIdTo == warehouseId
                         && transferTable.TransferStatus == InventTransferStatus::Shipped)
+                join count(RecId) from transferLine
+                    where transferLine.TransferId == transferTable.TransferId
             {
-                select count(RecId) from transferLine
-                    where transferLine.TransferId == transferTable.TransferId;
-                // A header with no lines (BSP-TO-000000022) has nothing to ship or receive.
-                if (!transferLine.RecId)
-                {
-                    continue;
-                }
 
                 row = new HSMobileOpsTransferSummaryRow();
                 row.parmTransferId(transferTable.TransferId);

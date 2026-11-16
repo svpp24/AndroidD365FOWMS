@@ -25,6 +25,12 @@ class ListCache @Inject constructor() {
     private val entries = ConcurrentHashMap<String, Entry>()
     private val locks = ConcurrentHashMap<String, Mutex>()
 
+    /**
+     * The last good answer per key, kept through [invalidate] - a screen shows it at once while
+     * it asks D365FO again (user, 16 Nov 2026: Transfer orders sat on a spinner after each posting).
+     */
+    private val lastGood = ConcurrentHashMap<String, Entry>()
+
     /** Monotonic milliseconds; replaced in tests. */
     internal var now: () -> Long = { System.nanoTime() / 1_000_000 }
 
@@ -39,9 +45,19 @@ class ListCache @Inject constructor() {
                 return@withLock NetworkResult.Success(hit.value as T)
             }
             val result = fetch()
-            if (result is NetworkResult.Success) entries[key] = Entry(now(), result.data)
+            if (result is NetworkResult.Success) {
+                entries[key] = Entry(now(), result.data)
+                lastGood[key] = Entry(now(), result.data)
+            }
             result
         }
+    }
+
+    /** The last good answer for [key] if it is under [maxAgeMs] old - to show while asking again. */
+    fun <T> peek(key: String, maxAgeMs: Long = PEEK_MAX_MS): T? {
+        val hit = lastGood[key] ?: return null
+        @Suppress("UNCHECKED_CAST")
+        return if (now() - hit.at < maxAgeMs) hit.value as T else null
     }
 
     /** Drops every kept answer, or only those whose key starts with [prefix]. */
@@ -51,5 +67,6 @@ class ListCache @Inject constructor() {
 
     companion object {
         const val TTL_MS = 90_000L
+        const val PEEK_MAX_MS = 12 * 60 * 60_000L
     }
 }

@@ -106,7 +106,9 @@ class TransferOrdersViewModel @Inject constructor(
             _state.update { it.copy(error = "No warehouse selected") }
         }
         viewModelScope.launch {
-            _state.update { it.copy(busy = true, error = null) }
+            // The last list straight away, then D365FO's answer replaces it.
+            val shown = _state.value.orders.ifEmpty { transfers.cachedTransferOrders(warehouse).orEmpty() }
+            _state.update { it.copy(busy = true, error = null, orders = shown) }
             when (val result = transfers.openTransferOrders(warehouse, fresh)) {
                 is NetworkResult.Success -> _state.update { it.copy(busy = false, orders = result.data) }
                 is NetworkResult.Error -> _state.update { it.copy(busy = false, error = result.failure.message) }
