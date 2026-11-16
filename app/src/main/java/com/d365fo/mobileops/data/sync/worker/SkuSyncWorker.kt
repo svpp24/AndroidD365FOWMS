@@ -45,7 +45,7 @@ class SkuSyncWorker @AssistedInject constructor(
      * vendors yet - connect once"). At most every 6 hours; every time when asked for in Settings.
      */
     private suspend fun refreshVendors() {
-        when (val result = runCatching { orders.refreshVendors(force = manual != null) }.getOrNull()) {
+        when (val result = runCatching { orders.refreshVendors(force = manual == ManualSync.CHANGES || manual == ManualSync.FULL) }.getOrNull()) {
             is com.d365fo.mobileops.util.NetworkResult.Success -> Timber.i("vendors: %d on the device", result.data)
             is com.d365fo.mobileops.util.NetworkResult.Error -> Timber.w("vendors not refreshed: %s", result.failure.message)
             else -> Unit
@@ -57,7 +57,10 @@ class SkuSyncWorker @AssistedInject constructor(
         // continuation a few minutes later - see SkuSyncRepository.runStep. Kept well inside
         // WorkManager's ten-minute limit for one run.
         // A retry carries on where the failed attempt stopped: a full sync is not restarted.
-        when (val step = repository.runStep(RUN_BUDGET_MS, manual.takeIf { runAttemptCount == 0 } ?: manual?.let { ManualSync.CHANGES })) {
+        when (val step = repository.runStep(
+            RUN_BUDGET_MS,
+            manual.takeIf { runAttemptCount == 0 || it == ManualSync.SCHEDULED } ?: manual?.let { ManualSync.CHANGES },
+        )) {
             is SkuSyncStep.Done -> {
                 step.summary?.let {
                     Timber.i(
@@ -70,7 +73,8 @@ class SkuSyncWorker @AssistedInject constructor(
             }
             SkuSyncStep.Pending -> {
                 Timber.i("SKU sync: out of time part way - continuing shortly")
-                if (manualChain) scheduler.continueMasterSyncNow() else scheduler.scheduleSkuContinuation()
+                // The 2-hourly changes run carries on on any connection, as one asked for in Settings.
+                if (manualChain || manual == ManualSync.SCHEDULED) scheduler.continueMasterSyncNow() else scheduler.scheduleSkuContinuation()
                 Result.success()
             }
             is SkuSyncStep.Failed -> {

@@ -84,8 +84,24 @@ class SyncScheduler @Inject constructor(context: Context) {
         if (com.d365fo.mobileops.BuildConfig.DEBUG) {
             workManager.cancelUniqueWork(Constants.WORK_SYNC_SKU_MASTER)
             workManager.cancelUniqueWork(SKU_CONTINUE)
+            workManager.cancelUniqueWork(WORK_SYNC_CHANGES)
             return
         }
+
+        // Changes only, every 2 hours, on any connection (user, 16 Nov 2026): new items and
+        // barcodes reach the handhelds within the shift. Small downloads; when a full sync is due
+        // the run skips and leaves it to the Wi-Fi-and-charging job below.
+        workManager.enqueueUniquePeriodicWork(
+            WORK_SYNC_CHANGES,
+            ExistingPeriodicWorkPolicy.KEEP,
+            PeriodicWorkRequestBuilder<SkuSyncWorker>(SKU_CHANGES_EVERY_HOURS, TimeUnit.HOURS)
+                .setConstraints(connectedOnly)
+                .setInputData(androidx.work.workDataOf(SkuSyncWorker.KEY_MANUAL to com.d365fo.mobileops.data.repository.ManualSync.SCHEDULED.name))
+                .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 10, TimeUnit.MINUTES)
+                // Spread over the first half hour so a fleet does not ask at the same minute.
+                .setInitialDelay(FleetJitter.millisUpTo(TimeUnit.MINUTES.toMillis(30)), TimeUnit.MILLISECONDS)
+                .build(),
+        )
 
         // Once a day is enough for master data that changes on the order of days, not minutes -
         // and WorkManager only runs it at all once the Wi-Fi-and-charging constraint above is
@@ -215,6 +231,7 @@ class SyncScheduler @Inject constructor(context: Context) {
 
     private companion object {
         const val WORK_PUSH_NOW = "d365.push.now"
+        const val WORK_SYNC_CHANGES = "sku_sync_changes"
         const val SKU_CONTINUE = "d365.sync.skumaster.continue"
         const val WORK_SYNC_MASTERS_NOW = "d365.sync.skumaster.now"
         const val POSTING_FOLLOW_UP = "d365.posting.followup"
@@ -227,3 +244,6 @@ sealed interface MasterSyncState {
     data object Running : MasterSyncState
     data class Failed(val reason: String) : MasterSyncState
 }
+
+/** The changes-only item sync's period, in hours (user, 16 Nov 2026) - SyncScheduler and the Sync screen. */
+const val SKU_CHANGES_EVERY_HOURS = 2L

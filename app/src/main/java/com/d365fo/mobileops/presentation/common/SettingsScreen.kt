@@ -331,6 +331,9 @@ fun SettingsScreen(
                 // Always reachable, regardless of sign-in or license state - see LogStore.
                 SettingsMenuItem.Logs -> LogsSection()
 
+                // When each kind of data last synced and syncs next (user, 16 Nov 2026).
+                SettingsMenuItem.Sync -> SyncStatusSection()
+
                 // Before or after sign-in: a copy in D365FO, or a PIN-protected file (29 Oct).
                 SettingsMenuItem.UnsentWork -> com.d365fo.mobileops.presentation.recovery.UnsentWorkPanel()
 
@@ -473,6 +476,7 @@ private enum class SettingsMenuItem(val title: String, val icon: androidx.compos
     Posting("Data posting", LineIcons.Posting),
     Feedback("Send feedback", LineIcons.Feedback),
     UnsentWork("Unsent work", LineIcons.Upload),
+    Sync("Sync", LineIcons.Upload),
 }
 
 /**
@@ -506,11 +510,12 @@ private fun SettingsMenu(
         SettingsMenuItem.Session to listOfNotNull(session?.selected?.warehouseId, "offline use").joinToString(" · "),
         SettingsMenuItem.Posting to if (!postingEnabled) "Posting is off" else "Post immediately: " + if (postImmediately) "on" else "off",
         SettingsMenuItem.UnsentWork to (workState.unsent ?: "Nothing unsent"),
+        SettingsMenuItem.Sync to "Last and next sync of item data, orders and postings",
     )
     val items = buildList {
         if (showConnectionProfile) addAll(listOf(SettingsMenuItem.ConnectionProfile, SettingsMenuItem.Appearance, SettingsMenuItem.Lockout))
         if (showSignedInSections) {
-            addAll(listOf(SettingsMenuItem.Session, SettingsMenuItem.Posting, SettingsMenuItem.UnsentWork, SettingsMenuItem.Feedback, SettingsMenuItem.Logs))
+            addAll(listOf(SettingsMenuItem.Session, SettingsMenuItem.Sync, SettingsMenuItem.Posting, SettingsMenuItem.UnsentWork, SettingsMenuItem.Feedback, SettingsMenuItem.Logs))
         } else {
             addAll(listOf(SettingsMenuItem.UnsentWork, SettingsMenuItem.Logs))
         }

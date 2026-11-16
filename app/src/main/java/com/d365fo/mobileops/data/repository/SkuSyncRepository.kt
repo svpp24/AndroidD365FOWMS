@@ -230,6 +230,13 @@ class SkuSyncRepository @Inject constructor(
             val stepStarted = System.currentTimeMillis()
             val deadline = stepStarted + budgetMs
             fun addActive() = prefs.edit().putLong(KEY_ACTIVE_MS, prefs.getLong(KEY_ACTIVE_MS, 0L) + System.currentTimeMillis() - stepStarted).apply()
+            // Every 2 hours, changes only, on any connection (user, 16 Nov 2026). A full sync -
+            // due, or one already part way - stays with the Wi-Fi-and-charging job.
+            if (manual == ManualSync.SCHEDULED &&
+                (prefs.getLong(KEY_CYCLE_STARTED, 0L) != 0L || itemDao.itemCount() == 0 || fullDue())
+            ) {
+                return@withLock SkuSyncStep.Done(null)
+            }
             // Settings > Sync masters now (30 Oct): a full sync starts over even part way through
             // another; changes only carry on with one already running.
             if (manual == ManualSync.FULL) prefs.edit().putLong(KEY_CYCLE_STARTED, 0L).apply()
@@ -357,6 +364,25 @@ class SkuSyncRepository @Inject constructor(
     fun needsCatchUp(): Boolean =
         prefs.getLong(KEY_LAST_SUCCESS, 0L) == 0L || prefs.getLong(KEY_CYCLE_STARTED, 0L) != 0L ||
             prefs.getInt(KEY_SCHEMA, 0) < SCHEMA
+
+    /** Whether the next cycle would be a full one - see [startCycle]. */
+    private fun fullDue(now: Long = System.currentTimeMillis()): Boolean {
+        val scope = prefs.getString(KEY_SCOPE, "").orEmpty()
+        val fullInterval = if (scope.isBlank()) FULL_REFRESH_INTERVAL_MS else SCOPED_FULL_REFRESH_INTERVAL_MS
+        return prefs.getString(KEY_WATERMARK, null).isNullOrBlank() ||
+            now - prefs.getLong(KEY_LAST_FULL, 0L) >= fullInterval ||
+            prefs.getInt(KEY_SCHEMA, 0) < SCHEMA
+    }
+
+    /** When the next full sync is due by (Wi-Fi while charging) - for the Sync screen. */
+    fun nextFullBy(): Long? {
+        val last = prefs.getLong(KEY_LAST_FULL, 0L).takeIf { it > 0L } ?: return null
+        val scope = prefs.getString(KEY_SCOPE, "").orEmpty()
+        return last + if (scope.isBlank()) FULL_REFRESH_INTERVAL_MS else SCOPED_FULL_REFRESH_INTERVAL_MS
+    }
+
+    /** The last finished sync of any kind - for the Sync screen. */
+    fun lastSuccessAt(): Long? = prefs.getLong(KEY_LAST_SUCCESS, 0L).takeIf { it > 0L }
 
     private fun startCycle(forceFull: Boolean = false) {
         val now = System.currentTimeMillis()
@@ -717,4 +743,5 @@ sealed interface SkuSyncStep {
 }
 
 /** Settings > Sync masters now: only the changes since the last sync, or every row again. */
-enum class ManualSync { CHANGES, FULL }
+/** [SCHEDULED]: the 2-hourly changes-only run - skips when a full sync is due (user, 16 Nov 2026). */
+enum class ManualSync { CHANGES, FULL, SCHEDULED }
