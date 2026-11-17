@@ -130,7 +130,20 @@ fun ReceivingFlowScreen(
     // rather than a system back invocation at all. Without this guard on both paths, scanning a
     // PO that turns out invalid leaves the flow on this same step, and the phantom pops the whole
     // screen to Home before anyone can read the error that was just shown.
+    var keypadOpenedFor by rememberSaveable { mutableStateOf<String?>(null) }
+    // Undo from a later step (location, batch...) back to Quantity opens the pad again with the
+    // quantity that was entered, ready to confirm or change (user, 17 Nov 2026: the 24 was gone
+    // and the pad did not come back). Held against the line's pad key, so it is used only there.
+    var undoQuantity by remember { mutableStateOf<Pair<String, String>?>(null) }
     val stepBack = {
+        if (!viewModel.justScanned() && !state.posting && state.postOutcome == null && !state.showingCaptured &&
+            state.step.ordinal > ReceivingStep.QUANTITY.ordinal
+        ) {
+            state.capture.quantity?.let { q ->
+                undoQuantity = "${state.capture.line?.lineNumber}:${state.capture.item?.itemNumber}:${state.captured.size}" to plain(q)
+                keypadOpenedFor = null
+            }
+        }
         // Also gated on posting/postOutcome - see the identical note on the top bar's own back
         // icon and actions further down, on why leaving mid-post has to go through PostStatus's
         // own Done button instead.
@@ -162,7 +175,6 @@ fun ReceivingFlowScreen(
     // The quantity step opens the number pad by itself, once per line: Back from the pad lands
     // on the step (unit chips, scan) without bouncing straight back in. Waits out the scanner's
     // phantom back (see stepBack above) so the pad isn't closed the moment it opens.
-    var keypadOpenedFor by rememberSaveable { mutableStateOf<String?>(null) }
     // The shared quantity popup (QuantityPicker), shown over this screen - not the full typing screen.
     var showQuantity by remember { mutableStateOf(false) }
     val quantityKey = if (state.step == ReceivingStep.QUANTITY && !state.busy && state.lineChoices.isEmpty() &&
@@ -172,6 +184,7 @@ fun ReceivingFlowScreen(
     } else {
         null
     }
+    val reopenWith = undoQuantity?.takeIf { it.first == quantityKey }?.second ?: ""
     LaunchedEffect(quantityKey) {
         if (quantityKey != null && quantityKey != keypadOpenedFor) {
             while (viewModel.justScanned()) kotlinx.coroutines.delay(150)
@@ -201,6 +214,8 @@ fun ReceivingFlowScreen(
             },
             hint = hintFor(state),
             confirmLabel = "Confirm",
+            initial = reopenWith,
+            replaceInitial = reopenWith.isNotEmpty(),
             validate = viewModel::quantityError,
             // No "all outstanding" button here (feedback) - the hint above says what is left.
             extras = line?.takeIf { it.units.size > 1 }?.let { l ->
@@ -215,6 +230,7 @@ fun ReceivingFlowScreen(
             },
             onConfirm = { value ->
                 showQuantity = false
+                undoQuantity = null
                 viewModel.onManualEntry(value)
             },
             // The scanner's phantom back must not close it - see stepBack.

@@ -120,7 +120,17 @@ fun TransferFlowScreen(
     // top bar's own IconButton onClick, since live tracing ruled out a real KEYCODE_BACK and
     // Compose's own predictive-back callback as the phantom's delivery mechanism, pointing at a
     // phantom touch on the icon's tap target instead.
+    var keypadOpenedFor by rememberSaveable { mutableStateOf<String?>(null) }
+    // Undo from a later step (batch, bin, serial) back to Quantity opens the pad again with the
+    // quantity entered - see the identical note on ReceivingFlowScreen (user, 17 Nov 2026).
+    var undoQuantity by remember { mutableStateOf<Pair<String, String>?>(null) }
     val stepBack = {
+        if (!viewModel.justScanned() && !state.showingCaptured && state.step != TransferStep.QUANTITY) {
+            state.capture.quantity?.let { q ->
+                undoQuantity = "${state.capture.line?.lineNumber}:${state.captured.size}" to plain(q)
+                keypadOpenedFor = null
+            }
+        }
         if (!viewModel.justScanned()) {
             when {
                 // Back from "Scanned so far" closes the list rather than stepping the flow back
@@ -148,7 +158,6 @@ fun TransferFlowScreen(
 
     // Opens the number pad on reaching the quantity step, once per line - see the identical
     // note on ReceivingFlowScreen.
-    var keypadOpenedFor by rememberSaveable { mutableStateOf<String?>(null) }
     // The shared quantity popup (QuantityPicker), shown over this screen - not the full typing screen.
     var showQuantity by remember { mutableStateOf(false) }
     val quantityKey = if (state.step == TransferStep.QUANTITY && !state.busy && state.lineChoices.isEmpty() &&
@@ -158,6 +167,7 @@ fun TransferFlowScreen(
     } else {
         null
     }
+    val reopenWith = undoQuantity?.takeIf { it.first == quantityKey }?.second ?: ""
     LaunchedEffect(quantityKey) {
         if (quantityKey != null && quantityKey != keypadOpenedFor) {
             while (viewModel.justScanned()) kotlinx.coroutines.delay(150)
@@ -187,6 +197,8 @@ fun TransferFlowScreen(
             },
             hint = hintFor(state),
             confirmLabel = "Confirm",
+            initial = reopenWith,
+            replaceInitial = reopenWith.isNotEmpty(),
             validate = viewModel::quantityError,
             // No "all outstanding" button here (feedback) - the hint above says what is left.
             extras = line?.takeIf { it.units.size > 1 }?.let { l ->
@@ -201,6 +213,7 @@ fun TransferFlowScreen(
             },
             onConfirm = { value ->
                 showQuantity = false
+                undoQuantity = null
                 viewModel.onManualEntry(value)
             },
             // The scanner's phantom back must not close it - see stepBack.
