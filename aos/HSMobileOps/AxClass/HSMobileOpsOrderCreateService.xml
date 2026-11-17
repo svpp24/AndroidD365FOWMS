@@ -144,6 +144,70 @@ class HSMobileOpsOrderCreateService
 ]]></Source>
 			</Method>
 			<Method>
+				<Name>listApprovedVendorRules</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The approved vendor rules a handheld keeps (user, 17 Nov 2026: refuse a non-approved item at
+    /// the scan, without asking D365FO each time): every item whose approved-vendor check is on
+    /// (Warning or Not allowed), with each vendor approved for it today - one row per item and
+    /// vendor, or one row with no vendor when none is. Items whose check is off are not listed:
+    /// any vendor may supply them. A page holds up to Take items (1000 by default, at most 5000),
+    /// starting after ItemId.
+    /// </summary>
+    public HSMobileOpsOrderResponse listApprovedVendorRules(HSMobileOpsOrderRequest _request)
+    {
+        HSMobileOpsOrderResponse response = HSMobileOpsOrderCreateService::newResponse();
+        InventTable              inventTable;
+        PdsApprovedVendorList    approved;
+        HSMobileOpsOrderLine     line;
+        TransDate                today = DateTimeUtil::getSystemDate(DateTimeUtil::getUserPreferredTimeZone());
+        ItemId                   after = _request ? _request.parmItemId() : '';
+        ItemId                   lastItem;
+        int                      take;
+        int                      items;
+
+        if (!HSMobileOpsOrderCreateService::validCompany(_request))
+        {
+            response.parmErrorCode('INVALID_REQUEST');
+            return response;
+        }
+        take = _request.parmTake() > 0 ? min(_request.parmTake(), 5000) : 1000;
+
+        changecompany (_request.parmDataAreaId())
+        {
+            while select ItemId from inventTable
+                order by inventTable.ItemId
+                where inventTable.ItemId > after
+                   && inventTable.PdsVendorCheckItem != PdsVendorCheckItem::NoCheck
+                outer join PdsApprovedVendor from approved
+                    where approved.ItemId     == inventTable.ItemId
+                       && approved.ValidFrom  <= today
+                       && (approved.ValidTo   >= today || approved.ValidTo == dateNull())
+            {
+                if (inventTable.ItemId != lastItem)
+                {
+                    if (items >= take)
+                    {
+                        response.parmHasMore(true);
+                        break;
+                    }
+                    items++;
+                    lastItem = inventTable.ItemId;
+                }
+                line = new HSMobileOpsOrderLine();
+                line.parmItemId(inventTable.ItemId);
+                line.parmVendorAccount(approved.PdsApprovedVendor);
+                response.parmLines().addEnd(line);
+            }
+        }
+
+        response.parmSuccess(true);
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
 				<Name>listVendorItems</Name>
 				<Source><![CDATA[
 

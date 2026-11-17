@@ -396,6 +396,13 @@ interface MobileOpsServiceApi {
         @Tag tag: IdempotentRead = IdempotentRead,
     ): Response<com.d365fo.mobileops.data.remote.dto.OrderServiceResponse>
 
+    /** Items whose approved-vendor check is on, with their approved vendors - kept on the device. */
+    @POST("HSMobileOpsServiceGroup/HSMobileOpsOrderCreateSvc/listApprovedVendorRules")
+    suspend fun listApprovedVendorRules(
+        @Body body: com.d365fo.mobileops.data.remote.dto.OrderServiceRequest,
+        @Tag tag: IdempotentRead = IdempotentRead,
+    ): Response<com.d365fo.mobileops.data.remote.dto.OrderServiceResponse>
+
     /** The items a vendor is approved for today, a page at a time - Create PO's Items list. */
     @POST("HSMobileOpsServiceGroup/HSMobileOpsOrderCreateSvc/listVendorItems")
     suspend fun listVendorItems(

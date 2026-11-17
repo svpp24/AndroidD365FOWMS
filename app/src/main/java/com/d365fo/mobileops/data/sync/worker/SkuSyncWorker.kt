@@ -50,6 +50,13 @@ class SkuSyncWorker @AssistedInject constructor(
             is com.d365fo.mobileops.util.NetworkResult.Error -> Timber.w("vendors not refreshed: %s", result.failure.message)
             else -> Unit
         }
+        // The approved vendor rules with them (user, 17 Nov 2026): Create PO checks a scan against
+        // these on the device, without asking D365FO.
+        when (val result = runCatching { orders.refreshApprovedRules(force = manual == ManualSync.CHANGES || manual == ManualSync.FULL) }.getOrNull()) {
+            is com.d365fo.mobileops.util.NetworkResult.Success -> Timber.i("approved vendor rules: %d items on the device", result.data)
+            is com.d365fo.mobileops.util.NetworkResult.Error -> Timber.w("approved vendor rules not refreshed: %s", result.failure.message)
+            else -> Unit
+        }
     }
 
     override suspend fun doWork(): Result =

@@ -234,6 +234,7 @@ class OrderCreationRepository @Inject constructor(
     private val json: Json,
     /** Sends outlive the screen that queued them - see [queueAndSend]. */
     private val applicationScope: kotlinx.coroutines.CoroutineScope,
+    @dagger.hilt.android.qualifiers.ApplicationContext private val appContext: android.content.Context,
 ) {
     private fun company(): String = companyProvider().orEmpty()
 
@@ -295,6 +296,65 @@ class OrderCreationRepository @Inject constructor(
         }
         dao.replaceVendors(all, now)
         return NetworkResult.Success(all.size)
+    }
+
+    // -- Approved vendor rules, kept on the device (user, 17 Nov 2026) ------------------------
+
+    @kotlinx.serialization.Serializable
+    private data class ApprovedRules(val savedAt: Long = 0L, val items: Map<String, List<String>> = emptyMap())
+
+    @Volatile private var rules: ApprovedRules? = null
+
+    private fun rulesFile() = java.io.File(appContext.filesDir, "approved_vendor_rules_${company().lowercase()}.json")
+
+    private fun loadRules(): ApprovedRules? = rules ?: runCatching {
+        rulesFile().takeIf { it.exists() }?.readText()?.let { json.decodeFromString(ApprovedRules.serializer(), it) }
+    }.getOrNull()?.also { rules = it }
+
+    /**
+     * Downloads the items whose approved-vendor check is on, with their vendors approved today,
+     * and keeps them in a file - with the vendors, at most every [maxAgeMs]. Never fails anything.
+     */
+    suspend fun refreshApprovedRules(force: Boolean = false, maxAgeMs: Long = 6 * 60 * 60 * 1000L): NetworkResult<Int> {
+        val saved = loadRules()
+        if (!force && saved != null && System.currentTimeMillis() - saved.savedAt < maxAgeMs) return NetworkResult.Success(saved.items.size)
+        val items = LinkedHashMap<String, MutableList<String>>()
+        var after = ""
+        repeat(MAX_RULE_PAGES) {
+            val result = errorMapper.safeCall {
+                api.listApprovedVendorRules(OrderServiceRequest(OrderRequestBody(dataAreaId = company(), itemId = after, take = RULE_PAGE)))
+            }
+            when (result) {
+                is NetworkResult.Success -> {
+                    if (!result.data.success) return NetworkResult.Error(AppFailure.BusinessRule(result.data.message.ifBlank { "Approved vendors could not be read" }))
+                    result.data.lines.forEach { l ->
+                        val list = items.getOrPut(l.itemId.uppercase()) { mutableListOf() }
+                        if (l.vendorAccount.isNotBlank()) list += l.vendorAccount.uppercase()
+                    }
+                    if (!result.data.hasMore || result.data.lines.isEmpty()) {
+                        val fresh = ApprovedRules(System.currentTimeMillis(), items)
+                        runCatching { rulesFile().writeText(json.encodeToString(ApprovedRules.serializer(), fresh)) }
+                        rules = fresh
+                        return NetworkResult.Success(items.size)
+                    }
+                    after = result.data.lines.last().itemId
+                }
+                is NetworkResult.Error -> return result
+                NetworkResult.Loading -> Unit
+            }
+        }
+        return NetworkResult.Error(AppFailure.BusinessRule("Too many approved vendor rules"))
+    }
+
+    /**
+     * Whether [vendorAccount] may supply [itemId], from the rules on the device: true when the
+     * item's approved-vendor check is off or the vendor is approved today, false when not, null
+     * when the device has no rules yet (D365FO still checks when the order is created).
+     */
+    fun isApprovedVendor(itemId: String, vendorAccount: String): Boolean? {
+        val r = loadRules() ?: return null
+        val vendors = r.items[itemId.uppercase()] ?: return true
+        return vendorAccount.uppercase() in vendors
     }
 
     /**
@@ -843,6 +903,8 @@ class OrderCreationRepository @Inject constructor(
     private companion object {
         const val VENDOR_PAGE = 1000
         const val MAX_VENDOR_PAGES = 50
+        const val RULE_PAGE = 2000
+        const val MAX_RULE_PAGES = 500
         const val MAX_VENDOR_ITEM_PAGES = 50
     }
 }

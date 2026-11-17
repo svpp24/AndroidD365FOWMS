@@ -9,6 +9,7 @@
 [DataContractAttribute]
 class HSMobileOpsOrderLine
 {
+    str vendorAccount;
     str expiryDate;
     real lineNumber;
     str itemId;
@@ -389,6 +390,19 @@ class HSMobileOpsOrderLine
     {
         expiryDate = _value;
         return expiryDate;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmVendorAccount</Name>
+				<Source><![CDATA[
+
+    /// <summary>listApprovedVendorRules: a vendor approved for the item today; blank = none is.</summary>
+    [DataMemberAttribute('VendorAccount')]
+    public str parmVendorAccount(str _value = vendorAccount)
+    {
+        vendorAccount = _value;
+        return vendorAccount;
     }
 ]]></Source>
 			</Method>

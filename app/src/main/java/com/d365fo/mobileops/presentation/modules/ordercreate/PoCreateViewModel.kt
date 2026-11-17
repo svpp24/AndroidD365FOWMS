@@ -167,6 +167,8 @@ class PoCreateViewModel @Inject constructor(
             val result = repository.refreshVendors(force)
             _state.update { it.copy(refreshingVendors = false, error = if (force && result is NetworkResult.Error) result.failure.message else it.error) }
             loadVendors()
+            // The approved vendor rules too - checked on the device at each scan (17 Nov 2026).
+            repository.refreshApprovedRules(force)
         }
     }
 
@@ -222,7 +224,13 @@ class PoCreateViewModel @Inject constructor(
                 is NetworkResult.Success -> {
                     val item = result.data
                     val scanned = item.scannedVariant
+                    // Refused at the scan when the vendor is not approved for it (user, 17 Nov
+                    // 2026) - from the rules on the device, not a call to D365FO.
+                    val vendor = current.draft.vendorAccount
                     when {
+                        repository.isApprovedVendor(item.itemId, vendor) == false -> _state.update {
+                            it.copy(busy = false, error = "${item.itemId} is not approved for vendor $vendor. Choose an item from the vendor's Items list.")
+                        }
                         !item.hasProductDimensions -> _state.update { it.copy(busy = false, enteringQty = PendingLine(item, OrderVariant())) }
                         scanned != null -> _state.update { it.copy(busy = false, enteringQty = PendingLine(item, scanned)) }
                         item.variants.isEmpty() -> _state.update {
