@@ -782,10 +782,9 @@ private fun receivingBand(state: ReceivingFlowState): BandState? {
     state.error?.let { return bandOf(BandKind.Bad, it) }
     state.lineNotice?.let { return bandOf(if (it.hint) BandKind.Warn else BandKind.Ok, it.text) }
     return when {
-        state.step == ReceivingStep.PURCHASE_ORDER -> BandState(BandKind.Info, "Ready", "No PO open")
-        // What to type, with the forms it takes (user, 16 Nov 2026).
-        state.step == ReceivingStep.BATCH_EXPIRY_DATE ->
-            BandState(BandKind.Info, "Scan or type the expiry date", "311228, 31122028 or 31-12-2028")
+        // The task box says it now (user, 17 Nov 2026: remove the bar that only repeats the screen).
+        // The expiry date's forms moved into the task box too.
+        state.step == ReceivingStep.PURCHASE_ORDER || state.step == ReceivingStep.BATCH_EXPIRY_DATE -> null
         state.step == ReceivingStep.ITEM && state.captured.isEmpty() && state.order != null -> state.order.let { o ->
             BandState(
                 BandKind.Info,
@@ -981,7 +980,7 @@ private fun receivingTask(state: ReceivingFlowState): com.d365fo.mobileops.prese
         ReceivingStep.QUANTITY -> T("Enter the quantity", c.line?.let { l -> "${plain(state.suggestedQuantity ?: l.outstandingQuantity)} ${l.purchaseUnit} left" }, i.Dialpad, false)
         ReceivingStep.LOCATION -> T("Scan the bin", state.suggestedLocation?.let { "Order suggests $it" } ?: "where you put it away", i.Place, false)
         ReceivingStep.BATCH -> T("Scan the batch", item.takeIf { it.isNotBlank() }?.let { "on the box of $it" }, i.QrCodeScanner, false)
-        ReceivingStep.BATCH_EXPIRY_DATE -> T("Enter the expiry date", c.batchId?.let { "$it is a new batch" }, i.CalendarMonth, false)
+        ReceivingStep.BATCH_EXPIRY_DATE -> T("Enter the expiry date", "311228, 31122028 or 31-12-2028", i.CalendarMonth, false)
         ReceivingStep.SERIAL -> T("Scan the serial", c.serialsOutstanding.takeIf { it > 1 }?.let { "$it to go" }, i.QrCodeScanner, false)
         ReceivingStep.CONFIRM -> T("Scan the next item", null, i.CheckCircle, true)
     }

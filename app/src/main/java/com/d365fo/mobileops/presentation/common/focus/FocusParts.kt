@@ -302,11 +302,11 @@ private fun ColumnScope.TaskCenter(
                 Text(it, style = FocusType.bandDetail, color = detailColor, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 4.dp))
             }
         }
-        // What is already known: one quiet card, the code on the left and the number on the right.
+        // What is already known: one quiet card, everything centred (user, 17 Nov 2026).
         val hasCard = code.isNotBlank() || !description.isNullOrBlank() || quantity != null || !unitLine.isNullOrBlank()
         if (hasCard) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = Modifier
                     .padding(top = 12.dp)
                     .fillMaxWidth()
@@ -316,26 +316,22 @@ private fun ColumnScope.TaskCenter(
                     .then(if (onQuantityTap != null) Modifier.clickable(role = Role.Button, onClickLabel = "Change quantity", onClick = onQuantityTap) else Modifier)
                     .padding(horizontal = 14.dp, vertical = 12.dp),
             ) {
-                Column(Modifier.weight(1f)) {
-                    if (caption.isNotBlank()) FocusCaption(caption)
-                    if (code.isNotBlank()) {
-                        Text(code.breakAfterHyphens(), style = FocusType.rowCode, color = FocusColors.ink)
-                    }
-                    description?.takeIf { it.isNotBlank() }?.let {
-                        Text(it, style = FocusType.rowDetail, color = FocusColors.inkSoft)
-                    }
-                    // The unit line stays on the left, under the name: on the right it squeezed the
-                    // code into "DM- / 1002" on a phone.
-                    val unit = listOfNotNull(
-                        unitLine?.takeIf { it.isNotBlank() },
-                        "tap to change".takeIf { quantity != null && onQuantityTap != null },
-                    ).joinToString(" · ")
-                    if (unit.isNotEmpty()) {
-                        Text(unit, style = FocusType.rowDetail, color = FocusColors.caption, modifier = Modifier.padding(top = 2.dp))
-                    }
+                if (caption.isNotBlank()) FocusCaption(caption)
+                if (code.isNotBlank()) {
+                    Text(code.breakAfterHyphens(), style = FocusType.rowCount, color = FocusColors.ink, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 4.dp))
+                }
+                description?.takeIf { it.isNotBlank() }?.let {
+                    Text(it, style = FocusType.rowDetail, color = FocusColors.inkSoft, textAlign = TextAlign.Center)
                 }
                 if (quantity != null) {
-                    Text(quantity, style = FocusType.rowCount, color = quantityColor, textAlign = TextAlign.End, modifier = Modifier.padding(start = 12.dp))
+                    Text(quantity, style = FocusType.rowCount, color = quantityColor, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 6.dp))
+                }
+                val unit = listOfNotNull(
+                    unitLine?.takeIf { it.isNotBlank() },
+                    "tap to change".takeIf { quantity != null && onQuantityTap != null },
+                ).joinToString(" · ")
+                if (unit.isNotEmpty()) {
+                    Text(unit, style = FocusType.rowDetail, color = FocusColors.caption, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 2.dp))
                 }
             }
         }

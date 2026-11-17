@@ -93,8 +93,7 @@ fun ReturnCreateScreen(onBack: () -> Unit, viewModel: ReturnCreateViewModel = hi
             title = "Return to vendor",
             onBack = onBack,
             band = state.error?.let { bandOf(BandKind.Bad, it) }
-                ?: submitted?.let { BandState(BandKind.Ok, "Return saved", it.documentNumber ?: it.title, autoHideMs = SAVED_BAND_MS) }
-                ?: BandState(BandKind.Info, "New return", "From ${draft.warehouseId}".takeIf { draft.warehouseId.isNotBlank() }),
+                ?: submitted?.let { BandState(BandKind.Ok, "Return saved", it.documentNumber ?: it.title, autoHideMs = SAVED_BAND_MS) },
             scanPill = { ScanPillField(label = "Scan an item to return", enabled = !state.busy) },
             actions = if (submitted == null) null else { {
                 FocusButton("Start another return", onClick = viewModel::dismissResult, modifier = Modifier.weight(1f))

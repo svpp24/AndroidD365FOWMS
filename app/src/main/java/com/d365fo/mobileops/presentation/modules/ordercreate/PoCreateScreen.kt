@@ -248,13 +248,13 @@ fun PoCreateScreen(
 }
 
 /** The band on the lines step: what went wrong, else what the last scan added, else the order. */
-internal fun poBand(state: PoCreateState, lastAdded: com.d365fo.mobileops.data.repository.DraftLine?): BandState {
+internal fun poBand(state: PoCreateState, lastAdded: com.d365fo.mobileops.data.repository.DraftLine?): BandState? {
     val draft = state.draft
     return state.error?.let { bandOf(BandKind.Bad, it) }
         ?: lastAdded?.let {
             BandState(BandKind.Ok, "Added", "${it.itemId} · ${com.d365fo.mobileops.domain.order.qtyText(it.qty)} ${it.unitId}".trim())
         }
-        ?: BandState(BandKind.Info, "New order · ${draft.vendorName.ifBlank { draft.vendorAccount }}", "To ${draft.warehouseId}")
+        // No "New order" bar: the card shows the vendor and warehouse. The task box says it now (user, 17 Nov 2026: remove the bar that only repeats the screen).
 }
 
 /** The quantity, price and variant steps - unchanged: the item's order rules are checked as before. */

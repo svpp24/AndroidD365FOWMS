@@ -244,7 +244,7 @@ private fun MenuRow(text: String, icon: androidx.compose.ui.graphics.vector.Imag
  * The band: the last scan's result, else where the count stands - submitted, should-be-empty,
  * a stock freeze, a change of place under way, or the journal itself.
  */
-internal fun cycleCountBand(state: CountingScanState): BandState {
+internal fun cycleCountBand(state: CountingScanState): BandState? {
     val message = state.message
     if (message != null) {
         // A count needs a bin first - said as what went wrong, not as an instruction.
@@ -265,11 +265,7 @@ internal fun cycleCountBand(state: CountingScanState): BandState {
         state.changingFrom != null -> BandState(BandKind.Info, "Changing place", "from ${state.changingFrom}")
         state.zeroStockCheck -> BandState(BandKind.Warn, "Should be empty", state.journalDescription)
         freeze != null -> bandOf(BandKind.Warn, freeze)
-        else -> BandState(
-            BandKind.Info,
-            state.journalDescription.ifBlank { "Count" },
-            "Blind count",
-        )
+        else -> null
     }
 }
 

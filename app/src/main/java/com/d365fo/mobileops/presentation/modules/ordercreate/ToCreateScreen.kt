@@ -189,8 +189,7 @@ fun ToCreateScreen(onBack: () -> Unit, onShip: () -> Unit, viewModel: ToCreateVi
             }
         },
         band = state.error?.let { bandOf(BandKind.Bad, it) }
-            ?: lastAdded?.let { BandState(BandKind.Ok, "Added", "${it.itemId} · ${com.d365fo.mobileops.domain.order.qtyText(it.qty)} ${it.unitId}".trim()) }
-            ?: BandState(BandKind.Info, "New transfer · $route", "Ship date ${draft.shipDate}" + if (draft.lines.isEmpty()) " · no lines yet" else ""),
+            ?: lastAdded?.let { BandState(BandKind.Ok, "Added", "${it.itemId} · ${com.d365fo.mobileops.domain.order.qtyText(it.qty)} ${it.unitId}".trim()) },
         remaining = orderSize(draft.lines),
         // Says what to do first while the transfer is empty (user, 15 Nov); same look as always.
         scanPill = { ScanPillField(label = "Scan an item to send", enabled = !state.busy) },

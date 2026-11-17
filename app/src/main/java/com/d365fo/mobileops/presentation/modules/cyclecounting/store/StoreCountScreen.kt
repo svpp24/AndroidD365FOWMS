@@ -881,16 +881,8 @@ internal fun storeCountBand(state: StoreCountState): BandState? {
             "Changing place",
             "from " + listOfNotNull(state.back?.locationId, state.back?.binId).filter { it.isNotBlank() }.joinToString(" › "),
         )
-        state.needsLocation -> BandState(
-            BandKind.Info,
-            "Count open",
-            state.draft?.masterId.orEmpty().ifBlank { "On this device" }.let { "$it · ${state.warehouseId.orEmpty()}" }.trimEnd(' ', '·'),
-        )
-        else -> BandState(
-            BandKind.Info,
-            (if (state.binId.isBlank()) state.locationId else "${state.locationId} › ${state.binId}") + " open",
-            state.draft?.masterId?.takeIf { it.isNotBlank() }?.let { "Count $it" },
-        )
+        // Where counting stands is in the task box now (user, 17 Nov 2026).
+        else -> null
     }
 }
 
@@ -1025,7 +1017,7 @@ private fun androidx.compose.foundation.layout.ColumnScope.StoreCountCenter(stat
                 it.locationId.equals(state.locationId, ignoreCase = true) && it.binId.equals(state.binId, ignoreCase = true)
             }
             if (last == null) {
-                FocusCenter(task = FocusTask("Scan an item", "to count it", androidx.compose.material.icons.Icons.Outlined.QrCodeScanner), caption = "Counted here", code = linesText(0))
+                FocusCenter(task = FocusTask("Scan an item", "in " + (if (state.binId.isBlank()) state.locationId else "${state.locationId} › ${state.binId}"), androidx.compose.material.icons.Icons.Outlined.QrCodeScanner), caption = "Counted here", code = linesText(0))
             } else {
                 FocusCenter(
                     task = FocusTask("Scan the next item", "${last.itemId} counted", androidx.compose.material.icons.Icons.Outlined.QrCodeScanner, done = true),

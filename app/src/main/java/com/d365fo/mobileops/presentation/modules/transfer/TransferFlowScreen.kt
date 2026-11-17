@@ -782,7 +782,8 @@ private fun transferBand(state: TransferFlowState, mode: TransferMode): BandStat
     state.lineNotice?.let { return com.d365fo.mobileops.presentation.modules.stepflow.bandOf(if (it.hint) BandKind.Warn else BandKind.Ok, it.text) }
     val order = state.order
     return when {
-        state.step == TransferStep.TRANSFER_ORDER -> BandState(BandKind.Info, "Ready", "No transfer open")
+        // The task box says it now (user, 17 Nov 2026: remove the bar that only repeats the screen).
+        state.step == TransferStep.TRANSFER_ORDER -> null
         state.step == TransferStep.ITEM && state.captured.isEmpty() && order != null -> BandState(
             BandKind.Info,
             "Transfer found",
