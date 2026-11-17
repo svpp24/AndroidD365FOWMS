@@ -258,7 +258,8 @@ internal fun FocusHomeLayout(
                 StatusAvatar(initials = initials, tag = warehouseCode, online = online, modifier = Modifier.tourTarget("connection"))
                 Text(
                     warehouseName,
-                    style = FocusType.rowTitle.copy(fontSize = 16.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.ExtraBold),
+                    // 20 sp (user, 17 Nov 2026: bigger warehouse name), was 16.
+                    style = FocusType.rowTitle.copy(fontSize = 20.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.ExtraBold),
                     color = FocusColors.ink,
                     maxLines = 1,
                     modifier = Modifier
