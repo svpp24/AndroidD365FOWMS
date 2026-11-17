@@ -14,6 +14,10 @@
 			<Method>submitLines</Method>
 		</AxServiceOperation>
 		<AxServiceOperation>
+			<Name>removeLines</Name>
+			<Method>removeLines</Method>
+		</AxServiceOperation>
+		<AxServiceOperation>
 			<Name>getStageMode</Name>
 			<Method>getStageMode</Method>
 		</AxServiceOperation>

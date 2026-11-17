@@ -198,6 +198,7 @@ fun TransferFlowScreen(
             subtitle = line?.let { l ->
                 listOfNotNull(
                     l.itemId,
+                    l.itemName.takeIf { it.isNotBlank() && !it.equals(l.itemId, true) },
                     l.variant.label.takeIf { it.isNotBlank() },
                     l.unitId,
                 ).joinToString(" · ")
@@ -338,6 +339,7 @@ fun TransferFlowScreen(
                     busy = state.busy,
                     onRemove = viewModel::removeCaptured,
                     onAdjustQuantity = viewModel::adjustCapturedQuantity,
+                    onSetQuantity = viewModel::setCapturedQuantity,
                     onClose = { viewModel.showCaptured(false) },
                     onPost = viewModel::postTransfer,
                     shipping = mode == TransferMode.SHIP,
@@ -349,8 +351,9 @@ fun TransferFlowScreen(
             // Shipping asks for a batch: the ones in stock, earliest expiry first (16 Nov 2026).
             state.step == TransferStep.BATCH && mode == TransferMode.SHIP && state.batchChoices.isNotEmpty() ->
                 Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
+                    com.d365fo.mobileops.presentation.common.focus.ListTaskBox("Scan or choose the batch", androidx.compose.material.icons.Icons.Outlined.QrCodeScanner)
                     com.d365fo.mobileops.presentation.common.focus.FocusCaption(
-                        "Batches at ${state.capture.fromWarehouseId.orEmpty()} · earliest expiry first",
+                        "At ${state.capture.fromWarehouseId.orEmpty()} · earliest expiry first",
                         modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 6.dp),
                     )
                     val today = java.time.LocalDate.now()
@@ -411,105 +414,29 @@ fun TransferFlowScreen(
     }
 }
 
-/**
- * Lets the operator find a line by typing part of its item name or ID instead of scanning -
- * useful when a barcode is damaged, or the operator is staging picks from a printed list rather
- * than working barcode-first. Filters [lines] client-side since they are already in memory (see
- * the call site's [TransferFlowState.openLines] check) rather than round-tripping to D365FO for
- * what is, on any order small enough to have its lines inline, a handful of rows.
- */
+/** The transfer's open lines as a page (user, 17 Nov 2026) - see PickItemPage. */
 @Composable
 private fun ItemSearchSheet(
     lines: List<TransferOrderLine>,
     onPick: (TransferOrderLine) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    var query by remember { mutableStateOf("") }
-    val results = remember(query, lines) {
-        val needle = query.trim()
-        if (needle.isEmpty()) {
-            lines
-        } else {
-            // The variant too: "Red" or "C2" finds the one line of several for the same item.
-            lines.filter {
-                it.itemId.contains(needle, ignoreCase = true) ||
-                    it.itemName.contains(needle, ignoreCase = true) ||
-                    it.variant.matches(needle)
-            }
-        }
-    }
-
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.4f))
-            .clickable(onClick = onDismiss),
-    ) {
-        Card(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .padding(16.dp)
-                .heightIn(max = 520.dp)
-                // Swallow taps so they don't fall through to the scrim's dismiss-on-click.
-                .clickable(enabled = false) {},
-        ) {
-            Column(
-                modifier = Modifier.padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                Text(
-                    text = "Find an item",
-                    style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.SemiBold,
-                )
-                OutlinedTextField(
-                    value = query,
-                    onValueChange = { query = it },
-                    singleLine = true,
-                    placeholder = { Text("Item name or ID") },
-                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                if (results.isEmpty()) {
-                    Text(
-                        text = "No outstanding line matches \"$query\"",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                } else {
-                    LazyColumn(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        items(results) { line ->
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable { onPick(line) }
-                                    .padding(vertical = 10.dp),
-                            ) {
-                                Column {
-                                    Text(text = line.itemId, style = MaterialTheme.typography.titleMedium)
-                                    Text(
-                                        text = line.itemName,
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                    // Which variant: lines for the same item otherwise read identically here.
-                                    line.variant.label.takeIf { it.isNotBlank() }?.let { variant ->
-                                        Text(
-                                            text = variant,
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            fontWeight = FontWeight.SemiBold,
-                                            color = MaterialTheme.colorScheme.primary,
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
+    val byKey = lines.associateBy { "${it.lineNumber}" }
+    com.d365fo.mobileops.presentation.common.focus.PickItemPage(
+        title = "Transfer items",
+        rows = lines.map { l ->
+            com.d365fo.mobileops.presentation.common.focus.PickRow(
+                key = "${l.lineNumber}",
+                itemId = l.itemId,
+                name = l.itemName,
+                variant = l.variant.label,
+                figure = "${plain(l.remainingQuantity)} ${l.unitId}".trim(),
+                extraMatch = { q -> l.variant.matches(q) },
+            )
+        },
+        onPick = { row -> byKey[row.key]?.let(onPick) },
+        onClose = onDismiss,
+    )
 }
 
 @Composable
@@ -556,6 +483,7 @@ private fun CapturedLines(
     onAdjustQuantity: (Int, Int) -> Unit,
     onClose: () -> Unit,
     onPost: () -> Unit,
+    onSetQuantity: (Int, BigDecimal) -> Unit = { _, _ -> },
     /**
      * Transfer - Ship is picking, then confirming it: each scan is picked in D365FO, and
      * "Confirm picking" posts the shipment of what was picked (user, 8 Oct 2026).
@@ -566,112 +494,75 @@ private fun CapturedLines(
         modifier = Modifier.fillMaxSize(),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        com.d365fo.mobileops.presentation.common.components.ListHeader(
-            icon = Icons.AutoMirrored.Filled.ListAlt,
-            title = if (shipping) "Picked so far" else "Scanned so far",
-            count = captured.size,
+        // "Check the lines" as the task box; the bin and the - / + under each line (17 Nov 2026).
+        com.d365fo.mobileops.presentation.common.focus.FocusTaskBox(
+            com.d365fo.mobileops.presentation.common.focus.FocusTask("Check the lines", icon = Icons.AutoMirrored.Filled.ListAlt),
         )
+        // Offline nothing is picked when scanned - the shipment posting picks it.
         val online = com.d365fo.mobileops.presentation.common.components.LocalSyncStatus.current?.fullyOnline != false
-        Text(
-            text = if (shipping && online) {
-                "Picked as you scan. Confirm to ship - can't be undone."
-            } else if (shipping) {
-                // Offline nothing is picked when scanned - the shipment posting picks it.
-                "Offline - confirm to ship; sent when back."
-            } else {
-                "Check the lines - posting can't be undone."
-            },
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-
-        LazyColumn(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
+        if (shipping && !online) {
+            Text("Offline - confirm to ship; sent when back.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        var typing by remember { mutableStateOf<Int?>(null) }
+        typing?.let { index ->
+            captured.getOrNull(index)?.let { entry ->
+                com.d365fo.mobileops.presentation.common.components.QuantityPicker(
+                    subtitle = listOf(entry.itemId, entry.itemName, entry.unitSymbol).filter { it.isNotBlank() }.joinToString(" · "),
+                    hint = entry.maxQuantity?.let { "Up to ${plain(it)} ${entry.unitSymbol}".trim() },
+                    initial = plain(entry.quantity),
+                    replaceInitial = true,
+                    allowDecimal = true,
+                    validate = { text ->
+                        val v = text.toBigDecimalOrNull()
+                        when {
+                            v == null -> "\"$text\" is not a number"
+                            v <= BigDecimal.ZERO -> "Enter an amount above zero - or remove the line"
+                            entry.maxQuantity != null && v > entry.maxQuantity -> "Up to ${plain(entry.maxQuantity)} on this line"
+                            else -> null
+                        }
+                    },
+                    confirmLabel = "Save",
+                    onConfirm = { text -> typing = null; text.toBigDecimalOrNull()?.let { onSetQuantity(index, it) } },
+                    onDismiss = { typing = null },
+                )
+            }
+        }
+        LazyColumn(modifier = Modifier.weight(1f).bleed(16.dp)) {
             // Most recent first: the line worth checking or undoing is the one just scanned.
             itemsIndexed(captured.reversed()) { reversedIndex, entry ->
                 val index = captured.lastIndex - reversedIndex
-                Card(modifier = Modifier.fillMaxWidth()) {
-                    Row(
-                        modifier = Modifier.padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(text = entry.itemId, style = MaterialTheme.typography.titleMedium)
-                            if (entry.itemName.isNotBlank()) {
-                                Text(
-                                    text = entry.itemName,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
-                            // A serial-tracked line moves one serial per unit, so the count here
-                            // is fixed by the serial list, not something a +/- can safely nudge -
-                            // wrong on the fly and the serial list itself would need re-scanning
-                            // to match. Delete and rescan is the correction path for those.
-                            val serialTracked = entry.serialIds.isNotEmpty()
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(2.dp),
-                                modifier = Modifier.padding(top = 2.dp),
-                            ) {
-                                IconButton(
-                                    onClick = { onAdjustQuantity(index, -1) },
-                                    enabled = !busy && !serialTracked && entry.quantity > BigDecimal.ONE,
-                                ) {
-                                    Icon(Icons.Default.Remove, contentDescription = "Decrease quantity")
-                                }
-                                Text(
-                                    text = "${com.d365fo.mobileops.util.Formatters.qtyUnit(entry.quantity, entry.unitSymbol)}",
-                                    style = MaterialTheme.typography.titleMedium,
-                                )
-                                IconButton(
-                                    onClick = { onAdjustQuantity(index, 1) },
-                                    enabled = !busy && !serialTracked &&
-                                        (entry.maxQuantity == null || entry.quantity < entry.maxQuantity),
-                                ) {
-                                    Icon(Icons.Default.Add, contentDescription = "Increase quantity")
-                                }
-                            }
-                            val detail = listOfNotNull(
-                                // The variant first: on a product master it is what tells two
-                                // lines of one item apart (Dm001 on TO-14 showed only "AAC").
-                                entry.variantLabel.takeIf { it.isNotBlank() },
-                                entry.locationId?.takeIf { it.isNotBlank() },
-                                entry.batchId?.takeIf { it.isNotBlank() }?.let { "Batch $it" },
-                                // The serial itself, like the batch - "1 serial" did not say which.
-                                // Many (one per unit) are counted, the first named.
-                                when (entry.serialIds.size) {
-                                    0 -> null
-                                    1 -> "Serial ${entry.serialIds[0]}"
-                                    else -> "${entry.serialIds.size} serials (${entry.serialIds[0]}, …)"
-                                },
-                            ).joinToString(" · ")
-                            if (detail.isNotBlank()) {
-                                Text(
-                                    text = detail,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
-                            if (shipping) {
-                                Text(
-                                    text = when {
-                                        entry.pickedEarlier -> "Picked on another device"
-                                        entry.picked -> "Picked"
-                                        else -> "Picked on confirm"
-                                    },
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = if (entry.picked && !entry.pickedEarlier) WarehouseStatusColors.green else WarehouseStatusColors.amber,
-                                )
-                            }
-                        }
-                        IconButton(onClick = { onRemove(index) }) {
-                            Icon(Icons.Default.Delete, contentDescription = "Remove")
-                        }
-                    }
-                }
+                // A serial-tracked line moves one serial per unit: delete and rescan instead.
+                val serialTracked = entry.serialIds.isNotEmpty()
+                com.d365fo.mobileops.presentation.common.focus.FocusLineCard(
+                    code = entry.itemId,
+                    name = entry.itemName,
+                    details = listOfNotNull(
+                        entry.variantLabel.takeIf { it.isNotBlank() },
+                        listOfNotNull(
+                            entry.locationId?.takeIf { it.isNotBlank() },
+                            entry.batchId?.takeIf { it.isNotBlank() }?.let { "Batch $it" },
+                        ).joinToString(" · ").takeIf { it.isNotBlank() },
+                        when (entry.serialIds.size) {
+                            0 -> null
+                            1 -> "Serial ${entry.serialIds[0]}"
+                            else -> "${entry.serialIds.size} serials (${entry.serialIds[0]}, …)"
+                        },
+                    ),
+                    quantity = plain(entry.quantity),
+                    unit = entry.unitSymbol,
+                    canMinus = !busy && !serialTracked && entry.quantity > BigDecimal.ONE,
+                    canPlus = !busy && !serialTracked && (entry.maxQuantity == null || entry.quantity < entry.maxQuantity),
+                    onMinus = { onAdjustQuantity(index, -1) },
+                    onPlus = { onAdjustQuantity(index, 1) },
+                    onQuantityTap = if (busy || serialTracked) null else ({ typing = index }),
+                    onRemove = { onRemove(index) },
+                    removeEnabled = !busy,
+                    status = if (!shipping) null else when {
+                        entry.pickedEarlier -> "Picked on another device"
+                        entry.picked -> "Picked"
+                        else -> "Picked on confirm"
+                    },
+                )
             }
         }
 
@@ -773,27 +664,16 @@ private fun transferBand(state: TransferFlowState, mode: TransferMode): BandStat
     state.error?.let { return com.d365fo.mobileops.presentation.modules.stepflow.bandOf(BandKind.Bad, it) }
     state.postNotice?.let { n ->
         val kind = when (n.kind) {
-            PostNoticeKind.SENT -> BandKind.Ok
+            // Sent: the "Last shipped" card says it (user, 17 Nov 2026).
+            PostNoticeKind.SENT -> null
             PostNoticeKind.QUEUED -> BandKind.Warn
             PostNoticeKind.REFUSED -> BandKind.Bad
         }
-        return com.d365fo.mobileops.presentation.modules.stepflow.bandOf(kind, n.message)
+        if (kind != null) return com.d365fo.mobileops.presentation.modules.stepflow.bandOf(kind, n.message)
     }
-    state.lineNotice?.let { return com.d365fo.mobileops.presentation.modules.stepflow.bandOf(if (it.hint) BandKind.Warn else BandKind.Ok, it.text) }
-    val order = state.order
-    return when {
-        // The task box says it now (user, 17 Nov 2026: remove the bar that only repeats the screen).
-        state.step == TransferStep.TRANSFER_ORDER -> null
-        state.step == TransferStep.ITEM && state.captured.isEmpty() && order != null -> BandState(
-            BandKind.Info,
-            "Transfer found",
-            listOfNotNull(
-                order.transferId,
-                listOfNotNull(order.fromWarehouseId, order.toWarehouseId).takeIf { it.size == 2 }?.joinToString(" → "),
-            ).joinToString(" · "),
-        )
-        else -> null
-    }
+    // Only what needs attention: "Transfer found" and "Picked 10 x ..." only repeated the card.
+    state.lineNotice?.takeIf { it.hint }?.let { return com.d365fo.mobileops.presentation.modules.stepflow.bandOf(BandKind.Warn, it.text) }
+    return null
 }
 
 /** Lines + Hold to ship/receive once something is scanned; Undo (+ Skip) on a line's own steps. */
@@ -872,25 +752,43 @@ private fun androidx.compose.foundation.layout.ColumnScope.TransferCenter(state:
     val c = state.capture
     val ship = mode == TransferMode.SHIP
     when (state.step) {
-        TransferStep.TRANSFER_ORDER -> FocusCenter(
-            task = transferTask(state, mode),
-            caption = if (ship) "Transfers to ship today" else "Transfers to receive today",
-            code = state.todays.size.toString(),
-        )
+        TransferStep.TRANSFER_ORDER -> {
+            val sent = state.postNotice?.takeIf { it.kind == PostNoticeKind.SENT }
+            if (sent != null) {
+                // The last post as a card, not a green bar (user, 17 Nov 2026).
+                val parts = sent.message.split(" · ", limit = 2)
+                FocusCenter(
+                    task = transferTask(state, mode),
+                    caption = if (ship) "Last shipped" else "Last received",
+                    code = parts[0],
+                    description = parts.getOrNull(1),
+                    unitLine = "${state.todays.size} ${if (ship) "to ship" else "to receive"} today",
+                )
+            } else {
+                FocusCenter(
+                    task = transferTask(state, mode),
+                    caption = if (ship) "Transfers to ship today" else "Transfers to receive today",
+                    code = state.todays.size.toString(),
+                )
+            }
+        }
         TransferStep.ITEM -> {
             val last = state.captured.lastOrNull()
             if (last == null) {
                 val lines = state.outstandingLineCount ?: state.order?.outstandingLineCount ?: 0
                 val units = state.openLines.takeIf { it.isNotEmpty() }?.fold(BigDecimal.ZERO) { sum, l -> sum + l.remainingQuantity }
+                // The transfer and its route are in the card - no "Transfer found" bar (17 Nov 2026).
+                val o = state.order
                 FocusCenter(
-            task = transferTask(state, mode),
-                    caption = if (ship) "To pick" else "To receive",
+                    task = transferTask(state, mode),
+                    caption = o?.transferId ?: if (ship) "To pick" else "To receive",
                     code = when (lines) {
                         0 -> "Nothing left"
                         1 -> "1 line"
                         else -> "$lines lines"
                     },
-                    description = units?.takeIf { lines > 0 }?.let { "${plain(it)} units" },
+                    description = units?.takeIf { lines > 0 }?.let { "${plain(it)} units ${if (ship) "to pick" else "to receive"}" },
+                    unitLine = o?.let { listOfNotNull(it.fromWarehouseId, it.toWarehouseId).takeIf { w -> w.size == 2 }?.joinToString(" → ") },
                 )
             } else {
                 FocusCenter(
@@ -942,23 +840,24 @@ private fun transferTask(state: TransferFlowState, mode: TransferMode): com.d365
     val c = state.capture
     val ship = mode == TransferMode.SHIP
     val item = c.line?.itemId.orEmpty()
-    val T = ::FocusTask
+    val T = { t: String, d: String?, ic: androidx.compose.ui.graphics.vector.ImageVector, done: Boolean -> FocusTask(t, d, ic, done) }
     return when (state.step) {
-        TransferStep.TRANSFER_ORDER -> T("Scan the transfer", if (ship) "on the pick list" else "on the delivery paperwork", i.ReceiptLong, false)
+        // "Scan order" / "Scan an item" (user, 17 Nov 2026), for ship and receive alike.
+        TransferStep.TRANSFER_ORDER -> T("Scan order", null, i.ReceiptLong, false)
         TransferStep.ITEM -> {
             val last = state.captured.lastOrNull()
             val lines = state.outstandingLineCount ?: state.order?.outstandingLineCount
             when {
                 lines == 0 && state.captured.isEmpty() -> T(if (ship) "Nothing left to ship" else "Nothing left to receive", "on this transfer", i.CheckCircle, true)
-                last != null -> T(if (ship) "Pick the next item" else "Scan the next item", "${last.itemId} · ${plain(last.quantity)} ${last.unitSymbol} saved".trim(), i.QrCodeScanner, true)
-                else -> T(if (ship) "Pick an item" else "Scan an item", if (ship) c.locationId?.let { "from $it" } else "from this delivery", i.QrCodeScanner, false)
+                last != null -> T("Scan an item", null, i.QrCodeScanner, true)
+                else -> T("Scan an item", null, i.QrCodeScanner, false)
             }
         }
-        TransferStep.QUANTITY -> T(if (ship) "How many did you pick?" else "Enter the quantity", c.line?.let { l -> "${plain(state.suggestedQuantity ?: l.remainingQuantity)} ${l.unitId} left" }, i.Dialpad, false)
+        TransferStep.QUANTITY -> T("Enter quantity", c.line?.let { l -> "${plain(state.suggestedQuantity ?: l.remainingQuantity)} ${l.unitId} left" }, i.Dialpad, false)
         TransferStep.LOCATION -> T("Scan the bin", if (ship) "you are picking from" else "where you put it away", i.Place, false)
         TransferStep.BATCH -> T(if (ship) "Scan or choose the batch" else "Scan the batch", item.takeIf { it.isNotBlank() }?.let { "on the box of $it" }, i.QrCodeScanner, false)
         TransferStep.SERIAL -> T("Scan the serial", c.serialsOutstanding.takeIf { it > 1 }?.let { "$it to go" }, i.QrCodeScanner, false)
-        TransferStep.CONFIRM -> T(if (ship) "Pick the next item" else "Scan the next item", null, i.CheckCircle, true)
+        TransferStep.CONFIRM -> T("Scan an item", null, i.CheckCircle, true)
     }
 }
 

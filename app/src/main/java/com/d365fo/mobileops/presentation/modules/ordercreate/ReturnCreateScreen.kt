@@ -82,6 +82,21 @@ fun ReturnCreateScreen(onBack: () -> Unit, viewModel: ReturnCreateViewModel = hi
             onLine = { viewModel.editLine(it) },
             onClose = { showLines = false },
             onRemove = { viewModel.removeLine(it) },
+            onChangeQty = { line, qty -> viewModel.changeQuantity(line, qty) },
+            capAtAvailable = true,
+        )
+        return
+    }
+
+    // "Choose the stock" as a page (user, 17 Nov 2026).
+    state.pending?.takeIf { it.choosingStock && it.stock != null }?.let { pending ->
+        StockPickerPage(
+            title = "Return to vendor",
+            item = pending.item,
+            rows = pending.stock.orEmpty(),
+            onPick = viewModel::pickStock,
+            onDismiss = viewModel::cancelPending,
+            allowAny = false,
         )
         return
     }
@@ -92,8 +107,7 @@ fun ReturnCreateScreen(onBack: () -> Unit, viewModel: ReturnCreateViewModel = hi
         FocusScreen(
             title = "Return to vendor",
             onBack = onBack,
-            band = state.error?.let { bandOf(BandKind.Bad, it) }
-                ?: submitted?.let { BandState(BandKind.Ok, "Return saved", it.documentNumber ?: it.title, autoHideMs = SAVED_BAND_MS) },
+            band = state.error?.let { bandOf(BandKind.Bad, it) },
             scanPill = { ScanPillField(label = "Scan an item to return", enabled = !state.busy) },
             actions = if (submitted == null) null else { {
                 FocusButton("Start another return", onClick = viewModel::dismissResult, modifier = Modifier.weight(1f))
@@ -102,17 +116,26 @@ fun ReturnCreateScreen(onBack: () -> Unit, viewModel: ReturnCreateViewModel = hi
             BusyLine(state.busy)
             LazyColumn(modifier = Modifier.weight(1f).fillMaxWidth()) {
                 // Keyed so the field keeps focus when the rows above go away as typing starts.
+                if (submitted != null) {
+                    // The saved return: its task box and card, no vendor search (user, 17 Nov 2026).
+                    item(key = "saved-task") {
+                        com.d365fo.mobileops.presentation.common.focus.FocusTaskBox(
+                            savedTask(submitted, "Return"),
+                            Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+                        )
+                    }
+                    item(key = "orders-caption") { ListCaption("Your returns", "Newest") }
+                    item(key = "submitted") { CreatedOrderCard(submitted) }
+                    return@LazyColumn
+                }
+                item(key = "task") { com.d365fo.mobileops.presentation.common.focus.ListTaskBox("Choose the vendor", com.d365fo.mobileops.presentation.common.focus.TaskIcons.Vendor) }
                 item(key = "vendor-search") {
                     TapToTypeField(
                         state.vendorQuery, viewModel::onVendorQuery, "Type to search vendor",
                         modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
                     )
                 }
-                if (submitted != null) {
-                    // Under its caption, like the returns below (user, 15 Nov).
-                    item(key = "orders-caption") { ListCaption("Your returns", "Newest") }
-                    item(key = "submitted") { CreatedOrderCard(submitted) }
-                } else if (orders.isNotEmpty() && state.vendorQuery.isBlank()) {
+                if (orders.isNotEmpty() && state.vendorQuery.isBlank()) {
                     item(key = "orders-caption") { ListCaption("Your returns", "Newest") }
                     items(orders.take(3), key = { it.id }) { order -> CreatedOrderCard(order) }
                 }
@@ -145,7 +168,6 @@ fun ReturnCreateScreen(onBack: () -> Unit, viewModel: ReturnCreateViewModel = hi
     FocusScreen(
         title = "Return to vendor",
         onBack = onBack,
-        counter = draft.lines.size.takeIf { it > 0 }?.let { linesText(it) },
         sidePane = {
             com.d365fo.mobileops.presentation.common.focus.FocusCaption(
                 "Lines · ${draft.lines.size}",
@@ -204,7 +226,7 @@ fun ReturnCreateScreen(onBack: () -> Unit, viewModel: ReturnCreateViewModel = hi
     ) {
         BusyLine(state.busy)
         when {
-            choosingReason -> ReasonChoice(state, viewModel)
+            choosingReason -> ReasonChoice(state, viewModel, draft.vendorAccount, draft.vendorName)
             lastAdded != null -> LastAddedCenter(lastAdded, onTap = { viewModel.editLine(lastAdded) })
             else -> FocusCenter(
                 task = FocusTask("Scan an item", "to add it to the return", androidx.compose.material.icons.Icons.Outlined.QrCodeScanner),
@@ -214,6 +236,7 @@ fun ReturnCreateScreen(onBack: () -> Unit, viewModel: ReturnCreateViewModel = hi
                 unitLine = listOfNotNull(
                     "From ${draft.warehouseId}",
                     reasonLabel,
+                    state.actions.firstOrNull { it.code == draft.actionCode }?.label,
                     draft.rmaNumber.takeIf { it.isNotBlank() }?.let { "RMA $it" },
                 ).joinToString(" · "),
             )
@@ -230,7 +253,7 @@ internal fun returnBand(
     lastAdded: com.d365fo.mobileops.data.repository.DraftLine?,
     reasonLabel: String?,
     online: Boolean,
-): BandState {
+): BandState? {
     val draft = state.draft
     state.error?.let { return bandOf(BandKind.Bad, it) }
     if (draft.lines.isNotEmpty()) {
@@ -239,30 +262,29 @@ internal fun returnBand(
             state.actions.isNotEmpty() && draft.actionCode.isBlank() -> return BandState(BandKind.Warn, "No return action", "nothing posted")
         }
     }
-    lastAdded?.let {
-        return BandState(
-            BandKind.Ok,
-            "Added",
-            listOfNotNull(
-                "${it.itemId} · ${com.d365fo.mobileops.domain.order.qtyText(it.qty)} ${it.unitId}".trim(),
-                it.locationId.takeIf { l -> l.isNotBlank() }?.let { l -> "From $l" },
-            ).joinToString(" · "),
-        )
-    }
-    return BandState(
-        BandKind.Info,
-        "New return · ${draft.vendorName.ifBlank { draft.vendorAccount }}",
-        reasonLabel?.let { "Reason: $it" } ?: "Reasons load when online".takeIf { state.reasons.isEmpty() && !online },
-    )
+    // No "Added" or "New return" bars (user, 17 Nov 2026): the task box and card say it.
+    return if (state.reasons.isEmpty() && !online) BandState(BandKind.Warn, "Reasons load when online", null) else null
 }
 
 /** The return reason and action: D365FO's own setup, any length - dropdowns, as before. */
 @Composable
-private fun ColumnScope.ReasonChoice(state: ReturnCreateState, viewModel: ReturnCreateViewModel) {
+private fun ColumnScope.ReasonChoice(state: ReturnCreateState, viewModel: ReturnCreateViewModel, vendorAccount: String, vendorName: String) {
     Column(
         verticalArrangement = Arrangement.spacedBy(6.dp),
-        modifier = Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 16.dp),
+        modifier = Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 8.dp),
     ) {
+        // The task box and the return's vendor, instead of the blue "New return" bar (17 Nov 2026).
+        com.d365fo.mobileops.presentation.common.focus.FocusTaskBox(
+            com.d365fo.mobileops.presentation.common.focus.FocusTask("Choose the reason", icon = com.d365fo.mobileops.presentation.common.focus.TaskIcons.Reason),
+        )
+        // One line, so both dropdowns stay in view above the scan box.
+        Text(
+            listOf(vendorAccount, vendorName).filter { it.isNotBlank() }.joinToString(" · "),
+            style = FocusType.rowDetail,
+            color = FocusColors.inkSoft,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            modifier = Modifier.fillMaxWidth().padding(top = 2.dp, bottom = 6.dp),
+        )
         if (state.reasons.isNotEmpty()) {
             Text("RETURN REASON", style = FocusType.caption, color = FocusColors.caption)
             com.d365fo.mobileops.presentation.common.components.DropdownField(
@@ -293,17 +315,11 @@ private fun ReturnDialogs(state: ReturnCreateState, viewModel: ReturnCreateViewM
     }
     state.pending?.let { pending ->
         if (pending.choosingStock && pending.stock != null) {
-            StockPickerDialog(
-                item = pending.item,
-                rows = pending.stock,
-                onPick = viewModel::pickStock,
-                onDismiss = viewModel::cancelPending,
-                allowAny = false,
-            )
+            // Shown as StockPickerPage by the screen.
         } else if (state.enteringQty) {
             NumberDialog(
                 title = "Quantity",
-                subtitle = listOf(pending.item.itemId, pending.variant?.label.orEmpty(), pending.pick?.label.orEmpty(), pending.item.inventUnit)
+                subtitle = listOf(pending.item.itemId, pending.item.itemName, pending.variant?.label.orEmpty(), pending.pick?.label.orEmpty(), pending.item.inventUnit)
                     .filter { it.isNotBlank() }.joinToString(" · "),
                 initial = if (pending.pick?.serialId?.isNotBlank() == true) 1.0 else null,
                 rules = viewModel.quantityRules(pending),

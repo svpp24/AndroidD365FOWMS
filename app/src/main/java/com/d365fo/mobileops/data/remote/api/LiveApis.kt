@@ -633,6 +633,9 @@ class LiveCountStageServiceApi @Inject constructor(
     override suspend fun submitLines(body: com.d365fo.mobileops.data.remote.dto.CountStageServiceRequest) =
         delegate.get().submitLines(body)
 
+    override suspend fun removeLines(body: com.d365fo.mobileops.data.remote.dto.CountStageServiceRequest) =
+        delegate.get().removeLines(body)
+
     override suspend fun getStageMode(
         body: com.d365fo.mobileops.data.remote.dto.CountStageServiceRequest,
         tag: com.d365fo.mobileops.data.remote.interceptor.IdempotentRead,

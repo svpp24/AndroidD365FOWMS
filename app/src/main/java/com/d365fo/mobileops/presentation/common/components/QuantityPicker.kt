@@ -52,6 +52,8 @@ fun QuantityPicker(
     /** A refusal from D365FO for the last confirm, shown in red until the entry changes. */
     error: String? = null,
     dismissLabel: String = "Cancel",
+    /** What to do, as the dialog's title (user, 17 Nov 2026: "Enter quantity" on every pad). */
+    title: String = "Enter quantity",
 ) {
     var entry by remember { mutableStateOf(initial) }
     var replaceNext by remember { mutableStateOf(replaceInitial && initial.isNotEmpty()) }
@@ -69,7 +71,7 @@ fun QuantityPicker(
         containerColor = androidx.compose.ui.graphics.Color.White,
         title = {
             Text(
-                parts.firstOrNull() ?: "Quantity",
+                title,
                 fontWeight = FontWeight.ExtraBold,
                 color = WarehouseStatusColors.accent,
             )
@@ -79,6 +81,10 @@ fun QuantityPicker(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.verticalScroll(rememberScrollState()),
             ) {
+                // The item code, then what else the quantity is for (name, batch, unit) under it.
+                parts.firstOrNull()?.let {
+                    Text(it, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, color = WarehouseStatusColors.text1)
+                }
                 parts.drop(1).takeIf { it.isNotEmpty() }?.let {
                     Text(it.joinToString(" · "), style = MaterialTheme.typography.bodyMedium, color = WarehouseStatusColors.text2)
                 }

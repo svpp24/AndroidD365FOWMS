@@ -1,6 +1,7 @@
 package com.d365fo.mobileops.presentation.modules.ordercreate
 
 import com.d365fo.mobileops.presentation.common.theme.WarehouseDimens
+import androidx.compose.foundation.background
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.PressInteraction
 import androidx.compose.foundation.layout.Arrangement
@@ -383,9 +384,12 @@ fun NumberDialog(
 ) {
     // The shared picker (QuantityPicker) - the same on every screen.
     com.d365fo.mobileops.presentation.common.components.QuantityPicker(
+        title = if (title == "Quantity") "Enter quantity" else title,
         subtitle = subtitle,
         hint = rules?.hint?.takeIf { it.isNotBlank() },
         initial = initial?.let { qtyText(it) }.orEmpty(),
+        // The first key replaces the suggested quantity (typing 12 over 1 gives 12, not 112).
+        replaceInitial = true,
         confirmLabel = confirmLabel,
         validate = { text ->
             val value = text.toDoubleOrNull()
@@ -474,6 +478,12 @@ internal fun VendorItemsScreen(
     state: PoCreateState,
     /** Quantity already on the order, by item - shown on the row. */
     inOrder: Map<String, Double>,
+    /** The order's lines: − / + change the item's one line (user, 17 Nov 2026). */
+    lines: List<com.d365fo.mobileops.data.repository.DraftLine> = emptyList(),
+    onChangeQty: (com.d365fo.mobileops.data.repository.DraftLine, Double) -> Unit = { _, _ -> },
+    onRemoveLine: (com.d365fo.mobileops.data.repository.DraftLine) -> Unit = {},
+    onEditLine: (com.d365fo.mobileops.data.repository.DraftLine) -> Unit = {},
+    onAdd: (com.d365fo.mobileops.data.repository.VendorItem) -> Unit = {},
     onQuery: (String) -> Unit,
     onRetry: () -> Unit,
     onPick: (com.d365fo.mobileops.data.repository.VendorItem) -> Unit,
@@ -482,11 +492,16 @@ internal fun VendorItemsScreen(
     androidx.activity.compose.BackHandler(onBack = onClose)
     val all = state.vendorItems.orEmpty()
     val query = state.itemQuery.trim()
+    // A barcode typed or scanned finds its item too (user, 17 Nov 2026).
+    val barcodeItem = com.d365fo.mobileops.presentation.common.focus.rememberBarcodeItemId(query)
     val shown = if (query.isBlank()) all else all.filter {
-        it.itemId.contains(query, ignoreCase = true) || it.name.contains(query, ignoreCase = true)
+        it.itemId.contains(query, ignoreCase = true) || it.name.contains(query, ignoreCase = true) ||
+            (barcodeItem != null && it.itemId.equals(barcodeItem, ignoreCase = true))
     }
+    var confirming by remember { mutableStateOf<com.d365fo.mobileops.data.repository.DraftLine?>(null) }
+    confirming?.let { line -> RemoveLineDialog(line, onRemove = { confirming = null; onRemoveLine(line) }, onKeep = { confirming = null }) }
     com.d365fo.mobileops.presentation.common.focus.FocusScreen(
-        title = "$vendorName's items",
+        title = "Items",
         onBack = onClose,
         counter = state.vendorItems?.let { "%,d".format(it.size) },
         band = when {
@@ -509,24 +524,48 @@ internal fun VendorItemsScreen(
         } } else null,
     ) {
         androidx.compose.foundation.lazy.LazyColumn(modifier = Modifier.weight(1f).fillMaxWidth()) {
-            item(key = "item-search") {
-                TapToTypeField(state.itemQuery, onQuery, "Type to search item or code", modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp))
+            item(key = "task") {
+                com.d365fo.mobileops.presentation.common.focus.ListTaskBox("Pick an item", com.d365fo.mobileops.presentation.common.focus.TaskIcons.Pick)
             }
-            if (all.isNotEmpty()) {
-                item(key = "item-caption") {
-                    ListCaption(if (query.isBlank()) "Approved for this vendor" else "${shown.size} found")
-                }
+            item(key = "item-search") {
+                TapToTypeField(state.itemQuery, onQuery, com.d365fo.mobileops.presentation.common.focus.ITEM_OR_BARCODE, modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp))
+            }
+            if (all.isNotEmpty() && query.isNotBlank()) {
+                item(key = "item-caption") { ListCaption("${shown.size} found") }
             }
             items(shown, key = { it.itemId }) { item ->
                 val qty = inOrder[item.itemId]
-                com.d365fo.mobileops.presentation.common.focus.FocusListRow(
-                    title = item.name,
-                    subtitle = listOf(item.itemId, item.unit).filter { it.isNotBlank() }.joinToString(" · "),
-                    count = qty?.let { "${java.math.BigDecimal.valueOf(it).stripTrailingZeros().toPlainString()} in order" },
-                    countColor = if (qty != null) com.d365fo.mobileops.presentation.common.theme.FocusColors.okIcon else com.d365fo.mobileops.presentation.common.theme.FocusColors.muted,
-                    chevron = qty == null,
-                    onClick = { onPick(item) },
-                )
+                // − / + work on the item's one line; an item on several lines (variants, units)
+                // opens as a scan does.
+                val itemLines = lines.filter { it.itemId.equals(item.itemId, ignoreCase = true) }
+                val single = itemLines.singleOrNull()?.takeIf { !it.priceOverride || true }
+                androidx.compose.foundation.layout.Row(
+                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .then(if (qty != null) Modifier.background(com.d365fo.mobileops.presentation.common.theme.FocusColors.surface) else Modifier)
+                        .padding(start = 20.dp, end = 12.dp, top = 10.dp, bottom = 10.dp),
+                ) {
+                    Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
+                        Text(item.name, style = com.d365fo.mobileops.presentation.common.theme.FocusType.rowTitle, color = com.d365fo.mobileops.presentation.common.theme.FocusColors.ink)
+                        Text(
+                            listOf(item.itemId, item.unit).filter { it.isNotBlank() }.joinToString(" · "),
+                            style = com.d365fo.mobileops.presentation.common.theme.FocusType.rowDetail,
+                            color = com.d365fo.mobileops.presentation.common.theme.FocusColors.muted,
+                        )
+                    }
+                    com.d365fo.mobileops.presentation.common.focus.MiniStepper(
+                        quantity = qty?.let { qtyText(it) } ?: "0",
+                        canMinus = single != null,
+                        canPlus = single != null || itemLines.isEmpty(),
+                        onMinus = { single?.let { l -> if (l.qty - 1 <= 0.0) confirming = l else onChangeQty(l, l.qty - 1) } },
+                        // Not on the order yet: the quantity opens, with the item's order rules.
+                        onPlus = { if (single != null) onChangeQty(single, single.qty + 1) else onAdd(item) },
+                        onTap = { if (single != null) onEditLine(single) else onAdd(item) },
+                        highlighted = qty != null,
+                    )
+                }
+                androidx.compose.material3.HorizontalDivider(color = com.d365fo.mobileops.presentation.common.theme.FocusColors.divider)
             }
         }
     }

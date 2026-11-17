@@ -257,6 +257,8 @@ data class FocusTask(
     val detail: String? = null,
     val icon: ImageVector = androidx.compose.material.icons.Icons.Outlined.QrCodeScanner,
     val done: Boolean = false,
+    /** Amber - done, but something is still open ("Created, not confirmed"). */
+    val warn: Boolean = false,
 )
 
 @Composable
@@ -271,9 +273,6 @@ private fun ColumnScope.TaskCenter(
     unitLine: String?,
     onQuantityTap: (() -> Unit)?,
 ) {
-    val boxBg = if (task.done) FocusColors.okBg else FocusColors.taskBg
-    val iconTint = if (task.done) FocusColors.okIcon else FocusColors.action
-    val detailColor = if (task.done) FocusColors.okText else FocusColors.taskText
     Column(
         modifier = modifier
             .weight(1f)
@@ -281,27 +280,7 @@ private fun ColumnScope.TaskCenter(
             .verticalScroll(androidx.compose.foundation.rememberScrollState())
             .padding(horizontal = FocusDimens.side, vertical = 8.dp),
     ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(FocusShapes.band)
-                .background(boxBg)
-                .semantics { liveRegion = LiveRegionMode.Polite }
-                .padding(horizontal = 16.dp, vertical = 20.dp),
-        ) {
-            Icon(task.icon, contentDescription = null, tint = iconTint, modifier = Modifier.size(34.dp))
-            Text(
-                task.title,
-                style = FocusType.taskTitle,
-                color = FocusColors.navy,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.padding(top = 6.dp),
-            )
-            task.detail?.takeIf { it.isNotBlank() }?.let {
-                Text(it, style = FocusType.bandDetail, color = detailColor, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 4.dp))
-            }
-        }
+        FocusTaskBox(task)
         // What is already known: one quiet card, everything centred (user, 17 Nov 2026).
         val hasCard = code.isNotBlank() || !description.isNullOrBlank() || quantity != null || !unitLine.isNullOrBlank()
         if (hasCard) {
@@ -336,6 +315,42 @@ private fun ColumnScope.TaskCenter(
             }
         }
     }
+}
+
+
+/**
+ * The task box on its own - what to do now, title only - for screens that are a list (vendors,
+ * items, batches, counts, lines): it sits above the list (user, 17 Nov 2026).
+ */
+@Composable
+fun FocusTaskBox(task: FocusTask, modifier: Modifier = Modifier) {
+    val boxBg = when { task.warn -> FocusColors.warnBg; task.done -> FocusColors.okBg; else -> FocusColors.taskBg }
+    val iconTint = when { task.warn -> FocusColors.warnIcon; task.done -> FocusColors.okIcon; else -> FocusColors.action }
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = modifier
+                .fillMaxWidth()
+                .clip(FocusShapes.band)
+                .background(boxBg)
+                .semantics { liveRegion = LiveRegionMode.Polite }
+                .padding(horizontal = 16.dp, vertical = 20.dp),
+        ) {
+            Icon(task.icon, contentDescription = null, tint = iconTint, modifier = Modifier.size(34.dp))
+            Text(
+                task.title,
+                style = FocusType.taskTitle,
+                color = FocusColors.navy,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(top = 6.dp),
+            )
+            // Title only (user, 17 Nov 2026): anything worth knowing goes in the card under it.
+        }
+}
+
+/** [FocusTaskBox] above a list, with the screen's side margins. */
+@Composable
+fun ListTaskBox(title: String, icon: ImageVector, done: Boolean = false, warn: Boolean = false) {
+    FocusTaskBox(FocusTask(title, icon = icon, done = done, warn = warn), Modifier.padding(horizontal = FocusDimens.side, vertical = 8.dp))
 }
 
 /** An upper-case, letter-spaced caption ("LAST SCANNED", "WHERE", "QUANTITY"). */

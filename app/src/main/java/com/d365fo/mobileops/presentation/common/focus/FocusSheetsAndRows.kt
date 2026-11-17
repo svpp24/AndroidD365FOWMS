@@ -61,6 +61,9 @@ fun BoxScope.QuantityPadSheet(
     onSet: (String) -> Unit,
     onDismiss: () -> Unit,
     allowDecimal: Boolean = false,
+    /** "Enter the count", with what is counted under it (user, 17 Nov 2026); null shows "QUANTITY". */
+    title: String? = null,
+    subtitle: List<String> = emptyList(),
 ) {
     var entry by remember(initial) { mutableStateOf(initial) }
     var replaceNext by remember(initial) { mutableStateOf(initial.isNotEmpty()) }
@@ -87,7 +90,14 @@ fun BoxScope.QuantityPadSheet(
             .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {}
             .padding(FocusDimens.side),
     ) {
-        FocusCaption("Quantity")
+        if (title == null) {
+            FocusCaption("Quantity")
+        } else {
+            Text(title, style = FocusType.rowTitle, color = FocusColors.navy)
+            subtitle.filter { it.isNotBlank() }.forEachIndexed { i, line ->
+                Text(line, style = FocusType.rowDetail, color = if (i == 0) FocusColors.ink else FocusColors.muted)
+            }
+        }
         Text(
             entry.ifEmpty { "0" },
             style = FocusType.padNumber,

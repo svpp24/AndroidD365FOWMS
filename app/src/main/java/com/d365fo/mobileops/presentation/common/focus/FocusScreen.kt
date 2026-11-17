@@ -78,7 +78,7 @@ fun FocusScreen(
                 .alpha(if (overlay != null) 0.3f else 1f),
         ) {
             FlowTopBar(title = title, onBack = onBack, counter = counter, trailing = topBarTrailing)
-            progress?.let { ProgressLine(it) }
+            // No progress line under the title (user, 17 Nov 2026) - the counter says it.
             val main: @Composable ColumnScope.() -> Unit = {
                 band?.let {
                     if (it.autoHideMs != null) TimedResultBand(it, modifier = Modifier.padding(top = 16.dp))

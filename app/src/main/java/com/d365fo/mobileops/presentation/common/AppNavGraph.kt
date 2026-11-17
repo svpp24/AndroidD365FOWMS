@@ -181,9 +181,9 @@ object Routes {
     const val COUNTING_STORE = "counting/store"
 
     /** The store count screen for any kind of count: a hazard or blind count by its id, or wall to wall. */
-    const val COUNTING_STORE_ROUTE = "counting/store?masterId={masterId}&type={type}"
-    fun countingStore(masterId: String?, type: com.d365fo.mobileops.data.counting.CountType) =
-        "counting/store?masterId=${masterId.orEmpty()}&type=${type.symbol}"
+    const val COUNTING_STORE_ROUTE = "counting/store?masterId={masterId}&type={type}&join={join}"
+    fun countingStore(masterId: String?, type: com.d365fo.mobileops.data.counting.CountType, join: Boolean = false) =
+        "counting/store?masterId=${masterId.orEmpty()}&type=${type.symbol}" + (if (join) "&join=1" else "")
 
     /** The open and finished counts of one kind (Hazard, Wall to wall, Blind). See CountListScreen. */
     const val COUNTING_LIST = "counting/list/{type}"
@@ -524,6 +524,7 @@ fun AppNavGraph(
                     com.d365fo.mobileops.presentation.modules.cyclecounting.counts.CountListScreen(
                         onBack = { navController.popBackStackSafely() },
                         onCount = { masterId, type -> navController.navigate(Routes.countingStore(masterId, type)) },
+                        onJoin = { masterId, type -> navController.navigate(Routes.countingStore(masterId, type, join = true)) },
                         onResults = { masterId -> navController.navigate(Routes.countingResults(masterId)) },
                         onCategories = { masterId -> navController.navigate(Routes.countingCategories(masterId)) },
                         onCreate = { type -> navController.navigate(Routes.countingCreate(type)) },
@@ -620,6 +621,7 @@ fun AppNavGraph(
                     arguments = listOf(
                         navArgument("masterId") { type = NavType.StringType; nullable = true; defaultValue = null },
                         navArgument("type") { type = NavType.StringType; nullable = true; defaultValue = null },
+                        navArgument("join") { type = NavType.StringType; nullable = true; defaultValue = null },
                     ),
                 ) {
                     com.d365fo.mobileops.presentation.modules.cyclecounting.store.StoreCountScreen(

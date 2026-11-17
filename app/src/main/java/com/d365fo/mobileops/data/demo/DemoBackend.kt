@@ -696,6 +696,14 @@ object DemoBackend {
             ok(obj("Success" to true, "MasterId" to count.masterId, "StageId" to stageId, "Accepted" to accepted.size,
                 "Rejected" to rejected.size, "Duplicates" to 0, "MasterType" to count.type, "StageJournalCounts" to true))
         }
+        "removeLines" -> {
+            val stageId = r.s("StageId")
+            val count = state.stages[stageId]?.let(::findCount)
+                ?: return ok(obj("Success" to false, "ErrorCode" to "STAGE_NOT_FOUND", "Message" to "This count is not open any more."))
+            val removed = parseArray(r.s("LinesJson")).size
+            count.lineCount = (count.lineCount - removed).coerceAtLeast(0)
+            ok(obj("Success" to true, "MasterId" to count.masterId, "StageId" to stageId, "Accepted" to removed, "Duplicates" to 0, "MasterType" to count.type))
+        }
         else -> ok(obj("Success" to true))
     }
 

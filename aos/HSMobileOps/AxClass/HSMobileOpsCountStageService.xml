@@ -275,6 +275,115 @@ class HSMobileOpsCountStageService
 ]]></Source>
 			</Method>
 			<Method>
+				<Name>removeLines</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Removes lines this counter staged (user, 17 Nov 2026: a wrong count, or "Discard my lines").
+    /// LinesJson is an array of {"ClientLineId": ...}; only the caller's own lines in a count still
+    /// open and not yet ended are removed. Other counters' lines are never touched. The variance of
+    /// the stock they were counted against is worked out again.
+    /// </summary>
+    [Wrappable(false), Hookable(false)]
+    public HSMobileOpsCountStageResponse removeLines(HSMobileOpsCountStageRequest _request)
+    {
+        HSMobileOpsCountStageResponse response = HSMobileOpsCountStageService::validate(_request);
+        HSMobileOpsCountStage         stage;
+        HSMobileOpsCountMaster        master;
+        HSMobileOpsCountStageLine     line;
+        System.Object                 parsedObj;
+        Newtonsoft.Json.Linq.JArray   jArray;
+        Newtonsoft.Json.Linq.JObject  jLine;
+        int                           i;
+        int                           removed;
+        str                           clientLineId;
+        Set                           touched = new Set(Types::String);
+        SetEnumerator                 stockKey;
+
+        if (response.parmErrorCode())
+        {
+            return response;
+        }
+        changecompany (_request.parmDataAreaId())
+        {
+            select firstonly stage where stage.RecId == str2Int64(_request.parmStageId());
+            if (!stage.RecId || strUpr(stage.UserName) != strUpr(_request.parmUserName()))
+            {
+                response.parmErrorCode('STAGE_NOT_FOUND');
+                response.parmMessage('This count is not on D365FO any more.');
+                return response;
+            }
+            if (stage.Status != HSMobileOpsCountStageStatus::Counting)
+            {
+                response.parmErrorCode('STAGE_ENDED');
+                response.parmMessage('You have ended this count - its lines can no longer be removed.');
+                return response;
+            }
+            master = HSMobileOpsCountControl::masterOf(stage.MasterRecId);
+            if (master.Status != HSMobileOpsCountMasterStatus::Open)
+            {
+                response.parmErrorCode(master.Status == HSMobileOpsCountMasterStatus::Cancelled ? 'COUNT_CANCELLED' : 'COUNT_TRANSFERRED');
+                response.parmMessage(strFmt('%1 has been %2 by the supervisor - nothing was removed.', master.MasterId,
+                    master.Status == HSMobileOpsCountMasterStatus::Cancelled ? 'cancelled' : 'transferred'));
+                return response;
+            }
+            try
+            {
+                parsedObj = Newtonsoft.Json.Linq.JArray::Parse(_request.parmLinesJson() ? _request.parmLinesJson() : '[]');
+            }
+            catch (Exception::CLRError)
+            {
+                response.parmErrorCode('INVALID_REQUEST');
+                response.parmMessage('The lines to remove could not be read.');
+                return response;
+            }
+            jArray = parsedObj;
+
+            ttsbegin;
+            for (i = 0; jArray != null && i < jArray.get_Count(); i++)
+            {
+                jLine = jArray.get_Item(i);
+                if (jLine == null)
+                {
+                    continue;
+                }
+                clientLineId = HSMobileOpsCountStageService::jsonStr(jLine, 'ClientLineId');
+                if (!clientLineId)
+                {
+                    continue;
+                }
+                select forUpdate firstonly line
+                    where line.StageRecId   == stage.RecId
+                       && line.ClientLineId == clientLineId;
+                if (line.RecId)
+                {
+                    touched.add(line.StockKey);
+                    line.delete();
+                    removed++;
+                }
+            }
+            stockKey = touched.getEnumerator();
+            while (stockKey.moveNext())
+            {
+                HSMobileOpsCountControl::updateVariance(stage.MasterRecId, stockKey.current(), true, master.InventLocationId);
+            }
+            ttscommit;
+
+            HSMobileOpsCountControl::refresh(stage.MasterRecId, false);
+            master = HSMobileOpsCountControl::masterOf(stage.MasterRecId);
+            response.parmSuccess(true);
+            response.parmMasterId(master.MasterId);
+            response.parmStageId(_request.parmStageId());
+            response.parmAccepted(removed);
+            response.parmDuplicates(master.DuplicateCount);
+            response.parmMasterType(enum2Symbol(enumNum(HSMobileOpsCountMasterType), master.MasterType));
+            response.parmMessage(strFmt('%1 line(s) removed from %2', removed, master.MasterId));
+        }
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
 				<Name>openRequested</Name>
 				<Source><![CDATA[
 

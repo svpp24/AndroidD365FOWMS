@@ -91,6 +91,7 @@ fun PoCreateScreen(
             onLine = { viewModel.editLine(it) },
             onClose = { showLines = false },
             onRemove = { viewModel.removeLine(it) },
+            onChangeQty = { line, qty -> viewModel.changeQuantity(line, qty) },
         )
         return
     }
@@ -100,9 +101,15 @@ fun PoCreateScreen(
             vendorName = draft.vendorName.ifBlank { draft.vendorAccount },
             state = state,
             inOrder = draft.lines.groupBy { it.itemId }.mapValues { (_, l) -> l.sumOf { it.qty } },
+            lines = draft.lines,
+            onChangeQty = { line, qty -> viewModel.changeQuantity(line, qty) },
+            onRemoveLine = viewModel::removeLine,
+            onEditLine = { viewModel.editLine(it) },
             onQuery = viewModel::onItemQuery,
             onRetry = viewModel::loadVendorItems,
             onPick = { showItems = false; viewModel.pickVendorItem(it) },
+            // + on an item not on the order yet: its quantity opens, the list stays.
+            onAdd = viewModel::pickVendorItem,
             onClose = { showItems = false },
         )
         return
@@ -114,8 +121,7 @@ fun PoCreateScreen(
         FocusScreen(
             title = "Create PO",
             onBack = onBack,
-            band = state.error?.let { bandOf(BandKind.Bad, it) }
-                ?: submitted?.let { BandState(BandKind.Ok, "Order saved", it.documentNumber ?: it.title, autoHideMs = SAVED_BAND_MS) },
+            band = state.error?.let { bandOf(BandKind.Bad, it) },
             actions = if (submitted == null) null else { {
                 FocusButton("Start another order", onClick = viewModel::dismissResult, modifier = Modifier.weight(1f))
             } },
@@ -124,19 +130,28 @@ fun PoCreateScreen(
             LazyColumn(modifier = Modifier.weight(1f).fillMaxWidth()) {
                 // Keyed: the rows above disappear with the first letter typed, and an unkeyed
                 // field would be recomposed at a new index - losing focus and the next letters.
+                if (submitted != null) {
+                    // The saved order: its task box and card, no vendor search (user, 17 Nov 2026).
+                    item(key = "saved-task") {
+                        com.d365fo.mobileops.presentation.common.focus.FocusTaskBox(
+                            savedTask(submitted, "Order"),
+                            Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+                        )
+                    }
+                    item(key = "orders-caption") { ListCaption("Your orders", "Newest") }
+                    item(key = "submitted") {
+                        CreatedOrderCard(submitted, actionLabel = confirmLabel(submitted), onAction = { submitted.documentNumber?.let(onConfirm) })
+                    }
+                    return@LazyColumn
+                }
+                item(key = "task") { com.d365fo.mobileops.presentation.common.focus.ListTaskBox("Choose the vendor", com.d365fo.mobileops.presentation.common.focus.TaskIcons.Vendor) }
                 item(key = "vendor-search") {
                     TapToTypeField(
                         state.vendorQuery, viewModel::onVendorQuery, "Type to search vendor",
                         modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
                     )
                 }
-                if (submitted != null) {
-                    // Under its caption, like the orders below (user, 15 Nov).
-                    item(key = "orders-caption") { ListCaption("Your orders", "Newest") }
-                    item(key = "submitted") {
-                        CreatedOrderCard(submitted, actionLabel = confirmLabel(submitted), onAction = { submitted.documentNumber?.let(onConfirm) })
-                    }
-                } else if (orders.isNotEmpty() && state.vendorQuery.isBlank()) {
+                if (orders.isNotEmpty() && state.vendorQuery.isBlank()) {
                     // The latest orders made here (they hide while searching).
                     item(key = "orders-caption") { ListCaption("Your orders", "Newest") }
                     items(orders.take(3), key = { it.id }) { order ->
@@ -172,7 +187,6 @@ fun PoCreateScreen(
     FocusScreen(
         title = "Create PO",
         onBack = onBack,
-        counter = draft.lines.size.takeIf { it > 0 }?.let { linesText(it) },
         sidePane = {
             com.d365fo.mobileops.presentation.common.focus.FocusCaption(
                 "Lines · ${draft.lines.size}",
@@ -250,10 +264,8 @@ fun PoCreateScreen(
 /** The band on the lines step: what went wrong, else what the last scan added, else the order. */
 internal fun poBand(state: PoCreateState, lastAdded: com.d365fo.mobileops.data.repository.DraftLine?): BandState? {
     val draft = state.draft
+    // No "Added" bar either: the green task box and the card say it (user, 17 Nov 2026).
     return state.error?.let { bandOf(BandKind.Bad, it) }
-        ?: lastAdded?.let {
-            BandState(BandKind.Ok, "Added", "${it.itemId} · ${com.d365fo.mobileops.domain.order.qtyText(it.qty)} ${it.unitId}".trim())
-        }
         // No "New order" bar: the card shows the vendor and warehouse. The task box says it now (user, 17 Nov 2026: remove the bar that only repeats the screen).
 }
 
@@ -267,7 +279,7 @@ private fun PoDialogs(state: PoCreateState, viewModel: PoCreateViewModel, online
     state.enteringQty?.let { pending ->
         NumberDialog(
             title = "Quantity",
-            subtitle = listOf(pending.item.itemId, pending.variant?.label.orEmpty(), pending.unit.ifBlank { pending.item.purchUnit }).filter { it.isNotBlank() }.joinToString(" · "),
+            subtitle = listOf(pending.item.itemId, pending.item.itemName, pending.variant?.label.orEmpty(), pending.unit.ifBlank { pending.item.purchUnit }).filter { it.isNotBlank() }.joinToString(" · "),
             initial = pending.item.standardQty.takeIf { it > 0 && (pending.unit.isBlank() || pending.unit.equals(pending.item.purchUnit, true)) },
             rules = viewModel.quantityRulesFor(pending),
             confirmLabel = "Add line",

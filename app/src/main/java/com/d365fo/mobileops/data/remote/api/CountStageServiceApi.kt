@@ -17,6 +17,10 @@ interface CountStageServiceApi {
     @POST("HSMobileOpsServiceGroup/HSMobileOpsCountStageSvc/submitLines")
     suspend fun submitLines(@Body body: CountStageServiceRequest): Response<CountStageServiceResponse>
 
+    /** Removes this counter's own staged lines (17 Nov 2026). */
+    @POST("HSMobileOpsServiceGroup/HSMobileOpsCountStageSvc/removeLines")
+    suspend fun removeLines(@Body body: CountStageServiceRequest): Response<CountStageServiceResponse>
+
     @POST("HSMobileOpsServiceGroup/HSMobileOpsCountStageSvc/getStageMode")
     suspend fun getStageMode(
         @Body body: CountStageServiceRequest,

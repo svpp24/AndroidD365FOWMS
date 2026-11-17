@@ -2,6 +2,9 @@ package com.d365fo.mobileops.presentation.modules.ordercreate
 
 import androidx.compose.material.icons.outlined.QrCodeScanner
 import com.d365fo.mobileops.presentation.common.focus.FocusTask
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -27,6 +30,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import com.d365fo.mobileops.data.repository.DraftLine
+import com.d365fo.mobileops.domain.order.amountText
+import androidx.compose.foundation.background
 import com.d365fo.mobileops.domain.order.qtyText
 import com.d365fo.mobileops.presentation.common.focus.FocusCenter
 import com.d365fo.mobileops.presentation.common.focus.FocusScreen
@@ -81,7 +86,7 @@ internal fun rememberLastAdded(lines: List<DraftLine>): DraftLine? {
 @Composable
 internal fun ColumnScope.LastAddedCenter(line: DraftLine, onTap: () -> Unit) {
     FocusCenter(
-        task = FocusTask("Scan the next item", "${line.itemId} added", androidx.compose.material.icons.Icons.Outlined.QrCodeScanner, done = true),
+        task = FocusTask("Scan the next item", null, androidx.compose.material.icons.Icons.Outlined.QrCodeScanner, done = true),
         caption = "Last added",
         code = line.itemId,
         description = listOfNotNull(
@@ -116,6 +121,10 @@ internal fun OrderLinesScreen(
     onLine: (DraftLine) -> Unit,
     onClose: () -> Unit,
     onRemove: ((DraftLine) -> Unit)? = null,
+    /** − / + on each line (user, 17 Nov 2026); − on 1 asks "Remove this line?" first. */
+    onChangeQty: ((DraftLine, Double) -> Unit)? = null,
+    /** A return cannot send more than the stock there: + stops at it. */
+    capAtAvailable: Boolean = false,
 ) {
     androidx.activity.compose.BackHandler(onBack = onClose)
     var confirming by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<DraftLine?>(null) }
@@ -124,17 +133,142 @@ internal fun OrderLinesScreen(
     }
     FocusScreen(title = title, onBack = onClose, counter = lines.size.toString(), remaining = footer) {
         LazyColumn(modifier = Modifier.weight(1f).fillMaxWidth()) {
+            item(key = "task") {
+                com.d365fo.mobileops.presentation.common.focus.ListTaskBox("Check the lines", com.d365fo.mobileops.presentation.common.focus.TaskIcons.Lines)
+            }
             items(lines, key = { it.id }) { line ->
-                OrderLineCard(
-                    line,
-                    showPrice = showPrice,
-                    currency = currency,
-                    onRemove = onRemove?.let { { confirming = line } },
-                ) { onLine(line) }
+                if (onChangeQty == null) {
+                    OrderLineCard(
+                        line,
+                        showPrice = showPrice,
+                        currency = currency,
+                        onRemove = onRemove?.let { { confirming = line } },
+                    ) { onLine(line) }
+                } else {
+                    val over = line.available?.let { line.qty > it } == true
+                    com.d365fo.mobileops.presentation.common.focus.FocusLineCard(
+                        code = line.itemId,
+                        name = line.itemName,
+                        details = listOfNotNull(
+                            line.variant.label.takeIf { it.isNotBlank() },
+                            listOfNotNull(
+                                line.locationId.takeIf { it.isNotBlank() },
+                                line.batchId.takeIf { it.isNotBlank() }?.let { "Batch $it" },
+                                line.serialId.takeIf { it.isNotBlank() }?.let { "Serial $it" },
+                                line.available?.let { "${qtyText(it)} available" },
+                            ).joinToString(" · ").takeIf { it.isNotBlank() },
+                            "More than on hand".takeIf { over },
+                            orderLinePrice(line, showPrice, currency),
+                        ),
+                        quantity = qtyText(line.qty),
+                        unit = line.unitId,
+                        canMinus = true,
+                        canPlus = line.serialId.isBlank() && !(capAtAvailable && line.available != null && line.qty + 1 > line.available),
+                        onMinus = { if (line.qty - 1 <= 0.0) confirming = line else onChangeQty(line, line.qty - 1) },
+                        onPlus = { onChangeQty(line, line.qty + 1) },
+                        onQuantityTap = { onLine(line) },
+                        onRemove = onRemove?.let { { confirming = line } },
+                    )
+                }
             }
         }
     }
 }
+
+/** "2.49 USD · line 29.88 · Trade agreement" - a PO line's price, or null. */
+internal fun orderLinePrice(line: DraftLine, showPrice: Boolean, currency: String): String? = when {
+    !showPrice -> null
+    line.price != null -> buildString {
+        append("${amountText(line.price)} $currency".trim())
+        line.discPct?.takeIf { it > 0 }?.let { append(" · ${qtyText(it)}% off") }
+        line.lineAmount?.let { append(" · line ${amountText(it)}") }
+        append(" · " + if (line.priceOverride) "Price entered here" else line.priceSource ?: "D365FO price")
+    }
+    else -> "Priced by D365FO when the order is sent"
+}
+
+/**
+ * The task box once an order is saved (user, 17 Nov 2026) - instead of the green "saved" bar:
+ * created (green), created but not confirmed (amber), waiting to send, or not created.
+ */
+internal fun savedTask(order: com.d365fo.mobileops.data.local.entity.CreatedOrderEntity, noun: String): com.d365fo.mobileops.presentation.common.focus.FocusTask {
+    val i = androidx.compose.material.icons.Icons.Outlined
+    val ok = com.d365fo.mobileops.presentation.common.focus.TaskIcons.Done
+    return when {
+        order.status == com.d365fo.mobileops.data.local.entity.CreatedOrderStatus.CREATED &&
+            order.message?.startsWith("Created; not confirmed") == true ->
+            com.d365fo.mobileops.presentation.common.focus.FocusTask("Created, not confirmed", icon = com.d365fo.mobileops.presentation.common.focus.TaskIcons.Notice, warn = true)
+        order.status == com.d365fo.mobileops.data.local.entity.CreatedOrderStatus.CREATED ->
+            com.d365fo.mobileops.presentation.common.focus.FocusTask("$noun created", icon = ok, done = true)
+        order.status == com.d365fo.mobileops.data.local.entity.CreatedOrderStatus.WAITING ->
+            com.d365fo.mobileops.presentation.common.focus.FocusTask("$noun saved - waiting to send", icon = com.d365fo.mobileops.presentation.common.focus.TaskIcons.Notice, warn = true)
+        else -> com.d365fo.mobileops.presentation.common.focus.FocusTask("$noun not created", icon = com.d365fo.mobileops.presentation.common.focus.TaskIcons.Notice, warn = true)
+    }
+}
+
+/**
+ * "Choose the stock" as a page, not a pop-up (user, 17 Nov 2026): the task box, the item, then
+ * where it is with the batch and how much is there. Back is Cancel.
+ */
+@Composable
+internal fun StockPickerPage(
+    title: String,
+    item: com.d365fo.mobileops.data.repository.OrderItem,
+    rows: List<com.d365fo.mobileops.data.repository.StockRow>,
+    onPick: (com.d365fo.mobileops.data.repository.StockRow?) -> Unit,
+    onDismiss: () -> Unit,
+    allowAny: Boolean = true,
+) {
+    androidx.activity.compose.BackHandler(onBack = onDismiss)
+    FocusScreen(title = title, onBack = onDismiss) {
+        LazyColumn(modifier = Modifier.weight(1f).fillMaxWidth()) {
+            item(key = "task") { com.d365fo.mobileops.presentation.common.focus.ListTaskBox("Choose the stock", com.d365fo.mobileops.presentation.common.focus.TaskIcons.Pick) }
+            item(key = "item") {
+                androidx.compose.foundation.layout.Column(
+                    horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally,
+                    modifier = Modifier
+                        .padding(horizontal = 20.dp, vertical = 4.dp)
+                        .fillMaxWidth()
+                        .clip(com.d365fo.mobileops.presentation.common.theme.FocusShapes.band)
+                        .background(FocusColors.surface)
+                        .border(1.dp, FocusColors.divider, com.d365fo.mobileops.presentation.common.theme.FocusShapes.band)
+                        .padding(12.dp),
+                ) {
+                    Text(item.itemId, style = FocusType.rowCount, color = FocusColors.ink)
+                    item.itemName.takeIf { it.isNotBlank() && !it.equals(item.itemId, true) }?.let {
+                        Text(it, style = FocusType.rowDetail, color = FocusColors.inkSoft, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                    }
+                }
+            }
+            item(key = "caption") { ListCaption("Where it is", "Available") }
+            items(rows, key = { it.locationId + "|" + it.batchId + "|" + it.serialId }) { row ->
+                com.d365fo.mobileops.presentation.common.focus.FocusListRow(
+                    title = row.locationId.ifBlank { "Any location" },
+                    subtitle = listOfNotNull(
+                        row.batchId.takeIf { it.isNotBlank() }?.let { "Batch $it" },
+                        row.serialId.takeIf { it.isNotBlank() }?.let { "Serial $it" },
+                        row.expiry?.let { "Expires " + it.format(java.time.format.DateTimeFormatter.ofPattern("d MMM yyyy", java.util.Locale.ENGLISH)) },
+                    ).joinToString(" · ").ifBlank { null },
+                    count = qtyText(row.available),
+                    countColor = FocusColors.ink,
+                    chevron = true,
+                    onClick = { onPick(row) },
+                )
+            }
+            if (allowAny && !item.serialActive) {
+                item(key = "any") {
+                    com.d365fo.mobileops.presentation.common.focus.FocusListRow(
+                        title = "Any batch",
+                        subtitle = "The shipment picks it",
+                        chevron = true,
+                        onClick = { onPick(null) },
+                    )
+                }
+            }
+        }
+    }
+}
+
 
 /** How long a "saved" band stays on the Create screens (user, 15 Nov 2026). */
 internal const val SAVED_BAND_MS = 4_000L

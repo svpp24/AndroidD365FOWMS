@@ -215,6 +215,7 @@ fun ReceivingFlowScreen(
             subtitle = line?.let { l ->
                 listOfNotNull(
                     l.itemId,
+                    (state.capture.item?.productName ?: l.itemName).takeIf { it.isNotBlank() && !it.equals(l.itemId, true) },
                     l.variant.label.takeIf { it.isNotBlank() },
                     l.purchaseUnit,
                 ).joinToString(" · ")
@@ -343,6 +344,7 @@ fun ReceivingFlowScreen(
                     busy = state.busy,
                     onRemove = viewModel::removeCaptured,
                     onAdjustQuantity = viewModel::adjustCapturedQuantity,
+                    onSetQuantity = viewModel::setCapturedQuantity,
                     onClose = { viewModel.showCaptured(false) },
                     onPost = viewModel::postReceipt,
                 )
@@ -388,10 +390,7 @@ fun ReceivingFlowScreen(
     }
 }
 
-/**
- * Lets the operator find a line by typing part of its item name or ID instead of scanning - see
- * the identical [ItemSearchSheet] on TransferFlowScreen and the same reasoning.
- */
+/** The PO's open lines as a page (user, 17 Nov 2026) - see PickItemPage. */
 @Composable
 private fun ItemSearchSheet(
     lines: List<PurchaseOrderLine>,
@@ -399,113 +398,23 @@ private fun ItemSearchSheet(
     onPick: (PurchaseOrderLine) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    var query by remember { mutableStateOf("") }
-    val results = remember(query, lines) {
-        val needle = query.trim()
-        if (needle.isEmpty()) {
-            lines
-        } else {
-            // The variant too: "Red" or "C2" finds the one line of several for the same item.
-            lines.filter {
-                it.itemId.contains(needle, ignoreCase = true) ||
-                    it.itemName.contains(needle, ignoreCase = true) ||
-                    it.variant.matches(needle)
-            }
-        }
-    }
-
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.4f))
-            .clickable(onClick = onDismiss),
-    ) {
-        Card(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .padding(16.dp)
-                .heightIn(max = 520.dp)
-                .clickable(enabled = false) {},
-        ) {
-            Column(
-                modifier = Modifier.padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                Text(
-                    text = "Find an item",
-                    style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.SemiBold,
-                )
-                OutlinedTextField(
-                    value = query,
-                    onValueChange = { query = it },
-                    singleLine = true,
-                    placeholder = { Text("Item name or ID") },
-                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                if (results.isEmpty()) {
-                    Text(
-                        text = "No outstanding line matches \"$query\"",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                } else {
-                    LazyColumn(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        items(results) { line ->
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable { onPick(line) }
-                                    .padding(vertical = 10.dp),
-                                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                            ) {
-                                // weight(1f) so a long item name wraps within its own share of
-                                // the row instead of overlapping or crowding out the quantity
-                                // column entirely - confirmed live: without it, a name long
-                                // enough to reach the row's natural width pushed the quantity
-                                // text on top of it on one row and off past the row's own bounds
-                                // (rendered but invisible) on another.
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(text = line.itemId, style = MaterialTheme.typography.titleMedium)
-                                    Text(
-                                        text = line.itemName,
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                    // Which variant: lines for the same item otherwise read identically here.
-                                    line.variant.label.takeIf { it.isNotBlank() }?.let { variant ->
-                                        Text(
-                                            text = variant,
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            fontWeight = FontWeight.SemiBold,
-                                            color = MaterialTheme.colorScheme.primary,
-                                        )
-                                    }
-                                }
-                                // Remaining nets out what this device has already banked or
-                                // staged for this line - see ReceivingFlowViewModel.sessionRemaining
-                                // - so it can read lower than ordered even though nothing has
-                                // been registered by D365FO yet.
-                                Column(horizontalAlignment = Alignment.End) {
-                                    Text(
-                                        text = "${plain(remainingFor(line))} / ${plain(line.orderedQuantity)}",
-                                        style = MaterialTheme.typography.titleMedium,
-                                    )
-                                    Text(
-                                        text = "remaining / total",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
+    val byKey = lines.associateBy { "${it.lineNumber}" }
+    com.d365fo.mobileops.presentation.common.focus.PickItemPage(
+        title = "PO items",
+        rows = lines.map { l ->
+            com.d365fo.mobileops.presentation.common.focus.PickRow(
+                key = "${l.lineNumber}",
+                itemId = l.itemId,
+                name = l.itemName,
+                variant = l.variant.label,
+                // Left nets out what this device already banked (sessionRemaining).
+                figure = "${plain(remainingFor(l))} / ${plain(l.orderedQuantity)} left",
+                extraMatch = { q -> l.variant.matches(q) },
+            )
+        },
+        onPick = { row -> byKey[row.key]?.let(onPick) },
+        onClose = onDismiss,
+    )
 }
 
 /**
@@ -584,7 +493,15 @@ private fun PostStatus(
         )
     }
     Column(modifier = Modifier.fillMaxSize()) {
-        com.d365fo.mobileops.presentation.common.focus.ResultBand(band, modifier = Modifier.padding(top = 8.dp))
+        // Received: the green task box, not a bar (user, 17 Nov 2026); anything else stays a band.
+        if (rejected == null && (outcome.grnId != null || outcome.postedNow)) {
+            com.d365fo.mobileops.presentation.common.focus.FocusTaskBox(
+                com.d365fo.mobileops.presentation.common.focus.FocusTask("Received", icon = com.d365fo.mobileops.presentation.common.focus.TaskIcons.Done, done = true),
+                Modifier.padding(top = 8.dp),
+            )
+        } else {
+            com.d365fo.mobileops.presentation.common.focus.ResultBand(band, modifier = Modifier.padding(top = 8.dp))
+        }
         Column(
             modifier = Modifier.weight(1f).fillMaxWidth(),
             verticalArrangement = Arrangement.Center,
@@ -599,7 +516,7 @@ private fun PostStatus(
                 modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
             )
             Text(
-                if (outcome.grnId != null) outcome.purchId else "$lines · $time",
+                if (outcome.grnId != null) "${outcome.purchId} · $lines · $time" else "$lines · $time",
                 style = type.rowDetail,
                 color = colors.muted,
             )
@@ -664,96 +581,72 @@ private fun CapturedLines(
     onAdjustQuantity: (Int, Int) -> Unit,
     onClose: () -> Unit,
     onPost: () -> Unit,
+    onSetQuantity: (Int, BigDecimal) -> Unit = { _, _ -> },
 ) {
     Column(
         modifier = Modifier.fillMaxSize(),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        com.d365fo.mobileops.presentation.common.components.ListHeader(
-            icon = Icons.AutoMirrored.Filled.ListAlt,
-            title = "Scanned so far",
-            count = captured.size,
+        // "Check the lines" as the task box; the bin and the - / + under each line (17 Nov 2026).
+        com.d365fo.mobileops.presentation.common.focus.FocusTaskBox(
+            com.d365fo.mobileops.presentation.common.focus.FocusTask("Check the lines", icon = Icons.AutoMirrored.Filled.ListAlt),
         )
-        Text(
-            text = "Check the lines - posting can't be undone.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-
-        LazyColumn(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
+        var typing by remember { mutableStateOf<Int?>(null) }
+        typing?.let { index ->
+            captured.getOrNull(index)?.let { entry ->
+                com.d365fo.mobileops.presentation.common.components.QuantityPicker(
+                    subtitle = listOf(entry.itemId, entry.itemName, entry.unitSymbol).filter { it.isNotBlank() }.joinToString(" · "),
+                    hint = entry.maxQuantity?.let { "Up to ${plain(it)} ${entry.unitSymbol}".trim() },
+                    initial = plain(entry.quantity),
+                    replaceInitial = true,
+                    allowDecimal = true,
+                    validate = { text ->
+                        val v = text.toBigDecimalOrNull()
+                        when {
+                            v == null -> "\"$text\" is not a number"
+                            v <= BigDecimal.ZERO -> "Enter an amount above zero - or remove the line"
+                            entry.maxQuantity != null && v > entry.maxQuantity -> "Up to ${plain(entry.maxQuantity)} on this line"
+                            else -> null
+                        }
+                    },
+                    confirmLabel = "Save",
+                    onConfirm = { text -> typing = null; text.toBigDecimalOrNull()?.let { onSetQuantity(index, it) } },
+                    onDismiss = { typing = null },
+                )
+            }
+        }
+        LazyColumn(modifier = Modifier.weight(1f).bleed(16.dp)) {
             // Most recent first: the line worth checking or undoing is the one just scanned.
             itemsIndexed(captured.reversed()) { reversedIndex, entry ->
                 val index = captured.lastIndex - reversedIndex
-                Card(modifier = Modifier.fillMaxWidth()) {
-                    Row(
-                        modifier = Modifier.padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(text = entry.itemId, style = MaterialTheme.typography.titleMedium)
-                            if (entry.itemName.isNotBlank()) {
-                                Text(
-                                    text = entry.itemName,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
-                            // A serial-tracked line moves one serial per unit, so the count here
-                            // is fixed by the serial list - see the identical note on
-                            // TransferFlowScreen's own CapturedLines.
-                            val serialTracked = entry.serialIds.isNotEmpty()
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(2.dp),
-                                modifier = Modifier.padding(top = 2.dp),
-                            ) {
-                                IconButton(
-                                    onClick = { onAdjustQuantity(index, -1) },
-                                    enabled = !busy && !serialTracked && entry.quantity > BigDecimal.ONE,
-                                ) {
-                                    Icon(Icons.Default.Remove, contentDescription = "Decrease quantity")
-                                }
-                                Text(
-                                    text = "${com.d365fo.mobileops.util.Formatters.qtyUnit(entry.quantity, entry.unitSymbol)}",
-                                    style = MaterialTheme.typography.titleMedium,
-                                )
-                                IconButton(
-                                    onClick = { onAdjustQuantity(index, 1) },
-                                    enabled = !busy && !serialTracked &&
-                                        (entry.maxQuantity == null || entry.quantity < entry.maxQuantity),
-                                ) {
-                                    Icon(Icons.Default.Add, contentDescription = "Increase quantity")
-                                }
-                            }
-                            val detail = listOfNotNull(
-                                entry.variantLabel.takeIf { it.isNotBlank() },
-                                entry.locationId?.takeIf { it.isNotBlank() },
-                                entry.batchId?.takeIf { it.isNotBlank() }?.let { "Batch $it" },
-                                // A new batch's expiry, as typed - checked here before posting.
-                                wordsDate(entry.batchExpiryDate?.takeIf { it.isNotBlank() })?.let { "expires $it" },
-                                // The serial itself, as transfer does.
-                                when (entry.serialIds.size) {
-                                    0 -> null
-                                    1 -> "Serial ${entry.serialIds[0]}"
-                                    else -> "${entry.serialIds.size} serials (${entry.serialIds[0]}, …)"
-                                },
-                            ).joinToString(" · ")
-                            if (detail.isNotBlank()) {
-                                Text(
-                                    text = detail,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
-                        }
-                        IconButton(onClick = { onRemove(index) }) {
-                            Icon(Icons.Default.Delete, contentDescription = "Remove")
-                        }
-                    }
-                }
+                // A serial-tracked line moves one serial per unit: delete and rescan instead.
+                val serialTracked = entry.serialIds.isNotEmpty()
+                com.d365fo.mobileops.presentation.common.focus.FocusLineCard(
+                    code = entry.itemId,
+                    name = entry.itemName,
+                    details = listOfNotNull(
+                        entry.variantLabel.takeIf { it.isNotBlank() },
+                        listOfNotNull(
+                            entry.locationId?.takeIf { it.isNotBlank() },
+                            entry.batchId?.takeIf { it.isNotBlank() }?.let { "Batch $it" },
+                            wordsDate(entry.batchExpiryDate?.takeIf { it.isNotBlank() })?.let { "expires $it" },
+                        ).joinToString(" · ").takeIf { it.isNotBlank() },
+                        when (entry.serialIds.size) {
+                            0 -> null
+                            1 -> "Serial ${entry.serialIds[0]}"
+                            else -> "${entry.serialIds.size} serials (${entry.serialIds[0]}, …)"
+                        },
+                    ),
+                    quantity = plain(entry.quantity),
+                    unit = entry.unitSymbol,
+                    canMinus = !busy && !serialTracked && entry.quantity > BigDecimal.ONE,
+                    canPlus = !busy && !serialTracked && (entry.maxQuantity == null || entry.quantity < entry.maxQuantity),
+                    onMinus = { onAdjustQuantity(index, -1) },
+                    onPlus = { onAdjustQuantity(index, 1) },
+                    onQuantityTap = if (busy || serialTracked) null else ({ typing = index }),
+                    onRemove = { onRemove(index) },
+                    removeEnabled = !busy,
+                )
             }
         }
 
@@ -780,20 +673,10 @@ private fun CapturedLines(
 /** The result band: the error, else what the last action did, else where the flow stands. */
 private fun receivingBand(state: ReceivingFlowState): BandState? {
     state.error?.let { return bandOf(BandKind.Bad, it) }
-    state.lineNotice?.let { return bandOf(if (it.hint) BandKind.Warn else BandKind.Ok, it.text) }
-    return when {
-        // The task box says it now (user, 17 Nov 2026: remove the bar that only repeats the screen).
-        // The expiry date's forms moved into the task box too.
-        state.step == ReceivingStep.PURCHASE_ORDER || state.step == ReceivingStep.BATCH_EXPIRY_DATE -> null
-        state.step == ReceivingStep.ITEM && state.captured.isEmpty() && state.order != null -> state.order.let { o ->
-            BandState(
-                BandKind.Info,
-                "PO found",
-                listOfNotNull(o.purchId, (o.vendorName.takeIf { it.isNotBlank() } ?: o.vendorAccount).takeIf { it.isNotBlank() }).joinToString(" · "),
-            )
-        }
-        else -> null
-    }
+    // Only what needs attention (user, 17 Nov 2026): "PO found" and "Received 10 x ..." only
+    // repeated the screen - the card shows the PO, and the last line with its batch and expiry.
+    state.lineNotice?.takeIf { it.hint }?.let { return bandOf(BandKind.Warn, it.text) }
+    return null
 }
 
 /**
@@ -895,15 +778,18 @@ private fun androidx.compose.foundation.layout.ColumnScope.ReceivingCenter(state
             if (last == null) {
                 val units = state.openLines.takeIf { state.linesInline && it.isNotEmpty() }
                     ?.fold(BigDecimal.ZERO) { sum, l -> sum + l.outstandingQuantity }
+                // The PO and its vendor are in the card now - no "PO found" bar (user, 17 Nov 2026).
+                val o = state.order
                 FocusCenter(
-            task = receivingTask(state),
-                    caption = "To receive",
+                    task = receivingTask(state),
+                    caption = o?.purchId ?: "To receive",
                     code = when (state.outstandingLineCount) {
                         0 -> "Nothing left"
                         1 -> "1 line"
                         else -> "${state.outstandingLineCount} lines"
                     },
-                    description = units?.takeIf { state.outstandingLineCount > 0 }?.let { "${plain(it)} units" },
+                    description = units?.takeIf { state.outstandingLineCount > 0 }?.let { "${plain(it)} units to receive" },
+                    unitLine = o?.let { (it.vendorName.takeIf { n -> n.isNotBlank() } ?: it.vendorAccount).takeIf { n -> n.isNotBlank() } },
                 )
             } else {
                 FocusCenter(
@@ -915,7 +801,7 @@ private fun androidx.compose.foundation.layout.ColumnScope.ReceivingCenter(state
                     unitLine = listOfNotNull(
                         last.unitSymbol.takeIf { it.isNotBlank() },
                         last.batchId?.takeIf { it.isNotBlank() }?.let { "Batch $it" },
-                        wordsDate(last.batchExpiryDate?.takeIf { it.isNotBlank() })?.let { "Exp $it" },
+                        wordsDate(last.batchExpiryDate?.takeIf { it.isNotBlank() })?.let { "expires $it" },
                         last.locationId?.takeIf { it.isNotBlank() },
                     ).joinToString(" · "),
                 )
@@ -948,6 +834,12 @@ private fun androidx.compose.foundation.layout.ColumnScope.ReceivingCenter(state
                         "${l.purchaseUnit} · ${plain(left)} left of ${plain(l.orderedQuantity)}"
                     }
                     ReceivingStep.SERIAL -> listOfNotNull(c.unitSymbol, "${c.serialsOutstanding} serial${if (c.serialsOutstanding == 1) "" else "s"} left").joinToString(" · ")
+                    // The order's suggested bin moved here from the task box (title only, 17 Nov 2026).
+                    ReceivingStep.LOCATION -> listOfNotNull(
+                        c.unitSymbol,
+                        c.batchId?.let { "Batch $it" },
+                        state.suggestedLocation?.let { "Order suggests $it" },
+                    ).joinToString(" · ")
                     else -> listOfNotNull(
                         c.unitSymbol,
                         c.batchId?.let { "Batch $it" },
@@ -964,7 +856,7 @@ private fun receivingTask(state: ReceivingFlowState): com.d365fo.mobileops.prese
     val i = androidx.compose.material.icons.Icons.Outlined
     val c = state.capture
     val item = c.item?.itemNumber ?: c.line?.itemId.orEmpty()
-    val T = ::FocusTask
+    val T = { t: String, d: String?, ic: androidx.compose.ui.graphics.vector.ImageVector, done: Boolean -> FocusTask(t, d, ic, done) }
     return when (state.step) {
         ReceivingStep.PURCHASE_ORDER -> T("Scan the PO", "on the delivery paperwork", i.ReceiptLong, false)
         ReceivingStep.PACKING_SLIP -> T("Scan the delivery note", null, i.ReceiptLong, false)
@@ -1185,7 +1077,7 @@ internal fun receivingScanLabel(step: com.d365fo.mobileops.domain.model.Receivin
     com.d365fo.mobileops.domain.model.ReceivingStep.QUANTITY -> "Type the quantity"
     com.d365fo.mobileops.domain.model.ReceivingStep.LOCATION -> "Scan the location to put it"
     com.d365fo.mobileops.domain.model.ReceivingStep.BATCH -> "Scan the batch number"
-    com.d365fo.mobileops.domain.model.ReceivingStep.BATCH_EXPIRY_DATE -> "Scan or type the expiry date"
+    com.d365fo.mobileops.domain.model.ReceivingStep.BATCH_EXPIRY_DATE -> "Type 311228 or 31-12-2028"
     com.d365fo.mobileops.domain.model.ReceivingStep.SERIAL -> "Scan the serial number"
     com.d365fo.mobileops.domain.model.ReceivingStep.CONFIRM -> "Scan the next item"
 }

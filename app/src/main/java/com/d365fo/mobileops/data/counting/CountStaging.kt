@@ -104,6 +104,19 @@ class CountStagingRepository @Inject constructor(
         }
             .answer { StageHandle(it.masterId.orEmpty(), it.stageId.orEmpty()) }
 
+    /**
+     * Removes lines this counter already sent (a wrong count, or "Discard my lines" - user, 17 Nov
+     * 2026). D365FO removes only the caller's own lines, and only while the count is open.
+     */
+    suspend fun removeLines(stageId: String, clientLineIds: List<String>, user: String = userName()): NetworkResult<Int> {
+        if (clientLineIds.isEmpty()) return NetworkResult.Success(0)
+        val json = kotlinx.serialization.json.JsonArray(
+            clientLineIds.map { id -> kotlinx.serialization.json.JsonObject(mapOf("ClientLineId" to kotlinx.serialization.json.JsonPrimitive(id))) },
+        ).toString()
+        return errorMapper.safeCall { api.removeLines(body(stageId = stageId, linesJson = json, user = user)) }
+            .answer { it.accepted }
+    }
+
     /** Stages [lines] (a resend replaces a line by its client id); [endCount] submits the counter's journal. */
     suspend fun submit(
         stageId: String,

@@ -74,6 +74,19 @@ fun ToCreateScreen(onBack: () -> Unit, onShip: () -> Unit, viewModel: ToCreateVi
             onLine = { viewModel.editLine(it) },
             onClose = { showLines = false },
             onRemove = { viewModel.removeLine(it) },
+            onChangeQty = { line, qty -> viewModel.changeQuantity(line, qty) },
+        )
+        return
+    }
+
+    // "Choose the stock" as a page (user, 17 Nov 2026).
+    state.pending?.takeIf { it.choosingStock && it.stock != null }?.let { pending ->
+        StockPickerPage(
+            title = "Create transfer",
+            item = pending.item,
+            rows = pending.stock.orEmpty(),
+            onPick = viewModel::pickStock,
+            onDismiss = viewModel::cancelPending,
         )
         return
     }
@@ -86,7 +99,6 @@ fun ToCreateScreen(onBack: () -> Unit, onShip: () -> Unit, viewModel: ToCreateVi
             title = "Create transfer",
             onBack = onBack,
             band = state.error?.let { bandOf(BandKind.Bad, it) }
-                ?: submitted?.let { BandState(BandKind.Ok, "Transfer saved", it.documentNumber ?: it.title, autoHideMs = SAVED_BAND_MS) }
                 ?: BandState(BandKind.Warn, "You need two warehouses", "ask a supervisor").takeIf { tooFew },
             actions = when {
                 submitted != null -> { {
@@ -146,7 +158,13 @@ fun ToCreateScreen(onBack: () -> Unit, onShip: () -> Unit, viewModel: ToCreateVi
                     }
                 }
                 if (submitted != null) {
-                    // Under its caption, as on the route step (user, 15 Nov).
+                    // The saved transfer as a task box, not a green bar (user, 17 Nov 2026).
+                    item(key = "saved-task") {
+                        com.d365fo.mobileops.presentation.common.focus.FocusTaskBox(
+                            savedTask(submitted, "Transfer"),
+                            Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+                        )
+                    }
                     item(key = "orders-caption") { ListCaption("Your transfers", "Newest") }
                     item(key = "submitted") { CreatedOrderCard(submitted) }
                 } else if (orders.isNotEmpty()) {
@@ -169,7 +187,6 @@ fun ToCreateScreen(onBack: () -> Unit, onShip: () -> Unit, viewModel: ToCreateVi
     FocusScreen(
         title = "Create transfer",
         onBack = onBack,
-        counter = draft.lines.size.takeIf { it > 0 }?.let { linesText(it) },
         sidePane = {
             com.d365fo.mobileops.presentation.common.focus.FocusCaption(
                 "Lines · ${draft.lines.size}",
@@ -188,8 +205,7 @@ fun ToCreateScreen(onBack: () -> Unit, onShip: () -> Unit, viewModel: ToCreateVi
                 }
             }
         },
-        band = state.error?.let { bandOf(BandKind.Bad, it) }
-            ?: lastAdded?.let { BandState(BandKind.Ok, "Added", "${it.itemId} · ${com.d365fo.mobileops.domain.order.qtyText(it.qty)} ${it.unitId}".trim()) },
+        band = state.error?.let { bandOf(BandKind.Bad, it) },
         remaining = orderSize(draft.lines),
         // Says what to do first while the transfer is empty (user, 15 Nov); same look as always.
         scanPill = { ScanPillField(label = "Scan an item to send", enabled = !state.busy) },
@@ -225,12 +241,13 @@ private fun ToDialogs(state: ToCreateState, viewModel: ToCreateViewModel) {
     }
     state.pending?.let { pending ->
         if (pending.choosingStock && pending.stock != null) {
-            StockPickerDialog(item = pending.item, rows = pending.stock, onPick = viewModel::pickStock, onDismiss = viewModel::cancelPending)
+            // Shown as StockPickerPage by the screen.
         } else if (state.enteringQty) {
             NumberDialog(
                 title = "Quantity",
                 subtitle = listOf(
                     pending.item.itemId,
+                    pending.item.itemName,
                     pending.variant?.label.orEmpty(),
                     pending.pick?.batchId?.takeIf { it.isNotBlank() }?.let { "Batch $it" }.orEmpty(),
                     pending.pick?.serialId?.takeIf { it.isNotBlank() }?.let { "Serial $it" }.orEmpty(),

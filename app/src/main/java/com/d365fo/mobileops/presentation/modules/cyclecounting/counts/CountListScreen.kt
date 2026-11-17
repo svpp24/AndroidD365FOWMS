@@ -123,6 +123,8 @@ fun CountListScreen(
     onResults: (masterId: String) -> Unit,
     onCategories: (masterId: String) -> Unit = {},
     onCreate: (type: CountType) -> Unit = {},
+    /** An open count tapped: straight into it (user, 17 Nov 2026). */
+    onJoin: (masterId: String?, type: CountType) -> Unit = onCount,
     viewModel: CountListViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -146,6 +148,7 @@ fun CountListScreen(
         },
     ) {
         Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())) {
+            com.d365fo.mobileops.presentation.common.focus.ListTaskBox("Choose a count", com.d365fo.mobileops.presentation.common.focus.TaskIcons.Pick)
             val icon = when (state.type) {
                 CountType.HAZARD -> Icons.Default.ReportProblem
                 CountType.BLIND -> Icons.Default.VisibilityOff
@@ -205,7 +208,7 @@ fun CountListScreen(
                             // Hazard and blind: the supervisor sees the items by category.
                             state.supervisor && c.type != CountType.WALL_TO_WALL -> ({ onCategories(c.masterId) })
                             state.supervisor -> ({ reviewHint = c.masterId })
-                            else -> ({ onCount(if (c.type == CountType.WALL_TO_WALL) null else c.masterId, c.type) })
+                            else -> ({ onJoin(if (c.type == CountType.WALL_TO_WALL) null else c.masterId, c.type) })
                         },
                     )
                 }

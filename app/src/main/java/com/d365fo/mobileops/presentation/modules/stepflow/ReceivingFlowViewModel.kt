@@ -379,10 +379,16 @@ class ReceivingFlowViewModel @Inject constructor(
      * a serial-tracked line, where a quantity nudge would leave the serial list wrong too.
      */
     fun adjustCapturedQuantity(index: Int, delta: Int) {
+        val line = _state.value.captured.getOrNull(index) ?: return
+        setCapturedQuantity(index, line.quantity + BigDecimal(delta))
+    }
+
+    /** A typed quantity on the Lines screen (user, 17 Nov 2026) - kept within 1 and the line's maximum. */
+    fun setCapturedQuantity(index: Int, value: BigDecimal) {
         _state.update { current ->
             if (index !in current.captured.indices) return@update current
             val line = current.captured[index]
-            var next = line.quantity + BigDecimal(delta)
+            var next = value
             if (next < BigDecimal.ONE) next = BigDecimal.ONE
             line.maxQuantity?.let { max -> if (next > max) next = max }
             if (next == line.quantity) return@update current

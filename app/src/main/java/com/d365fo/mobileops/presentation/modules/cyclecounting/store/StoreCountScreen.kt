@@ -247,6 +247,8 @@ class StoreCountViewModel @Inject constructor(
 
     /** A hazard or blind count chosen from its list; blank = the store's wall to wall count. */
     private val masterId: String = savedStateHandle.get<String>("masterId").orEmpty()
+    /** Opened from an open count on the list: straight into it (user, 17 Nov 2026). */
+    private val join: Boolean = savedStateHandle.get<String>("join") == "1"
     private val countType = com.d365fo.mobileops.data.counting.CountType.fromSymbol(savedStateHandle.get<String>("type"))
         ?: com.d365fo.mobileops.data.counting.CountType.WALL_TO_WALL
     private val draftKey = if (masterId.isBlank()) {
@@ -290,6 +292,8 @@ class StoreCountViewModel @Inject constructor(
 
     init {
         viewModelScope.launch { scannerBridge.scans.collect { onScan(it.value) } }
+        // Tapped an open count on the list: join it now instead of showing "Start a count".
+        if (join && _state.value.draft?.counting != true) start()
         // A hazard or blind count's list, kept with the draft so counting works offline.
         if (masterId.isNotBlank()) viewModelScope.launch { refreshRequested() }
         warehouse?.let { wh ->
@@ -593,8 +597,52 @@ class StoreCountViewModel @Inject constructor(
     /** Removes a line that has not been sent yet. */
     fun remove(line: StoreCountLine) {
         val draft = _state.value.draft ?: return
-        if (line.sent) return
-        saveDraft(draft.copy(lines = draft.lines.filterNot { it.clientLineId == line.clientLineId }))
+        if (!line.sent) {
+            saveDraft(draft.copy(lines = draft.lines.filterNot { it.clientLineId == line.clientLineId }))
+            return
+        }
+        // Already with the supervisor: removed in D365FO first (user, 17 Nov 2026).
+        if (!online || draft.stageId.isBlank()) {
+            _state.update { it.copy(error = "Offline - a line already sent is removed once D365FO answers. Try again then.") }
+            return
+        }
+        _state.update { it.copy(busy = true, error = null) }
+        viewModelScope.launch {
+            when (val r = staging.removeLines(draft.stageId, listOf(line.clientLineId))) {
+                is NetworkResult.Success -> {
+                    _state.value.draft?.let { d -> saveDraft(d.copy(lines = d.lines.filterNot { it.clientLineId == line.clientLineId })) }
+                    _state.update { it.copy(busy = false, message = null) }
+                }
+                is NetworkResult.Error -> _state.update { it.copy(busy = false, error = r.failure.message) }
+                NetworkResult.Loading -> _state.update { it.copy(busy = false) }
+            }
+        }
+    }
+
+    /**
+     * "Discard my lines" (user, 17 Nov 2026): this counter's lines go - the sent ones from D365FO,
+     * then the device's copy - and [onDone] leaves the count. Other counters' lines stay. Nothing
+     * is dropped on the device unless D365FO removed the sent ones first.
+     */
+    fun discardMine(onDone: () -> Unit) {
+        val draft = _state.value.draft ?: return onDone()
+        val sent = draft.lines.filter { it.sent }.map { it.clientLineId }
+        if (sent.isNotEmpty() && (!online || draft.stageId.isBlank())) {
+            _state.update { it.copy(error = "Offline - your sent lines can be discarded once D365FO answers. Nothing was removed.") }
+            return
+        }
+        _state.update { it.copy(busy = true, error = null) }
+        viewModelScope.launch {
+            when (val r = staging.removeLines(draft.stageId, sent)) {
+                is NetworkResult.Success -> {
+                    saveDraft(null)
+                    _state.update { it.copy(busy = false, message = null, pending = null) }
+                    onDone()
+                }
+                is NetworkResult.Error -> _state.update { it.copy(busy = false, error = r.failure.message + " - nothing was removed.") }
+                NetworkResult.Loading -> _state.update { it.copy(busy = false) }
+            }
+        }
     }
 
     /** Sends the unsent lines; [end] also ends this counter's count. */
@@ -738,8 +786,29 @@ fun StoreCountScreen(onBack: () -> Unit, viewModel: StoreCountViewModel = hiltVi
     var showList by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
     var showItems by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
     var menuOpen by remember { mutableStateOf(false) }
+    var confirmDiscard by remember { mutableStateOf(false) }
     val draft = state.draft
     val counting = draft?.counting == true && !state.ended
+    if (confirmDiscard && draft != null) {
+        val n = draft.lines.size
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { confirmDiscard = false },
+            title = { Text("Discard your lines?") },
+            text = {
+                Text(
+                    (if (n == 1) "1 line" else "$n lines") + " you counted" +
+                        (draft.masterId.takeIf { it.isNotBlank() }?.let { " in $it" } ?: "") +
+                        (if (n == 1) " is" else " are") + " removed, from D365FO too. Other counters' lines stay.",
+                )
+            },
+            confirmButton = {
+                com.d365fo.mobileops.presentation.common.components.DialogButtonRow(
+                    dismiss = { com.d365fo.mobileops.presentation.common.components.CancelOutlinedButton(onClick = { confirmDiscard = false }, modifier = Modifier.weight(1f).heightIn(min = 56.dp)) { Text("Keep") } },
+                    confirm = { com.d365fo.mobileops.presentation.common.components.CancelButton(onClick = { confirmDiscard = false; viewModel.discardMine(onBack) }, modifier = Modifier.weight(1f).heightIn(min = 56.dp)) { Text("Discard") } },
+                )
+            },
+        )
+    }
 
     if (showCamera) {
         com.d365fo.mobileops.presentation.common.scan.CameraScannerSheet(
@@ -761,6 +830,7 @@ fun StoreCountScreen(onBack: () -> Unit, viewModel: StoreCountViewModel = hiltVi
             onPickLocation = { showList = false; viewModel.pickLocation(it) },
             onPickBin = { showList = false; viewModel.pickBin(it) },
             onRemove = viewModel::remove,
+            busy = state.busy,
         )
         return
     }
@@ -778,9 +848,8 @@ fun StoreCountScreen(onBack: () -> Unit, viewModel: StoreCountViewModel = hiltVi
         counter = when {
             // A hazard or blind count's progress stays in view on every step (user, 10 Nov).
             counting && state.requested.isNotEmpty() -> "${state.requestedDone}/${state.requested.size}"
-            !counting || state.needsLocation -> null
-            state.binId.isNotBlank() -> state.binId
-            else -> state.locationId
+            // The location and bin are on the card, not the title bar (user, 17 Nov 2026).
+            else -> null
         },
         band = storeCountBand(state),
         // No "28 on this device" line (user, 10 Nov).
@@ -791,6 +860,8 @@ fun StoreCountScreen(onBack: () -> Unit, viewModel: StoreCountViewModel = hiltVi
                     label = when {
                         state.needsLocation -> "Scan the location"
                         state.needsBin -> "Scan the bin"
+                        pending?.needsBatch == true -> "Scan the batch number"
+                        pending?.needsSerial == true -> "Scan the serial number"
                         else -> "Scan an item to count"
                     },
                     enabled = !state.busy,
@@ -830,6 +901,14 @@ fun StoreCountScreen(onBack: () -> Unit, viewModel: StoreCountViewModel = hiltVi
                             modifier = Modifier.heightIn(min = 56.dp),
                         )
                     }
+                    // This counter's lines go, from D365FO too (user, 17 Nov 2026) - asked first.
+                    DropdownMenuItem(
+                        text = { Text("Discard my lines", color = FocusColors.badIcon) },
+                        leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null, tint = FocusColors.badIcon) },
+                        enabled = !state.busy,
+                        onClick = { menuOpen = false; confirmDiscard = true },
+                        modifier = Modifier.heightIn(min = 56.dp),
+                    )
                 }
             }
         } },
@@ -851,6 +930,16 @@ fun StoreCountScreen(onBack: () -> Unit, viewModel: StoreCountViewModel = hiltVi
                 onSet = viewModel::confirmQuantity,
                 onDismiss = viewModel::cancelPending,
                 allowDecimal = true,
+                title = "Enter the count",
+                subtitle = listOf(
+                    pending.item.itemId,
+                    listOfNotNull(
+                        pending.item.itemName.takeIf { it.isNotBlank() && !it.equals(pending.item.itemId, true) },
+                        pending.batchId.takeIf { it.isNotBlank() }?.let { "Batch $it" },
+                        pending.serialId.takeIf { it.isNotBlank() }?.let { "Serial $it" },
+                        pending.item.inventUnit.takeIf { it.isNotBlank() },
+                    ).joinToString(" · "),
+                ),
             )
         } } else {
             null
@@ -873,7 +962,8 @@ internal fun storeCountBand(state: StoreCountState): BandState? {
         message != null -> when {
             message.startsWith("Offline") -> bandOf(BandKind.Warn, message)
             message.contains("line(s) sent") -> BandState(BandKind.Ok, "Sent", message)
-            else -> BandState(BandKind.Ok, "Counted", message)
+            // No "Counted" bar: the green task box and the card say it (user, 17 Nov 2026).
+            else -> null
         }
         state.draft?.counting != true -> null
         state.back != null -> BandState(
@@ -968,7 +1058,7 @@ private fun androidx.compose.foundation.layout.ColumnScope.StoreCountCenter(stat
         state.ended -> FocusCenter(caption = state.title, code = "Ended", description = state.countId.ifBlank { state.warehouseId })
         !counting || draft == null -> FocusCenter(
             // Only when there is no count: the New count button below is the way on.
-            task = if (state.countId.isBlank()) FocusTask("Start a count", "with New count below", androidx.compose.material.icons.Icons.Outlined.Add) else null,
+            task = if (state.countId.isBlank()) FocusTask("Start a count", null, androidx.compose.material.icons.Icons.Outlined.Add) else null,
             caption = state.title,
             code = state.countId.ifBlank { state.warehouseId ?: "–" },
             description = if (state.countId.isBlank()) "No count open" else "Not started on this device",
@@ -984,6 +1074,7 @@ private fun androidx.compose.foundation.layout.ColumnScope.StoreCountCenter(stat
                 pending.needsSerial -> "Serial"
                 else -> "Quantity"
             },
+            // Where it is counted, on the card - not on the title bar (user, 17 Nov 2026).
             code = pending.item.itemId,
             description = listOfNotNull(
                 pending.item.itemName.takeIf { it.isNotBlank() && !it.equals(pending.item.itemId, ignoreCase = true) },
@@ -991,13 +1082,17 @@ private fun androidx.compose.foundation.layout.ColumnScope.StoreCountCenter(stat
                 pending.batchId.takeIf { it.isNotBlank() }?.let { "Batch $it" },
                 pending.serialId.takeIf { it.isNotBlank() }?.let { "Serial $it" },
             ).joinToString(" · ").ifEmpty { null },
-            unitLine = pending.item.inventUnit.takeIf { it.isNotBlank() },
+            unitLine = listOfNotNull(
+                pending.item.inventUnit.takeIf { it.isNotBlank() },
+                (if (state.binId.isBlank()) state.locationId else "${state.locationId} › ${state.binId}").takeIf { it.isNotBlank() },
+            ).joinToString(" · "),
         )
         state.needsLocation -> {
             val places = draft.lines.map { it.locationId.uppercase() }.distinct().size
             FocusCenter(
-                task = FocusTask("Scan the location", "you are counting", androidx.compose.material.icons.Icons.Outlined.Place),
-                caption = "Location",
+                task = FocusTask("Scan the location", null, androidx.compose.material.icons.Icons.Outlined.Place),
+                // The count it is, when there is one (an open count joined from the list).
+                caption = draft.masterId.ifBlank { "Locations counted" },
                 code = if (places == 1) "1 location" else "$places locations",
                 description = "counted · ${linesText(draft.lines.size)}",
             )
@@ -1006,10 +1101,10 @@ private fun androidx.compose.foundation.layout.ColumnScope.StoreCountCenter(stat
             val bins = draft.lines.filter { it.locationId.equals(state.locationId, ignoreCase = true) && it.binId.isNotBlank() }
                 .map { it.binId.uppercase() }.distinct().size
             FocusCenter(
-                task = FocusTask("Scan the bin", "in ${state.locationId}", androidx.compose.material.icons.Icons.Outlined.Place),
-                caption = "Bin",
-                code = if (bins == 1) "1 bin" else "$bins bins",
-                description = "counted in ${state.locationId}",
+                task = FocusTask("Scan the bin", null, androidx.compose.material.icons.Icons.Outlined.Place),
+                caption = "Location",
+                code = state.locationId,
+                description = (if (bins == 1) "1 bin" else "$bins bins") + " counted here",
             )
         }
         else -> {
@@ -1017,10 +1112,15 @@ private fun androidx.compose.foundation.layout.ColumnScope.StoreCountCenter(stat
                 it.locationId.equals(state.locationId, ignoreCase = true) && it.binId.equals(state.binId, ignoreCase = true)
             }
             if (last == null) {
-                FocusCenter(task = FocusTask("Scan an item", "in " + (if (state.binId.isBlank()) state.locationId else "${state.locationId} › ${state.binId}"), androidx.compose.material.icons.Icons.Outlined.QrCodeScanner), caption = "Counted here", code = linesText(0))
+                FocusCenter(
+                    task = FocusTask("Scan an item", null, androidx.compose.material.icons.Icons.Outlined.QrCodeScanner),
+                    caption = if (state.binId.isBlank()) "Location" else "Bin",
+                    code = if (state.binId.isBlank()) state.locationId else "${state.locationId} › ${state.binId}",
+                    description = "${linesText(0)} counted here",
+                )
             } else {
                 FocusCenter(
-                    task = FocusTask("Scan the next item", "${last.itemId} counted", androidx.compose.material.icons.Icons.Outlined.QrCodeScanner, done = true),
+                    task = FocusTask("Scan an item", null, androidx.compose.material.icons.Icons.Outlined.QrCodeScanner, done = true),
                     caption = "Last counted",
                     code = last.itemId,
                     description = listOfNotNull(
@@ -1030,8 +1130,11 @@ private fun androidx.compose.foundation.layout.ColumnScope.StoreCountCenter(stat
                         last.serialId.takeIf { it.isNotBlank() }?.let { "Serial $it" },
                     ).joinToString(" · ").ifEmpty { null },
                     quantity = qtyText(last.quantity),
-                    // Only the unit: "On this device · 29 here" is not wanted (user, 10 Nov).
-                    unitLine = last.unitId.takeIf { it.isNotBlank() },
+                    // The unit and where (user, 17 Nov 2026) - not "On this device · 29 here" (10 Nov).
+                    unitLine = listOfNotNull(
+                        last.unitId.takeIf { it.isNotBlank() },
+                        (if (state.binId.isBlank()) state.locationId else "${state.locationId} › ${state.binId}").takeIf { it.isNotBlank() },
+                    ).joinToString(" · "),
                 )
             }
         }
@@ -1053,7 +1156,22 @@ private fun StoreCountList(
     onPickLocation: (String) -> Unit,
     onPickBin: (String) -> Unit,
     onRemove: (StoreCountLine) -> Unit,
+    busy: Boolean = false,
 ) {
+    var confirming by remember { mutableStateOf<StoreCountLine?>(null) }
+    confirming?.let { line ->
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { confirming = null },
+            title = { Text("Remove this line?") },
+            text = { Text("${line.itemId} · ${qtyText(line.quantity)} ${line.unitId}".trim() + (if (line.sent) " - removed from D365FO too." else "")) },
+            confirmButton = {
+                com.d365fo.mobileops.presentation.common.components.DialogButtonRow(
+                    dismiss = { com.d365fo.mobileops.presentation.common.components.CancelOutlinedButton(onClick = { confirming = null }, modifier = Modifier.weight(1f).heightIn(min = 56.dp)) { Text("Keep") } },
+                    confirm = { com.d365fo.mobileops.presentation.common.components.CancelButton(onClick = { confirming = null; onRemove(line) }, modifier = Modifier.weight(1f).heightIn(min = 56.dp)) { Text("Remove") } },
+                )
+            },
+        )
+    }
     val title = when {
         state.needsLocation -> "Locations"
         state.needsBin -> "Bins in ${state.locationId}"
@@ -1095,6 +1213,9 @@ private fun StoreCountList(
                     }
                 }
                 else -> {
+                    item(key = "task") {
+                        com.d365fo.mobileops.presentation.common.focus.ListTaskBox("Check the lines", com.d365fo.mobileops.presentation.common.focus.TaskIcons.Lines)
+                    }
                     // A hazard or blind count: what it asks for, ticked off as it is counted.
                     if (draft.requested.isNotEmpty()) {
                         item(key = "requested-caption") {
@@ -1130,10 +1251,9 @@ private fun StoreCountList(
                             count = qtyText(line.quantity) + line.unitId.takeIf { it.isNotBlank() }?.let { " $it" }.orEmpty(),
                             modifier = Modifier.weight(1f),
                         )
-                        if (!line.sent) {
-                            IconButton(onClick = { onRemove(line) }, modifier = Modifier.size(56.dp)) {
-                                Icon(Icons.Default.Delete, contentDescription = "Remove", tint = FocusColors.badIcon)
-                            }
+                        // Any of this counter's lines - a sent one is removed in D365FO (17 Nov 2026).
+                        IconButton(onClick = { confirming = line }, enabled = !busy, modifier = Modifier.size(56.dp)) {
+                            Icon(Icons.Default.Delete, contentDescription = "Remove", tint = FocusColors.iconMuted)
                         }
                     }
                     }

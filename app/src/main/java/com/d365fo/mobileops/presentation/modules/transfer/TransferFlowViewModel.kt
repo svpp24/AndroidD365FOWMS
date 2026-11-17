@@ -382,7 +382,13 @@ class TransferFlowViewModel @Inject constructor(
      */
     fun adjustCapturedQuantity(index: Int, delta: Int) {
         val line = _state.value.captured.getOrNull(index) ?: return
-        var next = line.quantity + BigDecimal(delta)
+        setCapturedQuantity(index, line.quantity + BigDecimal(delta))
+    }
+
+    /** A typed quantity on the Lines screen (user, 17 Nov 2026) - kept within 1 and the line's maximum. */
+    fun setCapturedQuantity(index: Int, value: BigDecimal) {
+        val line = _state.value.captured.getOrNull(index) ?: return
+        var next = value
         if (next < BigDecimal.ONE) next = BigDecimal.ONE
         line.maxQuantity?.let { max -> if (next > max) next = max }
         if (next == line.quantity) return
