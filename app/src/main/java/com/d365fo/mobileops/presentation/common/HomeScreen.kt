@@ -59,6 +59,7 @@ import com.d365fo.mobileops.presentation.common.components.raised
 import com.d365fo.mobileops.presentation.common.components.AppTopBar as TopAppBar
 import com.d365fo.mobileops.presentation.common.tour.tourTarget
 import androidx.compose.runtime.Composable
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -272,7 +273,17 @@ fun HomeScreen(
     val figures by dashboardViewModel.figures.collectAsStateWithLifecycle()
     androidx.compose.runtime.LaunchedEffect(Unit) {
         accessViewModel.refresh()
-        dashboardViewModel.refresh()
+    }
+    // The counts on Home (user, 17 Nov 2026: "it has to update properly"): asked each time Home
+    // comes to the front - back from a screen or from another app - and every minute while it stays.
+    val homeLifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
+    androidx.compose.runtime.LaunchedEffect(homeLifecycle) {
+        homeLifecycle.repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.RESUMED) {
+            while (true) {
+                dashboardViewModel.refresh()
+                kotlinx.coroutines.delay(HomeDashboardViewModel.REFRESH_EVERY_MS)
+            }
+        }
     }
     val usage = rememberModuleUsage(warehouseId)
     infoFor?.let { module ->

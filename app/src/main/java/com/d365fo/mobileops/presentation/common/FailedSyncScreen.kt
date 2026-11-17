@@ -213,6 +213,14 @@ class FailedSyncViewModel @Inject constructor(
         }
     }
 
+    /** Send a waiting posting now instead of at its next try (17 Nov 2026). */
+    fun sendNow(aggregateId: String) {
+        viewModelScope.launch {
+            syncQueue.retryNow(aggregateId)
+            scheduler.requestImmediatePush()
+        }
+    }
+
     fun acknowledge(failureId: String) {
         viewModelScope.launch { syncQueue.acknowledgeFailure(failureId) }
     }
@@ -276,6 +284,14 @@ fun FailedSyncScreen(
     val online = com.d365fo.mobileops.presentation.common.components.LocalSyncStatus.current?.fullyOnline != false
     val postingEnabled = com.d365fo.mobileops.presentation.common.components.LocalSyncStatus.current?.postingEnabled != false
     val (acknowledged, needsAction) = failures.partition { it.acknowledged }
+    // The "next try in 4 min" lines count down.
+    var clock by androidx.compose.runtime.remember { androidx.compose.runtime.mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            kotlinx.coroutines.delay(30_000)
+            clock = System.currentTimeMillis()
+        }
+    }
 
     // On opening, and again when the connection comes back - the queue lives in D365FO.
     LaunchedEffect(online) { if (online) viewModel.loadQueueStatus() }
@@ -347,7 +363,7 @@ fun FailedSyncScreen(
             // is the answer to "is my receipt safe?" - it is, and here it is.
             if (waiting.isNotEmpty()) {
                 item { ListHeader(Icons.Filled.CloudUpload, "Waiting to send", waiting.size) }
-                items(waiting, key = { it.queueId }) { entry -> WaitingCard(entry, online, postingEnabled) }
+                items(waiting, key = { it.queueId }) { entry -> WaitingCard(entry, online, postingEnabled, clock, onSendNow = { viewModel.sendNow(entry.aggregateId) }) }
             }
 
             // Needs someone now. Acknowledged ones have been seen and stay at the bottom.
@@ -459,7 +475,27 @@ fun FailedSyncScreen(
 }
 
 @Composable
-private fun WaitingCard(entry: com.d365fo.mobileops.data.local.entity.SyncQueueEntity, online: Boolean, postingEnabled: Boolean) {
+private fun WaitingCard(
+    entry: com.d365fo.mobileops.data.local.entity.SyncQueueEntity,
+    online: Boolean,
+    postingEnabled: Boolean,
+    now: Long = System.currentTimeMillis(),
+    onSendNow: () -> Unit = {},
+) {
+    // When it goes to D365FO (user, 17 Nov 2026: "we are unsure when it will be sent").
+    val retrying = postingEnabled && online && entry.leasedUntil <= now && entry.nextAttemptAt > now
+    val whenText = when {
+        !postingEnabled -> "Held - posting is off"
+        !online -> "Sends as soon as the device is online"
+        entry.leasedUntil > now -> "Sending to D365FO now…"
+        entry.nextAttemptAt > now -> {
+            val minutes = ((entry.nextAttemptAt - now + 59_999) / 60_000).coerceAtLeast(1)
+            "Next try at " + com.d365fo.mobileops.util.Formatters.clockTime(entry.nextAttemptAt) +
+                " (in " + (if (minutes >= 60) "${minutes / 60} h ${minutes % 60} min" else "$minutes min") + ")" +
+                if (entry.retryCount > 0) " · tried ${entry.retryCount} " + (if (entry.retryCount == 1) "time" else "times") else ""
+        }
+        else -> "Sending in a moment"
+    }
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(
             modifier = Modifier.padding(WarehouseDimens.ScreenPadding),
@@ -473,14 +509,20 @@ private fun WaitingCard(entry: com.d365fo.mobileops.data.local.entity.SyncQueueE
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Text(
-                text = when {
-                    !postingEnabled -> "Held - posting is off"
-                    online -> "Sending to D365FO…"
-                    else -> "Saved - sent when online"
-                },
+                text = whenText,
                 style = MaterialTheme.typography.bodyMedium,
-                color = if (online && postingEnabled) MaterialTheme.colorScheme.onSurfaceVariant else WarehouseStatusColors.amber,
+                color = if (online && postingEnabled && !retrying) MaterialTheme.colorScheme.onSurfaceVariant else WarehouseStatusColors.amber,
             )
+            if (retrying) {
+                entry.lastError?.takeIf { it.isNotBlank() }?.let {
+                    Text("Last try: $it", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                com.d365fo.mobileops.presentation.common.components.DockOutlinedButton(
+                    onClick = onSendNow,
+                    text = "Send now",
+                    modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                )
+            }
         }
     }
 }

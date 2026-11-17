@@ -11,6 +11,7 @@ import com.d365fo.mobileops.data.sync.SyncQueueRepository
 import com.d365fo.mobileops.util.NetworkResult
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
+import kotlinx.coroutines.flow.first
 import timber.log.Timber
 
 /**
@@ -36,12 +37,23 @@ class TransactionPushWorker @AssistedInject constructor(
     private val connectionSettings: com.d365fo.mobileops.data.security.ConnectionSettings,
     private val followUp: com.d365fo.mobileops.data.sync.PostingFollowUp,
     private val heartbeat: com.d365fo.mobileops.data.sync.DeviceHeartbeat,
+    private val scheduler: com.d365fo.mobileops.data.sync.SyncScheduler,
 ) : CoroutineWorker(context, params) {
 
     private var sentThisRun = 0
 
     override suspend fun doWork(): Result {
         val result = drain()
+        // Whatever still waits for a retry gets a run at its own time (17 Nov 2026), so the
+        // time Activity shows is the time it goes.
+        try {
+            val now = System.currentTimeMillis()
+            queue.observeWaiting().first().map { it.nextAttemptAt }.filter { it > now }.minOrNull()
+                ?.let { scheduler.requestPushAt(it, now) }
+        } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
+            Timber.w(e, "retry scheduling failed")
+        }
         // Sync health's check-in, at most every 15 minutes (16 Nov 2026). Never fails the run.
         try {
             heartbeat.sendIfDue()

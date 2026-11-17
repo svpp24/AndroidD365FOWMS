@@ -163,6 +163,22 @@ class SyncScheduler @Inject constructor(context: Context) {
 
 
     /**
+     * A push run at [atMs] - the earliest waiting posting's next try (user, 17 Nov 2026: Activity
+     * could not say when a waiting item would go; a retry waited for the 15-minute run). REPLACE:
+     * only the next due time matters.
+     */
+    fun requestPushAt(atMs: Long, now: Long = System.currentTimeMillis()) {
+        workManager.enqueueUniqueWork(
+            WORK_PUSH_RETRY,
+            ExistingWorkPolicy.REPLACE,
+            OneTimeWorkRequestBuilder<TransactionPushWorker>()
+                .setConstraints(connectedOnly)
+                .setInitialDelay((atMs - now).coerceAtLeast(0L), TimeUnit.MILLISECONDS)
+                .build(),
+        )
+    }
+
+    /**
      * A push run in a couple of minutes, for PostingFollowUp. One per two-minute slot: the run
      * asking is itself the follow-up work, so keeping a single name would keep nothing new.
      */
@@ -231,6 +247,7 @@ class SyncScheduler @Inject constructor(context: Context) {
 
     private companion object {
         const val WORK_PUSH_NOW = "d365.push.now"
+        const val WORK_PUSH_RETRY = "d365.push.retry"
         const val WORK_SYNC_CHANGES = "sku_sync_changes"
         const val SKU_CONTINUE = "d365.sync.skumaster.continue"
         const val WORK_SYNC_MASTERS_NOW = "d365.sync.skumaster.now"

@@ -138,13 +138,13 @@ internal fun FocusHome(
     }
     val rows = buildList {
         if (has(WarehouseWorkflow.PO_RECEIVING, WarehouseWorkflow.TRANSFER_RECEIVE)) {
-            add(HomeEntry(HOME_ICONS[0], "Receive", null) { openGroup(ModuleGroup.RECEIVE) })
+            add(HomeEntry(HOME_ICONS[0], "Receive", receiveCount(figures, modules)) { openGroup(ModuleGroup.RECEIVE) })
         }
         if (has(WarehouseWorkflow.TRANSFER_SHIP)) {
-            add(HomeEntry(HOME_ICONS[1], "Ship", null) { openGroup(ModuleGroup.SHIP) })
+            add(HomeEntry(HOME_ICONS[1], "Ship", figures.transfersToShip?.toString()) { openGroup(ModuleGroup.SHIP) })
         }
         if (has(WarehouseWorkflow.INVENTORY_COUNT)) {
-            add(HomeEntry(HOME_ICONS[2], "Count", null) { openGroup(ModuleGroup.COUNT) })
+            add(HomeEntry(HOME_ICONS[2], "Count", figures.countsInProgress?.toString()) { openGroup(ModuleGroup.COUNT) })
         }
         if (has(WarehouseWorkflow.PO_CREATE, WarehouseWorkflow.TO_CREATE, WarehouseWorkflow.PURCHASE_RETURN)) {
             add(HomeEntry(HOME_ICONS[3], "Create", null) { openGroup(ModuleGroup.CREATE) })

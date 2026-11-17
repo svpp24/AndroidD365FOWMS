@@ -75,11 +75,10 @@ fun ModuleGroupScreen(
                     WarehouseWorkflow.TRANSFER_SHIP -> figures.transfersToShip
                     else -> null
                 }
-                // No counts in the menus (user, 16 Nov 2026).
                 FocusListRow(
                     title = group.label(module),
                     icon = module.icon,
-                    count = null,
+                    count = count?.toString(),
                     chevron = true,
                     onClick = { module.route?.let(onModuleSelected) },
                 )

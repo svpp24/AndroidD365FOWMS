@@ -50,6 +50,26 @@ class HomeDashboardViewModel @Inject constructor(
 
     val warehouseId: String? get() = workerSession.session.value?.selected?.warehouseId
 
+    init {
+        // Something left the send queue (posted, or given up on): the open POs and transfers
+        // changed in D365FO - ask again, so Home does not keep yesterday's number.
+        viewModelScope.launch {
+            var last = Int.MAX_VALUE
+            syncStatusProvider.status.collect { s ->
+                if (s.pendingCount < last && last != Int.MAX_VALUE) {
+                    kotlinx.coroutines.delay(2_000)
+                    refresh()
+                }
+                last = s.pendingCount
+            }
+        }
+    }
+
+    companion object {
+        /** How often Home asks again while it stays on screen. */
+        const val REFRESH_EVERY_MS = 60_000L
+    }
+
     /** Each time Home shows. */
     fun refresh() {
         val wh = warehouseId
@@ -59,7 +79,7 @@ class HomeDashboardViewModel @Inject constructor(
         viewModelScope.launch {
             // Kept for a short while like the PO and transfer figures (ListCache) - Home showed again
             // on every return, and asked each time (13 Nov, performance). The Count lists ask fresh.
-            val open = (listCache.get("counts:${wh.uppercase()}") { countRequests.counts(wh) } as? NetworkResult.Success)?.data?.count { it.open }
+            val open = (listCache.get("counts:${wh.uppercase()}", ttlMs = 45_000L) { countRequests.counts(wh) } as? NetworkResult.Success)?.data?.count { it.open }
             if (open != null) _figures.update { it.copy(countsInProgress = open) }
         }
         viewModelScope.launch {

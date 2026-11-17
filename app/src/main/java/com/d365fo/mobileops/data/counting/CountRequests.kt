@@ -109,6 +109,7 @@ class CountRequestRepository @Inject constructor(
     private val companyProvider: CompanyProvider,
     private val secureStore: SecureStore,
     private val workerSession: WorkerSessionRepository,
+    private val listCache: com.d365fo.mobileops.data.repository.ListCache,
 ) {
     private val json = Json { ignoreUnknownKeys = true; coerceInputValues = true }
 
@@ -182,6 +183,8 @@ class CountRequestRepository @Inject constructor(
             ),
         )
     }.answer { r -> CreatedCount(r.masterId.orEmpty(), r.message.orEmpty(), r.existing) }
+        // Home's Count number comes from a short cache: a new count must show at once.
+        .also { if (it is NetworkResult.Success) listCache.invalidate("counts:") }
 
     /** Counted, on-hand and variance per journal line, once the supervisor has created the journal. */
     suspend fun results(masterId: String): NetworkResult<CountResults> =
