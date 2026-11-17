@@ -1,5 +1,12 @@
 package com.d365fo.mobileops.presentation.modules.stepflow
 
+import com.d365fo.mobileops.presentation.common.focus.FocusTask
+import androidx.compose.material.icons.outlined.ReceiptLong
+import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material.icons.outlined.QrCodeScanner
+import androidx.compose.material.icons.outlined.Dialpad
+import androidx.compose.material.icons.outlined.Place
+import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.ui.unit.sp
 import com.d365fo.mobileops.presentation.common.focus.BandKind
 import com.d365fo.mobileops.presentation.common.focus.BandState
@@ -880,6 +887,7 @@ private fun androidx.compose.foundation.layout.ColumnScope.ReceivingCenter(state
     val c = state.capture
     when (state.step) {
         ReceivingStep.PURCHASE_ORDER -> FocusCenter(
+            task = receivingTask(state),
             caption = "Purchase orders today",
             code = state.todaysOrders.size.toString(),
         )
@@ -889,6 +897,7 @@ private fun androidx.compose.foundation.layout.ColumnScope.ReceivingCenter(state
                 val units = state.openLines.takeIf { state.linesInline && it.isNotEmpty() }
                     ?.fold(BigDecimal.ZERO) { sum, l -> sum + l.outstandingQuantity }
                 FocusCenter(
+            task = receivingTask(state),
                     caption = "To receive",
                     code = when (state.outstandingLineCount) {
                         0 -> "Nothing left"
@@ -899,6 +908,7 @@ private fun androidx.compose.foundation.layout.ColumnScope.ReceivingCenter(state
                 )
             } else {
                 FocusCenter(
+            task = receivingTask(state),
                     caption = "Last scanned",
                     code = last.itemId,
                     description = listOf(last.itemName, last.variantLabel).filter { it.isNotBlank() }.joinToString(" · "),
@@ -916,6 +926,7 @@ private fun androidx.compose.foundation.layout.ColumnScope.ReceivingCenter(state
             val item = c.item
             val line = c.line
             FocusCenter(
+            task = receivingTask(state),
                 caption = when (state.step) {
                     ReceivingStep.QUANTITY -> "Quantity"
                     ReceivingStep.LOCATION -> "Location"
@@ -949,6 +960,33 @@ private fun androidx.compose.foundation.layout.ColumnScope.ReceivingCenter(state
         }
     }
 }
+/** What to do now, for the task box (FocusTask, user 17 Nov 2026). */
+private fun receivingTask(state: ReceivingFlowState): com.d365fo.mobileops.presentation.common.focus.FocusTask {
+    val i = androidx.compose.material.icons.Icons.Outlined
+    val c = state.capture
+    val item = c.item?.itemNumber ?: c.line?.itemId.orEmpty()
+    val T = ::FocusTask
+    return when (state.step) {
+        ReceivingStep.PURCHASE_ORDER -> T("Scan the PO", "on the delivery paperwork", i.ReceiptLong, false)
+        ReceivingStep.PACKING_SLIP -> T("Scan the delivery note", null, i.ReceiptLong, false)
+        ReceivingStep.ITEM -> {
+            val last = state.captured.lastOrNull()
+            when {
+                state.order != null && state.outstandingLineCount == 0 && state.captured.isEmpty() ->
+                    T("Nothing left to receive", "on this order", i.CheckCircle, true)
+                last != null -> T("Scan the next item", "${last.itemId} · ${plain(last.quantity)} ${last.unitSymbol} saved".trim(), i.QrCodeScanner, true)
+                else -> T("Scan an item", "from this delivery", i.QrCodeScanner, false)
+            }
+        }
+        ReceivingStep.QUANTITY -> T("Enter the quantity", c.line?.let { l -> "${plain(state.suggestedQuantity ?: l.outstandingQuantity)} ${l.purchaseUnit} left" }, i.Dialpad, false)
+        ReceivingStep.LOCATION -> T("Scan the bin", state.suggestedLocation?.let { "Order suggests $it" } ?: "where you put it away", i.Place, false)
+        ReceivingStep.BATCH -> T("Scan the batch", item.takeIf { it.isNotBlank() }?.let { "on the box of $it" }, i.QrCodeScanner, false)
+        ReceivingStep.BATCH_EXPIRY_DATE -> T("Enter the expiry date", c.batchId?.let { "$it is a new batch" }, i.CalendarMonth, false)
+        ReceivingStep.SERIAL -> T("Scan the serial", c.serialsOutstanding.takeIf { it > 1 }?.let { "$it to go" }, i.QrCodeScanner, false)
+        ReceivingStep.CONFIRM -> T("Scan the next item", null, i.CheckCircle, true)
+    }
+}
+
 private fun titleFor(step: ReceivingStep): String = when (step) {
     ReceivingStep.PURCHASE_ORDER -> "Receive"
     ReceivingStep.PACKING_SLIP -> "Delivery note"

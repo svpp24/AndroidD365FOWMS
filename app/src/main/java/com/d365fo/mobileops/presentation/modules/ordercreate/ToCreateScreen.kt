@@ -1,5 +1,7 @@
 package com.d365fo.mobileops.presentation.modules.ordercreate
 
+import androidx.compose.material.icons.outlined.QrCodeScanner
+import com.d365fo.mobileops.presentation.common.focus.FocusTask
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -209,7 +211,7 @@ fun ToCreateScreen(onBack: () -> Unit, onShip: () -> Unit, viewModel: ToCreateVi
     ) {
         BusyLine(state.busy)
         if (lastAdded == null) {
-            FocusCenter(caption = "New transfer", code = route, unitLine = "Ship date ${draft.shipDate}")
+            FocusCenter(task = FocusTask("Scan an item", "to add it to the transfer", androidx.compose.material.icons.Icons.Outlined.QrCodeScanner), caption = "New transfer", code = route, unitLine = "Ship date ${draft.shipDate}")
         } else {
             LastAddedCenter(lastAdded, onTap = { viewModel.editLine(lastAdded) })
         }

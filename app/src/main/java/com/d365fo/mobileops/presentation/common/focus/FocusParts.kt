@@ -1,6 +1,8 @@
 package com.d365fo.mobileops.presentation.common.focus
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.material.icons.outlined.QrCodeScanner
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -166,7 +168,17 @@ fun ColumnScope.FocusCenter(
     quantityColor: Color = FocusColors.navy,
     unitLine: String? = null,
     onQuantityTap: (() -> Unit)? = null,
+    /**
+     * What the worker has to do now, in two or three words ("Scan the batch"). When set, it is the
+     * biggest thing on screen (user, 17 Nov 2026: "I am not able to immediately identify what has
+     * to be done") and what was already entered drops into a small card under it.
+     */
+    task: FocusTask? = null,
 ) {
+    if (task != null) {
+        TaskCenter(task, caption, code, modifier, description, quantity, quantityColor, unitLine, onQuantityTap)
+        return
+    }
     // Centred in the space left, and scrollable when the largest text size makes it taller than
     // that space - the 96sp number at 130% must never be cut (brief section 14).
     androidx.compose.foundation.layout.BoxWithConstraints(
@@ -236,6 +248,97 @@ fun ColumnScope.FocusCenter(
             }
         }
     }
+    }
+}
+
+/** The task box's words: [title] says what to do, [detail] where or which, [done] turns it green. */
+data class FocusTask(
+    val title: String,
+    val detail: String? = null,
+    val icon: ImageVector = androidx.compose.material.icons.Icons.Outlined.QrCodeScanner,
+    val done: Boolean = false,
+)
+
+@Composable
+private fun ColumnScope.TaskCenter(
+    task: FocusTask,
+    caption: String,
+    code: String,
+    modifier: Modifier,
+    description: String?,
+    quantity: String?,
+    quantityColor: Color,
+    unitLine: String?,
+    onQuantityTap: (() -> Unit)?,
+) {
+    val boxBg = if (task.done) FocusColors.okBg else FocusColors.taskBg
+    val iconTint = if (task.done) FocusColors.okIcon else FocusColors.action
+    val detailColor = if (task.done) FocusColors.okText else FocusColors.taskText
+    Column(
+        modifier = modifier
+            .weight(1f)
+            .fillMaxWidth()
+            .verticalScroll(androidx.compose.foundation.rememberScrollState())
+            .padding(horizontal = FocusDimens.side, vertical = 8.dp),
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(FocusShapes.band)
+                .background(boxBg)
+                .semantics { liveRegion = LiveRegionMode.Polite }
+                .padding(horizontal = 16.dp, vertical = 20.dp),
+        ) {
+            Icon(task.icon, contentDescription = null, tint = iconTint, modifier = Modifier.size(34.dp))
+            Text(
+                task.title,
+                style = FocusType.taskTitle,
+                color = FocusColors.navy,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(top = 6.dp),
+            )
+            task.detail?.takeIf { it.isNotBlank() }?.let {
+                Text(it, style = FocusType.bandDetail, color = detailColor, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 4.dp))
+            }
+        }
+        // What is already known: one quiet card, the code on the left and the number on the right.
+        val hasCard = code.isNotBlank() || !description.isNullOrBlank() || quantity != null || !unitLine.isNullOrBlank()
+        if (hasCard) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .padding(top = 12.dp)
+                    .fillMaxWidth()
+                    .clip(FocusShapes.band)
+                    .background(FocusColors.surface)
+                    .border(1.dp, FocusColors.divider, FocusShapes.band)
+                    .then(if (onQuantityTap != null) Modifier.clickable(role = Role.Button, onClickLabel = "Change quantity", onClick = onQuantityTap) else Modifier)
+                    .padding(horizontal = 14.dp, vertical = 12.dp),
+            ) {
+                Column(Modifier.weight(1f)) {
+                    if (caption.isNotBlank()) FocusCaption(caption)
+                    if (code.isNotBlank()) {
+                        Text(code.breakAfterHyphens(), style = FocusType.rowCode, color = FocusColors.ink)
+                    }
+                    description?.takeIf { it.isNotBlank() }?.let {
+                        Text(it, style = FocusType.rowDetail, color = FocusColors.inkSoft)
+                    }
+                    // The unit line stays on the left, under the name: on the right it squeezed the
+                    // code into "DM- / 1002" on a phone.
+                    val unit = listOfNotNull(
+                        unitLine?.takeIf { it.isNotBlank() },
+                        "tap to change".takeIf { quantity != null && onQuantityTap != null },
+                    ).joinToString(" · ")
+                    if (unit.isNotEmpty()) {
+                        Text(unit, style = FocusType.rowDetail, color = FocusColors.caption, modifier = Modifier.padding(top = 2.dp))
+                    }
+                }
+                if (quantity != null) {
+                    Text(quantity, style = FocusType.rowCount, color = quantityColor, textAlign = TextAlign.End, modifier = Modifier.padding(start = 12.dp))
+                }
+            }
+        }
     }
 }
 

@@ -1,5 +1,7 @@
 package com.d365fo.mobileops.presentation.modules.ordercreate
 
+import androidx.compose.material.icons.outlined.QrCodeScanner
+import com.d365fo.mobileops.presentation.common.focus.FocusTask
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
@@ -233,6 +235,7 @@ fun PoCreateScreen(
         BusyLine(busy)
         if (lastAdded == null) {
             FocusCenter(
+                task = FocusTask("Scan an item", "to add it to the order", androidx.compose.material.icons.Icons.Outlined.QrCodeScanner),
                 caption = "New order",
                 code = draft.vendorAccount,
                 description = draft.vendorName.takeIf { it.isNotBlank() },

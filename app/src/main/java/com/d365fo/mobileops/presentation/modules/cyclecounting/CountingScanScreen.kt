@@ -1,5 +1,10 @@
 package com.d365fo.mobileops.presentation.modules.cyclecounting
 
+import com.d365fo.mobileops.presentation.common.focus.FocusTask
+import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material.icons.outlined.QrCodeScanner
+import androidx.compose.material.icons.outlined.Dialpad
+import androidx.compose.material.icons.outlined.Place
 import androidx.compose.material.icons.automirrored.filled.ListAlt
 import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.MoreVert
@@ -311,6 +316,7 @@ private fun androidx.compose.foundation.layout.ColumnScope.CycleCountCenter(
     val prompt = state.prompt
     when {
         prompt != null -> FocusCenter(
+            task = FocusTask("Enter the count", "how many you see", androidx.compose.material.icons.Icons.Outlined.Dialpad),
             caption = state.currentBin?.let { "In $it" } ?: "Quantity",
             code = prompt.line.itemId,
             description = listOfNotNull(
@@ -320,21 +326,29 @@ private fun androidx.compose.foundation.layout.ColumnScope.CycleCountCenter(
             quantity = prompt.initial.ifEmpty { "–" },
         )
         choosingLocation -> FocusCenter(
+            task = FocusTask("Scan a location", "to count next", androidx.compose.material.icons.Icons.Outlined.Place),
             caption = "Location",
             code = "${state.locations.count { it.total > 0 && it.counted == it.total }} of ${state.locations.size}",
             description = "locations counted",
         )
         choosingBin -> FocusCenter(
+            task = FocusTask("Scan a bin", state.selectedLocation?.let { "in $it" }, androidx.compose.material.icons.Icons.Outlined.Place),
             caption = "Bin",
             code = "${state.locationCounted} of ${state.locationTotal}",
             description = "lines counted in ${state.selectedLocation.orEmpty()}".trim(),
         )
         state.selectedLocation != null -> FocusCenter(
+            task = FocusTask("Scan an item", "in ${state.selectedLocation}", androidx.compose.material.icons.Icons.Outlined.QrCodeScanner),
             caption = "Counted",
             code = "${state.locationCounted} of ${state.locationTotal}",
             description = "lines in ${state.selectedLocation}",
         )
         else -> FocusCenter(
+            task = if (state.totalLines > 0 && state.counted >= state.totalLines) {
+                FocusTask("All lines counted", "send the count when ready", androidx.compose.material.icons.Icons.Outlined.CheckCircle, done = true)
+            } else {
+                FocusTask("Scan an item", "to count it", androidx.compose.material.icons.Icons.Outlined.QrCodeScanner)
+            },
             caption = "Counted",
             code = "${state.counted} of ${state.totalLines}",
             description = if (state.totalLines == 0) "This journal has no lines" else "lines",

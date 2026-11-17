@@ -454,6 +454,9 @@ object FocusColors {
     val navyDim = Color(0xFFDBEAFE)
     val navyText = Color(0xFFBFDBFE)
     val action = Color(0xFFEA6A12)
+    /** The task box (FocusTask): a light tint of [action], and its detail line. */
+    val taskBg = Color(0xFFFDF0E7)
+    val taskText = Color(0xFF8A4512)
 
     val okBg = Color(0xFFDCFCE7)
     val okIcon = Color(0xFF16A34A)
@@ -514,6 +517,8 @@ object FocusType {
     val topBarTitle get() = nunito(18f, FontWeight.Bold)
     val topBarCounter get() = nunito(17f, FontWeight.Bold)
     val bandTitle get() = nunito(19f, FontWeight.ExtraBold, line = 1.2f)
+    /** The task box's words - the biggest text on a flow screen (FocusTask). */
+    val taskTitle get() = nunito(28f, FontWeight.ExtraBold, line = 1.2f)
     val bandDetail get() = nunito(14f, FontWeight.SemiBold, line = 1.3f)
     val caption get() = nunito(14f, FontWeight.Bold, spacing = 1.4f)
     val code get() = code(50f)

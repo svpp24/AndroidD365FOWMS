@@ -1,5 +1,7 @@
 package com.d365fo.mobileops.presentation.modules.ordercreate
 
+import androidx.compose.material.icons.outlined.QrCodeScanner
+import com.d365fo.mobileops.presentation.common.focus.FocusTask
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -206,6 +208,7 @@ fun ReturnCreateScreen(onBack: () -> Unit, viewModel: ReturnCreateViewModel = hi
             choosingReason -> ReasonChoice(state, viewModel)
             lastAdded != null -> LastAddedCenter(lastAdded, onTap = { viewModel.editLine(lastAdded) })
             else -> FocusCenter(
+                task = FocusTask("Scan an item", "to add it to the return", androidx.compose.material.icons.Icons.Outlined.QrCodeScanner),
                 caption = "New return",
                 code = draft.vendorAccount,
                 description = draft.vendorName.takeIf { it.isNotBlank() },

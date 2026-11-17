@@ -1,5 +1,12 @@
 package com.d365fo.mobileops.presentation.modules.transfer
 
+import com.d365fo.mobileops.presentation.common.focus.FocusTask
+import androidx.compose.material.icons.outlined.ReceiptLong
+import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material.icons.outlined.QrCodeScanner
+import androidx.compose.material.icons.outlined.Dialpad
+import androidx.compose.material.icons.outlined.Place
+import androidx.compose.material.icons.outlined.CalendarMonth
 import com.d365fo.mobileops.presentation.common.focus.BandKind
 import com.d365fo.mobileops.presentation.common.focus.BandState
 import com.d365fo.mobileops.presentation.common.focus.FocusCenter
@@ -865,6 +872,7 @@ private fun androidx.compose.foundation.layout.ColumnScope.TransferCenter(state:
     val ship = mode == TransferMode.SHIP
     when (state.step) {
         TransferStep.TRANSFER_ORDER -> FocusCenter(
+            task = transferTask(state, mode),
             caption = if (ship) "Transfers to ship today" else "Transfers to receive today",
             code = state.todays.size.toString(),
         )
@@ -874,6 +882,7 @@ private fun androidx.compose.foundation.layout.ColumnScope.TransferCenter(state:
                 val lines = state.outstandingLineCount ?: state.order?.outstandingLineCount ?: 0
                 val units = state.openLines.takeIf { it.isNotEmpty() }?.fold(BigDecimal.ZERO) { sum, l -> sum + l.remainingQuantity }
                 FocusCenter(
+            task = transferTask(state, mode),
                     caption = if (ship) "To pick" else "To receive",
                     code = when (lines) {
                         0 -> "Nothing left"
@@ -884,6 +893,7 @@ private fun androidx.compose.foundation.layout.ColumnScope.TransferCenter(state:
                 )
             } else {
                 FocusCenter(
+            task = transferTask(state, mode),
                     caption = if (ship) "Last picked" else "Last scanned",
                     code = last.itemId,
                     description = listOf(last.itemName, last.variantLabel).filter { it.isNotBlank() }.joinToString(" · "),
@@ -899,6 +909,7 @@ private fun androidx.compose.foundation.layout.ColumnScope.TransferCenter(state:
         else -> {
             val line = c.line
             FocusCenter(
+            task = transferTask(state, mode),
                 caption = when (state.step) {
                     TransferStep.QUANTITY -> "Quantity"
                     TransferStep.LOCATION -> "Location"
@@ -924,6 +935,32 @@ private fun androidx.compose.foundation.layout.ColumnScope.TransferCenter(state:
         }
     }
 }
+/** What to do now, for the task box - see ReceivingFlowScreen's receivingTask. */
+private fun transferTask(state: TransferFlowState, mode: TransferMode): com.d365fo.mobileops.presentation.common.focus.FocusTask {
+    val i = androidx.compose.material.icons.Icons.Outlined
+    val c = state.capture
+    val ship = mode == TransferMode.SHIP
+    val item = c.line?.itemId.orEmpty()
+    val T = ::FocusTask
+    return when (state.step) {
+        TransferStep.TRANSFER_ORDER -> T("Scan the transfer", if (ship) "on the pick list" else "on the delivery paperwork", i.ReceiptLong, false)
+        TransferStep.ITEM -> {
+            val last = state.captured.lastOrNull()
+            val lines = state.outstandingLineCount ?: state.order?.outstandingLineCount
+            when {
+                lines == 0 && state.captured.isEmpty() -> T(if (ship) "Nothing left to ship" else "Nothing left to receive", "on this transfer", i.CheckCircle, true)
+                last != null -> T(if (ship) "Pick the next item" else "Scan the next item", "${last.itemId} · ${plain(last.quantity)} ${last.unitSymbol} saved".trim(), i.QrCodeScanner, true)
+                else -> T(if (ship) "Pick an item" else "Scan an item", if (ship) c.locationId?.let { "from $it" } else "from this delivery", i.QrCodeScanner, false)
+            }
+        }
+        TransferStep.QUANTITY -> T(if (ship) "How many did you pick?" else "Enter the quantity", c.line?.let { l -> "${plain(state.suggestedQuantity ?: l.remainingQuantity)} ${l.unitId} left" }, i.Dialpad, false)
+        TransferStep.LOCATION -> T("Scan the bin", if (ship) "you are picking from" else "where you put it away", i.Place, false)
+        TransferStep.BATCH -> T(if (ship) "Scan or choose the batch" else "Scan the batch", item.takeIf { it.isNotBlank() }?.let { "on the box of $it" }, i.QrCodeScanner, false)
+        TransferStep.SERIAL -> T("Scan the serial", c.serialsOutstanding.takeIf { it > 1 }?.let { "$it to go" }, i.QrCodeScanner, false)
+        TransferStep.CONFIRM -> T(if (ship) "Pick the next item" else "Scan the next item", null, i.CheckCircle, true)
+    }
+}
+
 private fun titleFor(step: TransferStep, mode: TransferMode): String = when (step) {
     TransferStep.TRANSFER_ORDER -> if (mode == TransferMode.SHIP) "Ship" else "Receive"
     TransferStep.ITEM -> "Item"

@@ -1,5 +1,7 @@
 package com.d365fo.mobileops.presentation.modules.ordercreate
 
+import androidx.compose.material.icons.outlined.QrCodeScanner
+import com.d365fo.mobileops.presentation.common.focus.FocusTask
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -79,6 +81,7 @@ internal fun rememberLastAdded(lines: List<DraftLine>): DraftLine? {
 @Composable
 internal fun ColumnScope.LastAddedCenter(line: DraftLine, onTap: () -> Unit) {
     FocusCenter(
+        task = FocusTask("Scan the next item", "${line.itemId} added", androidx.compose.material.icons.Icons.Outlined.QrCodeScanner, done = true),
         caption = "Last added",
         code = line.itemId,
         description = listOfNotNull(

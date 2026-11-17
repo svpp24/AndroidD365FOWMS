@@ -1,5 +1,11 @@
 package com.d365fo.mobileops.presentation.modules.cyclecounting.store
 
+import com.d365fo.mobileops.presentation.common.focus.FocusTask
+import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material.icons.outlined.QrCodeScanner
+import androidx.compose.material.icons.outlined.Dialpad
+import androidx.compose.material.icons.outlined.Place
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.automirrored.filled.ListAlt
@@ -969,11 +975,18 @@ private fun androidx.compose.foundation.layout.ColumnScope.StoreCountCenter(stat
     when {
         state.ended -> FocusCenter(caption = state.title, code = "Ended", description = state.countId.ifBlank { state.warehouseId })
         !counting || draft == null -> FocusCenter(
+            // Only when there is no count: the New count button below is the way on.
+            task = if (state.countId.isBlank()) FocusTask("Start a count", "with New count below", androidx.compose.material.icons.Icons.Outlined.Add) else null,
             caption = state.title,
             code = state.countId.ifBlank { state.warehouseId ?: "–" },
             description = if (state.countId.isBlank()) "No count open" else "Not started on this device",
         )
         pending != null && !pending.needsVariant -> FocusCenter(
+            task = when {
+                pending.needsBatch -> FocusTask("Scan the batch", "on the box of ${pending.item.itemId}", androidx.compose.material.icons.Icons.Outlined.QrCodeScanner)
+                pending.needsSerial -> FocusTask("Scan the serial", "on ${pending.item.itemId}", androidx.compose.material.icons.Icons.Outlined.QrCodeScanner)
+                else -> FocusTask("Enter the count", "how many you see", androidx.compose.material.icons.Icons.Outlined.Dialpad)
+            },
             caption = when {
                 pending.needsBatch -> "Batch"
                 pending.needsSerial -> "Serial"
@@ -991,6 +1004,7 @@ private fun androidx.compose.foundation.layout.ColumnScope.StoreCountCenter(stat
         state.needsLocation -> {
             val places = draft.lines.map { it.locationId.uppercase() }.distinct().size
             FocusCenter(
+                task = FocusTask("Scan the location", "you are counting", androidx.compose.material.icons.Icons.Outlined.Place),
                 caption = "Location",
                 code = if (places == 1) "1 location" else "$places locations",
                 description = "counted · ${linesText(draft.lines.size)}",
@@ -1000,6 +1014,7 @@ private fun androidx.compose.foundation.layout.ColumnScope.StoreCountCenter(stat
             val bins = draft.lines.filter { it.locationId.equals(state.locationId, ignoreCase = true) && it.binId.isNotBlank() }
                 .map { it.binId.uppercase() }.distinct().size
             FocusCenter(
+                task = FocusTask("Scan the bin", "in ${state.locationId}", androidx.compose.material.icons.Icons.Outlined.Place),
                 caption = "Bin",
                 code = if (bins == 1) "1 bin" else "$bins bins",
                 description = "counted in ${state.locationId}",
@@ -1010,9 +1025,10 @@ private fun androidx.compose.foundation.layout.ColumnScope.StoreCountCenter(stat
                 it.locationId.equals(state.locationId, ignoreCase = true) && it.binId.equals(state.binId, ignoreCase = true)
             }
             if (last == null) {
-                FocusCenter(caption = "Counted here", code = linesText(0))
+                FocusCenter(task = FocusTask("Scan an item", "to count it", androidx.compose.material.icons.Icons.Outlined.QrCodeScanner), caption = "Counted here", code = linesText(0))
             } else {
                 FocusCenter(
+                    task = FocusTask("Scan the next item", "${last.itemId} counted", androidx.compose.material.icons.Icons.Outlined.QrCodeScanner, done = true),
                     caption = "Last counted",
                     code = last.itemId,
                     description = listOfNotNull(
