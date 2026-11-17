@@ -233,13 +233,23 @@ private fun ToDialogs(state: ToCreateState, viewModel: ToCreateViewModel) {
                     pending.variant?.label.orEmpty(),
                     pending.pick?.batchId?.takeIf { it.isNotBlank() }?.let { "Batch $it" }.orEmpty(),
                     pending.pick?.serialId?.takeIf { it.isNotBlank() }?.let { "Serial $it" }.orEmpty(),
-                    pending.item.inventUnit,
+                    pending.unit.ifBlank { pending.item.inventUnit },
                 ).filter { it.isNotBlank() }.joinToString(" · "),
                 initial = if (pending.pick?.serialId?.isNotBlank() == true) 1.0 else null,
                 rules = viewModel.quantityRules(pending),
                 confirmLabel = "Add line",
                 onConfirm = viewModel::addLine,
                 onDismiss = viewModel::cancelPending,
+                // The unit to type the quantity in (user, 17 Nov 2026) - converted to the
+                // inventory unit for the line, as Ship and Receive convert. Not for a serial.
+                top = if (pending.units.size > 1 && pending.pick?.serialId.isNullOrBlank()) ({
+                    com.d365fo.mobileops.presentation.common.components.UnitChips(
+                        units = pending.units,
+                        lineUnit = pending.item.inventUnit,
+                        selected = pending.unit.ifBlank { pending.item.inventUnit },
+                        onSelect = viewModel::setUnit,
+                    )
+                }) else null,
             )
         }
     }

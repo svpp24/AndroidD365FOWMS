@@ -36,6 +36,10 @@ data class PendingTransferLine(
     val pick: StockRow? = null,
     /** Choosing a batch / serial from [stock]. */
     val choosingStock: Boolean = false,
+    /** The unit the quantity is typed in (user, 17 Nov 2026); blank = the inventory unit. */
+    val unit: String = "",
+    /** The item's units, 1 unit = factor inventory units; the line itself is in the inventory unit. */
+    val units: List<com.d365fo.mobileops.domain.model.ItemUnit> = emptyList(),
 )
 
 data class ToCreateState(
@@ -71,6 +75,7 @@ class ToCreateViewModel @Inject constructor(
     private val scanFeedback: com.d365fo.mobileops.presentation.common.scan.ScanFeedback,
     private val pendingFlowResume: com.d365fo.mobileops.data.repository.PendingFlowResume,
     private val transferList: com.d365fo.mobileops.data.repository.TransferListRepository,
+    private val itemUnits: com.d365fo.mobileops.data.repository.ItemUnitRepository,
     syncStatusProvider: SyncStatusProvider,
 ) : ViewModel() {
 
@@ -205,17 +210,64 @@ class ToCreateViewModel @Inject constructor(
 
     fun cancelPending() = _state.update { it.copy(choosingVariant = null, pending = null, enteringQty = false) }
 
-    /** What the quantity may be: the stock picked (or all of it), when D365FO could be asked. */
+    init {
+        // A new quantity step: the item's units for the unit chips (17 Nov 2026).
+        viewModelScope.launch {
+            var lastKey: String? = null
+            state.collect { st ->
+                val p = st.pending
+                val key = p?.takeIf { st.enteringQty }?.let { it.item.itemId + "|" + it.variant }
+                if (key != null && key != lastKey && p != null && p.units.isEmpty()) loadUnits(p)
+                lastKey = key
+            }
+        }
+    }
+
+    private fun loadUnits(pending: PendingTransferLine) {
+        val v = pending.variant ?: OrderVariant()
+        viewModelScope.launch {
+            val units = runCatching {
+                itemUnits.unitsFor(
+                    pending.item.itemId,
+                    com.d365fo.mobileops.domain.model.ProductVariant(
+                        v.configId.ifBlank { null }, v.sizeId.ifBlank { null }, v.colorId.ifBlank { null }, v.styleId.ifBlank { null },
+                    ),
+                    emptyList(),
+                )
+            }.getOrDefault(emptyList())
+            _state.update { s ->
+                val p = s.pending
+                if (p == null || p.item.itemId != pending.item.itemId) s else s.copy(pending = p.copy(units = units))
+            }
+        }
+    }
+
+    /** The unit chosen for the quantity being typed. */
+    fun setUnit(unit: String) = _state.update { s -> s.copy(pending = s.pending?.copy(unit = unit)) }
+
+    /** 1 [unit] = factor inventory units; 1 for the inventory unit or an unknown one. */
+    private fun factorOf(pending: PendingTransferLine): java.math.BigDecimal {
+        val u = pending.unit
+        if (u.isBlank() || u.equals(pending.item.inventUnit, ignoreCase = true)) return java.math.BigDecimal.ONE
+        return pending.units.firstOrNull { it.unitId.equals(u, ignoreCase = true) }?.factor ?: java.math.BigDecimal.ONE
+    }
+
+    /** What the quantity may be: the stock picked (or all of it), when D365FO could be asked - in the unit typed. */
     fun quantityRules(pending: PendingTransferLine): QuantityRules {
         val available = if (pending.item.negativePhysical) null else pending.pick?.available ?: pending.stock?.sumOf { it.available }
         val alreadyOnOrder = _state.value.draft.lines
             .filter { it.itemId == pending.item.itemId && it.variant == pending.variant && it.batchId == pending.pick?.batchId.orEmpty() && it.serialId == pending.pick?.serialId.orEmpty() }
             .sumOf { it.qty }
-        return QuantityRules(available = available?.let { (it - alreadyOnOrder).coerceAtLeast(0.0) })
+        val factor = factorOf(pending).toDouble().takeIf { it > 0 } ?: 1.0
+        return QuantityRules(available = available?.let { ((it - alreadyOnOrder).coerceAtLeast(0.0) / factor) })
     }
 
-    fun addLine(qty: Double) {
+    fun addLine(entered: Double) {
         val pending = _state.value.pending ?: return
+        // A transfer line is in the inventory unit: what was typed in another unit is converted.
+        val decimals = pending.units.firstOrNull { it.unitId.equals(pending.item.inventUnit, ignoreCase = true) }?.decimals ?: 6
+        val qty = java.math.BigDecimal.valueOf(entered).multiply(factorOf(pending))
+            .setScale(decimals.coerceAtLeast(0), java.math.RoundingMode.HALF_UP).toDouble()
         val line = DraftLine(
             itemId = pending.item.itemId,
             itemName = pending.item.itemName,
