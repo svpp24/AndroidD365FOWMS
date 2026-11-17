@@ -151,7 +151,14 @@ class ToCreateViewModel @Inject constructor(
         if (!s.routeChosen || s.busy || s.pending != null || s.choosingVariant != null) return
         viewModelScope.launch {
             _state.update { it.copy(busy = true, error = null) }
-            when (val result = repository.findItem(code, _state.value.draft.fromWarehouseId)) {
+            // The stock at From asked at the same time as the item (17 Nov 2026, speed) when the
+            // device already knows the item and it has no variants - the usual case.
+            val from = _state.value.draft.fromWarehouseId
+            val known = (repository.findItem(code, from, offline = true) as? NetworkResult.Success)?.data
+            if (online.value && known != null && !known.hasProductDimensions) {
+                launch { repository.stock(known.itemId, OrderVariant(), from) }
+            }
+            when (val result = repository.findItem(code, from)) {
                 is NetworkResult.Success -> {
                     val item = result.data
                     val scanned = item.scannedVariant

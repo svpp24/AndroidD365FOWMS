@@ -236,6 +236,7 @@ class OrderCreationRepository @Inject constructor(
     /** Sends outlive the screen that queued them - see [queueAndSend]. */
     private val applicationScope: kotlinx.coroutines.CoroutineScope,
     @dagger.hilt.android.qualifiers.ApplicationContext private val appContext: android.content.Context,
+    private val listCache: ListCache,
 ) {
     private fun company(): String = companyProvider().orEmpty()
 
@@ -597,12 +598,18 @@ class OrderCreationRepository @Inject constructor(
                 groupByLocation = byLocation,
             ),
         )
-        return when (val result = errorMapper.safeCall { api.getStock(request) }) {
-            is NetworkResult.Success -> NetworkResult.Success(result.data.lines.map {
-                StockRow(it.batchId, it.serialId, it.available, it.locationId, runCatching { java.time.LocalDate.parse(it.expiryDate) }.getOrNull())
-            })
-            is NetworkResult.Error -> result
-            NetworkResult.Loading -> NetworkResult.Error(AppFailure.Fatal("unexpected Loading"))
+        // Kept a minute (17 Nov 2026, speed): the same stock was asked for per serial scan, for
+        // the batch list and for TO creation. Any posting clears it (ListCache).
+        val key = "stock:${company().lowercase()}:${warehouseId.uppercase()}:${itemId.uppercase()}:" +
+            "${variant.configId}|${variant.sizeId}|${variant.colorId}|${variant.styleId}:$byLocation"
+        return listCache.get(key, ttlMs = 60_000L) {
+            when (val result = errorMapper.safeCall { api.getStock(request) }) {
+                is NetworkResult.Success -> NetworkResult.Success(result.data.lines.map {
+                    StockRow(it.batchId, it.serialId, it.available, it.locationId, runCatching { java.time.LocalDate.parse(it.expiryDate) }.getOrNull())
+                })
+                is NetworkResult.Error -> result
+                NetworkResult.Loading -> NetworkResult.Error(AppFailure.Fatal("unexpected Loading"))
+            }
         }
     }
 

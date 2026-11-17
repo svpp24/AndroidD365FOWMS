@@ -179,7 +179,14 @@ class CachedLookupRepository @Inject constructor(
     override suspend fun lookupLocation(
         warehouseId: String,
         locationId: String,
-    ): NetworkResult<LocationFacts?> = network.lookupLocation(warehouseId, locationId)
+    ): NetworkResult<LocationFacts?> {
+        // A found location kept 15 minutes (17 Nov 2026, speed); a miss is asked again.
+        val key = "location:${warehouseId.trim().uppercase()}:${locationId.trim().uppercase()}"
+        listCache.peek<LocationFacts>(key, maxAgeMs = 15 * 60_000L)?.let { return NetworkResult.Success(it) }
+        val result = network.lookupLocation(warehouseId, locationId)
+        if (result is NetworkResult.Success && result.data != null) listCache.get(key, ttlMs = 15 * 60_000L) { NetworkResult.Success(result.data) }
+        return result
+    }
 
     override suspend fun lookupOnHand(
         itemNumber: String,
