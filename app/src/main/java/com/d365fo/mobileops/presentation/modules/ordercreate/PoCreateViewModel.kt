@@ -192,7 +192,10 @@ class PoCreateViewModel @Inject constructor(
         val vendor = _state.value.draft.vendorAccount.takeIf { it.isNotBlank() } ?: return
         vendorItemsJob?.cancel()
         vendorItemsJob = viewModelScope.launch {
-            _state.update { it.copy(loadingVendorItems = true, vendorItemsError = null) }
+            // The list saved on the device first (it took a minute for a 16,000-item vendor), then
+            // D365FO's answer replaces it (17 Nov 2026).
+            val saved = repository.savedVendorItems(vendor)
+            _state.update { it.copy(loadingVendorItems = true, vendorItemsError = null, vendorItems = saved ?: it.vendorItems) }
             val result = repository.vendorItems(vendor) { page ->
                 if (_state.value.draft.vendorAccount == vendor) _state.update { it.copy(vendorItems = page) }
             }
@@ -200,7 +203,8 @@ class PoCreateViewModel @Inject constructor(
             _state.update {
                 when (result) {
                     is NetworkResult.Success -> it.copy(loadingVendorItems = false, vendorItems = result.data)
-                    is NetworkResult.Error -> it.copy(loadingVendorItems = false, vendorItemsError = result.failure.message)
+                    // With a saved list on screen, a failed refresh keeps it.
+                    is NetworkResult.Error -> it.copy(loadingVendorItems = false, vendorItemsError = if (saved != null) null else result.failure.message)
                     NetworkResult.Loading -> it
                 }
             }
@@ -220,7 +224,34 @@ class PoCreateViewModel @Inject constructor(
         if (current.draft.vendorAccount.isBlank() || current.busy || current.enteringQty != null || current.choosingVariant != null) return
         viewModelScope.launch {
             _state.update { it.copy(busy = true, error = null) }
-            when (val result = repository.findItem(code)) {
+            // The item from the device first, so the quantity opens at once (17 Nov 2026: create PO
+            // waited for D365FO on every new item); D365FO's order details follow and replace it.
+            val onDevice = repository.findItem(code, offline = true)
+            val result = if (onDevice is NetworkResult.Success) onDevice else repository.findItem(code)
+            if (onDevice is NetworkResult.Success) {
+                launch {
+                    val full = repository.findItem(code)
+                    // D365FO refused the item (stopped for purchase, say): the quantity step closes with its reason.
+                    if (full is NetworkResult.Error && !full.failure.retryable) {
+                        _state.update { s ->
+                            if (s.enteringQty?.item?.itemId?.equals(onDevice.data.itemId, true) == true || s.choosingVariant?.itemId == onDevice.data.itemId) {
+                                s.copy(enteringQty = null, choosingVariant = null, error = itemError(code, full.failure.message))
+                            } else s
+                        }
+                    }
+                    if (full is NetworkResult.Success) {
+                        _state.update { s ->
+                            val p = s.enteringQty
+                            when {
+                                p != null && p.item.itemId == full.data.itemId -> s.copy(enteringQty = p.copy(item = full.data))
+                                s.choosingVariant?.itemId == full.data.itemId -> s.copy(choosingVariant = full.data)
+                                else -> s
+                            }
+                        }
+                    }
+                }
+            }
+            when (result) {
                 is NetworkResult.Success -> {
                     val item = result.data
                     val scanned = item.scannedVariant

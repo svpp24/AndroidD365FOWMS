@@ -210,6 +210,7 @@ data class PurchaseOrderLine(
 data class PurchaseOrderDetail(val summary: PurchaseOrderSummary, val lines: List<PurchaseOrderLine>)
 
 /** An item a vendor is approved for - Create PO's Items list. */
+@kotlinx.serialization.Serializable
 data class VendorItem(val itemId: String, val name: String, val unit: String)
 
 /**
@@ -305,7 +306,7 @@ class OrderCreationRepository @Inject constructor(
     private data class CheckRules(val savedAt: Long = 0L, val mode: String = "", val items: Set<String> = emptySet())
 
     @kotlinx.serialization.Serializable
-    private data class VendorApproved(val savedAt: Long = 0L, val items: Set<String> = emptySet())
+    private data class VendorApproved(val savedAt: Long = 0L, val items: Set<String> = emptySet(), val list: List<VendorItem> = emptyList())
 
     @Volatile private var rules: CheckRules? = null
     private val approvedByVendor = java.util.concurrent.ConcurrentHashMap<String, VendorApproved>()
@@ -359,10 +360,13 @@ class OrderCreationRepository @Inject constructor(
 
     /** Keeps the vendor's approved items (the Items list) on the device, for the scan check. */
     private fun keepApproved(vendor: String, items: List<VendorItem>) {
-        val v = VendorApproved(System.currentTimeMillis(), items.map { it.itemId.uppercase() }.toSet())
+        val v = VendorApproved(System.currentTimeMillis(), items.map { it.itemId.uppercase() }.toSet(), items)
         approvedByVendor[vendor.uppercase()] = v
         runCatching { approvedFile(vendor).writeText(json.encodeToString(VendorApproved.serializer(), v)) }
     }
+
+    /** The vendor's Items list as last saved on the device - shown at once while D365FO is asked (17 Nov 2026). */
+    fun savedVendorItems(vendorAccount: String): List<VendorItem>? = approvedFor(vendorAccount)?.list?.takeIf { it.isNotEmpty() }
 
     /**
      * Whether [vendorAccount] may supply [itemId], from what is on the device: true when the item's
