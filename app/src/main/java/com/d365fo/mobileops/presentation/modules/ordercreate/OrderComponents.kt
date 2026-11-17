@@ -378,6 +378,8 @@ fun NumberDialog(
     onRemove: (() -> Unit)? = null,
     extraLabel: String? = null,
     onExtra: (() -> Unit)? = null,
+    /** Under the keypad, above the extra button - the unit choice (PO creation). */
+    top: (@Composable () -> Unit)? = null,
 ) {
     // The shared picker (QuantityPicker) - the same on every screen.
     com.d365fo.mobileops.presentation.common.components.QuantityPicker(
@@ -396,8 +398,9 @@ fun NumberDialog(
         },
         onConfirm = { text -> text.toDoubleOrNull()?.let(onConfirm) },
         onDismiss = onDismiss,
-        extras = if (extraLabel != null && onExtra != null) ({
-            SquareTextButtonCompat(extraLabel, onExtra)
+        extras = if (top != null || (extraLabel != null && onExtra != null)) ({
+            top?.invoke()
+            if (extraLabel != null && onExtra != null) SquareTextButtonCompat(extraLabel, onExtra)
         }) else null,
         removeLabel = "Remove this line".takeIf { onRemove != null },
         onRemove = onRemove,

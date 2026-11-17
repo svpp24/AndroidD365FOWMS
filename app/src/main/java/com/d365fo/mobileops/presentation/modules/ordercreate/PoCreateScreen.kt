@@ -256,6 +256,7 @@ internal fun poBand(state: PoCreateState, lastAdded: com.d365fo.mobileops.data.r
 
 /** The quantity, price and variant steps - unchanged: the item's order rules are checked as before. */
 @Composable
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 private fun PoDialogs(state: PoCreateState, viewModel: PoCreateViewModel, online: Boolean) {
     state.choosingVariant?.let { item ->
         VariantPickerDialog(item = item, onPick = viewModel::pickVariant, onDismiss = viewModel::cancelPending)
@@ -263,12 +264,28 @@ private fun PoDialogs(state: PoCreateState, viewModel: PoCreateViewModel, online
     state.enteringQty?.let { pending ->
         NumberDialog(
             title = "Quantity",
-            subtitle = listOf(pending.item.itemId, pending.variant?.label.orEmpty(), pending.item.purchUnit).filter { it.isNotBlank() }.joinToString(" · "),
-            initial = pending.item.standardQty.takeIf { it > 0 },
-            rules = viewModel.quantityRules(pending.item),
+            subtitle = listOf(pending.item.itemId, pending.variant?.label.orEmpty(), pending.unit.ifBlank { pending.item.purchUnit }).filter { it.isNotBlank() }.joinToString(" · "),
+            initial = pending.item.standardQty.takeIf { it > 0 && (pending.unit.isBlank() || pending.unit.equals(pending.item.purchUnit, true)) },
+            rules = viewModel.quantityRulesFor(pending),
             confirmLabel = "Add line",
             onConfirm = viewModel::addLine,
             onDismiss = viewModel::cancelPending,
+            // The unit to order in (user, 17 Nov 2026) - the purchase unit is chosen to start with.
+            top = if (pending.units.size > 1) ({
+                androidx.compose.foundation.layout.FlowRow(
+                    horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp),
+                    verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                ) {
+                    pending.units.forEach { u ->
+                        com.d365fo.mobileops.presentation.common.focus.FocusChip(
+                            u,
+                            selected = u.equals(pending.unit, ignoreCase = true),
+                            onClick = { viewModel.setUnit(u) },
+                        )
+                    }
+                }
+            }) else null,
         )
     }
     state.editing?.let { line ->

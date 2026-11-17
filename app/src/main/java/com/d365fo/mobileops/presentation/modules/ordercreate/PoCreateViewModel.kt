@@ -30,7 +30,14 @@ import kotlinx.coroutines.withTimeoutOrNull
 import javax.inject.Inject
 
 /** A line waiting for its variant, then its quantity. */
-data class PendingLine(val item: OrderItem, val variant: OrderVariant? = null)
+data class PendingLine(
+    val item: OrderItem,
+    val variant: OrderVariant? = null,
+    /** The unit the quantity is in (user, 17 Nov 2026: no way to choose it); blank = purchase unit. */
+    val unit: String = "",
+    /** The units the item can be ordered in: its own first, then those it converts to. */
+    val units: List<String> = emptyList(),
+)
 
 data class PoCreateState(
     val draft: PurchaseDraft = PurchaseDraft(),
@@ -71,6 +78,7 @@ class PoCreateViewModel @Inject constructor(
     private val scannerBridge: HidScannerBridge,
     private val scanFeedback: com.d365fo.mobileops.presentation.common.scan.ScanFeedback,
     private val syncStatusProvider: SyncStatusProvider,
+    private val itemUnits: com.d365fo.mobileops.data.repository.ItemUnitRepository,
     permissionDao: com.d365fo.mobileops.data.local.dao.PermissionDao,
 ) : ViewModel() {
 
@@ -237,9 +245,54 @@ class PoCreateViewModel @Inject constructor(
         _state.update { it.copy(choosingVariant = null, enteringQty = PendingLine(item, variant)) }
     }
 
+    init {
+        // A new quantity step (scan, variant picked, items list): its units.
+        viewModelScope.launch {
+            var last: PendingLine? = null
+            state.collect { st ->
+                val p = st.enteringQty
+                if (p != null && (last == null || last!!.item.itemId != p.item.itemId || last!!.variant != p.variant) && p.units.isEmpty()) loadUnits(p)
+                last = p
+            }
+        }
+    }
+
     fun cancelPending() = _state.update { it.copy(choosingVariant = null, enteringQty = null) }
 
+    /** The unit chosen for the quantity being entered. */
+    fun setUnit(unit: String) = _state.update { s -> s.copy(enteringQty = s.enteringQty?.copy(unit = unit)) }
+
+    /** The item's units for the quantity step: its purchase and inventory unit at once, the others when D365FO answers. */
+    private fun loadUnits(pending: PendingLine) {
+        val item = pending.item
+        val own = listOf(item.purchUnit, item.inventUnit).filter { it.isNotBlank() }.distinctBy { it.uppercase() }
+        _state.update { s -> s.copy(enteringQty = s.enteringQty?.copy(units = own, unit = s.enteringQty.unit.ifBlank { own.firstOrNull().orEmpty() })) }
+        viewModelScope.launch {
+            val v = pending.variant ?: OrderVariant()
+            val converted = runCatching {
+                itemUnits.unitsFor(
+                    item.itemId,
+                    com.d365fo.mobileops.domain.model.ProductVariant(
+                        v.configId.ifBlank { null }, v.sizeId.ifBlank { null }, v.colorId.ifBlank { null }, v.styleId.ifBlank { null },
+                    ),
+                    emptyList(),
+                ).map { it.unitId }
+            }.getOrDefault(emptyList())
+            _state.update { s ->
+                val p = s.enteringQty
+                if (p == null || p.item.itemId != item.itemId) s
+                else s.copy(enteringQty = p.copy(units = (p.units + converted).filter { it.isNotBlank() }.distinctBy { it.uppercase() }))
+            }
+        }
+    }
+
     fun quantityRules(item: OrderItem) = QuantityRules(min = item.minQty, max = item.maxQty, multiple = item.multipleQty)
+
+    /** The order rules are in the purchase unit: checked only when the quantity is in it; D365FO checks the rest. */
+    fun quantityRulesFor(pending: PendingLine): QuantityRules? {
+        val purch = pending.item.purchUnit.ifBlank { pending.item.inventUnit }
+        return if (pending.unit.isBlank() || pending.unit.equals(purch, ignoreCase = true)) quantityRules(pending.item) else null
+    }
 
     fun addLine(qty: Double) {
         val pending = _state.value.enteringQty ?: return
@@ -250,12 +303,14 @@ class PoCreateViewModel @Inject constructor(
             itemName = item.itemName,
             variant = variant,
             qty = qty,
-            unitId = item.purchUnit.ifBlank { item.inventUnit },
+            unitId = pending.unit.ifBlank { item.purchUnit.ifBlank { item.inventUnit } },
         )
         _state.update { it.copy(enteringQty = null) }
         updateDraft { draft ->
             // The same item and variant again adds to its line rather than making a second one.
-            val same = draft.lines.indexOfFirst { it.itemId == line.itemId && it.variant == line.variant && !it.priceOverride }
+            val same = draft.lines.indexOfFirst {
+                it.itemId == line.itemId && it.variant == line.variant && it.unitId.equals(line.unitId, ignoreCase = true) && !it.priceOverride
+            }
             if (same >= 0) {
                 draft.copy(lines = draft.lines.mapIndexed { i, l -> if (i == same) l.copy(qty = l.qty + qty, price = null, lineAmount = null) else l })
             } else {
