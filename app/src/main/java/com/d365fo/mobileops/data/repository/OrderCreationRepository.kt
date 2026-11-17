@@ -300,40 +300,50 @@ class OrderCreationRepository @Inject constructor(
 
     // -- Approved vendor rules, kept on the device (user, 17 Nov 2026) ------------------------
 
+    /** [mode] UNCHECKED: [items] have the approved-vendor check off, all others on; CHECKED: the reverse. */
     @kotlinx.serialization.Serializable
-    private data class ApprovedRules(val savedAt: Long = 0L, val items: Map<String, List<String>> = emptyMap())
+    private data class CheckRules(val savedAt: Long = 0L, val mode: String = "", val items: Set<String> = emptySet())
 
-    @Volatile private var rules: ApprovedRules? = null
+    @kotlinx.serialization.Serializable
+    private data class VendorApproved(val savedAt: Long = 0L, val items: Set<String> = emptySet())
 
-    private fun rulesFile() = java.io.File(appContext.filesDir, "approved_vendor_rules_${company().lowercase()}.json")
+    @Volatile private var rules: CheckRules? = null
+    private val approvedByVendor = java.util.concurrent.ConcurrentHashMap<String, VendorApproved>()
 
-    private fun loadRules(): ApprovedRules? = rules ?: runCatching {
-        rulesFile().takeIf { it.exists() }?.readText()?.let { json.decodeFromString(ApprovedRules.serializer(), it) }
+    private fun rulesFile() = java.io.File(appContext.filesDir, "vendor_check_rules_${company().lowercase()}.json")
+    private fun approvedFile(vendor: String) =
+        java.io.File(appContext.filesDir, "vendor_approved_${company().lowercase()}_${vendor.lowercase().replace(Regex("[^a-z0-9_-]"), "_")}.json")
+
+    private fun loadRules(): CheckRules? = rules ?: runCatching {
+        rulesFile().takeIf { it.exists() }?.readText()?.let { json.decodeFromString(CheckRules.serializer(), it) }
     }.getOrNull()?.also { rules = it }
 
+    private fun approvedFor(vendor: String): VendorApproved? = approvedByVendor[vendor.uppercase()] ?: runCatching {
+        approvedFile(vendor).takeIf { it.exists() }?.readText()?.let { json.decodeFromString(VendorApproved.serializer(), it) }
+    }.getOrNull()?.also { approvedByVendor[vendor.uppercase()] = it }
+
     /**
-     * Downloads the items whose approved-vendor check is on, with their vendors approved today,
-     * and keeps them in a file - with the vendors, at most every [maxAgeMs]. Never fails anything.
+     * Which items need an approved vendor, as the shorter list D365FO sends (see
+     * listApprovedVendorRules), kept in a file - with the vendors, at most every [maxAgeMs].
      */
     suspend fun refreshApprovedRules(force: Boolean = false, maxAgeMs: Long = 6 * 60 * 60 * 1000L): NetworkResult<Int> {
         val saved = loadRules()
         if (!force && saved != null && System.currentTimeMillis() - saved.savedAt < maxAgeMs) return NetworkResult.Success(saved.items.size)
-        val items = LinkedHashMap<String, MutableList<String>>()
+        val items = HashSet<String>()
         var after = ""
+        var mode = ""
         repeat(MAX_RULE_PAGES) {
             val result = errorMapper.safeCall {
-                api.listApprovedVendorRules(OrderServiceRequest(OrderRequestBody(dataAreaId = company(), itemId = after, take = RULE_PAGE)))
+                api.listApprovedVendorRules(OrderServiceRequest(OrderRequestBody(dataAreaId = company(), itemId = after, vendorAccount = mode, take = RULE_PAGE)))
             }
             when (result) {
                 is NetworkResult.Success -> {
-                    if (!result.data.success) return NetworkResult.Error(AppFailure.BusinessRule(result.data.message.ifBlank { "Approved vendors could not be read" }))
-                    result.data.lines.forEach { l ->
-                        val list = items.getOrPut(l.itemId.uppercase()) { mutableListOf() }
-                        if (l.vendorAccount.isNotBlank()) list += l.vendorAccount.uppercase()
-                    }
+                    if (!result.data.success) return NetworkResult.Error(AppFailure.BusinessRule("Approved vendor rules could not be read"))
+                    mode = result.data.message
+                    result.data.lines.forEach { items += it.itemId.uppercase() }
                     if (!result.data.hasMore || result.data.lines.isEmpty()) {
-                        val fresh = ApprovedRules(System.currentTimeMillis(), items)
-                        runCatching { rulesFile().writeText(json.encodeToString(ApprovedRules.serializer(), fresh)) }
+                        val fresh = CheckRules(System.currentTimeMillis(), mode, items)
+                        runCatching { rulesFile().writeText(json.encodeToString(CheckRules.serializer(), fresh)) }
                         rules = fresh
                         return NetworkResult.Success(items.size)
                     }
@@ -343,18 +353,34 @@ class OrderCreationRepository @Inject constructor(
                 NetworkResult.Loading -> Unit
             }
         }
-        return NetworkResult.Error(AppFailure.BusinessRule("Too many approved vendor rules"))
+        // Too long a list to keep on a handheld: no rules, D365FO still checks the order.
+        return NetworkResult.Error(AppFailure.BusinessRule("Too many items to keep approved vendor rules on the device"))
+    }
+
+    /** Keeps the vendor's approved items (the Items list) on the device, for the scan check. */
+    private fun keepApproved(vendor: String, items: List<VendorItem>) {
+        val v = VendorApproved(System.currentTimeMillis(), items.map { it.itemId.uppercase() }.toSet())
+        approvedByVendor[vendor.uppercase()] = v
+        runCatching { approvedFile(vendor).writeText(json.encodeToString(VendorApproved.serializer(), v)) }
     }
 
     /**
-     * Whether [vendorAccount] may supply [itemId], from the rules on the device: true when the
-     * item's approved-vendor check is off or the vendor is approved today, false when not, null
-     * when the device has no rules yet (D365FO still checks when the order is created).
+     * Whether [vendorAccount] may supply [itemId], from what is on the device: true when the item's
+     * approved-vendor check is off or the vendor is approved for it, false when it is not, null when
+     * the device cannot tell yet (no rules, or the vendor's items never loaded) - D365FO still
+     * checks when the order is created.
      */
     fun isApprovedVendor(itemId: String, vendorAccount: String): Boolean? {
         val r = loadRules() ?: return null
-        val vendors = r.items[itemId.uppercase()] ?: return true
-        return vendorAccount.uppercase() in vendors
+        val listed = itemId.uppercase() in r.items
+        val checked = when (r.mode) {
+            "UNCHECKED" -> !listed
+            "CHECKED" -> listed
+            else -> return null
+        }
+        if (!checked) return true
+        val approved = approvedFor(vendorAccount) ?: return null
+        return itemId.uppercase() in approved.items
     }
 
     /**
@@ -377,7 +403,10 @@ class OrderCreationRepository @Inject constructor(
                 is NetworkResult.Success -> {
                     if (!result.data.success) return NetworkResult.Error(AppFailure.BusinessRule(result.data.message.ifBlank { "The vendor's items could not be read" }))
                     all += result.data.lines.map { VendorItem(it.itemId, it.itemName.ifBlank { it.itemId }, it.unitId) }
-                    if (!result.data.hasMore || result.data.lines.isEmpty()) return NetworkResult.Success(all)
+                    if (!result.data.hasMore || result.data.lines.isEmpty()) {
+                        keepApproved(vendorAccount, all)
+                        return NetworkResult.Success(all)
+                    }
                     onPage(all.toList())
                 }
                 is NetworkResult.Error -> return result
