@@ -1,5 +1,7 @@
 package com.d365fo.mobileops.presentation.modules.stepflow
 
+import com.d365fo.mobileops.presentation.common.focus.FocusTask
+import androidx.compose.material.icons.outlined.QrCodeScanner
 import androidx.compose.material.icons.filled.CheckCircle
 import com.d365fo.mobileops.presentation.common.components.BarcodeFieldIcon
 import androidx.compose.foundation.layout.Arrangement
@@ -165,10 +167,11 @@ internal fun onHandBand(state: OnHandInquiryState): com.d365fo.mobileops.present
 private fun androidx.compose.foundation.layout.ColumnScope.OnHandBody(state: OnHandInquiryState) {
     val item = state.itemNumber
     if (item == null) {
+        // The task box on enquiries too (user, 17 Nov 2026); the card says where it looks.
         FocusCenter(
-            caption = "On-hand",
+            task = FocusTask("Scan an item", "to see how many, and where", androidx.compose.material.icons.Icons.Outlined.QrCodeScanner),
+            caption = "Looking in",
             code = if (state.thisWarehouseOnly) state.homeWarehouseId ?: "–" else state.scopeLabel,
-            description = "How many, and where?",
         )
         return
     }

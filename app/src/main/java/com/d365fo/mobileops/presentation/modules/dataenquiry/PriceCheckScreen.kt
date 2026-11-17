@@ -1,5 +1,7 @@
 package com.d365fo.mobileops.presentation.modules.dataenquiry
 
+import com.d365fo.mobileops.presentation.common.focus.FocusTask
+import androidx.compose.material.icons.outlined.QrCodeScanner
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -210,7 +212,7 @@ fun PriceCheckScreen(
     ) {
         if (state.busy) LinearProgressIndicator(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp))
         if (item == null) {
-            FocusCenter(caption = "Item", code = "–", description = "Scan an item or barcode")
+            FocusCenter(task = FocusTask("Scan an item", "to see its price", androidx.compose.material.icons.Icons.Outlined.QrCodeScanner), caption = "", code = "")
             return@FocusScreen
         }
         Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())) {

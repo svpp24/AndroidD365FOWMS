@@ -1,5 +1,7 @@
 package com.d365fo.mobileops.presentation.modules.dataenquiry
 
+import com.d365fo.mobileops.presentation.common.focus.FocusTask
+import androidx.compose.material.icons.outlined.Place
 import com.d365fo.mobileops.presentation.common.components.BarcodeFieldIcon
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -91,10 +93,11 @@ fun LocationInquiryScreen(
     ) {
         if (state.busy) LinearProgressIndicator(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp))
         if (facts == null) {
+            // The task box (user, 17 Nov 2026); the warehouse field below says where.
             FocusCenter(
-                caption = "Location",
-                code = "–",
-                description = null,
+                task = FocusTask("Scan a location", "to see what is in it", androidx.compose.material.icons.Icons.Outlined.Place),
+                caption = "",
+                code = "",
             )
             // The warehouse the location is checked in - editable, as before.
             OutlinedTextField(
