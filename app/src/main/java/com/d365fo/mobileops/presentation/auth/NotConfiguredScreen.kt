@@ -133,7 +133,9 @@ fun NotConfiguredScreen(
                     else -> "Setting up"
                 },
                 // No address after a deactivation (user, 15 Nov 2026) - the profile is named instead.
-                tenant.host.takeIf { tenant.resourceUrl.isNotBlank() && !deactivated },
+                // Not on "not configured yet" either (user, 18 Nov 2026): a half-saved connection
+                // (a developer build's compiled-in URL) read as if the device were connected.
+                tenant.host.takeIf { state is SessionState.SignedOut && tenant.resourceUrl.isNotBlank() && !deactivated },
             ),
         )
         Text(
