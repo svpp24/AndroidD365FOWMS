@@ -229,6 +229,8 @@ fun AppRoot(
                     },
                 )
                 }
+                // A newer version in Google Play: offered on opening the app, never required.
+                AppUpdatePrompt()
             }
         }
 

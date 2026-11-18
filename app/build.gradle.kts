@@ -280,6 +280,8 @@ dependencies {
 
     implementation(libs.mlkit.barcode)
     implementation(libs.play.integrity)
+    // "Update the app" on opening, when Google Play has a newer version (18 Nov 2026).
+    implementation(libs.play.app.update)
     implementation(libs.camerax.core)
     implementation(libs.camerax.camera2)
     implementation(libs.camerax.lifecycle)
