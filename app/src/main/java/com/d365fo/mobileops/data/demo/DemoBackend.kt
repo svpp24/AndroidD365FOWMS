@@ -327,6 +327,8 @@ object DemoBackend {
 
     private fun assignedWarehouses() = listOf(
         obj("SiteId" to SITE, "WarehouseId" to WAREHOUSE, "WarehouseName" to "Demo Store", "IsDefault" to true),
+        // A second store, so Create transfer has somewhere to send to in the demo (18 Nov 2026).
+        obj("SiteId" to SITE, "WarehouseId" to STORE2, "WarehouseName" to "Second Store", "IsDefault" to false),
     )
 
     /** Every module allowed - including the order modules, which need an explicit allow. */
