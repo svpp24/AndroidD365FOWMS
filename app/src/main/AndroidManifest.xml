@@ -14,6 +14,9 @@
 
     <!-- Rugged handhelds without a camera still work: scanning falls back to the HID wedge. -->
     <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <!-- The activity is locked to portrait, which Play reads as requiring a portrait screen and
+         hides the app from tablets, Chromebooks and XR. The app still runs portrait there. -->
+    <uses-feature android:name="android.hardware.screen.portrait" android:required="false" />
 
     <application
         android:name=".D365MobileApp"
