@@ -405,6 +405,8 @@ fun TransferFlowScreen(
     if (showItemSearch) {
         ItemSearchSheet(
             lines = state.openLines,
+            // What is left after what this session already picked or scanned (18 Nov 2026).
+            scanned = state.captured.groupBy { it.lineNumber }.mapValues { (_, l) -> l.fold(BigDecimal.ZERO) { s, c -> s + c.quantity } },
             onPick = { line ->
                 showItemSearch = false
                 viewModel.pickSearchedLine(line.itemId, line.lineNumber)
@@ -418,6 +420,7 @@ fun TransferFlowScreen(
 @Composable
 private fun ItemSearchSheet(
     lines: List<TransferOrderLine>,
+    scanned: Map<Double, BigDecimal> = emptyMap(),
     onPick: (TransferOrderLine) -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -430,7 +433,7 @@ private fun ItemSearchSheet(
                 itemId = l.itemId,
                 name = l.itemName,
                 variant = l.variant.label,
-                figure = "${plain(l.remainingQuantity)} ${l.unitId}".trim(),
+                figure = "${plain((l.remainingQuantity - (scanned[l.lineNumber] ?: BigDecimal.ZERO)).max(BigDecimal.ZERO))} ${l.unitId}".trim(),
                 extraMatch = { q -> l.variant.matches(q) },
             )
         },
@@ -992,3 +995,4 @@ internal fun transferScanLabel(step: TransferStep): String = when (step) {
     TransferStep.SERIAL -> "Scan the serial number"
     TransferStep.CONFIRM -> "Scan the next item"
 }
+

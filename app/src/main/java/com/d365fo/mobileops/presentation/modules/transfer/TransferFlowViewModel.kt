@@ -566,10 +566,15 @@ class TransferFlowViewModel @Inject constructor(
             notifier.notifyWorkCompleted(transferId, postedLive)
             // Back to a fresh order prompt, saying what just happened - the screen used to
             // reset with no word on whether the transfer went anywhere.
-            val lineCount = state.captured.size
+            // Lines, not picks: one line picked as 10 + 14 is "1 line shipped" (18 Nov 2026).
+            val lineCount = state.captured.map { it.lineNumber }.distinct().size
             val lineWord = "$lineCount " + if (lineCount == 1) "line" else "lines"
+            // Today's list stays - less what was just posted - and is read again (user, 18 Nov
+            // 2026: "0 to ship today" with DTO-000202 still open).
+            val stillToday = state.todays.filterNot { it.transferId.equals(transferId, ignoreCase = true) }
             _state.value = TransferFlowState(
                 capture = TransferCapture(mode = capture.mode),
+                todays = stillToday,
                 postNotice = when {
                     rejectedReason != null -> PostNotice(
                         PostNoticeKind.REFUSED,
@@ -597,6 +602,7 @@ class TransferFlowViewModel @Inject constructor(
                     )
                 },
             )
+            loadTodays()
             // Slow D365FO: say so when it is in (see ReceivingFlowViewModel.watchResult).
             if (!postedLive && !held && rejectedReason == null) {
                 val done = if (capture.mode == TransferMode.SHIP) "shipped" else "posted"
