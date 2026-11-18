@@ -830,6 +830,13 @@ private fun androidx.compose.foundation.layout.ColumnScope.TransferCenter(state:
                         "${l.unitId} · ${plain(state.suggestedQuantity ?: l.remainingQuantity)} left of ${plain(l.transferQuantity)}"
                     }
                     TransferStep.SERIAL -> listOfNotNull(c.unitSymbol, "${c.serialsOutstanding} serial${if (c.serialsOutstanding == 1) "" else "s"} left").joinToString(" · ")
+                    // Receiving: the batch that came on the truck, on the card (user, 18 Nov 2026) -
+                    // the task box shows its title only, so it is no longer said there.
+                    TransferStep.BATCH -> listOfNotNull(
+                        listOfNotNull(c.unitSymbol, c.batchId?.let { "Batch $it" }, c.locationId).joinToString(" · ").takeIf { it.isNotBlank() },
+                        line?.shippedBatches?.takeIf { mode == TransferMode.RECEIVE && it.isNotEmpty() }
+                            ?.let { b -> "Shipped: " + b.joinToString { "${it.batchId} (${plain(it.quantity)})" } },
+                    ).joinToString("\n")
                     else -> listOfNotNull(c.unitSymbol, c.batchId?.let { "Batch $it" }, c.locationId).joinToString(" · ")
                 },
                 onQuantityTap = if (state.step == TransferStep.QUANTITY && !state.busy) onQuantityTap else null,

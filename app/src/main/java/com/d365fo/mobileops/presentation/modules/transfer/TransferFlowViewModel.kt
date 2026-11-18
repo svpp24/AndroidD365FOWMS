@@ -589,7 +589,7 @@ class TransferFlowViewModel @Inject constructor(
                         if (capture.mode == TransferMode.SHIP) {
                             "$transferId · $lineWord shipped"
                         } else {
-                            "$transferId · $lineWord posted"
+                            "$transferId · $lineWord received"
                         },
                     )
                     postedLive -> PostNotice(
@@ -605,7 +605,7 @@ class TransferFlowViewModel @Inject constructor(
             loadTodays()
             // Slow D365FO: say so when it is in (see ReceivingFlowViewModel.watchResult).
             if (!postedLive && !held && rejectedReason == null) {
-                val done = if (capture.mode == TransferMode.SHIP) "shipped" else "posted"
+                val done = if (capture.mode == TransferMode.SHIP) "shipped" else "received"
                 watchResult(dataAreaId, idempotencyKey, "$transferId · $lineWord $done")
             }
         }
