@@ -126,7 +126,11 @@ fun ToCreateScreen(onBack: () -> Unit, onShip: () -> Unit, viewModel: ToCreateVi
         ) {
             BusyLine(state.busy)
             LazyColumn(modifier = Modifier.weight(1f).fillMaxWidth()) {
-                if (!tooFew) {
+                // The route only while choosing it - not over "Transfer created" (user, 18 Nov 2026).
+                if (!tooFew && submitted == null) {
+                    item(key = "route-task") {
+                        com.d365fo.mobileops.presentation.common.focus.ListTaskBox("Choose the route", com.d365fo.mobileops.presentation.common.focus.TaskIcons.Place)
+                    }
                     // Dropdowns, not a chip per warehouse: a worker assigned many warehouses got
                     // two walls of chips before the first item (feedback, 10 Oct).
                     item(key = "route") {
@@ -225,7 +229,7 @@ fun ToCreateScreen(onBack: () -> Unit, onShip: () -> Unit, viewModel: ToCreateVi
     ) {
         BusyLine(state.busy)
         if (lastAdded == null) {
-            FocusCenter(task = FocusTask("Scan an item", "to add it to the transfer", androidx.compose.material.icons.Icons.Outlined.QrCodeScanner), caption = "New transfer", code = route, unitLine = "Ship date ${draft.shipDate}")
+            FocusCenter(task = FocusTask("Scan an item", "to add it to the transfer", androidx.compose.material.icons.Icons.Outlined.QrCodeScanner), caption = "New transfer", code = route, unitLine = "Ship date ${shortDate(draft.shipDate)}")
         } else {
             LastAddedCenter(lastAdded, onTap = { viewModel.editLine(lastAdded) }, size = orderSize(draft.lines))
         }

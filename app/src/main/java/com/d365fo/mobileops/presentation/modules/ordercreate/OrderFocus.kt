@@ -109,6 +109,11 @@ internal fun ColumnScope.LastAddedCenter(line: DraftLine, onTap: () -> Unit, siz
     )
 }
 
+/** "18 Nov" from "2026-11-18", as dates read elsewhere in the app (18 Nov 2026); as given if not a date. */
+internal fun shortDate(iso: String): String = runCatching {
+    java.time.LocalDate.parse(iso.take(10)).format(java.time.format.DateTimeFormatter.ofPattern("d MMM", java.util.Locale.ENGLISH))
+}.getOrDefault(iso)
+
 /** "3 lines · 12 units" - how big the order is, never what to add. */
 internal fun orderSize(lines: List<DraftLine>, extra: String? = null): String? =
     if (lines.isEmpty()) null else listOfNotNull(linesText(lines.size), lines.sumOf { it.qty }.let { if (it == 1.0) "1 unit" else "${qtyText(it)} units" }, extra).joinToString(" · ")

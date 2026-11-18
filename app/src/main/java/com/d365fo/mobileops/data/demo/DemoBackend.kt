@@ -402,7 +402,11 @@ object DemoBackend {
         return ok(obj("Success" to true, "Orders" to rows))
     }
 
-    private fun units() = listOf(obj("UnitId" to UNIT, "Factor" to 1.0, "Decimals" to 0))
+    // A box of 12 as well, so the unit choice on the quantity pad shows in the demo (18 Nov 2026).
+    private fun units() = listOf(
+        obj("UnitId" to UNIT, "Factor" to 1.0, "Decimals" to 0),
+        obj("UnitId" to "Box", "Factor" to 12.0, "Decimals" to 0),
+    )
 
     private fun poLine(l: PoLine): JsonObject {
         val it = item(l.itemId)

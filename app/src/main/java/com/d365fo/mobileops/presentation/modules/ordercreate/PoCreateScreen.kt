@@ -252,7 +252,7 @@ fun PoCreateScreen(
                 caption = "New order",
                 code = draft.vendorAccount,
                 description = draft.vendorName.takeIf { it.isNotBlank() },
-                unitLine = "To ${draft.warehouseId} · Delivery ${draft.deliveryDate}",
+                unitLine = "To ${draft.warehouseId} · Delivery ${shortDate(draft.deliveryDate)}",
             )
         } else {
             LastAddedCenter(lastAdded, onTap = { viewModel.editLine(lastAdded) }, size = orderSize(draft.lines, total))

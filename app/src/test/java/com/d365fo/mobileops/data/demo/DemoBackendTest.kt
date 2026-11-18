@@ -75,7 +75,9 @@ class DemoBackendTest {
         assertThat(menu.menus.flatMap { it.lines }.map { it.module }).containsAtLeast("PO_RECEIVING", "TRANSFER_SHIP", "INVENTORY_COUNT", "PO_CREATE")
 
         val wh = decode(UserWarehousesServiceResponse.serializer(), svc("HSMobileOpsUserWarehouseSvc", "getUserWarehouses"))
-        assertThat(wh.warehouses.single().warehouseName).isEqualTo("Demo Store")
+        // The default store, and a second one to create transfers to (18 Nov 2026).
+        assertThat(wh.warehouses.single { it.isDefault }.warehouseName).isEqualTo("Demo Store")
+        assertThat(wh.warehouses.map { it.warehouseId }).containsExactly("MAIN", "STORE2")
 
         assertThat(decode(OrderServiceResponse.serializer(), svc("HSMobileOpsOrderCreateSvc", "getModulePermissions")).permissions).isNotEmpty()
         assertThat(decode(DeviceWorkServiceResponse.serializer(), svc("HSMobileOpsDeviceWorkSvc", "getAppControl")).success).isTrue()
