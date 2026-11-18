@@ -284,6 +284,12 @@ class StoreCountViewModel @Inject constructor(
     /** The last Send could not reach D365FO; it is retried when the connection is back. */
     private var waitingForConnection = false
 
+    /**
+     * The list read before counting started; it goes into the draft when the count opens.
+     * Declared before init: joining an open count starts it from init (18 Nov 2026 crash).
+     */
+    private var pendingRequested: List<com.d365fo.mobileops.data.counting.RequestedItem> = emptyList()
+
     /** End count was pressed offline: the retry ends the count too. */
     private var endWhenOnline = false
 
@@ -340,9 +346,6 @@ class StoreCountViewModel @Inject constructor(
         _state.update { it.copy(preview = rows) }
         _state.value.draft?.let { saveDraft(it.copy(requested = rows)) } ?: run { pendingRequested = rows }
     }
-
-    /** The list read before counting started; it goes into the draft when the count opens. */
-    private var pendingRequested: List<com.d365fo.mobileops.data.counting.RequestedItem> = emptyList()
 
     private fun loadDraft(): StoreCountDraft? = runCatching {
         secureStore.getString(draftKey)?.let { json.decodeFromString(StoreCountDraft.serializer(), it) }
@@ -594,7 +597,14 @@ class StoreCountViewModel @Inject constructor(
         _state.update { it.copy(pending = null, message = "${line.itemId} · ${qtyText(qty)} at ${line.place}") }
     }
 
-    /** Removes a line that has not been sent yet. */
+    /** A new count for a line not sent yet (the lines screen's - / + and pad, 18 Nov 2026). */
+    fun setLineQuantity(line: StoreCountLine, quantity: Double) {
+        val draft = _state.value.draft ?: return
+        if (line.sent || quantity <= 0.0) return
+        saveDraft(draft.copy(lines = draft.lines.map { if (it.clientLineId == line.clientLineId) it.copy(quantity = quantity) else it }))
+    }
+
+    /** Removes a line - one already sent is removed in D365FO first. */
     fun remove(line: StoreCountLine) {
         val draft = _state.value.draft ?: return
         if (!line.sent) {
@@ -703,10 +713,10 @@ class StoreCountViewModel @Inject constructor(
                         (if (result.data.rejected > 0) " ${result.data.rejected} line(s) not on the count's list were left out." else "")
                     if (end) {
                         saveDraft(null)
-                        _state.update { it.copy(busy = false, ended = true, message = "Ended - ${draft.lines.size} line(s) sent.$dupNote") }
+                        _state.update { it.copy(busy = false, ended = true, message = "${linesText(draft.lines.size)} sent.$dupNote") }
                     } else {
                         saveDraft(updated)
-                        _state.update { it.copy(busy = false, message = "${result.data.accepted} line(s) sent.$dupNote") }
+                        _state.update { it.copy(busy = false, message = "${linesText(result.data.accepted)} sent.$dupNote") }
                     }
                 }
                 is NetworkResult.Error -> {
@@ -830,6 +840,7 @@ fun StoreCountScreen(onBack: () -> Unit, viewModel: StoreCountViewModel = hiltVi
             onPickLocation = { showList = false; viewModel.pickLocation(it) },
             onPickBin = { showList = false; viewModel.pickBin(it) },
             onRemove = viewModel::remove,
+            onSetQuantity = viewModel::setLineQuantity,
             busy = state.busy,
         )
         return
@@ -957,11 +968,12 @@ internal fun storeCountBand(state: StoreCountState): BandState? {
     val message = state.message
     val error = state.error
     return when {
-        state.ended -> BandState(BandKind.Ok, "Count ended", message)
+        // No "Count ended" bar over the Ended card (user, 18 Nov 2026) - the card says it.
+        state.ended -> null
         error != null -> if (error.startsWith("Offline")) bandOf(BandKind.Warn, error) else bandOf(BandKind.Bad, error)
         message != null -> when {
             message.startsWith("Offline") -> bandOf(BandKind.Warn, message)
-            message.contains("line(s) sent") -> BandState(BandKind.Ok, "Sent", message)
+            SENT_MESSAGE.containsMatchIn(message) -> BandState(BandKind.Ok, "Sent", message)
             // No "Counted" bar: the green task box and the card say it (user, 17 Nov 2026).
             else -> null
         }
@@ -1055,7 +1067,12 @@ private fun androidx.compose.foundation.layout.ColumnScope.StoreCountCenter(stat
     val draft = state.draft
     val pending = state.pending
     when {
-        state.ended -> FocusCenter(caption = state.title, code = "Ended", description = state.countId.ifBlank { state.warehouseId })
+        state.ended -> FocusCenter(
+            task = FocusTask("Count ended", null, com.d365fo.mobileops.presentation.common.focus.TaskIcons.Done, done = true),
+            caption = state.title,
+            code = state.countId.ifBlank { state.warehouseId ?: "Ended" },
+            description = state.message,
+        )
         !counting || draft == null -> FocusCenter(
             // Only when there is no count: the New count button below is the way on.
             task = if (state.countId.isBlank()) FocusTask("Start a count", null, androidx.compose.material.icons.Icons.Outlined.Add) else null,
@@ -1069,11 +1086,8 @@ private fun androidx.compose.foundation.layout.ColumnScope.StoreCountCenter(stat
                 pending.needsSerial -> FocusTask("Scan the serial", "on ${pending.item.itemId}", androidx.compose.material.icons.Icons.Outlined.QrCodeScanner)
                 else -> FocusTask("Enter the count", "how many you see", androidx.compose.material.icons.Icons.Outlined.Dialpad)
             },
-            caption = when {
-                pending.needsBatch -> "Batch"
-                pending.needsSerial -> "Serial"
-                else -> "Quantity"
-            },
+            // The card is the item - "Batch" over an item code read wrong (user, 18 Nov 2026).
+            caption = if (pending.needsBatch || pending.needsSerial) "Item" else "Quantity",
             // Where it is counted, on the card - not on the title bar (user, 17 Nov 2026).
             code = pending.item.itemId,
             description = listOfNotNull(
@@ -1143,6 +1157,9 @@ private fun androidx.compose.foundation.layout.ColumnScope.StoreCountCenter(stat
 
 private fun linesText(n: Int) = if (n == 1) "1 line" else "$n lines"
 
+/** "1 line sent." / "3 lines sent." - what Send says. */
+private val SENT_MESSAGE = Regex("^\\d+ lines? sent\\.")
+
 /**
  * The lists on demand: the store's locations on the location step, the location's bins on the
  * bin step (tap = the same as scanning it), and the lines counted once items are being counted -
@@ -1156,9 +1173,11 @@ private fun StoreCountList(
     onPickLocation: (String) -> Unit,
     onPickBin: (String) -> Unit,
     onRemove: (StoreCountLine) -> Unit,
+    onSetQuantity: (StoreCountLine, Double) -> Unit = { _, _ -> },
     busy: Boolean = false,
 ) {
     var confirming by remember { mutableStateOf<StoreCountLine?>(null) }
+    var typing by remember { mutableStateOf<StoreCountLine?>(null) }
     confirming?.let { line ->
         androidx.compose.material3.AlertDialog(
             onDismissRequest = { confirming = null },
@@ -1185,11 +1204,30 @@ private fun StoreCountList(
             state.needsBin -> state.binsHere.size.toString()
             else -> draft.lines.size.toString()
         },
+        overlay = typing?.let { line ->
+            {
+                QuantityPadSheet(
+                    initial = qtyText(line.quantity),
+                    onSet = { t -> typing = null; t.toDoubleOrNull()?.let { onSetQuantity(line, it) } },
+                    onDismiss = { typing = null },
+                    allowDecimal = true,
+                    title = "Enter the count",
+                    subtitle = listOf(line.itemId, listOfNotNull(line.itemName.takeIf { it.isNotBlank() }, line.unitId.takeIf { it.isNotBlank() }).joinToString(" · ")),
+                )
+            }
+        },
     ) {
         androidx.compose.foundation.lazy.LazyColumn(modifier = Modifier.weight(1f).fillMaxWidth()) {
             when {
                 state.needsLocation || state.needsBin -> {
                     val picking = if (state.needsLocation) state.knownLocations else state.binsHere
+                    // Every list has its task box (user, 18 Nov 2026).
+                    item(key = "task") {
+                        com.d365fo.mobileops.presentation.common.focus.ListTaskBox(
+                            if (state.needsLocation) "Choose a location" else "Choose a bin",
+                            com.d365fo.mobileops.presentation.common.focus.TaskIcons.Place,
+                        )
+                    }
                     if (picking.isEmpty()) {
                         item {
                             Text(
@@ -1235,27 +1273,36 @@ private fun StoreCountList(
                         }
                     }
                     items(draft.lines, key = { it.clientLineId }) { line ->
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        FocusListRow(
-                            title = line.itemId,
-                            titleIsCode = true,
-                            state = if (line.sent) RowState.Done else RowState.Open,
-                            subtitle = listOfNotNull(
-                                line.itemName.takeIf { it.isNotBlank() && !it.equals(line.itemId, ignoreCase = true) },
-                                OrderVariant(line.configId, line.sizeId, line.colorId, line.styleId).takeIf { v -> v != OrderVariant() }?.label,
-                                line.batchId.takeIf { it.isNotBlank() }?.let { "Batch $it" },
-                                line.serialId.takeIf { it.isNotBlank() }?.let { "Serial $it" },
-                                line.place,
+                        // As the other lines screens: the text full width, - / count / + under it
+                        // (user, 18 Nov 2026). A sent line's count is D365FO's now - it can only be removed.
+                        val editable = !line.sent && line.serialId.isBlank() && !busy
+                        com.d365fo.mobileops.presentation.common.focus.FocusLineCard(
+                            code = line.itemId,
+                            name = line.itemName,
+                            details = listOf(
+                                listOfNotNull(
+                                    OrderVariant(line.configId, line.sizeId, line.colorId, line.styleId).takeIf { v -> v != OrderVariant() }?.label,
+                                    line.batchId.takeIf { it.isNotBlank() }?.let { "Batch $it" },
+                                    line.serialId.takeIf { it.isNotBlank() }?.let { "Serial $it" },
+                                    line.place,
+                                ).joinToString(" · "),
                                 if (line.sent) "With the supervisor" else "On this device",
-                            ).joinToString(" · "),
-                            count = qtyText(line.quantity) + line.unitId.takeIf { it.isNotBlank() }?.let { " $it" }.orEmpty(),
-                            modifier = Modifier.weight(1f),
+                            ),
+                            quantity = qtyText(line.quantity),
+                            unit = line.unitId,
+                            canMinus = editable,
+                            canPlus = editable,
+                            onMinus = if (line.sent || line.serialId.isNotBlank()) null else {
+                                { if (line.quantity <= 1.0) confirming = line else onSetQuantity(line, line.quantity - 1.0) }
+                            },
+                            onPlus = if (line.sent || line.serialId.isNotBlank()) null else {
+                                { onSetQuantity(line, line.quantity + 1.0) }
+                            },
+                            onQuantityTap = if (editable) { { typing = line } } else null,
+                            // Any of this counter's lines - a sent one is removed in D365FO (17 Nov 2026).
+                            onRemove = { confirming = line },
+                            removeEnabled = !busy,
                         )
-                        // Any of this counter's lines - a sent one is removed in D365FO (17 Nov 2026).
-                        IconButton(onClick = { confirming = line }, enabled = !busy, modifier = Modifier.size(56.dp)) {
-                            Icon(Icons.Default.Delete, contentDescription = "Remove", tint = FocusColors.iconMuted)
-                        }
-                    }
                     }
                 }
             }
