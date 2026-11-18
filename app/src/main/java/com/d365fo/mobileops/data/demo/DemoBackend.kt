@@ -666,7 +666,8 @@ object DemoBackend {
         val fromCategories = parseArray(r.s("CategoriesJson")).mapNotNull { (it as? JsonPrimitive)?.contentOrNull }.flatMap { itemsIn(it) }.map { it.id }
         val picked = parseArray(r.s("ItemsJson")).mapNotNull { (it as? JsonObject)?.s("ItemId") }.mapNotNull { item(it)?.id }
         val ids = (fromCategories + picked).distinct()
-        if (type != "WallToWall" && ids.isEmpty()) {
+        // A blind count may have no items, as in D365FO (HSMobileOpsCountRequestService, 16 Nov 2026).
+        if (type == "Hazard" && ids.isEmpty()) {
             return ok(obj("Success" to false, "ErrorCode" to "NO_ITEMS", "Message" to "Pick at least one category or item."))
         }
         val label = if (type == "WallToWall") "Wall to wall count" else "$type count"
