@@ -1381,6 +1381,10 @@ private fun RequestedItemsList(state: StoreCountState, onClose: () -> Unit) {
         counter = "${state.requestedDone}/${state.requested.size}",
     ) {
         androidx.compose.foundation.lazy.LazyColumn(modifier = Modifier.weight(1f).fillMaxWidth()) {
+            // Every list has its task box (user, 18 Nov 2026).
+            item(key = "task") {
+                com.d365fo.mobileops.presentation.common.focus.ListTaskBox("Items to count", com.d365fo.mobileops.presentation.common.focus.TaskIcons.Lines)
+            }
             items(state.requested.size, key = { "requested-$it" }) { index ->
                 RequestedRow(state.requested[index], lines)
             }

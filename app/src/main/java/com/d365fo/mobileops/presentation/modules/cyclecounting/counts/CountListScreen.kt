@@ -170,7 +170,7 @@ fun CountListScreen(
                     icon = androidx.compose.material.icons.Icons.Default.Add,
                     chevron = true,
                     onClick = {
-                        if (state.type == CountType.BLIND) viewModel.startBlind { id -> onCount(id, CountType.BLIND) } else onCreate(state.type)
+                        if (state.type == CountType.BLIND) viewModel.startBlind { id -> onJoin(id, CountType.BLIND) } else onCreate(state.type)
                     },
                 )
             }

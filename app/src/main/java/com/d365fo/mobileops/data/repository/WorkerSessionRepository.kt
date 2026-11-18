@@ -153,6 +153,10 @@ class WorkerSessionRepository @Inject constructor(
      * rather than surviving indefinitely off one rebuild.
      */
     private fun restoreDebugSession(): WorkerSession? {
+        // Not under the demo: a cached or DEV_* session is a real developer's (a count supervisor),
+        // and the demo then ran as them after a restart (18 Nov 2026). A release build simply has
+        // no session here, and the demo starts over - debug now does the same.
+        if (context.getSharedPreferences("demo_mode", Context.MODE_PRIVATE).getBoolean("active", false)) return null
         // Development only (DEV_SKIP_SIGN_IN, debug builds): no sign-in screen at all - the last
         // real session if one is cached, else one built from DEV_* in local.properties.
         if (BuildConfig.DEV_SKIP_SIGN_IN) return cachedDebugSession() ?: devSession()
