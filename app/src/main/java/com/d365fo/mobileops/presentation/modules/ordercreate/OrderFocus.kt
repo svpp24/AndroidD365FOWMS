@@ -84,9 +84,10 @@ internal fun rememberLastAdded(lines: List<DraftLine>): DraftLine? {
 
 /** The centre once lines exist: the last line added, its quantity tappable to change it. */
 @Composable
-internal fun ColumnScope.LastAddedCenter(line: DraftLine, onTap: () -> Unit) {
+internal fun ColumnScope.LastAddedCenter(line: DraftLine, onTap: () -> Unit, size: String? = null) {
     FocusCenter(
-        task = FocusTask("Scan the next item", null, androidx.compose.material.icons.Icons.Outlined.QrCodeScanner, done = true),
+        // "Scan an item", as every other flow (user, 18 Nov 2026).
+        task = FocusTask("Scan an item", null, androidx.compose.material.icons.Icons.Outlined.QrCodeScanner, done = true),
         caption = "Last added",
         code = line.itemId,
         description = listOfNotNull(
@@ -101,7 +102,9 @@ internal fun ColumnScope.LastAddedCenter(line: DraftLine, onTap: () -> Unit) {
             line.unitId.takeIf { it.isNotBlank() },
             line.locationId.takeIf { it.isNotBlank() }?.let { "From $it" },
             line.available?.let { "${qtyText(it)} available" },
-        ).joinToString(" · "),
+        ).joinToString(" · ") +
+            // How big the order is, on the card - not floating under it (user, 18 Nov 2026).
+            (size?.let { "\n$it" } ?: ""),
         onQuantityTap = onTap,
     )
 }

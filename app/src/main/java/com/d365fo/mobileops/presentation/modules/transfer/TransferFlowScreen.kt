@@ -579,7 +579,7 @@ private fun CapturedLines(
                 enabled = !busy,
                 icon = com.d365fo.mobileops.presentation.common.components.BarcodeGlyph,
                 text = "Scan more",
-                modifier = Modifier.weight(0.4f),
+                modifier = Modifier.weight(1f),
             )
             com.d365fo.mobileops.presentation.common.components.HoldButton(
                 label = when {
@@ -590,7 +590,7 @@ private fun CapturedLines(
                 },
                 onConfirm = onPost,
                 enabled = !busy && captured.isNotEmpty(),
-                modifier = Modifier.weight(0.6f),
+                modifier = Modifier.weight(1f),
             )
         }
     }
@@ -651,13 +651,13 @@ private fun Field(label: String, value: String?) {
             text = label,
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.weight(0.4f),
+            modifier = Modifier.weight(1f),
         )
         Text(
             text = value,
             style = MaterialTheme.typography.bodyMedium,
             fontWeight = FontWeight.Medium,
-            modifier = Modifier.weight(0.6f),
+            modifier = Modifier.weight(1f),
         )
     }
 }
@@ -720,16 +720,16 @@ private fun transferActions(
                 if (three) {
                     com.d365fo.mobileops.presentation.common.focus.FocusButton(
                         "Items", onClick = onItems, icon = Icons.Default.Search,
-                        enabled = !state.busy, compact = true, modifier = Modifier.weight(0.8f),
+                        enabled = !state.busy, compact = true, modifier = Modifier.weight(1f),
                     )
                 }
                 com.d365fo.mobileops.presentation.common.focus.FocusButton(
                     "Lines", onClick = onLines, icon = Icons.AutoMirrored.Filled.ListAlt,
-                    enabled = !state.busy, compact = three, modifier = Modifier.weight(if (three) 0.8f else 1f),
+                    enabled = !state.busy, compact = three, modifier = Modifier.weight(1f),
                 )
                 com.d365fo.mobileops.presentation.common.focus.HoldToConfirmButton(
                     if (mode == TransferMode.SHIP) "Hold to ship" else "Hold to receive",
-                    onConfirm = onPost, enabled = !state.busy, compact = three, modifier = Modifier.weight(if (three) 1.4f else 1f),
+                    onConfirm = onPost, enabled = !state.busy, compact = three, modifier = Modifier.weight(1f),
                 )
             }
         }

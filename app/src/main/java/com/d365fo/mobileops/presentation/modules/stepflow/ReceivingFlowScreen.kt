@@ -658,13 +658,13 @@ private fun CapturedLines(
                 enabled = !busy,
                 icon = BarcodeGlyph,
                 text = "Scan more",
-                modifier = Modifier.weight(0.4f),
+                modifier = Modifier.weight(1f),
             )
             com.d365fo.mobileops.presentation.common.components.HoldButton(
                 label = if (busy) "Posting…" else "Hold to post",
                 onConfirm = onPost,
                 enabled = !busy && captured.isNotEmpty(),
-                modifier = Modifier.weight(0.6f),
+                modifier = Modifier.weight(1f),
             )
         }
     }
@@ -729,16 +729,16 @@ private fun receivingActions(
                 if (three) {
                     com.d365fo.mobileops.presentation.common.focus.FocusButton(
                         "PO items", onClick = onItems, icon = Icons.Default.Search,
-                        enabled = !state.busy, compact = true, modifier = Modifier.weight(0.9f),
+                        enabled = !state.busy, compact = true, modifier = Modifier.weight(1f),
                     )
                 }
                 com.d365fo.mobileops.presentation.common.focus.FocusButton(
                     "Lines", onClick = onLines, icon = Icons.AutoMirrored.Filled.ListAlt,
-                    enabled = !state.busy, compact = three, modifier = Modifier.weight(if (three) 0.8f else 1f),
+                    enabled = !state.busy, compact = three, modifier = Modifier.weight(1f),
                 )
                 com.d365fo.mobileops.presentation.common.focus.HoldToConfirmButton(
                     "Hold to post", onConfirm = onPost, enabled = !state.busy, compact = three,
-                    modifier = Modifier.weight(if (three) 1.3f else 1f),
+                    modifier = Modifier.weight(1f),
                 )
             }
         }

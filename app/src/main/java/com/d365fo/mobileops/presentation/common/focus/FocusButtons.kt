@@ -93,10 +93,12 @@ fun FocusButton(
     compact: Boolean = false,
 ) {
     val bg = if (primary) FocusColors.action else FocusColors.surface
+    val inRow = LocalInActionRow.current
     Row(
         horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
         verticalAlignment = Alignment.CenterVertically,
         modifier = modifier
+            .then(if (inRow) Modifier.fillMaxHeight() else Modifier)
             .heightIn(min = FocusDimens.button)
             .alpha(if (enabled) 1f else 0.45f)
             .then(if (primary) Modifier else Modifier.shadow(2.dp, FocusShapes.button))
@@ -133,11 +135,13 @@ fun HoldToConfirmButton(
     val progress = remember { Animatable(0f) }
     val scope = rememberCoroutineScope()
     val fill = lerp(FocusColors.action, FocusColors.ink, 0.25f)
-    Column(modifier = modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+    val inRow = LocalInActionRow.current
+    Column(modifier = modifier.fillMaxWidth().then(if (inRow) Modifier.fillMaxHeight() else Modifier), horizontalAlignment = Alignment.CenterHorizontally) {
         Box(
             contentAlignment = Alignment.Center,
             modifier = Modifier
                 .fillMaxWidth()
+                .then(if (inRow) Modifier.weight(1f) else Modifier)
                 .heightIn(min = FocusDimens.button)
                 .alpha(if (enabled) 1f else 0.45f)
                 .clip(FocusShapes.button)

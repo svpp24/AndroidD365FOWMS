@@ -206,7 +206,6 @@ fun PoCreateScreen(
             }
         },
         band = poBand(state, lastAdded),
-        remaining = orderSize(draft.lines, total),
         scanPill = { ScanPillField(label = "Scan an item to order", enabled = !state.busy) },
         topBarTrailing = {
             OrderToolsMenu(
@@ -231,18 +230,18 @@ fun PoCreateScreen(
                 icon = Icons.AutoMirrored.Filled.ListAlt,
                 enabled = !state.busy,
                 compact = three,
-                modifier = Modifier.weight(if (three) 0.8f else 1f),
+                modifier = Modifier.weight(1f),
             )
             if (draft.lines.isNotEmpty()) {
                 // A tablet shows the lines beside or under the scan, so no Lines button there.
-                if (com.d365fo.mobileops.presentation.common.focus.tabletMode() == com.d365fo.mobileops.presentation.common.focus.TabletMode.Phone) FocusButton("Lines", onClick = { showLines = true }, icon = Icons.AutoMirrored.Filled.ListAlt, compact = three, modifier = Modifier.weight(0.8f))
+                if (com.d365fo.mobileops.presentation.common.focus.tabletMode() == com.d365fo.mobileops.presentation.common.focus.TabletMode.Phone) FocusButton("Lines", onClick = { showLines = true }, icon = Icons.AutoMirrored.Filled.ListAlt, compact = three, modifier = Modifier.weight(1f))
             }
             HoldToConfirmButton(
                 "Hold to create",
                 onConfirm = viewModel::create,
                 enabled = !state.busy && draft.lines.isNotEmpty(),
                 compact = three,
-                modifier = Modifier.weight(if (three) 1.4f else 1f),
+                modifier = Modifier.weight(1f),
             )
         },
     ) {
@@ -256,7 +255,7 @@ fun PoCreateScreen(
                 unitLine = "To ${draft.warehouseId} · Delivery ${draft.deliveryDate}",
             )
         } else {
-            LastAddedCenter(lastAdded, onTap = { viewModel.editLine(lastAdded) })
+            LastAddedCenter(lastAdded, onTap = { viewModel.editLine(lastAdded) }, size = orderSize(draft.lines, total))
         }
     }
 }

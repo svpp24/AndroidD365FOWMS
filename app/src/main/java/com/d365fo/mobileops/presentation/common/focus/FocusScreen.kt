@@ -206,12 +206,20 @@ fun RemainingLine(text: String, modifier: Modifier = Modifier) {
 /** Up to two 64dp buttons, 16dp apart, 20dp from the edges - safe option left, action right. */
 @Composable
 fun ActionRow(modifier: Modifier = Modifier, content: @Composable RowScope.() -> Unit) {
-    Row(
-        horizontalArrangement = Arrangement.spacedBy(16.dp),
-        verticalAlignment = Alignment.Top,
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(horizontal = FocusDimens.side, vertical = 16.dp),
-        content = content,
-    )
+    // Every button in the row as tall as the tallest (user, 18 Nov 2026: "buttons are uneven in
+    // size" - a wrapped Hold to post return beside a one-line Lines).
+    androidx.compose.runtime.CompositionLocalProvider(LocalInActionRow provides true) {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            verticalAlignment = Alignment.Top,
+            modifier = modifier
+                .fillMaxWidth()
+                .height(androidx.compose.foundation.layout.IntrinsicSize.Min)
+                .padding(horizontal = FocusDimens.side, vertical = 16.dp),
+            content = content,
+        )
+    }
 }
+
+/** True inside [ActionRow]: its buttons fill the row's height. */
+val LocalInActionRow = androidx.compose.runtime.staticCompositionLocalOf { false }

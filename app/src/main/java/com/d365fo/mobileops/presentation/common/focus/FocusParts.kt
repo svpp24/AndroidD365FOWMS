@@ -305,10 +305,11 @@ private fun ColumnScope.TaskCenter(
                 if (quantity != null) {
                     Text(quantity, style = FocusType.rowCount, color = quantityColor, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 6.dp))
                 }
+                // "tap to change" on a line of its own - never broken across two (18 Nov 2026).
                 val unit = listOfNotNull(
                     unitLine?.takeIf { it.isNotBlank() },
                     "tap to change".takeIf { quantity != null && onQuantityTap != null },
-                ).joinToString(" · ")
+                ).joinToString("\n")
                 if (unit.isNotEmpty()) {
                     Text(unit, style = FocusType.rowDetail, color = FocusColors.caption, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 2.dp))
                 }

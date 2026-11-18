@@ -206,7 +206,6 @@ fun ToCreateScreen(onBack: () -> Unit, onShip: () -> Unit, viewModel: ToCreateVi
             }
         },
         band = state.error?.let { bandOf(BandKind.Bad, it) },
-        remaining = orderSize(draft.lines),
         // Says what to do first while the transfer is empty (user, 15 Nov); same look as always.
         scanPill = { ScanPillField(label = "Scan an item to send", enabled = !state.busy) },
         topBarTrailing = {
@@ -228,7 +227,7 @@ fun ToCreateScreen(onBack: () -> Unit, onShip: () -> Unit, viewModel: ToCreateVi
         if (lastAdded == null) {
             FocusCenter(task = FocusTask("Scan an item", "to add it to the transfer", androidx.compose.material.icons.Icons.Outlined.QrCodeScanner), caption = "New transfer", code = route, unitLine = "Ship date ${draft.shipDate}")
         } else {
-            LastAddedCenter(lastAdded, onTap = { viewModel.editLine(lastAdded) })
+            LastAddedCenter(lastAdded, onTap = { viewModel.editLine(lastAdded) }, size = orderSize(draft.lines))
         }
     }
 }

@@ -187,7 +187,6 @@ fun ReturnCreateScreen(onBack: () -> Unit, viewModel: ReturnCreateViewModel = hi
             }
         },
         band = returnBand(state, lastAdded, reasonLabel, online),
-        remaining = orderSize(draft.lines),
         // Scans work on the reason step too (any order): an item scanned there is added.
         scanPill = { ScanPillField(label = "Scan an item to return", enabled = !state.busy) },
         topBarTrailing = {
@@ -227,7 +226,7 @@ fun ReturnCreateScreen(onBack: () -> Unit, viewModel: ReturnCreateViewModel = hi
         BusyLine(state.busy)
         when {
             choosingReason -> ReasonChoice(state, viewModel, draft.vendorAccount, draft.vendorName)
-            lastAdded != null -> LastAddedCenter(lastAdded, onTap = { viewModel.editLine(lastAdded) })
+            lastAdded != null -> LastAddedCenter(lastAdded, onTap = { viewModel.editLine(lastAdded) }, size = orderSize(draft.lines))
             else -> FocusCenter(
                 task = FocusTask("Scan an item", "to add it to the return", androidx.compose.material.icons.Icons.Outlined.QrCodeScanner),
                 caption = "New return",
