@@ -395,7 +395,7 @@ object DemoBackend {
         val rows = state.pos.filter { it.confirmed && (date.isBlank() || it.deliveryDate() == date) && (wh.isBlank() || wh.equals(WAREHOUSE, true)) }
             .map {
                 obj(
-                    "PurchId" to it.id, "VendorAccount" to it.vendor, "Status" to if (it.open()) "Backorder" else "Received",
+                    "PurchId" to it.id, "VendorAccount" to it.vendor, "VendorName" to vendorName(it.vendor), "Status" to if (it.open()) "Backorder" else "Received",
                     "HasOpenLines" to it.open(), "SiteId" to SITE, "WarehouseId" to WAREHOUSE, "DeliveryDate" to it.deliveryDate(),
                 )
             }

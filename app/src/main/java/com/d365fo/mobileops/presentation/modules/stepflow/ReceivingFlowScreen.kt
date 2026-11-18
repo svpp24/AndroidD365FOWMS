@@ -354,7 +354,8 @@ fun ReceivingFlowScreen(
                     state.todaysOrders.forEach { order ->
                         com.d365fo.mobileops.presentation.common.focus.FocusListRow(
                             title = order.purchId,
-                            subtitle = order.vendorAccount,
+                            // The vendor's name with its account (user, 18 Nov 2026).
+                            subtitle = listOf(order.vendorName, order.vendorAccount).filter { it.isNotBlank() }.joinToString(" · "),
                             titleIsCode = true,
                             chevron = true,
                             onClick = { if (!state.busy) { showTodays = false; viewModel.pickTodaysOrder(order.purchId) } },

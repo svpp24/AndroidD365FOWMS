@@ -187,6 +187,8 @@ data class PurchaseOrderSummary(
     val purchId: String,
     val vendorAccount: String,
     val status: OrderStatus,
+    /** Blank when D365FO did not send it (an older AOS, or the OData path). */
+    val vendorName: String = "",
     val siteId: String?,
     val warehouseId: String?,
     val deliveryDate: Long?,

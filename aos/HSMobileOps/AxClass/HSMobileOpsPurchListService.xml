@@ -52,7 +52,7 @@ class HSMobileOpsPurchListService
 
         changecompany (_request.parmDataAreaId())
         {
-            while select PurchId, OrderAccount, PurchStatus, DeliveryDate, InventSiteId, InventLocationId
+            while select PurchId, OrderAccount, PurchName, PurchStatus, DeliveryDate, InventSiteId, InventLocationId
                 from purchTable
                 order by PurchId
                 where purchTable.DeliveryDate == deliveryDate
@@ -63,6 +63,8 @@ class HSMobileOpsPurchListService
                 row = new HSMobileOpsOrderSummaryRow();
                 row.parmPurchId(purchTable.PurchId);
                 row.parmVendorAccount(purchTable.OrderAccount);
+                // The order's vendor name (PurchName), else the vendor master's.
+                row.parmVendorName(purchTable.PurchName ? purchTable.PurchName : VendTable::find(purchTable.OrderAccount).name());
                 row.parmStatus(enum2Symbol(enumNum(PurchStatus), purchTable.PurchStatus));
                 // Still Ordered in InventTrans, as HSMobileOpsReceivingService.orderedQtyByLine
                 // reads it. RemainPurchPhysical only falls at product receipt, and this app
@@ -132,7 +134,7 @@ class HSMobileOpsPurchListService
 
         changecompany (_request.parmDataAreaId())
         {
-            while select PurchId, OrderAccount, PurchStatus, DeliveryDate, InventSiteId, InventLocationId
+            while select PurchId, OrderAccount, PurchName, PurchStatus, DeliveryDate, InventSiteId, InventLocationId
                 from purchTable
                 order by DeliveryDate, PurchId
                 where purchTable.InventLocationId == warehouseId
@@ -153,6 +155,8 @@ class HSMobileOpsPurchListService
                 row = new HSMobileOpsOrderSummaryRow();
                 row.parmPurchId(purchTable.PurchId);
                 row.parmVendorAccount(purchTable.OrderAccount);
+                // The order's vendor name (PurchName), else the vendor master's.
+                row.parmVendorName(purchTable.PurchName ? purchTable.PurchName : VendTable::find(purchTable.OrderAccount).name());
                 row.parmStatus(enum2Symbol(enumNum(PurchStatus), purchTable.PurchStatus));
                 row.parmHasOpenLines(true);
                 row.parmSiteId(purchTable.InventSiteId);

@@ -426,6 +426,7 @@ class ServiceLookupRepository @Inject constructor(
                         PurchaseOrderSummary(
                             purchId = row.purchId,
                             vendorAccount = row.vendorAccount.orEmpty(),
+                            vendorName = row.vendorName.orEmpty(),
                             status = orderStatusOf(row.status),
                             hasOpenLines = row.hasOpenLines,
                             siteId = row.siteId?.takeIf { it.isNotBlank() },

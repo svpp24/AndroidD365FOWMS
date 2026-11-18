@@ -71,6 +71,7 @@ class EnquiryRepository @Inject constructor(
                         PurchaseOrderSummary(
                             purchId = row.purchId,
                             vendorAccount = row.vendorAccount.orEmpty(),
+                            vendorName = row.vendorName.orEmpty(),
                             status = statusOf(row.status),
                             hasOpenLines = row.hasOpenLines,
                             siteId = row.siteId?.takeIf { it.isNotBlank() },

@@ -11,6 +11,7 @@ class HSMobileOpsOrderSummaryRow
 {
     str        purchId;
     str        vendorAccount;
+    str        vendorName;
     boolean    hasOpenLines;
     str        status;
     str        siteId;
@@ -89,6 +90,21 @@ class HSMobileOpsOrderSummaryRow
     {
         deliveryDate = _value;
         return deliveryDate;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmVendorName</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The vendor's name, so the PO lists read "Demo Supplier", not only an account (18 Nov 2026).
+    /// </summary>
+    [DataMemberAttribute('VendorName')]
+    public str parmVendorName(str _value = vendorName)
+    {
+        vendorName = _value;
+        return vendorName;
     }
 ]]></Source>
 			</Method>

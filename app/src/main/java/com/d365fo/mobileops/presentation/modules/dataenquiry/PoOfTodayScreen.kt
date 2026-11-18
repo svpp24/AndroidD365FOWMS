@@ -127,7 +127,8 @@ private fun PurchaseOrderRow(order: PurchaseOrderSummary, onClick: () -> Unit) {
         titleIsCode = true,
         state = if (late) RowState.Warn else RowState.Open,
         subtitle = listOfNotNull(
-            order.vendorAccount.takeIf { it.isNotBlank() }?.let { "Vendor $it" },
+            // The vendor's name with its account (user, 18 Nov 2026).
+            listOf(order.vendorName, order.vendorAccount).filter { it.isNotBlank() }.joinToString(" · ").takeIf { it.isNotBlank() },
             day?.let { "Delivery date " + Formatters.dayLabel(it.toString()) + if (late) " · overdue" else "" },
         ).joinToString(" · ").ifEmpty { null },
         count = "Receive",

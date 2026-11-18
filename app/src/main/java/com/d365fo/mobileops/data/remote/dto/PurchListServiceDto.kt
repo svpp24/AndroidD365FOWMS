@@ -22,6 +22,8 @@ data class OrdersForDateRequestBody(
 data class OrderSummaryRowDto(
     @SerialName("PurchId") val purchId: String = "",
     @SerialName("VendorAccount") val vendorAccount: String? = null,
+    /** Absent from an older AOS - the lists then show the account alone. */
+    @SerialName("VendorName") val vendorName: String? = null,
     /** PurchStatus symbol: Backorder, Received, Invoiced, Canceled or None. */
     @SerialName("Status") val status: String? = null,
     /** False once every line is received - absent (older AOS) reads as still open. */
