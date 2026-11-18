@@ -151,8 +151,11 @@ class SkuSyncRepository @Inject constructor(
         val before = prefs.getString(KEY_WAREHOUSE, null)
         if (before == warehouseId) return false
         prefs.edit().putString(KEY_WAREHOUSE, warehouseId).apply()
-        // Never synced: the catch-up sync at start takes care of it.
-        return before != null && prefs.getLong(KEY_LAST_SUCCESS, 0L) > 0L
+        // Never synced (a new install, first sign-in): now, on any connection - not the catch-up
+        // job, which waits for Wi-Fi and charging (user, 19 Nov 2026: "sync has to start
+        // immediately").
+        if (prefs.getLong(KEY_LAST_SUCCESS, 0L) == 0L) return true
+        return before != null
     }
 
     /**
