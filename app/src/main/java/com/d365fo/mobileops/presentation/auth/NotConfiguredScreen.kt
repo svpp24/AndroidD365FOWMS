@@ -124,21 +124,22 @@ fun NotConfiguredScreen(
             color = FocusColors.ink,
             modifier = Modifier.padding(top = 12.dp, bottom = 20.dp),
         )
-        ResultBand(
-            BandState(
-                BandKind.Warn,
-                when (state) {
-                    is SessionState.NotConfigured -> "This device is not configured yet"
-                    is SessionState.SignedOut -> state.reason ?: "This device cannot reach D365FO"
-                    else -> "Setting up"
-                },
-                // No environment address on this screen at all (user, 15 and 18 Nov 2026) - it
-                // read as if the device were connected. Connection settings shows it.
-                null,
-            ),
-        )
+        if (state is SessionState.SignedOut) {
+            ResultBand(
+                BandState(
+                    BandKind.Warn,
+                    state.reason ?: "This device cannot reach D365FO",
+                    // No environment address on this screen at all (user, 15 and 18 Nov 2026) - it
+                    // read as if the device were connected. Connection settings shows it.
+                    null,
+                ),
+            )
+        } else {
+            // What to do, as every screen's task box (user, 18 Nov 2026) - not a yellow bar.
+            com.d365fo.mobileops.presentation.common.focus.ListTaskBox("Scan the connection QR", com.d365fo.mobileops.presentation.common.focus.TaskIcons.Scan)
+        }
         Text(
-            text = "Scan the connection QR code from your administrator.",
+            text = "This device is not set up yet. Your administrator has the connection QR code.",
             style = FocusType.bandDetail,
             color = FocusColors.muted,
             textAlign = androidx.compose.ui.text.style.TextAlign.Center,

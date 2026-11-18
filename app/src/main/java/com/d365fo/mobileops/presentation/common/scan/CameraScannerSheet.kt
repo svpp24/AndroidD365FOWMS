@@ -62,6 +62,8 @@ import java.util.concurrent.Executors
 fun CameraScannerSheet(
     onDecoded: (String) -> Unit,
     onDismiss: () -> Unit,
+    /** The task box over the camera (user, 18 Nov 2026). */
+    task: String = "Scan the barcode",
 ) {
     val context = LocalContext.current
     var hasPermission by remember {
@@ -88,6 +90,9 @@ fun CameraScannerSheet(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false),
     ) {
+        // Opened from a bottom button row: its buttons are not that row's (Cancel filled the
+        // whole screen, 18 Nov 2026).
+        androidx.compose.runtime.CompositionLocalProvider(com.d365fo.mobileops.presentation.common.focus.LocalInActionRow provides false) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -120,16 +125,22 @@ fun CameraScannerSheet(
                 }
             }
 
-            OutlinedButton(
+            com.d365fo.mobileops.presentation.common.focus.FocusTaskBox(
+                com.d365fo.mobileops.presentation.common.focus.FocusTask(task, icon = com.d365fo.mobileops.presentation.common.focus.TaskIcons.Scan),
+                Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(horizontal = 16.dp, vertical = 24.dp),
+            )
+            // White, as every Cancel - the outlined one was lost on a dark camera picture.
+            com.d365fo.mobileops.presentation.common.focus.FocusButton(
+                "Cancel",
                 onClick = onDismiss,
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
-                    .padding(bottom = 32.dp)
-                    .fillMaxWidth(0.7f)
-                    .heightIn(min = WarehouseDimens.MinTouchTarget),
-            ) {
-                Text("Cancel")
-            }
+                    .padding(horizontal = 16.dp, vertical = 32.dp)
+                    .fillMaxWidth(),
+            )
+        }
         }
     }
 }

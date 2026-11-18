@@ -4,6 +4,7 @@ import com.d365fo.mobileops.presentation.common.theme.WarehouseDimens
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.OutlinedTextField
@@ -213,7 +214,9 @@ fun ConnectionQrSetup(
         if (state is ConnectionQrState.Done) onConnected()
     }
 
-    Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    // In a bottom row the button is as tall as the one beside it (equal buttons, 18 Nov 2026).
+    val inRow = com.d365fo.mobileops.presentation.common.focus.LocalInActionRow.current
+    Column(modifier = modifier.fillMaxWidth().then(if (inRow) Modifier.fillMaxHeight() else Modifier), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         com.d365fo.mobileops.presentation.common.focus.FocusButton(
             text = if (state is ConnectionQrState.Applying) "Setting up…" else "Scan connection QR",
             onClick = viewModel::startScan,
@@ -231,6 +234,7 @@ fun ConnectionQrSetup(
         ConnectionQrState.Scanning -> CameraScannerSheet(
             onDecoded = viewModel::onScanned,
             onDismiss = viewModel::dismiss,
+            task = "Scan the connection QR",
         )
         is ConnectionQrState.UnsentWork -> com.d365fo.mobileops.presentation.common.components.UnsentWorkDialog(
             description = s.description,

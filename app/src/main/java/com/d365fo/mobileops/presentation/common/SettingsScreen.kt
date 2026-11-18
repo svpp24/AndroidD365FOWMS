@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -491,7 +492,9 @@ private fun SettingsMenu(
     val workState by work.state.collectAsStateWithLifecycle()
     LaunchedEffect(Unit) { work.refreshSummary() }
     val values = mapOf(
-        SettingsMenuItem.ConnectionProfile to listOfNotNull(tenant.label.ifBlank { null }, tenant.company.ifBlank { null }).joinToString(" · "),
+        // "UAT" was the built-in label of a device with no profile (18 Nov 2026).
+        SettingsMenuItem.ConnectionProfile to if (tenant.resourceUrl.isBlank()) "No profile yet"
+            else listOfNotNull(tenant.label.ifBlank { null }, tenant.company.ifBlank { null }).joinToString(" · "),
         SettingsMenuItem.Appearance to "Text size ${displayScale.label}",
         SettingsMenuItem.Lockout to "After ${idleTimeout.label}",
         SettingsMenuItem.Session to listOfNotNull(session?.selected?.warehouseId, "offline use").joinToString(" · "),
@@ -721,13 +724,10 @@ private fun ConnectionProfiles(
     val colors = com.d365fo.mobileops.presentation.common.theme.FocusColors
 
     if (profiles.isEmpty()) {
-        com.d365fo.mobileops.presentation.common.focus.ResultBand(
-            com.d365fo.mobileops.presentation.common.focus.BandState(
-                com.d365fo.mobileops.presentation.common.focus.BandKind.Info,
-                "No profile yet",
-                "Scan a connection QR code.",
-            ),
-            modifier = Modifier.padding(top = 16.dp),
+        // The task box, as every screen (user, 18 Nov 2026) - not an info bar.
+        com.d365fo.mobileops.presentation.common.focus.FocusTaskBox(
+            com.d365fo.mobileops.presentation.common.focus.FocusTask("Scan the connection QR", icon = com.d365fo.mobileops.presentation.common.focus.TaskIcons.Scan),
+            Modifier.padding(top = 16.dp).padding(horizontal = SIDE),
         )
     }
     val active = profiles.firstOrNull { it.label == activeLabel }
@@ -928,7 +928,8 @@ private fun ConnectionReset(viewModel: SettingsViewModel, modifier: Modifier = M
     LaunchedEffect(confirm) { unsent = if (confirm) viewModel.unsentDescription() else null }
 
     // What it clears is said in the dialog ("Clears secrets and offline sign-ins...").
-    RedOutlineButton("Reset connection", onClick = { confirm = true }, modifier = modifier)
+    // As tall as Scan connection QR beside it (18 Nov 2026).
+    RedOutlineButton("Reset connection", onClick = { confirm = true }, modifier = modifier.fillMaxHeight())
     if (!confirm) return
     AlertDialog(
         onDismissRequest = { confirm = false },
