@@ -132,10 +132,9 @@ fun NotConfiguredScreen(
                     is SessionState.SignedOut -> state.reason ?: "This device cannot reach D365FO"
                     else -> "Setting up"
                 },
-                // No address after a deactivation (user, 15 Nov 2026) - the profile is named instead.
-                // Not on "not configured yet" either (user, 18 Nov 2026): a half-saved connection
-                // (a developer build's compiled-in URL) read as if the device were connected.
-                tenant.host.takeIf { state is SessionState.SignedOut && tenant.resourceUrl.isNotBlank() && !deactivated },
+                // No environment address on this screen at all (user, 15 and 18 Nov 2026) - it
+                // read as if the device were connected. Connection settings shows it.
+                null,
             ),
         )
         Text(
