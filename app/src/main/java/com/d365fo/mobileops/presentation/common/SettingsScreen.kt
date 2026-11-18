@@ -308,10 +308,19 @@ fun SettingsScreen(
                     // Read-only - a worker works the warehouse D365FO assigned them.
                     val switcher: WarehouseSwitcherViewModel = hiltViewModel()
                     val session by switcher.session.collectAsStateWithLifecycle()
-                    Caption("Assigned warehouse")
-                    session?.selected?.let { wh ->
-                        WarehouseRow(warehouse = wh, current = false, pill = null, onClick = onChangeWarehouse)
-                    } ?: Note(worker.warehouseId.ifBlank { "No warehouse - ask a supervisor" })
+                    // Every warehouse the worker is assigned, the one in use marked (user, 18 Nov 2026).
+                    val assigned = session?.warehouses.orEmpty()
+                    Caption(if (assigned.size > 1) "Assigned warehouses" else "Assigned warehouse")
+                    if (assigned.isNotEmpty()) {
+                        assigned.forEach { wh ->
+                            val inUse = wh.warehouseId == session?.selected?.warehouseId
+                            WarehouseRow(warehouse = wh, current = inUse && assigned.size > 1, pill = null, onClick = onChangeWarehouse)
+                        }
+                    } else {
+                        session?.selected?.let { wh ->
+                            WarehouseRow(warehouse = wh, current = false, pill = null, onClick = onChangeWarehouse)
+                        } ?: Note(worker.warehouseId.ifBlank { "No warehouse - ask a supervisor" })
+                    }
                     Caption("Session")
                     com.d365fo.mobileops.presentation.common.focus.FocusListRow(
                         title = signedInAs.ifBlank { "Signed in" },

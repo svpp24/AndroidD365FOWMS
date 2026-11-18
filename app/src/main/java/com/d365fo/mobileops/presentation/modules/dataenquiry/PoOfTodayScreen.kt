@@ -102,6 +102,8 @@ fun PoOfTodayScreen(
                         modifier = Modifier.fillMaxSize(),
                         contentPadding = PaddingValues(bottom = WarehouseDimens.ItemSpacing),
                     ) {
+                        // Every list has its task box (user, 18 Nov 2026).
+                        item(key = "task") { com.d365fo.mobileops.presentation.common.focus.ListTaskBox("Choose an order", com.d365fo.mobileops.presentation.common.focus.TaskIcons.Pick) }
                         items(visible, key = { it.purchId }) { order ->
                             PurchaseOrderRow(order, onClick = {
                                 viewModel.startReceiving(order.purchId)

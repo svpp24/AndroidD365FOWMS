@@ -31,6 +31,7 @@ class DemoLauncher @Inject constructor(
     private val tokenProvider: ClientCredentialsTokenProvider,
     private val secureStore: SecureStore,
     private val skuSync: com.d365fo.mobileops.data.repository.SkuSyncRepository,
+    private val orders: com.d365fo.mobileops.data.repository.OrderCreationRepository,
 ) {
     /** True while [start] runs: the sign-out watcher must not end a demo that is still signing in. */
     @Volatile var starting: Boolean = false
@@ -60,6 +61,9 @@ class DemoLauncher @Inject constructor(
                     // background download waits for the handheld to be on charge.
                     runCatching { skuSync.runStep(20_000, com.d365fo.mobileops.data.repository.ManualSync.FULL) }
                         .onFailure { Timber.w(it, "demo item list") }
+                    // And its vendors, so Sync does not say "Not synced yet" (18 Nov 2026).
+                    runCatching { orders.refreshVendors(force = true) }
+                        .onFailure { Timber.w(it, "demo vendors") }
                     NetworkResult.Success(Unit)
                 }
                 is NetworkResult.Error -> { end(); r }

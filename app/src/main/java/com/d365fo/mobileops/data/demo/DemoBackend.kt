@@ -850,7 +850,8 @@ object DemoBackend {
             else -> emptyList()
         }
         // Everything fits in the first page; a later page (AfterKey set) is empty.
-        val page = if (r.s("AfterKey").isBlank()) rows else emptyList()
+        // BARCODES / VARIANTS / UNITS start at "0" (SkuSyncRepository.initialKey), ITEMS at "".
+        val page = if (r.s("AfterKey").isBlank() || r.s("AfterKey") == "0") rows else emptyList()
         return ok(
             obj(
                 "Success" to true, "RowsJson" to JsonArray(page.map { row -> JsonArray(row.map { JsonPrimitive(it) }) }).toString(),

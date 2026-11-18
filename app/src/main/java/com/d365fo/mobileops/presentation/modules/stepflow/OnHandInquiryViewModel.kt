@@ -136,6 +136,12 @@ class OnHandInquiryViewModel @Inject constructor(
             // could only ever fail.
             val item = (itemResult as? NetworkResult.Success)?.data
             if (item != null) {
+                // A lookup that answered for a barcode names the item it belongs to: show and ask
+                // about that item number, not the scanned text (18 Nov 2026).
+                if (item.itemNumber.isNotBlank() && !item.itemNumber.equals(value, ignoreCase = true)) {
+                    onHand.cancel()
+                    return@launch show(item.itemNumber, item.productName, lookups.lookupOnHand(item.itemNumber, warehouse))
+                }
                 return@launch show(value, item.productName, onHand.await())
             }
 
