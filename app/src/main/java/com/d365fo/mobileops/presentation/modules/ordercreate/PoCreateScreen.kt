@@ -292,8 +292,12 @@ private fun PoDialogs(state: PoCreateState, viewModel: PoCreateViewModel, online
                     modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
                 ) {
                     pending.units.forEach { u ->
+                        // "Box (12 Pcs)", as the other pads (user, 18 Nov 2026).
+                        val inv = pending.item.inventUnit
+                        val f = pending.factors[u.uppercase()]?.stripTrailingZeros()
                         com.d365fo.mobileops.presentation.common.focus.FocusChip(
-                            u,
+                            if (f == null || u.equals(inv, true) || inv.isBlank() || f.compareTo(java.math.BigDecimal.ONE) == 0) u
+                            else "$u (${f.toPlainString()} $inv)",
                             selected = u.equals(pending.unit, ignoreCase = true),
                             onClick = { viewModel.setUnit(u) },
                         )

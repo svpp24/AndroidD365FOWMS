@@ -37,6 +37,8 @@ data class PendingLine(
     val unit: String = "",
     /** The units the item can be ordered in: its own first, then those it converts to. */
     val units: List<String> = emptyList(),
+    /** Inventory units in one of each unit, for "Box (12 Pcs)" (18 Nov 2026). */
+    val factors: Map<String, java.math.BigDecimal> = emptyMap(),
 )
 
 data class PoCreateState(
@@ -315,12 +317,17 @@ class PoCreateViewModel @Inject constructor(
                         v.configId.ifBlank { null }, v.sizeId.ifBlank { null }, v.colorId.ifBlank { null }, v.styleId.ifBlank { null },
                     ),
                     emptyList(),
-                ).map { it.unitId }
+                )
             }.getOrDefault(emptyList())
             _state.update { s ->
                 val p = s.enteringQty
                 if (p == null || p.item.itemId != item.itemId) s
-                else s.copy(enteringQty = p.copy(units = (p.units + converted).filter { it.isNotBlank() }.distinctBy { it.uppercase() }))
+                else s.copy(
+                    enteringQty = p.copy(
+                        units = (p.units + converted.map { it.unitId }).filter { it.isNotBlank() }.distinctBy { it.uppercase() },
+                        factors = converted.associate { it.unitId.uppercase() to it.factor },
+                    ),
+                )
             }
         }
     }

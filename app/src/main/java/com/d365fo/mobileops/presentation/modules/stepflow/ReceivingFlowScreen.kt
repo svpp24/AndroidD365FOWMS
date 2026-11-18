@@ -253,7 +253,7 @@ fun ReceivingFlowScreen(
     var showTodays by rememberSaveable { mutableStateOf(false) }
     var menuOpen by remember { mutableStateOf(false) }
     val inPost = state.posting || state.postOutcome != null
-    val scannedLines = state.captured.map { it.lineNumber }.distinct().size
+    val scannedLines = fullyScannedLines(state)
     val total = state.outstandingLineCount
     // Camera, search and Start over: the flow's extra tools, in one menu on the top bar.
     val toolsMenu: (@Composable androidx.compose.foundation.layout.RowScope.() -> Unit)? = if (inPost || state.showingCaptured) null else { {
@@ -302,11 +302,6 @@ fun ReceivingFlowScreen(
         counter = if (state.order != null && total > 0) "$scannedLines / $total" else null,
         progress = if (state.order != null && total > 0) scannedLines.toFloat() / total else null,
         band = if (inPost || state.showingCaptured) null else receivingBand(state),
-        remaining = if (!inPost && !state.showingCaptured && state.step == ReceivingStep.ITEM && state.captured.isNotEmpty() && total > 0) {
-            (total - scannedLines).coerceAtLeast(0).let { "$it ${if (it == 1) "line" else "lines"} left" }
-        } else {
-            null
-        },
         scanPill = if (inPost || state.showingCaptured || state.lineChoices.isNotEmpty()) null else {
             { com.d365fo.mobileops.presentation.common.focus.ScanPillField(label = receivingScanLabel(state.step), enabled = !state.busy) }
         },
@@ -354,6 +349,8 @@ fun ReceivingFlowScreen(
             }
             state.step == ReceivingStep.PURCHASE_ORDER && showTodays && state.todaysOrders.isNotEmpty() ->
                 Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
+                    // Every list has its task box (user, 18 Nov 2026).
+                    com.d365fo.mobileops.presentation.common.focus.ListTaskBox("Choose an order", com.d365fo.mobileops.presentation.common.focus.TaskIcons.Pick)
                     state.todaysOrders.forEach { order ->
                         com.d365fo.mobileops.presentation.common.focus.FocusListRow(
                             title = order.purchId,
@@ -803,7 +800,11 @@ private fun androidx.compose.foundation.layout.ColumnScope.ReceivingCenter(state
                         last.batchId?.takeIf { it.isNotBlank() }?.let { "Batch $it" },
                         wordsDate(last.batchExpiryDate?.takeIf { it.isNotBlank() })?.let { "expires $it" },
                         last.locationId?.takeIf { it.isNotBlank() },
-                    ).joinToString(" · "),
+                    ).joinToString(" · ") +
+                        // How many lines are left, on the card - not under it (user, 18 Nov 2026).
+                        state.outstandingLineCount.takeIf { it > 0 }
+                            ?.let { (it - fullyScannedLines(state)).coerceAtLeast(0) }
+                            ?.let { "\n$it ${if (it == 1) "line" else "lines"} left" }.orEmpty(),
                 )
             }
         }
@@ -815,7 +816,8 @@ private fun androidx.compose.foundation.layout.ColumnScope.ReceivingCenter(state
                 caption = when (state.step) {
                     ReceivingStep.QUANTITY -> "Quantity"
                     ReceivingStep.LOCATION -> "Location"
-                    ReceivingStep.BATCH -> "Batch"
+                    // The card is the item - "Batch" over an item code read wrong (user, 18 Nov 2026).
+                    ReceivingStep.BATCH -> "Item"
                     ReceivingStep.BATCH_EXPIRY_DATE -> "New batch · expiry"
                     ReceivingStep.SERIAL -> "Serial"
                     ReceivingStep.PACKING_SLIP -> "Delivery note"
@@ -865,7 +867,7 @@ private fun receivingTask(state: ReceivingFlowState): com.d365fo.mobileops.prese
             when {
                 state.order != null && state.outstandingLineCount == 0 && state.captured.isEmpty() ->
                     T("Nothing left to receive", "on this order", i.CheckCircle, true)
-                last != null -> T("Scan the next item", "${last.itemId} · ${plain(last.quantity)} ${last.unitSymbol} saved".trim(), i.QrCodeScanner, true)
+                last != null -> T("Scan an item", "${last.itemId} · ${plain(last.quantity)} ${last.unitSymbol} saved".trim(), i.QrCodeScanner, true)
                 else -> T("Scan an item", "from this delivery", i.QrCodeScanner, false)
             }
         }
@@ -874,7 +876,7 @@ private fun receivingTask(state: ReceivingFlowState): com.d365fo.mobileops.prese
         ReceivingStep.BATCH -> T("Scan the batch", item.takeIf { it.isNotBlank() }?.let { "on the box of $it" }, i.QrCodeScanner, false)
         ReceivingStep.BATCH_EXPIRY_DATE -> T("Enter the expiry date", "311228, 31122028 or 31-12-2028", i.CalendarMonth, false)
         ReceivingStep.SERIAL -> T("Scan the serial", c.serialsOutstanding.takeIf { it > 1 }?.let { "$it to go" }, i.QrCodeScanner, false)
-        ReceivingStep.CONFIRM -> T("Scan the next item", null, i.CheckCircle, true)
+        ReceivingStep.CONFIRM -> T("Scan an item", null, i.CheckCircle, true)
     }
 }
 
@@ -1051,14 +1053,13 @@ internal fun ReceivingFocusSample(kind: Int) {
         )
     }
     val total = state.outstandingLineCount
-    val scanned = state.captured.map { it.lineNumber }.distinct().size
+    val scanned = fullyScannedLines(state)
     com.d365fo.mobileops.presentation.common.focus.FocusScreen(
         title = "PO receiving",
         onBack = {},
         counter = if (state.order != null && total > 0) "$scanned / $total" else null,
         progress = if (state.order != null && total > 0) scanned.toFloat() / total else null,
         band = receivingBand(state),
-        remaining = if (state.step == ReceivingStep.ITEM && state.captured.isNotEmpty()) "${total - scanned} line left" else null,
         scanPill = { com.d365fo.mobileops.presentation.common.focus.ScanPill(onTap = {}) },
         topBarTrailing = {
             IconButton(onClick = {}, modifier = Modifier.size(48.dp)) { Icon(Icons.Default.MoreVert, contentDescription = "More") }
@@ -1069,6 +1070,16 @@ internal fun ReceivingFocusSample(kind: Int) {
     }
 }
 
+/**
+ * Lines with all of their quantity scanned - a line part received is still left (18 Nov 2026,
+ * the same rule as TransferFlowState.outstandingLineCount).
+ */
+private fun fullyScannedLines(state: ReceivingFlowState): Int =
+    state.captured.groupBy { it.lineNumber }.count { (_, lines) ->
+        val ceiling = lines.firstNotNullOfOrNull { it.maxQuantity }
+        ceiling != null && lines.fold(BigDecimal.ZERO) { sum, l -> sum + l.quantity } >= ceiling
+    }
+
 /** What the scan box asks for at each receiving step (#30, user 16 Nov 2026). */
 internal fun receivingScanLabel(step: com.d365fo.mobileops.domain.model.ReceivingStep): String = when (step) {
     com.d365fo.mobileops.domain.model.ReceivingStep.PURCHASE_ORDER -> "Scan the PO number"
@@ -1077,7 +1088,7 @@ internal fun receivingScanLabel(step: com.d365fo.mobileops.domain.model.Receivin
     com.d365fo.mobileops.domain.model.ReceivingStep.QUANTITY -> "Type the quantity"
     com.d365fo.mobileops.domain.model.ReceivingStep.LOCATION -> "Scan the location to put it"
     com.d365fo.mobileops.domain.model.ReceivingStep.BATCH -> "Scan the batch number"
-    com.d365fo.mobileops.domain.model.ReceivingStep.BATCH_EXPIRY_DATE -> "Type 311228 or 31-12-2028"
+    com.d365fo.mobileops.domain.model.ReceivingStep.BATCH_EXPIRY_DATE -> "Enter expiry date"
     com.d365fo.mobileops.domain.model.ReceivingStep.SERIAL -> "Scan the serial number"
-    com.d365fo.mobileops.domain.model.ReceivingStep.CONFIRM -> "Scan the next item"
+    com.d365fo.mobileops.domain.model.ReceivingStep.CONFIRM -> "Scan an item"
 }

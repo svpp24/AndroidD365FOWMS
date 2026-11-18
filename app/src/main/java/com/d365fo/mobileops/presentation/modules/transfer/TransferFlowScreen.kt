@@ -305,13 +305,8 @@ fun TransferFlowScreen(
         counter = if (state.order != null && total > 0) "$done / $total" else null,
         progress = if (state.order != null && total > 0) done.toFloat() / total else null,
         band = if (state.showingCaptured) null else transferBand(state, mode),
-        remaining = if (!state.showingCaptured && state.step == TransferStep.ITEM && state.captured.isNotEmpty() && left != null) {
-            "$left ${if (left == 1) "line" else "lines"} left"
-        } else {
-            null
-        },
         scanPill = if (state.showingCaptured || state.lineChoices.isNotEmpty()) null else {
-            { com.d365fo.mobileops.presentation.common.focus.ScanPillField(label = transferScanLabel(state.step), enabled = !state.busy) }
+            { com.d365fo.mobileops.presentation.common.focus.ScanPillField(label = transferScanLabel(state.step, mode == TransferMode.SHIP), enabled = !state.busy) }
         },
         topBarTrailing = if (state.showingCaptured) null else toolsMenu,
         sidePane = if (state.showingCaptured) null else { {
@@ -378,6 +373,8 @@ fun TransferFlowScreen(
                 }
             state.step == TransferStep.TRANSFER_ORDER && showTodays && state.todays.isNotEmpty() ->
                 Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
+                    // Every list has its task box (user, 18 Nov 2026).
+                    com.d365fo.mobileops.presentation.common.focus.ListTaskBox("Choose an order", com.d365fo.mobileops.presentation.common.focus.TaskIcons.Pick)
                     state.todays.forEach { t ->
                         com.d365fo.mobileops.presentation.common.focus.FocusListRow(
                             title = t.transferId,
@@ -804,7 +801,9 @@ private fun androidx.compose.foundation.layout.ColumnScope.TransferCenter(state:
                         last.unitSymbol.takeIf { it.isNotBlank() },
                         last.batchId?.takeIf { it.isNotBlank() }?.let { "Batch $it" },
                         last.locationId?.takeIf { it.isNotBlank() },
-                    ).joinToString(" · "),
+                    ).joinToString(" · ") +
+                        // How many lines are left, on the card - not under it (user, 18 Nov 2026).
+                        state.outstandingLineCount?.let { "\n$it ${if (it == 1) "line" else "lines"} left" }.orEmpty(),
                 )
             }
         }
@@ -815,7 +814,8 @@ private fun androidx.compose.foundation.layout.ColumnScope.TransferCenter(state:
                 caption = when (state.step) {
                     TransferStep.QUANTITY -> "Quantity"
                     TransferStep.LOCATION -> "Location"
-                    TransferStep.BATCH -> "Batch"
+                    // The card is the item (user, 18 Nov 2026).
+                    TransferStep.BATCH -> "Item"
                     TransferStep.SERIAL -> "Serial"
                     else -> titleFor(state.step, mode)
                 },
@@ -993,13 +993,13 @@ fun TransferEntryScreen(
 }
 
 /** What the scan box asks for at each transfer step (#30, user 16 Nov 2026). */
-internal fun transferScanLabel(step: TransferStep): String = when (step) {
+internal fun transferScanLabel(step: TransferStep, ship: Boolean = true): String = when (step) {
     TransferStep.TRANSFER_ORDER -> "Scan the transfer number"
-    TransferStep.ITEM -> "Scan an item on this transfer"
+    TransferStep.ITEM -> if (ship) "Scan an item to ship" else "Scan an item to receive"
     TransferStep.QUANTITY -> "Type the quantity"
     TransferStep.LOCATION -> "Scan the location"
     TransferStep.BATCH -> "Scan the batch number"
     TransferStep.SERIAL -> "Scan the serial number"
-    TransferStep.CONFIRM -> "Scan the next item"
+    TransferStep.CONFIRM -> "Scan an item"
 }
 
