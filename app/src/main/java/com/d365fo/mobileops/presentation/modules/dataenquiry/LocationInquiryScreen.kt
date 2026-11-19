@@ -84,7 +84,7 @@ fun LocationInquiryScreen(
             )
             else -> null
         },
-        scanPill = { com.d365fo.mobileops.presentation.common.focus.ScanPillField(label = "Scan a location to see what's in it", enabled = !state.busy) },
+        scanPill = { com.d365fo.mobileops.presentation.common.focus.ScanPillField(label = "Scan a location", enabled = !state.busy) },
         topBarTrailing = {
             IconButton(onClick = { showCamera = true }, modifier = Modifier.heightIn(min = 48.dp)) {
                 Icon(Icons.Default.PhotoCamera, contentDescription = "Camera scan", tint = com.d365fo.mobileops.presentation.common.theme.FocusColors.ink)
