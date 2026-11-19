@@ -335,7 +335,7 @@ fun SettingsScreen(
                         chevron = true,
                         onClick = { tour.replay(); onBack() },
                     )
-                    OfflineSection(warehouseId = worker.warehouseId)
+                    // Offline use (item data, open orders and counts) is on Sync only (user, 19 Nov 2026).
                 }
 
                 // Always reachable, regardless of sign-in or license state - see LogStore.

@@ -83,7 +83,8 @@ class SyncStatusViewModel @Inject constructor(
     private val sku: SkuSyncRepository,
     private val orders: OrderCreationRepository,
     private val scheduler: SyncScheduler,
-    prefetcher: OfflinePrefetcher,
+    private val prefetcher: OfflinePrefetcher,
+    private val workerSession: com.d365fo.mobileops.data.repository.WorkerSessionRepository,
     backup: WorkBackup,
 ) : ViewModel() {
     private val _status = MutableStateFlow(SyncStatus())
@@ -112,7 +113,12 @@ class SyncStatusViewModel @Inject constructor(
         }
     }
 
-    fun syncNow(full: Boolean) = scheduler.syncMastersNow(if (full) ManualSync.FULL else ManualSync.CHANGES)
+    fun syncNow(full: Boolean) {
+        scheduler.syncMastersNow(if (full) ManualSync.FULL else ManualSync.CHANGES)
+        // Open orders and counts too - their own Save now button was in My warehouse & sign-in,
+        // removed as a repeat of this screen (user, 19 Nov 2026).
+        workerSession.session.value?.selected?.warehouseId?.takeIf { it.isNotBlank() }?.let(prefetcher::runNow)
+    }
 
     companion object {
         /** "13:05" today, "15 Nov 13:05" another day. */
