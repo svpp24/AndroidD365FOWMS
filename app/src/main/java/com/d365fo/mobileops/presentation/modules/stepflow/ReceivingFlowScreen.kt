@@ -797,14 +797,15 @@ private fun androidx.compose.foundation.layout.ColumnScope.ReceivingCenter(state
                     unitLine = o?.let { (it.vendorName.takeIf { n -> n.isNotBlank() } ?: it.vendorAccount).takeIf { n -> n.isNotBlank() } },
                 )
             } else {
+                val (lastQty, lastUnit) = boxed(last.quantity, last.unitSymbol, last.entryUnit, last.entryFactor)
                 FocusCenter(
             task = receivingTask(state),
                     caption = "Last scanned",
                     code = last.itemId,
                     description = listOf(last.itemName, last.variantLabel).filter { it.isNotBlank() }.joinToString(" · "),
-                    quantity = plain(last.quantity),
+                    quantity = lastQty,
                     unitLine = listOfNotNull(
-                        last.unitSymbol.takeIf { it.isNotBlank() },
+                        lastUnit,
                         last.batchId?.takeIf { it.isNotBlank() }?.let { "Batch $it" },
                         wordsDate(last.batchExpiryDate?.takeIf { it.isNotBlank() })?.let { "expires $it" },
                         last.locationId?.takeIf { it.isNotBlank() },
@@ -819,6 +820,8 @@ private fun androidx.compose.foundation.layout.ColumnScope.ReceivingCenter(state
         else -> {
             val item = c.item
             val line = c.line
+            // Past the quantity: 2 Box as entered, not 24 Pcs.
+            val (qty, unit) = c.quantity?.let { boxed(it, c.unitSymbol, c.entryUnit, c.entryFactor) } ?: (null to c.unitSymbol)
             FocusCenter(
             task = receivingTask(state),
                 caption = when (state.step) {
@@ -836,22 +839,22 @@ private fun androidx.compose.foundation.layout.ColumnScope.ReceivingCenter(state
                     item?.productName?.takeIf { it.isNotBlank() && !it.equals(item.itemNumber, ignoreCase = true) },
                     line?.variant?.label?.takeIf { it.isNotBlank() },
                 ).joinToString(" · ").takeIf { it.isNotBlank() },
-                quantity = c.quantity?.let { plain(it) } ?: "–".takeIf { state.step == ReceivingStep.QUANTITY },
+                quantity = qty ?: "–".takeIf { state.step == ReceivingStep.QUANTITY },
                 unitLine = when (state.step) {
                     // How much is left on the line - a figure, not an instruction.
                     ReceivingStep.QUANTITY -> line?.let { l ->
                         val left = state.suggestedQuantity ?: l.outstandingQuantity
                         "${l.purchaseUnit} · ${plain(left)} left of ${plain(l.orderedQuantity)}"
                     }
-                    ReceivingStep.SERIAL -> listOfNotNull(c.unitSymbol, "${c.serialsOutstanding} serial${if (c.serialsOutstanding == 1) "" else "s"} left").joinToString(" · ")
+                    ReceivingStep.SERIAL -> listOfNotNull(unit, "${c.serialsOutstanding} serial${if (c.serialsOutstanding == 1) "" else "s"} left").joinToString(" · ")
                     // The order's suggested bin moved here from the task box (title only, 17 Nov 2026).
                     ReceivingStep.LOCATION -> listOfNotNull(
-                        c.unitSymbol,
+                        unit,
                         c.batchId?.let { "Batch $it" },
                         state.suggestedLocation?.let { "Order suggests $it" },
                     ).joinToString(" · ")
                     else -> listOfNotNull(
-                        c.unitSymbol,
+                        unit,
                         c.batchId?.let { "Batch $it" },
                         c.locationId,
                     ).joinToString(" · ")
@@ -954,6 +957,16 @@ private fun hintFor(state: ReceivingFlowState): String? = when (state.step) {
 }
 
 private fun plain(value: BigDecimal): String = value.stripTrailingZeros().toPlainString()
+
+/**
+ * Entered as 2 Box: "2" and "Box = 24 Pcs" (user, 19 Nov 2026) - else the quantity and unit as
+ * they are. Boxes only while the quantity is whole boxes.
+ */
+private fun boxed(quantity: BigDecimal, unit: String?, entryUnit: String?, factor: BigDecimal?): Pair<String, String?> {
+    val f = factor?.takeIf { !entryUnit.isNullOrBlank() && it > BigDecimal.ONE && quantity.remainder(it).signum() == 0 }
+        ?: return plain(quantity) to unit?.takeIf { it.isNotBlank() }
+    return plain(quantity.divide(f)) to "$entryUnit = ${plain(quantity)} ${unit.orEmpty()}".trim()
+}
 
 internal fun serialPrompt(perUnit: Boolean, outstanding: Int): String = when {
     !perUnit -> "One serial for this line"

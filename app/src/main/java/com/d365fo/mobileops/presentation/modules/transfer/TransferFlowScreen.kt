@@ -798,14 +798,15 @@ private fun androidx.compose.foundation.layout.ColumnScope.TransferCenter(state:
                     unitLine = o?.let { listOfNotNull(it.fromWarehouseId, it.toWarehouseId).takeIf { w -> w.size == 2 }?.joinToString(" → ") },
                 )
             } else {
+                val (lastQty, lastUnit) = boxed(last.quantity, last.unitSymbol, last.entryUnit, last.entryFactor)
                 FocusCenter(
             task = transferTask(state, mode),
                     caption = if (ship) "Last picked" else "Last scanned",
                     code = last.itemId,
                     description = listOf(last.itemName, last.variantLabel).filter { it.isNotBlank() }.joinToString(" · "),
-                    quantity = plain(last.quantity),
+                    quantity = lastQty,
                     unitLine = listOfNotNull(
-                        last.unitSymbol.takeIf { it.isNotBlank() },
+                        lastUnit,
                         last.batchId?.takeIf { it.isNotBlank() }?.let { "Batch $it" },
                         last.locationId?.takeIf { it.isNotBlank() },
                     ).joinToString(" · ") +
@@ -816,6 +817,8 @@ private fun androidx.compose.foundation.layout.ColumnScope.TransferCenter(state:
         }
         else -> {
             val line = c.line
+            // Past the quantity: 2 Box as entered, not 24 Pcs.
+            val (qty, unit) = c.quantity?.let { boxed(it, c.unitSymbol, c.entryUnit, c.entryFactor) } ?: (null to c.unitSymbol)
             FocusCenter(
             task = transferTask(state, mode),
                 caption = when (state.step) {
@@ -831,20 +834,20 @@ private fun androidx.compose.foundation.layout.ColumnScope.TransferCenter(state:
                     line?.itemName?.takeIf { it.isNotBlank() && !it.equals(line.itemId, ignoreCase = true) },
                     line?.variant?.label?.takeIf { it.isNotBlank() },
                 ).joinToString(" · ").takeIf { it.isNotBlank() },
-                quantity = c.quantity?.let { plain(it) } ?: "–".takeIf { state.step == TransferStep.QUANTITY },
+                quantity = qty ?: "–".takeIf { state.step == TransferStep.QUANTITY },
                 unitLine = when (state.step) {
                     TransferStep.QUANTITY -> line?.let { l ->
                         "${l.unitId} · ${plain(state.suggestedQuantity ?: l.remainingQuantity)} left of ${plain(l.transferQuantity)}"
                     }
-                    TransferStep.SERIAL -> listOfNotNull(c.unitSymbol, "${c.serialsOutstanding} serial${if (c.serialsOutstanding == 1) "" else "s"} left").joinToString(" · ")
+                    TransferStep.SERIAL -> listOfNotNull(unit, "${c.serialsOutstanding} serial${if (c.serialsOutstanding == 1) "" else "s"} left").joinToString(" · ")
                     // Receiving: the batch that came on the truck, on the card (user, 18 Nov 2026) -
                     // the task box shows its title only, so it is no longer said there.
                     TransferStep.BATCH -> listOfNotNull(
-                        listOfNotNull(c.unitSymbol, c.batchId?.let { "Batch $it" }, c.locationId).joinToString(" · ").takeIf { it.isNotBlank() },
+                        listOfNotNull(unit, c.batchId?.let { "Batch $it" }, c.locationId).joinToString(" · ").takeIf { it.isNotBlank() },
                         line?.shippedBatches?.takeIf { mode == TransferMode.RECEIVE && it.isNotEmpty() }
                             ?.let { b -> "Shipped: " + b.joinToString { "${it.batchId} (${plain(it.quantity)})" } },
                     ).joinToString("\n")
-                    else -> listOfNotNull(c.unitSymbol, c.batchId?.let { "Batch $it" }, c.locationId).joinToString(" · ")
+                    else -> listOfNotNull(unit, c.batchId?.let { "Batch $it" }, c.locationId).joinToString(" · ")
                 },
                 onQuantityTap = if (state.step == TransferStep.QUANTITY && !state.busy) onQuantityTap else null,
             )
@@ -942,6 +945,16 @@ private fun hintFor(state: TransferFlowState): String? = when (state.step) {
 }
 
 private fun plain(value: BigDecimal): String = value.stripTrailingZeros().toPlainString()
+
+/**
+ * Entered as 2 Box: "2" and "Box = 24 Pcs" (user, 19 Nov 2026) - else the quantity and unit as
+ * they are. Boxes only while the quantity is whole boxes.
+ */
+private fun boxed(quantity: BigDecimal, unit: String?, entryUnit: String?, factor: BigDecimal?): Pair<String, String?> {
+    val f = factor?.takeIf { !entryUnit.isNullOrBlank() && it > BigDecimal.ONE && quantity.remainder(it).signum() == 0 }
+        ?: return plain(quantity) to unit?.takeIf { it.isNotBlank() }
+    return plain(quantity.divide(f)) to "$entryUnit = ${plain(quantity)} ${unit.orEmpty()}".trim()
+}
 
 /**
  * The dedicated typing screen for whichever step is current - see the identical
