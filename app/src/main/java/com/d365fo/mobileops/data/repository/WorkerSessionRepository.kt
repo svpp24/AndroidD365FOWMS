@@ -359,7 +359,7 @@ class WorkerSessionRepository @Inject constructor(
                 // restricted" rather than "everything denied." Best-effort: a write failure here
                 // must never fail the sign-in itself over a module-gating cache.
                 runCatching {
-                    permissionDao.replaceFor(body.userName, body.modulePermissions.toEntities(body.userName))
+                    permissionDao.replaceNamedFor(body.userName, body.modulePermissions.toEntities(body.userName))
                 }.onFailure { Timber.w(it, "could not cache module permissions for '%s'", body.userName) }
                 if (BuildConfig.DEBUG) {
                     secureStore.putString(

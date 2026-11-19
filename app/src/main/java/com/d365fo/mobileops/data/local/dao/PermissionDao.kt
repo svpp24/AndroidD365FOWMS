@@ -36,4 +36,21 @@ interface PermissionDao {
         upsert(permissions)
     }
 
+    @Query("SELECT * FROM worker_permission WHERE userName = :userName")
+    suspend fun permissionsFor(userName: String): List<WorkerPermissionEntity>
+
+    /**
+     * Sign-in's list: it replaces the modules it names, and keeps the saved rows of the ones it
+     * does not (the order modules - Create PO, Create transfer, Confirm PO, Purchase return - come
+     * from the order service a moment later). Wiping them hid those menus on every sign-in until
+     * that answer came (user, 19 Nov 2026: "few menus, after a few seconds a few more").
+     */
+    @Transaction
+    suspend fun replaceNamedFor(userName: String, permissions: List<WorkerPermissionEntity>) {
+        val named = permissions.map { it.workflow }.toSet()
+        val kept = permissionsFor(userName).filter { it.workflow !in named }
+        clearFor(userName)
+        upsert(kept + permissions)
+    }
+
 }
