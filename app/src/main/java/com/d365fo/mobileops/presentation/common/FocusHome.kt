@@ -346,7 +346,8 @@ internal fun FocusHomeLayout(
                 val selected = LocalHomeSelected.current
                 rows.forEach { row ->
                     HomeRow(
-                        modifier = if (row.title == selected) Modifier.background(FocusColors.infoBg.copy(alpha = 0.6f)) else Modifier,
+                        modifier = (if (row.title == selected) Modifier.background(FocusColors.infoBg.copy(alpha = 0.6f)) else Modifier)
+                            .tourTarget("row_${row.title}"),
                         icon = row.icon,
                         title = row.title,
                         count = row.count,

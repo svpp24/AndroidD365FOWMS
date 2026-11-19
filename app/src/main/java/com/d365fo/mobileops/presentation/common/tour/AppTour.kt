@@ -37,17 +37,23 @@ import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.positionInWindow
+import androidx.compose.ui.graphics.Path
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.d365fo.mobileops.presentation.common.components.SquareButton
 import com.d365fo.mobileops.presentation.common.components.SquareTextButton
+import com.d365fo.mobileops.presentation.common.theme.FocusColors
 import com.d365fo.mobileops.presentation.common.theme.WarehouseDimens
 import com.d365fo.mobileops.presentation.common.theme.WarehouseStatusColors
 
-/** Where each tour target sits on screen, keyed by id - filled in by [tourTarget]. */
+/** Where each tour target sits in the window, keyed by id - filled in by [tourTarget]. */
 class TourTargets {
     val rects = mutableStateMapOf<String, Rect>()
 }
@@ -55,131 +61,137 @@ class TourTargets {
 /** Provided around the signed-in app (AppNavGraph); null elsewhere, and [tourTarget] does nothing then. */
 val LocalTourTargets = compositionLocalOf<TourTargets?> { null }
 
-/** Marks this element as a stop on the navigation tour - see [AppTourOverlay]. */
+/**
+ * Marks this element as a stop on the navigation tour - see [AppTourOverlay]. In window
+ * coordinates: the overlay subtracts its own position, so a bar above it (the demo banner) no
+ * longer moves every highlight up (user, 19 Nov 2026: "pointers are misaligned").
+ */
 fun Modifier.tourTarget(id: String): Modifier = composed {
     val targets = LocalTourTargets.current ?: return@composed this
-    onGloballyPositioned { targets.rects[id] = it.boundsInRoot() }
+    onGloballyPositioned { targets.rects[id] = it.boundsInWindow() }
 }
 
-/** One stop: the element to point at ([target], or none for a centred card), and what to say. */
-data class TourStep(val target: String?, val title: String, val text: String)
+/** One stop: the elements to point at (their union; none for a centred card), and what to say. */
+data class TourStep(val targets: List<String>, val title: String, val text: String)
 
-/** The tour of the signed-in app, in the order it is shown. */
+/** The tour of the signed-in app, in the order it is shown (option A, user 19 Nov 2026). */
 val NavigationTour = listOf(
     TourStep(
-        target = null,
-        title = "A quick look around",
-        text = "Six stops. Next, or Skip.",
-    ),
-    TourStep(
-        target = "warehouse",
+        targets = listOf("connection"),
         title = "Your warehouse",
-        text = "Your scans book here. Tap to change.",
+        text = "Your scans book here. Tap to change it. Green ring: online, amber: offline.",
     ),
     TourStep(
-        target = "tiles",
+        targets = listOf("row_Receive", "row_Ship", "row_Count", "row_Create"),
         title = "Your work",
-        text = "Receive, ship, count, create - with what is open today."
+        text = "Receive, ship, count and create - with what's open today.",
     ),
     TourStep(
-        target = "connection",
-        title = "Online or offline",
-        text = "Green: online. Amber: offline - keep working.",
-    ),
-    TourStep(
-        target = "tab_activity",
+        targets = listOf("row_Activity"),
         title = "Activity",
-        text = "Sends that need you show here in red.",
+        text = "Anything that could not be sent shows here in red.",
     ),
     TourStep(
-        target = "tab_onhand",
-        title = "On-hand",
-        text = "How many, and where - for any item.",
-    ),
-    TourStep(
-        target = "signout",
+        targets = listOf("signout"),
         title = "End of shift",
         text = "Settings and Sign out are in this menu.",
     ),
 )
 
 /**
- * The tour itself: the screen dimmed except for the current target, and a card next to it.
- * Taps on the app underneath are swallowed while it shows, so a tap meant for Next never starts
- * a task by accident.
+ * The tour itself: the screen dimmed except for the current target, ringed in orange, and a card
+ * that points at it. Taps on the app underneath are swallowed while it shows, so a tap meant for
+ * Next never starts a task by accident.
  */
 @Composable
 fun AppTourOverlay(steps: List<TourStep>, targets: TourTargets, onFinish: () -> Unit) {
     var index by remember { mutableIntStateOf(0) }
+    var origin by remember { mutableStateOf(Offset.Zero) }
     val step = steps[index]
-    val rect = step.target?.let { targets.rects[it] }
+    val rect = step.targets.mapNotNull { targets.rects[it] }
+        .reduceOrNull { a, b -> Rect(minOf(a.left, b.left), minOf(a.top, b.top), maxOf(a.right, b.right), maxOf(a.bottom, b.bottom)) }
+        ?.translate(-origin)
     val density = LocalDensity.current
     val pad = with(density) { 6.dp.toPx() }
-    val corner = with(density) { WarehouseDimens.CardCorner.toPx() }
-    val small = with(density) { 72.dp.toPx() }
-    val accent = WarehouseStatusColors.accent
+    val gap = with(density) { 22.dp.toPx() }
+    val corner = with(density) { 16.dp.toPx() }
+    val accent = FocusColors.action
 
     BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
+            .onGloballyPositioned { origin = it.positionInWindow() }
             .pointerInput(Unit) { detectTapGestures { } },
     ) {
+        val screenHeight = with(density) { maxHeight.toPx() }
+        val below = rect != null && rect.center.y < screenHeight / 2
         Canvas(modifier = Modifier.fillMaxSize().graphicsLayer(compositingStrategy = CompositingStrategy.Offscreen)) {
-            drawRect(Color.Black.copy(alpha = 0.62f))
+            drawRect(Color(0xFF0F172A).copy(alpha = 0.72f))
             rect?.let {
-                if (it.maxDimension < small) {
-                    // An icon: a ring round it, so it does not run into the status bar.
-                    val radius = it.maxDimension / 2 + pad / 2
-                    drawCircle(Color.Transparent, radius, it.center, blendMode = BlendMode.Clear)
-                    drawCircle(accent, radius, it.center, style = Stroke(width = 3.dp.toPx()))
-                } else {
-                    // Kept inside the screen, so the ring still shows round a bottom tab.
-                    val edge = 2.dp.toPx()
-                    val left = (it.left - pad).coerceAtLeast(edge)
-                    val top = (it.top - pad).coerceAtLeast(edge)
-                    val right = (it.right + pad).coerceAtMost(this.size.width - edge)
-                    val bottom = (it.bottom + pad).coerceAtMost(this.size.height - edge)
-                    val topLeft = Offset(left, top)
-                    val size = Size(right - left, bottom - top)
-                    drawRoundRect(Color.Transparent, topLeft, size, CornerRadius(corner), blendMode = BlendMode.Clear)
-                    drawRoundRect(accent, topLeft, size, CornerRadius(corner), style = Stroke(width = 3.dp.toPx()))
-                }
+                // Kept inside the screen, so the ring still shows round a part at an edge.
+                val edge = 2.dp.toPx()
+                val left = (it.left - pad).coerceAtLeast(edge)
+                val top = (it.top - pad).coerceAtLeast(edge)
+                val right = (it.right + pad).coerceAtMost(size.width - edge)
+                val bottom = (it.bottom + pad).coerceAtMost(size.height - edge)
+                val topLeft = Offset(left, top)
+                val box = Size(right - left, bottom - top)
+                drawRoundRect(Color.Transparent, topLeft, box, CornerRadius(corner), blendMode = BlendMode.Clear)
+                drawRoundRect(accent, topLeft, box, CornerRadius(corner), style = Stroke(width = 3.dp.toPx()))
+                // The card's pointer, under or over the ring, at the part's centre.
+                val half = 12.dp.toPx()
+                val cx = it.center.x.coerceIn(28.dp.toPx(), size.width - 28.dp.toPx())
+                val tip = if (below) bottom + 6.dp.toPx() else top - 6.dp.toPx()
+                val base = if (below) bottom + gap + 1f else top - gap - 1f
+                drawPath(Path().apply { moveTo(cx - half, base); lineTo(cx + half, base); lineTo(cx, tip); close() }, Color.White)
             }
         }
 
-        // Below the target when it is in the top half of the screen, above it otherwise.
-        val screenHeight = with(density) { maxHeight.toPx() }
         val cardModifier = when {
             rect == null -> Modifier.align(Alignment.Center)
-            rect.center.y < screenHeight / 2 ->
-                Modifier.align(Alignment.TopCenter).offset(y = with(density) { (rect.bottom + pad * 3).toDp() })
-            else ->
-                Modifier.align(Alignment.BottomCenter).offset(y = -with(density) { (screenHeight - rect.top + pad * 3).toDp() })
+            below -> Modifier.align(Alignment.TopCenter).offset(y = with(density) { (rect.bottom + pad + gap).toDp() })
+            else -> Modifier.align(Alignment.BottomCenter).offset(y = -with(density) { (screenHeight - rect.top + pad + gap).toDp() })
         }
         Column(
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
             modifier = cardModifier
-                .padding(horizontal = WarehouseDimens.ScreenPadding)
+                .padding(horizontal = 16.dp)
                 .fillMaxWidth()
-                .background(Color.White, RoundedCornerShape(WarehouseDimens.CardCorner))
-                .border(2.dp, accent, RoundedCornerShape(WarehouseDimens.CardCorner))
-                .padding(16.dp),
+                .background(Color.White, RoundedCornerShape(20.dp))
+                .padding(horizontal = 20.dp, vertical = 16.dp),
         ) {
-            Text(step.title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold, color = accent)
-            Text(step.text, style = MaterialTheme.typography.bodyLarge)
-            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+            Text(step.title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = FocusColors.navy)
+            Text(step.text, style = MaterialTheme.typography.bodyLarge, color = FocusColors.ink)
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(top = 4.dp)) {
                 Text(
                     "${index + 1} of ${steps.size}",
                     style = MaterialTheme.typography.labelLarge,
-                    color = WarehouseStatusColors.text3,
+                    color = FocusColors.muted,
                     modifier = Modifier.weight(1f),
                 )
                 if (index < steps.lastIndex) {
-                    SquareTextButton(onClick = onFinish) { Text("Skip") }
+                    Text(
+                        "Skip",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = FocusColors.navy,
+                        modifier = Modifier.clickable(onClick = onFinish).padding(horizontal = 16.dp, vertical = 12.dp),
+                    )
                 }
-                Box(modifier = Modifier.size(8.dp))
-                SquareButton(onClick = { if (index < steps.lastIndex) index++ else onFinish() }) {
-                    Text(if (index < steps.lastIndex) "Next" else "Done")
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier
+                        .heightIn(min = 48.dp)
+                        .background(FocusColors.navy, RoundedCornerShape(14.dp))
+                        .clickable { if (index < steps.lastIndex) index++ else onFinish() }
+                        .padding(horizontal = 24.dp, vertical = 12.dp),
+                ) {
+                    Text(
+                        if (index < steps.lastIndex) "Next" else "Done",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White,
+                    )
                 }
             }
         }
