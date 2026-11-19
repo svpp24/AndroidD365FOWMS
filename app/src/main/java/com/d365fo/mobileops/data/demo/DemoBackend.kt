@@ -867,11 +867,14 @@ object DemoBackend {
     private fun priced(l: JsonObject, index: Int): JsonObject {
         val it = item(l.s("ItemId"))
         val qty = l.d("Qty")
-        val price = if (l.b("PriceOverride")) l.d("Price") else it?.price ?: 0.0
+        // The line's own unit, as D365FO prices it: a Box is 12 Pcs (19 Nov 2026 - it said Pcs).
+        val unit = l.s("UnitId").ifBlank { UNIT }
+        val perUnit = if (unit.equals("Box", ignoreCase = true)) 12.0 else 1.0
+        val price = if (l.b("PriceOverride")) l.d("Price") else (it?.price ?: 0.0) * perUnit
         return obj(
             "LineNumber" to (l.d("LineNumber").takeIf { n -> n > 0 } ?: (index + 1).toDouble()), "ItemId" to l.s("ItemId"),
             "ItemName" to (it?.name ?: l.s("ItemName")), "BatchId" to l.s("BatchId"), "LocationId" to l.s("LocationId"),
-            "Qty" to qty, "UnitId" to UNIT, "Price" to price, "PriceUnit" to 1.0, "PriceOverride" to l.b("PriceOverride"),
+            "Qty" to qty, "UnitId" to unit, "Price" to price, "PriceUnit" to 1.0, "PriceOverride" to l.b("PriceOverride"),
             "DiscPct" to 0.0, "DiscAmount" to 0.0, "LineAmount" to round2(qty * price),
             "PriceSource" to if (l.b("PriceOverride")) "Manual" else "Trade agreement",
         )
