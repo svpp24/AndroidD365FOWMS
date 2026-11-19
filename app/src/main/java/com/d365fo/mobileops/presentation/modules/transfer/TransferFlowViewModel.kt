@@ -248,6 +248,8 @@ class TransferFlowViewModel @Inject constructor(
             itemName = line.itemName,
             quantity = quantity,
             unitSymbol = capture.unitSymbol.orEmpty(),
+            entryUnit = capture.entryUnit,
+            entryFactor = capture.entryFactor,
             locationId = capture.locationId,
             batchId = capture.batchId,
             serialIds = capture.serialIds,
@@ -382,14 +384,16 @@ class TransferFlowViewModel @Inject constructor(
      */
     fun adjustCapturedQuantity(index: Int, delta: Int) {
         val line = _state.value.captured.getOrNull(index) ?: return
-        setCapturedQuantity(index, line.quantity + BigDecimal(delta))
+        // One box at a time on a line entered in boxes.
+        setCapturedQuantity(index, line.quantity + BigDecimal(delta) * (line.shownFactor ?: BigDecimal.ONE))
     }
 
     /** A typed quantity on the Lines screen (user, 17 Nov 2026) - kept within 1 and the line's maximum. */
     fun setCapturedQuantity(index: Int, value: BigDecimal) {
         val line = _state.value.captured.getOrNull(index) ?: return
         var next = value
-        if (next < BigDecimal.ONE) next = BigDecimal.ONE
+        val least = line.shownFactor ?: BigDecimal.ONE
+        if (next < least) next = least
         line.maxQuantity?.let { max -> if (next > max) next = max }
         if (next == line.quantity) return
         changePicked(line, next - line.quantity) {
@@ -890,6 +894,8 @@ class TransferFlowViewModel @Inject constructor(
                 capture = it.capture.copy(
                     line = line,
                     unitSymbol = line.unitId,
+                    entryUnit = null,
+                    entryFactor = null,
                     // Shipping: the bin scanned before the item (or the warehouse's default issue
                     // bin) stays, unless the item tracks none. Receiving: the warehouse's default
                     // receipt bin when it has one (feedback 88c029a1) - the line's own location is
@@ -968,7 +974,19 @@ class TransferFlowViewModel @Inject constructor(
 
     private fun onQuantity(value: String) {
         val entered = checkQuantity(value).getOrElse { return fail(it.message ?: "\"$value\" is not a number") }
-        _state.update { it.copy(capture = it.capture.copy(quantity = entered), error = null) }
+        // Kept with the line: entered as 2 Box, it shows as 2 Box - not 24 Pcs (user, 19 Nov 2026).
+        val line = _state.value.capture.line
+        val converted = line?.let {
+            com.d365fo.mobileops.domain.model.UnitConversion.parse(value, it.units, _state.value.entryUnit, it.unitId).getOrNull()
+        }
+        val factor = converted?.enteredUnit?.takeIf { it.isNotBlank() && converted.entered.signum() > 0 }
+            ?.let { u -> line.units.firstOrNull { it.unitId.equals(u, ignoreCase = true) }?.factor }
+        _state.update {
+            it.copy(
+                capture = it.capture.copy(quantity = entered, entryUnit = factor?.let { converted.enteredUnit }, entryFactor = factor),
+                error = null,
+            )
+        }
         advance()
     }
 
@@ -1303,7 +1321,16 @@ data class CapturedTransferLine(
     val pickedEarlier: Boolean = false,
     /** Tells banked lines apart while a live pick for one is in flight. */
     val id: String = java.util.UUID.randomUUID().toString(),
-)
+    /** Entered as 2 Box: the unit, and 1 of it in [unitSymbol]. [quantity] stays in [unitSymbol]. */
+    val entryUnit: String? = null,
+    val entryFactor: BigDecimal? = null,
+) {
+    /** The entry unit's factor while the quantity is whole boxes, else null (shown in [unitSymbol]). */
+    val shownFactor: BigDecimal?
+        get() = entryFactor?.takeIf { f ->
+            !entryUnit.isNullOrBlank() && f > BigDecimal.ONE && quantity.remainder(f).signum() == 0
+        }
+}
 
 /**
  * Going back to [step]: its answer and every later one are cleared, in the order this direction
@@ -1319,6 +1346,8 @@ private fun TransferCapture.cleared(step: TransferStep): TransferCapture {
         line = if (TransferStep.ITEM in gone) null else line,
         unitSymbol = if (TransferStep.ITEM in gone) null else unitSymbol,
         quantity = if (TransferStep.QUANTITY in gone) null else quantity,
+        entryUnit = if (TransferStep.QUANTITY in gone) null else entryUnit,
+        entryFactor = if (TransferStep.QUANTITY in gone) null else entryFactor,
         locationId = if (TransferStep.LOCATION in gone) null else locationId,
         batchId = if (TransferStep.BATCH in gone) null else batchId,
         serialIds = when {
@@ -1341,6 +1370,8 @@ private fun CapturedTransferLine.toStored() = StoredLine(
     batchId = batchId,
     serialIds = serialIds,
     picked = picked,
+    entryUnit = entryUnit,
+    entryFactor = entryFactor?.toPlainString(),
 )
 
 private fun StoredLine.toCapturedTransfer() = CapturedTransferLine(
@@ -1353,6 +1384,8 @@ private fun StoredLine.toCapturedTransfer() = CapturedTransferLine(
     batchId = batchId,
     serialIds = serialIds,
     picked = picked,
+    entryUnit = entryUnit,
+    entryFactor = entryFactor?.toBigDecimalOrNull(),
 )
 
 private const val GS1_AUTOFILL_DELAY_MS = 150L

@@ -299,6 +299,8 @@ class ReceivingFlowViewModel @Inject constructor(
             itemName = item.productName,
             quantity = quantity,
             unitSymbol = capture.unitSymbol.orEmpty(),
+            entryUnit = capture.entryUnit,
+            entryFactor = capture.entryFactor,
             locationId = capture.locationId,
             batchId = capture.batchId,
             batchExpiryDate = capture.batchExpiryDate,
@@ -380,7 +382,8 @@ class ReceivingFlowViewModel @Inject constructor(
      */
     fun adjustCapturedQuantity(index: Int, delta: Int) {
         val line = _state.value.captured.getOrNull(index) ?: return
-        setCapturedQuantity(index, line.quantity + BigDecimal(delta))
+        // One box at a time on a line entered in boxes.
+        setCapturedQuantity(index, line.quantity + BigDecimal(delta) * (line.shownFactor ?: BigDecimal.ONE))
     }
 
     /** A typed quantity on the Lines screen (user, 17 Nov 2026) - kept within 1 and the line's maximum. */
@@ -389,7 +392,8 @@ class ReceivingFlowViewModel @Inject constructor(
             if (index !in current.captured.indices) return@update current
             val line = current.captured[index]
             var next = value
-            if (next < BigDecimal.ONE) next = BigDecimal.ONE
+            val least = line.shownFactor ?: BigDecimal.ONE
+            if (next < least) next = least
             line.maxQuantity?.let { max -> if (next > max) next = max }
             if (next == line.quantity) return@update current
             current.copy(
@@ -1100,6 +1104,8 @@ class ReceivingFlowViewModel @Inject constructor(
                         locationRequired = facts.locationRequired,
                     ),
                     unitSymbol = line.purchaseUnit.ifBlank { facts.inventoryUnit },
+                    entryUnit = null,
+                    entryFactor = null,
                     siteId = line.siteId ?: it.capture.siteId,
                     warehouseId = line.warehouseId ?: it.capture.warehouseId,
                     // Pre-answered from the line when it has one. This used to be deliberately
@@ -1179,7 +1185,20 @@ class ReceivingFlowViewModel @Inject constructor(
         val note = converted.enteredUnit.takeIf { it.isNotBlank() }?.let {
             "${plain(converted.entered)} $it = ${plain(entered)} ${line.purchaseUnit}"
         }
-        _state.update { it.copy(capture = it.capture.copy(quantity = entered), conversionNote = note, error = null) }
+        // Kept with the line: entered as 2 Box, it shows as 2 Box - not 24 Pcs (user, 19 Nov 2026).
+        val factor = converted.enteredUnit.takeIf { it.isNotBlank() && converted.entered.signum() > 0 }
+            ?.let { u -> line.units.firstOrNull { it.unitId.equals(u, ignoreCase = true) }?.factor }
+        _state.update {
+            it.copy(
+                capture = it.capture.copy(
+                    quantity = entered,
+                    entryUnit = factor?.let { converted.enteredUnit },
+                    entryFactor = factor,
+                ),
+                conversionNote = note,
+                error = null,
+            )
+        }
         advance()
     }
 
@@ -1500,7 +1519,16 @@ data class CapturedLine(
     val variantLabel: String = "",
     /** See adjustCapturedQuantity. Null for a line resumed from a saved session - unbounded. */
     val maxQuantity: BigDecimal? = null,
-)
+    /** Entered as 2 Box: the unit, and 1 of it in [unitSymbol]. [quantity] stays in [unitSymbol]. */
+    val entryUnit: String? = null,
+    val entryFactor: BigDecimal? = null,
+) {
+    /** The entry unit's factor while the quantity is whole boxes, else null (shown in [unitSymbol]). */
+    val shownFactor: BigDecimal?
+        get() = entryFactor?.takeIf { f ->
+            !entryUnit.isNullOrBlank() && f > BigDecimal.ONE && quantity.remainder(f).signum() == 0
+        }
+}
 
 /**
  * Clears one step's answer, and everything downstream of it.
@@ -1514,17 +1542,17 @@ private fun ReceivingCapture.cleared(step: ReceivingStep): ReceivingCapture = wh
     // lookupOrder resolves the real flag for whichever order that turns out to be.
     ReceivingStep.PURCHASE_ORDER -> ReceivingCapture()
     ReceivingStep.PACKING_SLIP -> copy(
-        vendorPackingSlipId = null, line = null, item = null, quantity = null,
+        vendorPackingSlipId = null, line = null, item = null, quantity = null, entryUnit = null, entryFactor = null,
         unitSymbol = null, locationId = null, batchId = null, batchIsNew = null,
         batchExpiryDate = null, serialIds = emptyList(),
     )
     ReceivingStep.ITEM -> copy(
-        line = null, item = null, quantity = null, unitSymbol = null,
+        line = null, item = null, quantity = null, entryUnit = null, entryFactor = null, unitSymbol = null,
         locationId = null, batchId = null, batchIsNew = null,
         batchExpiryDate = null, serialIds = emptyList(),
     )
     ReceivingStep.QUANTITY -> copy(
-        quantity = null, locationId = null, batchId = null, batchIsNew = null,
+        quantity = null, entryUnit = null, entryFactor = null, locationId = null, batchId = null, batchIsNew = null,
         batchExpiryDate = null, serialIds = emptyList(),
     )
     ReceivingStep.LOCATION -> copy(
@@ -1553,6 +1581,8 @@ private fun CapturedLine.toStored() = StoredLine(
     batchId = batchId,
     batchExpiryDate = batchExpiryDate,
     serialIds = serialIds,
+    entryUnit = entryUnit,
+    entryFactor = entryFactor?.toPlainString(),
 )
 
 private fun StoredLine.toCaptured() = CapturedLine(
@@ -1565,6 +1595,8 @@ private fun StoredLine.toCaptured() = CapturedLine(
     batchId = batchId,
     batchExpiryDate = batchExpiryDate,
     serialIds = serialIds,
+    entryUnit = entryUnit,
+    entryFactor = entryFactor?.toBigDecimalOrNull(),
 )
 
 private const val GS1_AUTOFILL_DELAY_MS = 150L

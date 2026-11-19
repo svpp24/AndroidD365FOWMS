@@ -56,6 +56,9 @@ data class TransferCapture(
     val line: TransferOrderLine? = null,
     val quantity: BigDecimal? = null,
     val unitSymbol: String? = null,
+    /** The unit the quantity was entered in when not the line's (2 Box), and 1 of it in the line's unit. */
+    val entryUnit: String? = null,
+    val entryFactor: java.math.BigDecimal? = null,
     val fromWarehouseId: String? = null,
     val toWarehouseId: String? = null,
     val locationId: String? = null,

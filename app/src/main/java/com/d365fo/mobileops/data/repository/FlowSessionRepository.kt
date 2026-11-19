@@ -39,6 +39,9 @@ data class StoredLine(
     val serialIds: List<String> = emptyList(),
     /** Transfer shipment: already picked in D365FO - kept so a resumed session does not pick it twice. */
     val picked: Boolean = false,
+    /** Receiving: the unit the quantity was entered in (Box) and 1 of it in [unitSymbol]. */
+    val entryUnit: String? = null,
+    val entryFactor: String? = null,
 ) {
     val quantityValue: BigDecimal get() = runCatching { BigDecimal(quantity) }.getOrDefault(BigDecimal.ZERO)
 }

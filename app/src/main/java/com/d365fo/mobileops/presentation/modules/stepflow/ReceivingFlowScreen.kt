@@ -592,10 +592,13 @@ private fun CapturedLines(
         var typing by remember { mutableStateOf<Int?>(null) }
         typing?.let { index ->
             captured.getOrNull(index)?.let { entry ->
+                // Typed in the unit the line shows (Box when entered in boxes).
+                val f = entry.shownFactor ?: BigDecimal.ONE
+                val unit = if (entry.shownFactor != null) entry.entryUnit.orEmpty() else entry.unitSymbol
                 com.d365fo.mobileops.presentation.common.components.QuantityPicker(
-                    subtitle = listOf(entry.itemId, entry.itemName, entry.unitSymbol).filter { it.isNotBlank() }.joinToString(" · "),
+                    subtitle = listOf(entry.itemId, entry.itemName, unit).filter { it.isNotBlank() }.joinToString(" · "),
                     hint = entry.maxQuantity?.let { "Up to ${plain(it)} ${entry.unitSymbol}".trim() },
-                    initial = plain(entry.quantity),
+                    initial = plain(entry.quantity.divide(f)),
                     replaceInitial = true,
                     allowDecimal = true,
                     validate = { text ->
@@ -603,12 +606,12 @@ private fun CapturedLines(
                         when {
                             v == null -> "\"$text\" is not a number"
                             v <= BigDecimal.ZERO -> "Enter an amount above zero - or remove the line"
-                            entry.maxQuantity != null && v > entry.maxQuantity -> "Up to ${plain(entry.maxQuantity)} on this line"
+                            entry.maxQuantity != null && v * f > entry.maxQuantity -> "Up to ${plain(entry.maxQuantity)} ${entry.unitSymbol} on this line"
                             else -> null
                         }
                     },
                     confirmLabel = "Save",
-                    onConfirm = { text -> typing = null; text.toBigDecimalOrNull()?.let { onSetQuantity(index, it) } },
+                    onConfirm = { text -> typing = null; text.toBigDecimalOrNull()?.let { onSetQuantity(index, it * f) } },
                     onDismiss = { typing = null },
                 )
             }
@@ -619,6 +622,8 @@ private fun CapturedLines(
                 val index = captured.lastIndex - reversedIndex
                 // A serial-tracked line moves one serial per unit: delete and rescan instead.
                 val serialTracked = entry.serialIds.isNotEmpty()
+                // Entered in boxes: shown in boxes, the line-unit total under it (user, 19 Nov 2026).
+                val boxes = entry.shownFactor
                 com.d365fo.mobileops.presentation.common.focus.FocusLineCard(
                     code = entry.itemId,
                     name = entry.itemName,
@@ -634,11 +639,12 @@ private fun CapturedLines(
                             1 -> "Serial ${entry.serialIds[0]}"
                             else -> "${entry.serialIds.size} serials (${entry.serialIds[0]}, …)"
                         },
+                        boxes?.let { "= ${plain(entry.quantity)} ${entry.unitSymbol}" },
                     ),
-                    quantity = plain(entry.quantity),
-                    unit = entry.unitSymbol,
-                    canMinus = !busy && !serialTracked && entry.quantity > BigDecimal.ONE,
-                    canPlus = !busy && !serialTracked && (entry.maxQuantity == null || entry.quantity < entry.maxQuantity),
+                    quantity = plain(boxes?.let { entry.quantity.divide(it) } ?: entry.quantity),
+                    unit = if (boxes != null) entry.entryUnit.orEmpty() else entry.unitSymbol,
+                    canMinus = !busy && !serialTracked && entry.quantity > (boxes ?: BigDecimal.ONE),
+                    canPlus = !busy && !serialTracked && (entry.maxQuantity == null || entry.quantity + (boxes ?: BigDecimal.ONE) <= entry.maxQuantity),
                     onMinus = { onAdjustQuantity(index, -1) },
                     onPlus = { onAdjustQuantity(index, 1) },
                     onQuantityTap = if (busy || serialTracked) null else ({ typing = index }),
@@ -650,15 +656,16 @@ private fun CapturedLines(
 
         // Side by side, the same order as every dialog: the action on the left, going back on
         // the right (feedback, 10 Oct).
-        com.d365fo.mobileops.presentation.common.components.FlowDock(modifier = Modifier.bleed(16.dp)) {
-            com.d365fo.mobileops.presentation.common.components.DockOutlinedButton(
+        // The same size side by side (user, 19 Nov 2026), as every bottom row.
+        com.d365fo.mobileops.presentation.common.focus.ActionRow(modifier = Modifier.bleed(16.dp)) {
+            com.d365fo.mobileops.presentation.common.focus.FocusButton(
+                "Scan more",
                 onClick = onClose,
                 enabled = !busy,
                 icon = BarcodeGlyph,
-                text = "Scan more",
                 modifier = Modifier.weight(1f),
             )
-            com.d365fo.mobileops.presentation.common.components.HoldButton(
+            com.d365fo.mobileops.presentation.common.focus.HoldToConfirmButton(
                 label = if (busy) "Posting…" else "Hold to post",
                 onConfirm = onPost,
                 enabled = !busy && captured.isNotEmpty(),
