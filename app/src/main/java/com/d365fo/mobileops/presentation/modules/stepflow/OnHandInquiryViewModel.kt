@@ -197,7 +197,21 @@ class OnHandInquiryViewModel @Inject constructor(
     /** Clears the rows as well as showing the message: a stale table under an error reads as fact. */
     private fun finishWith(message: String) {
         scanFeedback.error()
-        _state.update { it.copy(busy = false, error = message, rows = emptyList()) }
+        // The item too: once the error goes, the screen is blank - not "No stock on hand" for the
+        // item scanned before (19 Nov 2026).
+        _state.update { it.copy(busy = false, error = message, rows = emptyList(), itemNumber = null, productName = null) }
+        // Gone after a few seconds (user, 19 Nov 2026: it stayed until the next scan).
+        errorClear?.cancel()
+        errorClear = viewModelScope.launch {
+            kotlinx.coroutines.delay(ERROR_SHOWN_MS)
+            _state.update { if (it.error == message) it.copy(error = null) else it }
+        }
+    }
+
+    private var errorClear: kotlinx.coroutines.Job? = null
+
+    private companion object {
+        const val ERROR_SHOWN_MS = 4_000L
     }
 }
 
