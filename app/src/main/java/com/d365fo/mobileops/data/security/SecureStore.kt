@@ -2,14 +2,10 @@ package com.d365fo.mobileops.data.security
 
 import android.content.Context
 import android.content.SharedPreferences
-import android.security.keystore.KeyGenParameterSpec
-import android.security.keystore.KeyProperties
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import timber.log.Timber
 import java.security.KeyStore
-import java.security.SecureRandom
-import javax.crypto.KeyGenerator
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -206,27 +202,10 @@ class SecureStore @Inject constructor(private val context: Context) {
     fun lastLicenseValidationUtcMillis(): Long? = getString(KEY_LICENSE_LAST_VALIDATION)?.toLongOrNull()
     fun setLastLicenseValidationUtcMillis(value: Long) = putString(KEY_LICENSE_LAST_VALIDATION, value.toString())
 
-    private fun ensureKeystoreKey() {
-        val ks = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
-        if (ks.containsAlias(MASTER_KEY_ALIAS)) return
-        KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, ANDROID_KEYSTORE).apply {
-            init(
-                KeyGenParameterSpec.Builder(
-                    MASTER_KEY_ALIAS,
-                    KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT,
-                )
-                    .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
-                    .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
-                    .setKeySize(256)
-                    .build(),
-            )
-        }.generateKey()
-    }
-
-    init {
-        runCatching { ensureKeystoreKey() }
-            .onFailure { Timber.e(it, "SecureStore: ensureKeystoreKey failed") }
-    }
+    // No Keystore work in the constructor (performance plan, phase 1, 20 Nov 2026). It used to
+    // load the Keystore and create MASTER_KEY_ALIAS here, on every launch, on the main thread -
+    // but MasterKey.Builder in createPrefs() creates that same key (AES-256-GCM) when it is
+    // missing, at the point it is actually needed.
 
     private fun ByteArray.toHex(): String = joinToString("") { "%02x".format(it) }
     private fun String.hexToBytes(): ByteArray =

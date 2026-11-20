@@ -15,9 +15,9 @@ android {
     kotlinOptions { jvmTarget = "17" }
 
     defaultConfig {
-        // 28 to match the app: the handhelds in the fleet are API 28, and a profile generated
-        // against a higher minimum can reference classes that do not exist there.
-        minSdk = 28
+        // The app's own minSdk (26): a profile generated against a higher minimum can reference
+        // classes that do not exist on the oldest devices it ships to.
+        minSdk = 26
         targetSdk = 35
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

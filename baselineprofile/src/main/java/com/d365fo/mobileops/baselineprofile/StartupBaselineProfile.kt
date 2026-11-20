@@ -1,14 +1,18 @@
 package com.d365fo.mobileops.baselineprofile
 
 import androidx.benchmark.macro.junit4.BaselineProfileRule
-import androidx.test.uiautomator.By
-import androidx.test.uiautomator.Until
+import com.d365fo.mobileops.baselineprofile.Journeys.backToHome
+import com.d365fo.mobileops.baselineprofile.Journeys.clearAppData
+import com.d365fo.mobileops.baselineprofile.Journeys.ensureDemoHome
+import com.d365fo.mobileops.baselineprofile.Journeys.openAndBack
+import com.d365fo.mobileops.baselineprofile.Journeys.scan
+import com.d365fo.mobileops.baselineprofile.Journeys.waitForFirstScreen
 import org.junit.Rule
 import org.junit.Test
 
 /**
- * Records which classes and methods the app touches while starting, so ART can compile them
- * ahead of time instead of interpreting them on first launch.
+ * Records which classes and methods the app touches while starting and in its first minutes of
+ * use, so ART can compile them ahead of time instead of interpreting them on first launch.
  *
  * **Why this exists.** A freshly installed APK runs interpreted until ART gets round to
  * compiling it in the background. Measured on the P2mini: 10.17 s cold start on a fresh
@@ -17,45 +21,57 @@ import org.junit.Test
  * profile closes most of that gap on the *first* launch, which is the launch a warehouse
  * worker judges the app on.
  *
- * **What to put in it.** Only the startup path, deliberately. A profile is a hint with a size
- * budget, not a list of everything the app can do: pad it with screens nobody opens in the
- * first ten seconds and the parts that matter get less benefit. Cold start to the first
- * interactive screen is what hurts here, so that is what this records.
+ * **What to put in it.** Startup, and what a worker does in the first minutes after it: Home,
+ * opening each area, and scanning. A profile is a hint with a size budget, not a list of
+ * everything the app can do - screens nobody opens early stay out.
  *
- * **Running it.** Needs a rooted device or an AOSP/google_apis emulator image at API 28+:
+ * **Running it.** Against the macrobench build (unconfigured, demo mode - no tenant, no release
+ * key), on any device at API 33+ (no root needed there) or a rooted older one:
  *
  * ```
- * ./gradlew :app:generateReleaseBaselineProfile
+ * ./gradlew :app:generateBaselineProfile
  * ```
  *
- * A Play Store emulator image will not do — it cannot be rooted, so the profile cannot be read
- * back off the device. Nor will the handhelds themselves: they are `user` builds.
+ * The result is merged into app/src/main/generated/baselineProfiles, so every build - release
+ * included - ships it. Commit it, and regenerate when the startup path or these flows change.
  */
 class StartupBaselineProfile {
 
     @get:Rule
     val rule = BaselineProfileRule()
 
+    /** Cold start of a device straight out of the box, to its first screen. */
     @Test
     fun startup() = rule.collect(
-        packageName = PACKAGE,
+        packageName = Journeys.PACKAGE,
         // The default is a single iteration; several passes and the profile stops depending on
         // which classes happened to be resolved first on one particular run.
+        maxIterations = 5,
+        stableIterations = 3,
+        includeInStartupProfile = true,
+    ) {
+        pressHome()
+        clearAppData()
+        startActivityAndWait()
+        // Wait for something the first screen actually renders rather than a fixed sleep.
+        waitForFirstScreen()
+    }
+
+    /** Into the demo, then each Home area and a run of scans - the first minutes of a shift. */
+    @Test
+    fun firstMinutes() = rule.collect(
+        packageName = Journeys.PACKAGE,
         maxIterations = 5,
         stableIterations = 3,
     ) {
         pressHome()
         startActivityAndWait()
-
-        // Wait for something the sign-in screen actually renders rather than a fixed sleep.
-        // A sleep either ends before the first frame — recording a profile that stops halfway
-        // through startup — or wastes time on every iteration.
-        device.wait(Until.hasObject(By.textContains("Sign in")), STARTUP_TIMEOUT_MS)
-    }
-
-    private companion object {
-        // The release variant, which is the one that ships and the only one a profile helps.
-        const val PACKAGE = "com.d365fo.mobileops"
-        const val STARTUP_TIMEOUT_MS = 20_000L
+        ensureDemoHome()
+        listOf("Receive", "Ship", "Count", "Activity").forEach { openAndBack(it) }
+        Journeys.DEMO_ITEMS.forEach { item ->
+            scan(item)
+            device.waitForIdle()
+            backToHome()
+        }
     }
 }

@@ -32,6 +32,9 @@ import javax.inject.Singleton
 @InstallIn(SingletonComponent::class)
 object DatabaseModule {
 
+    private const val STARTUP_ONCE_PREFS = "startup_once"
+    private const val KEY_DB_KEY_FORGOTTEN = "db_key_forgotten"
+
     @Provides
     @Singleton
     fun provideDatabase(
@@ -41,7 +44,13 @@ object DatabaseModule {
         // Plain SQLite: only the connection settings and the login accounts are encrypted, in
         // SecureStore (decision, 11 Oct). See DatabaseFileCheck for the one-off SQLCipher legacy.
         com.d365fo.mobileops.data.local.DatabaseFileCheck.ensureReadable(context, Constants.DATABASE_NAME)
-        secureStore.forgetDatabaseKey()
+        // The SQLCipher key clean-up needs doing once per device, not on every launch: it loads
+        // the Keystore and opens the encrypted preferences (performance plan, phase 1).
+        val once = context.getSharedPreferences(STARTUP_ONCE_PREFS, Context.MODE_PRIVATE)
+        if (!once.getBoolean(KEY_DB_KEY_FORGOTTEN, false)) {
+            secureStore.forgetDatabaseKey()
+            once.edit().putBoolean(KEY_DB_KEY_FORGOTTEN, true).apply()
+        }
         return Room.databaseBuilder(context, D365Database::class.java, Constants.DATABASE_NAME)
             .addMigrations(*D365Database.MIGRATIONS)
             // No fallbackToDestructiveMigration. Wiping the database on a version bump would

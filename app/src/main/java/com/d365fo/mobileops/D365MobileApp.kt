@@ -22,20 +22,27 @@ import javax.inject.Inject
 class D365MobileApp : Application(), Configuration.Provider {
 
     @Inject lateinit var workerFactory: HiltWorkerFactory
-    @Inject lateinit var syncScheduler: SyncScheduler
-    @Inject lateinit var skuSync: com.d365fo.mobileops.data.repository.SkuSyncRepository
-    @Inject lateinit var sessions: com.d365fo.mobileops.data.repository.WorkerSessionRepository
     @Inject lateinit var syncNotifier: SyncNotifier
     @Inject lateinit var applicationScope: CoroutineScope
     @Inject lateinit var logStore: LogStore
-    @Inject lateinit var claimHeartbeat: ClaimHeartbeat
-    @Inject lateinit var activeSessionGuard: com.d365fo.mobileops.data.sync.ActiveSessionGuard
-    @Inject lateinit var countSubmissions: CountSubmissions
-    @Inject lateinit var triggeredCountAlerts: com.d365fo.mobileops.data.counting.TriggeredCountAlerts
-    @Inject lateinit var featureFlags: com.d365fo.mobileops.domain.FeatureFlags
-    @Inject lateinit var workBackup: com.d365fo.mobileops.data.sync.WorkBackup
-    @Inject lateinit var moduleSwitches: com.d365fo.mobileops.data.sync.ModuleSwitches
-    @Inject lateinit var deviceCleanup: com.d365fo.mobileops.data.sync.DeviceCleanup
+
+    // Lazy, all of these, and first touched in applicationScope (IO), never here (performance
+    // plan, phase 1, 20 Nov 2026). Field injection builds whatever it is handed during
+    // super.onCreate(), on the main thread, ahead of the first frame - and between them these
+    // pull in the database, the HTTP clients, the encrypted preferences and the Keystore. None
+    // of them is needed before the first screen; every one of them only starts background work.
+    @Inject lateinit var syncScheduler: dagger.Lazy<SyncScheduler>
+    @Inject lateinit var skuSync: dagger.Lazy<com.d365fo.mobileops.data.repository.SkuSyncRepository>
+    @Inject lateinit var sessions: dagger.Lazy<com.d365fo.mobileops.data.repository.WorkerSessionRepository>
+    @Inject lateinit var claimHeartbeat: dagger.Lazy<ClaimHeartbeat>
+    @Inject lateinit var activeSessionGuard: dagger.Lazy<com.d365fo.mobileops.data.sync.ActiveSessionGuard>
+    @Inject lateinit var countSubmissions: dagger.Lazy<CountSubmissions>
+    @Inject lateinit var triggeredCountAlerts: dagger.Lazy<com.d365fo.mobileops.data.counting.TriggeredCountAlerts>
+    @Inject lateinit var featureFlags: dagger.Lazy<com.d365fo.mobileops.domain.FeatureFlags>
+    @Inject lateinit var workBackup: dagger.Lazy<com.d365fo.mobileops.data.sync.WorkBackup>
+    @Inject lateinit var moduleSwitches: dagger.Lazy<com.d365fo.mobileops.data.sync.ModuleSwitches>
+    @Inject lateinit var deviceCleanup: dagger.Lazy<com.d365fo.mobileops.data.sync.DeviceCleanup>
+    @Inject lateinit var selfIntegrityCheck: dagger.Lazy<com.d365fo.mobileops.data.security.SelfIntegrityCheck>
 
     override val workManagerConfiguration: Configuration
         get() = Configuration.Builder()
@@ -53,7 +60,8 @@ class D365MobileApp : Application(), Configuration.Provider {
         // leaves the device to an adb session" concern the trees below exist to enforce. Planted
         // first, ahead of the sign-in/license gates it needs to be able to explain problems in.
         Timber.plant(AppLogTree(logStore))
-        Timber.w("database: %s", com.d365fo.mobileops.data.local.DatabaseFileCheck.lastOutcome)
+        // The database outcome (DatabaseFileCheck) is logged where the database is first opened,
+        // now that this no longer opens it during start-up.
 
         // An uncaught exception on any thread never reaches Timber on its own - the process
         // just dies. "Every event, even the errors" (see LogStore's own doc) is hollow if the
@@ -86,6 +94,12 @@ class D365MobileApp : Application(), Configuration.Provider {
         // notify through it.
         syncNotifier.createChannel()
 
+        // The signing-certificate check (a PackageManager round trip and a SHA-256) is read by
+        // AppRoot before anything else is shown. Started here, off the main thread, it is usually
+        // done by then; `tampered` is a synchronized lazy, so an early read just waits for it.
+        // Ahead of the crash-loop return below: cheap, and safe whichever screen comes next.
+        applicationScope.launch { selfIntegrityCheck.get().tampered }
+
         // Stopping again and again at start: nothing below runs - one of these may be what keeps
         // failing - and MainActivity shows the recovery screen (see CrashLoopGuard).
         if (com.d365fo.mobileops.data.crash.CrashLoopGuard.inRecovery(this)) {
@@ -96,11 +110,13 @@ class D365MobileApp : Application(), Configuration.Provider {
             kotlinx.coroutines.delay(com.d365fo.mobileops.data.crash.CrashLoopGuard.STABLE_MS)
             com.d365fo.mobileops.data.crash.CrashLoopGuard.reset(this@D365MobileApp)
         }
-        // A copy of unsent work in D365FO, and the module switches - see WorkBackup, ModuleSwitches.
-        moduleSwitches.start()
-        workBackup.start()
-        // Old records removed once a day, by the days on Mobile clean-up in D365FO.
-        deviceCleanup.start()
+        applicationScope.launch {
+            // A copy of unsent work in D365FO, and the module switches - see WorkBackup, ModuleSwitches.
+            moduleSwitches.get().start()
+            workBackup.get().start()
+            // Old records removed once a day, by the days on Mobile clean-up in D365FO.
+            deviceCleanup.get().start()
+        }
 
         // Off the main thread, and deliberately so.
         //
@@ -112,12 +128,12 @@ class D365MobileApp : Application(), Configuration.Provider {
         // net that drains it if the app is killed. A few hundred milliseconds late costs
         // nothing; a few hundred milliseconds of startup is visible every single shift.
         applicationScope.launch {
-            syncScheduler.schedulePeriodicWork()
+            syncScheduler.get().schedulePeriodicWork()
             // A handheld with no item cache yet (new install) or a sync left part way gets it
             // within minutes of being docked, not after the daily job's start delay of up to
             // four hours. Spread over five minutes so a fleet started together does not all ask at once.
-            if (skuSync.needsCatchUp()) {
-                syncScheduler.scheduleSkuContinuation(
+            if (skuSync.get().needsCatchUp()) {
+                syncScheduler.get().scheduleSkuContinuation(
                     TimeUnit.MINUTES.toMillis(1) + com.d365fo.mobileops.data.sync.FleetJitter.millisUpTo(TimeUnit.MINUTES.toMillis(4)),
                     replace = true,
                 )
@@ -126,22 +142,22 @@ class D365MobileApp : Application(), Configuration.Provider {
             // that syncs by assortment in D365FO, with other items. The old items stay usable
             // until the new ones are all here.
             applicationScope.launch {
-                sessions.session
+                sessions.get().session
                     .map { it?.selected?.warehouseId.orEmpty() }
                     .distinctUntilChanged()
                     .collect { warehouse ->
-                        if (skuSync.warehouseChosen(warehouse)) {
+                        if (skuSync.get().warehouseChosen(warehouse)) {
                             Timber.i("warehouse %s chosen - syncing its items", warehouse)
-                            syncScheduler.syncMastersNow(com.d365fo.mobileops.data.repository.ManualSync.CHANGES)
+                            syncScheduler.get().syncMastersNow(com.d365fo.mobileops.data.repository.ManualSync.CHANGES)
                         }
                     }
             }
             // Counting: keep claims alive, and give every unfinished End count a job again.
-            claimHeartbeat.start()
+            claimHeartbeat.get().start()
             // One active device per worker: a sign-in elsewhere signs this device out.
-            activeSessionGuard.start()
-            triggeredCountAlerts.schedule(featureFlags.countTriggeredAlerts)
-            runCatching { countSubmissions.resumePending() }
+            activeSessionGuard.get().start()
+            triggeredCountAlerts.get().schedule(featureFlags.get().countTriggeredAlerts)
+            runCatching { countSubmissions.get().resumePending() }
                 .onFailure { Timber.w(it, "could not resume pending count submissions") }
         }
     }

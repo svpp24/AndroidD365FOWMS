@@ -53,4 +53,9 @@ check the recomposition fixes in Phase 2.
 
 | Date | Device | Results |
 |---|---|---|
-| | | (first run pending) |
+| 2026-11-20 | Emulator (sdk_gphone16k_x86_64), before Phase 1 | coldStart None 855 / BaselineProfile 855 / Full 825 ms |
+| 2026-11-20 | Emulator, after Phase 1 (profile shipped, lazy startup) | coldStart None 1040 / BaselineProfile 946 / Full 949 ms - [results](results-2026-11-20-sdk_gphone16k_x86_64.md) |
+| | P2mini | (pending - the numbers that count) |
+
+Emulator runs drift by ~100 ms between sessions; compare modes within one run. The point of
+Phase 1 shows as BaselineProfile moving from None's figure to Full's.

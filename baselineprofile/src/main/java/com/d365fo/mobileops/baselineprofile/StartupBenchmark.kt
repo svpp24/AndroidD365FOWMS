@@ -16,8 +16,8 @@ import org.junit.runners.Parameterized
  *
  * - **None** - a fresh install before ART has compiled anything: the launch a worker judges the
  *   app on (10.17 s measured on the P2mini, see [StartupBaselineProfile]).
- * - **BaselineProfile** - what a Play install gets once a profile ships. Today the app ships
- *   none of its own, so this is close to None; Phase 1 of the plan should pull it towards Full.
+ * - **BaselineProfile** - what a Play install gets with the shipped profile (Phase 1: it now
+ *   matches Full on the emulator).
  * - **Full** - everything compiled ahead of time: the ceiling (2.50 s on the P2mini).
  *
  * App data is cleared before every launch so each run starts at "Try the demo", whatever ran
