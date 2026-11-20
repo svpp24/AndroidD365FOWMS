@@ -192,9 +192,30 @@ android {
             // Debug-signed, so the release-key self-check would refuse it; blank = skip.
             buildConfigField("String", "RELEASE_SIGNING_CERT_SHA256", "\"\"")
         }
+        // What :baselineprofile's benchmarks measure (Phase 0 of the performance plan, 20 Nov
+        // 2026): compiled like perf, but a device straight out of the box - nothing from
+        // local.properties, no skipped sign-in - so every run starts at "Try the demo" and works
+        // on DemoBackend's data, never a real tenant. Its own package, so it sits beside a debug
+        // or perf install without touching either. Profileable (src/macrobench) so the benchmarks
+        // can trace it on a non-rooted device.
+        create("macrobench") {
+            initWith(getByName("perf"))
+            applicationIdSuffix = ".bench"
+            versionNameSuffix = "-bench"
+            listOf(
+                "AAD_TENANT_ID", "AAD_CLIENT_ID", "AAD_CLIENT_SECRET", "AAD_CLIENT_POOL",
+                "D365_COMPANY", "D365_DEV_RESOURCE", "D365_UAT_RESOURCE", "D365_PROD_RESOURCE",
+                "DEV_USER_NAME", "DEV_DISPLAY_NAME", "DEV_WAREHOUSE_ID", "DEV_SITE_ID",
+            ).forEach { key -> buildConfigField("String", key, "\"\"") }
+            buildConfigField("boolean", "DEV_SKIP_SIGN_IN", "false")
+            buildConfigField("boolean", "DEV_SUPERVISOR", "false")
+            buildConfigField("boolean", "ALLOW_SENSITIVE_LOGGING", "false")
+            matchingFallbacks += listOf("perf", "debug")
+        }
     }
     // perf takes release's no-op HTTP logging, so request logging doesn't skew its timings.
     sourceSets.getByName("perf").java.srcDir("src/release/java")
+    sourceSets.getByName("macrobench").java.srcDir("src/release/java")
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -231,6 +252,16 @@ android {
             isReturnDefaultValues = true
             isIncludeAndroidResources = true
         }
+    }
+}
+
+// Which composables can skip and which parameters are unstable - for chasing recomposition.
+// Off by default; `./gradlew :app:assembleMacrobench -PcomposeReports` writes them to
+// app/build/compose_compiler (see docs/perf/README.md).
+if (providers.gradleProperty("composeReports").isPresent) {
+    composeCompiler {
+        reportsDestination = layout.buildDirectory.dir("compose_compiler")
+        metricsDestination = layout.buildDirectory.dir("compose_compiler")
     }
 }
 

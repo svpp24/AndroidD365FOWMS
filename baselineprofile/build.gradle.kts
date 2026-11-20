@@ -22,6 +22,17 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    // The benchmarks (StartupBenchmark, DemoFlowBenchmark) drive the app's macrobench build: the
+    // baselineprofile plugin derives a profileable `benchmarkMacrobench` variant from it, so
+    // ./gradlew :baselineprofile:connectedBenchmarkMacrobenchAndroidTest - or
+    // tools/perf/run-benchmarks.ps1, which also pulls the results. The plugin only derives
+    // variants for build types this module has too, hence this one.
+    buildTypes {
+        create("macrobench") {
+            signingConfig = signingConfigs.getByName("debug")
+            matchingFallbacks += listOf("debug")
+        }
+    }
     targetProjectPath = ":app"
 }
 
