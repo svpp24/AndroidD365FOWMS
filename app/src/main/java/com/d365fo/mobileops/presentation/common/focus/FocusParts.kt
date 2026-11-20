@@ -29,6 +29,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.LiveRegionMode
@@ -118,14 +119,19 @@ fun ResultBand(
                 }
             }
         }
-        // The time left before the band goes ([BandState.autoHideMs]).
+        // The time left before the band goes ([BandState.autoHideMs]). Read in the draw phase only
+        // (performance plan, phase 2): read here in composition, the animation recomposed the whole
+        // band on every frame for as long as it showed - which is after every scan.
         remaining?.let { left ->
+            val tint = look.iconTint
             Box(
                 Modifier
                     .align(Alignment.BottomStart)
-                    .fillMaxWidth(left().coerceIn(0f, 1f))
+                    .fillMaxWidth()
                     .height(3.dp)
-                    .background(look.iconTint),
+                    .drawBehind {
+                        drawRect(tint, size = size.copy(width = size.width * left().coerceIn(0f, 1f)))
+                    },
             )
         }
     }

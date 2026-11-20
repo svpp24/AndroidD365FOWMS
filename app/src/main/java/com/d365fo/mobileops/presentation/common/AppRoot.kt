@@ -57,7 +57,7 @@ import com.d365fo.mobileops.presentation.common.components.WarningBanner
  */
 @Composable
 fun AppRoot(
-    syncStatus: SyncStatus,
+    syncStatus: androidx.compose.runtime.State<SyncStatus>,
     sessionViewModel: SessionViewModel = hiltViewModel(),
     workerSessionViewModel: WorkerSessionViewModel = hiltViewModel(),
     settingsViewModel: SettingsViewModel = hiltViewModel(),
@@ -160,7 +160,7 @@ fun AppRoot(
         // The device is through, but nobody has said who they are yet.
         session is SessionState.Ready && worker == null -> WorkerLoginScreen(
             onOpenSettings = { settingsWhileSignedOut = true },
-            offline = !syncStatus.fullyOnline,
+            offline = !syncStatus.value.fullyOnline,
         )
 
         // Several warehouses in D365FO and none is the default: ask once, before Home.
@@ -213,9 +213,7 @@ fun AppRoot(
                         }
                     },
             ) {
-                androidx.compose.runtime.CompositionLocalProvider(
-                    com.d365fo.mobileops.presentation.common.components.LocalSyncStatus provides syncStatus,
-                ) {
+                com.d365fo.mobileops.presentation.common.components.ProvideSyncStatus(syncStatus) {
                 AppNavGraph(
                     syncStatus = syncStatus,
                     warehouseId = worker?.selected?.warehouseId,

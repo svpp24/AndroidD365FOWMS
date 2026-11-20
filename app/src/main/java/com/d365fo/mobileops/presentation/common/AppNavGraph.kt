@@ -242,12 +242,18 @@ private fun navigateToTabSafely(navController: NavHostController, route: String)
 
 @Composable
 fun AppNavGraph(
-    syncStatus: SyncStatus,
+    syncStatus: androidx.compose.runtime.State<SyncStatus>,
     /** The signed-in worker's backoffice-assigned warehouse, or null before it resolves. */
     warehouseId: String?,
     navController: NavHostController = rememberNavController(),
     onSignOut: () -> Unit = {},
 ) {
+    // Only these two parts of the status are read here, each recomposing only when it changes.
+    // Reading the whole status (pending count included) rebuilt the NavHost's graph on every
+    // posting, since the builder below captured it.
+    val fullyOnline by remember { androidx.compose.runtime.derivedStateOf { syncStatus.value.fullyOnline } }
+    val failedCount by remember { androidx.compose.runtime.derivedStateOf { syncStatus.value.failedCount } }
+
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination
 
@@ -263,8 +269,8 @@ fun AppNavGraph(
     // icon carries the state, and tapping it shows the same dialog again.
     var shownForThisOutage by remember { mutableStateOf(false) }
     var showConnectionDialog by remember { mutableStateOf(false) }
-    LaunchedEffect(syncStatus.fullyOnline) {
-        if (syncStatus.fullyOnline) {
+    LaunchedEffect(fullyOnline) {
+        if (fullyOnline) {
             shownForThisOutage = false
             showConnectionDialog = false
         } else if (!shownForThisOutage) {
@@ -277,7 +283,7 @@ fun AppNavGraph(
     }
     // Held back while the tour shows - it explains the same icon - and shown when it ends.
     if (showConnectionDialog && !tourOnScreen) {
-        ConnectionDialog(status = syncStatus, onDismiss = { showConnectionDialog = false })
+        ConnectionDialog(status = syncStatus.value, onDismiss = { showConnectionDialog = false })
     }
 
     // A module switched off in D365FO (Mobile module switches) doesn't open from anywhere - a
@@ -306,8 +312,8 @@ fun AppNavGraph(
 
     // Saves today's orders for offline use while D365FO answers - see OfflinePrefetcher.
     val offlineReady: OfflineReadyViewModel = hiltViewModel()
-    LaunchedEffect(warehouseId, syncStatus.fullyOnline) {
-        if (syncStatus.fullyOnline && warehouseId != null) offlineReady.onlineAt(warehouseId)
+    LaunchedEffect(warehouseId, fullyOnline) {
+        if (fullyOnline && warehouseId != null) offlineReady.onlineAt(warehouseId)
     }
 
     // The top bar's feedback button: remember which screen and what it looked like, then open
@@ -350,8 +356,8 @@ fun AppNavGraph(
                         },
                         onSignOut = onSignOut,
                         onChangeWarehouse = { navController.navigate(Routes.CHANGE_WAREHOUSE) { launchSingleTop = true } },
-                        failedCount = syncStatus.failedCount,
-                        online = syncStatus.fullyOnline,
+                        failedCount = failedCount,
+                        online = fullyOnline,
                         onSettings = { navController.navigate(Routes.SETTINGS) },
                         onScanOpen = { open -> navController.navigate(open.route) { launchSingleTop = true } },
                     ) }

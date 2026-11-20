@@ -83,7 +83,10 @@ class MainActivity : ComponentActivity() {
                         onStartNormally = ::restartNormally,
                     )
                 } else {
-                    val status by syncStatusProvider.status.collectAsState(initial = SyncStatus.UNKNOWN)
+                    // Handed down as State, not read here: it changes with every posting queued and
+                    // sent, and a read at the root recomposed the whole app and rebuilt the nav graph
+                    // each time (performance plan, phase 2).
+                    val status = syncStatusProvider.status.collectAsState(initial = SyncStatus.UNKNOWN)
                     // The scan pill's typed codes go down the same path as a trigger scan.
                     androidx.compose.runtime.CompositionLocalProvider(
                         com.d365fo.mobileops.presentation.common.focus.LocalScanBridge provides scannerBridge,

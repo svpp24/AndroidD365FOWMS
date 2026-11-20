@@ -238,6 +238,7 @@ class StoreCountViewModel @Inject constructor(
     private val binRepository: com.d365fo.mobileops.data.counting.CountBinRepository,
     private val menuRepository: com.d365fo.mobileops.data.repository.HandheldMenuRepository,
     private val countRequests: com.d365fo.mobileops.data.counting.CountRequestRepository,
+    private val draftWriter: com.d365fo.mobileops.data.local.DraftWriter,
     savedStateHandle: androidx.lifecycle.SavedStateHandle,
 ) : ViewModel() {
 
@@ -351,9 +352,16 @@ class StoreCountViewModel @Inject constructor(
         secureStore.getString(draftKey)?.let { json.decodeFromString(StoreCountDraft.serializer(), it) }
     }.getOrNull()
 
+    /**
+     * The screen takes the new draft at once. Encoding and saving it run on [DraftWriter]'s thread,
+     * because the draft is the whole count and this runs after every scan (performance plan, phase 2).
+     */
     private fun saveDraft(draft: StoreCountDraft?) {
-        if (draft == null) secureStore.remove(draftKey) else secureStore.putString(draftKey, json.encodeToString(StoreCountDraft.serializer(), draft))
         _state.update { it.copy(draft = draft) }
+        val key = draftKey
+        draftWriter.submit(key) {
+            if (draft == null) secureStore.remove(key) else secureStore.putString(key, json.encodeToString(StoreCountDraft.serializer(), draft))
+        }
     }
 
     fun onCameraDecoded(value: String) = scannerBridge.submitCameraScan(value)

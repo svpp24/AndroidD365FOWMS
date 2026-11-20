@@ -20,6 +20,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
@@ -107,7 +108,8 @@ class CountingScanViewModel @Inject constructor(
     private val _bins = MutableStateFlow<List<String>>(emptyList())
 
     /** The store's bins with the location each is in. */
-    private var binRows: Map<String, com.d365fo.mobileops.data.local.entity.CountBinEntity> = emptyMap()
+    // Written on the main thread, read by [state] on Dispatchers.Default.
+    @Volatile private var binRows: Map<String, com.d365fo.mobileops.data.local.entity.CountBinEntity> = emptyMap()
     private val _currentBin = MutableStateFlow<String?>(null)
     private val _addBinPrompt = MutableStateFlow<String?>(null)
 
@@ -167,6 +169,13 @@ class CountingScanViewModel @Inject constructor(
     private val overlay = combine(_prompt, _choiceIds, _message, _refocus, combine(_ui, _bins) { ui, bins -> ui to bins }) { prompt, choice, message, refocus, (ui, bins) ->
         Overlay(prompt, choice, message, refocus, ui, bins)
     }
+
+    /**
+     * The search text, straight from what was typed. The search box reads this, not [state]:
+     * [state] is worked out off the main thread, and a text field fed through an async hop
+     * drops or reorders fast keystrokes.
+     */
+    val query: StateFlow<String> = _query
 
     val state: StateFlow<CountingScanState> = combine(base, overlay) { b, o ->
         val byId = b.lines.associateBy { it.journalLineId }
@@ -236,7 +245,12 @@ class CountingScanViewModel @Inject constructor(
                 ?.ifEmpty { null },
             layout = com.d365fo.mobileops.domain.model.countingLayout(s.originType, s.totalLines, bins.isNotEmpty()),
         )
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), CountingScanState())
+    }
+        // Off the main thread (performance plan, phase 2): every emission - each saved count, each
+        // prompt and message - filters, groups and sorts every line of the journal, and a
+        // wall-to-wall journal has thousands.
+        .flowOn(kotlinx.coroutines.Dispatchers.Default)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), CountingScanState())
 
     init {
         viewModelScope.launch { scannerBridge.scans.collect { onScanned(it.value) } }

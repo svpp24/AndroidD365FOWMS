@@ -64,6 +64,7 @@ fun CountingCaptureScreen(
     viewModel: CountingCaptureViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val query by viewModel.query.collectAsStateWithLifecycle()
     val listState = rememberLazyListState()
     // A new search or filter shows its matches from the first one, not wherever the old list
     // was scrolled to.
@@ -98,14 +99,14 @@ fun CountingCaptureScreen(
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 OutlinedTextField(
-                    value = state.query,
+                    value = query,
                     onValueChange = viewModel::setQuery,
                     modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
                     singleLine = true,
                     placeholder = { Text("Search item, name, location…") },
                     leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = WarehouseStatusColors.accent) },
                     trailingIcon = {
-                        if (state.query.isNotEmpty()) {
+                        if (query.isNotEmpty()) {
                             IconButton(onClick = { viewModel.setQuery("") }, modifier = Modifier.size(56.dp)) {
                                 Icon(Icons.Default.Clear, contentDescription = "Clear search")
                             }

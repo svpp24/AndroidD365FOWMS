@@ -43,6 +43,16 @@ import java.time.ZoneId
 val LocalSyncStatus = compositionLocalOf<SyncStatus?> { null }
 
 /**
+ * Provides [LocalSyncStatus] from [status]. The status is read in this small scope only, so a
+ * change recomposes the screens that read [LocalSyncStatus] and nothing else: [content] is the
+ * same lambda each time and is skipped.
+ */
+@Composable
+fun ProvideSyncStatus(status: androidx.compose.runtime.State<SyncStatus>, content: @Composable () -> Unit) {
+    androidx.compose.runtime.CompositionLocalProvider(LocalSyncStatus provides status.value, content = content)
+}
+
+/**
  * Green cloud while D365FO answers, amber crossed-out cloud while it doesn't. Tapping it opens
  * [ConnectionDialog] with what that means for the worker's work.
  */

@@ -166,6 +166,7 @@ fun CountingScanScreen(
             onPickBin = { close(); viewModel.pickBin(it) },
             onLine = viewModel::openLine,
             onException = viewModel::editUnexpected,
+            query = viewModel.query.collectAsStateWithLifecycle().value,
             onQuery = viewModel::setQuery,
             onTypeFilter = viewModel::setTypeFilter,
             overlay = pad,
@@ -778,6 +779,7 @@ private fun CountingLists(
     onPickBin: (String) -> Unit,
     onLine: (CountLine) -> Unit,
     onException: (String) -> Unit,
+    query: String,
     onQuery: (String) -> Unit,
     onTypeFilter: (String?) -> Unit,
     overlay: (@Composable androidx.compose.foundation.layout.BoxScope.() -> Unit)?,
@@ -799,13 +801,13 @@ private fun CountingLists(
     ) {
         if (!choosingLocation && !choosingBin) {
             OutlinedTextField(
-                value = state.query,
+                value = query,
                 onValueChange = onQuery,
                 singleLine = true,
                 placeholder = { Text("Search item, location, batch") },
                 leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
                 trailingIcon = {
-                    if (state.query.isNotEmpty()) {
+                    if (query.isNotEmpty()) {
                         IconButton(onClick = { onQuery("") }, modifier = Modifier.size(56.dp)) {
                             Icon(Icons.Default.Clear, contentDescription = "Clear")
                         }

@@ -12,6 +12,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
@@ -53,6 +54,13 @@ class CountingCaptureViewModel @Inject constructor(
     private val _filter = MutableStateFlow(LineFilter.ALL)
     private val _resolvingNames = MutableStateFlow(false)
 
+    /**
+     * The search text, straight from what was typed. The search box reads this, not [state]:
+     * [state] is worked out off the main thread, and a text field fed through an async hop
+     * drops or reorders fast keystrokes.
+     */
+    val query: StateFlow<String> = _query
+
     val state: StateFlow<CountingLinesState> = combine(
         countingDao.observeCountLines(journalId),
         journalDao.observeCountingJournals().map { list -> list.firstOrNull { it.journalId == journalId } },
@@ -76,6 +84,8 @@ class CountingCaptureViewModel @Inject constructor(
             locked = journal?.status in LOCKED_STATUSES,
         )
     }.combine(_resolvingNames) { state, resolving -> state.copy(resolvingNames = resolving) }
+        // Off the main thread: every keystroke and saved count filters the whole journal.
+        .flowOn(kotlinx.coroutines.Dispatchers.Default)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), CountingLinesState())
 
     init {
