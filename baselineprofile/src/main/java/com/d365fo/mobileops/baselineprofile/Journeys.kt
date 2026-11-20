@@ -75,8 +75,14 @@ internal object Journeys {
     fun MacrobenchmarkScope.ensureDemoHome() {
         // Whichever comes up first: Home (the demo is already on - a warm restart) or the first
         // screen. Checking Home without waiting misses it while it is still drawing.
-        val either = By.text(Pattern.compile("$HOME_TEXT|$FIRST_SCREEN_TEXT"))
-        check(device.wait(Until.hasObject(either), STARTUP_TIMEOUT_MS)) { "Neither Home nor \"$FIRST_SCREEN_TEXT\" appeared" }
+        val either = By.text(Pattern.compile(Pattern.quote(HOME_TEXT) + "|" + Pattern.quote(FIRST_SCREEN_TEXT)))
+        if (!device.wait(Until.hasObject(either), STEP_TIMEOUT_MS)) {
+            // A warm restart reopens the screen the app was left on (the last scan's On-hand page).
+            backToHome()
+        }
+        check(device.wait(Until.hasObject(either), STARTUP_TIMEOUT_MS)) {
+            "Neither Home nor \"$FIRST_SCREEN_TEXT\" appeared. On screen: ${onScreen()}"
+        }
         if (device.hasObject(By.text(HOME_TEXT))) {
             dismissTour()
             return
@@ -88,6 +94,11 @@ internal object Journeys {
         dismissTour()
     }
 
+    /** The texts on screen, for a failure message - what came up instead of what was expected. */
+    private fun MacrobenchmarkScope.onScreen(): String =
+        device.findObjects(By.textContains("")).mapNotNull { it.text?.takeIf(String::isNotBlank) }
+            .take(15).joinToString(" | ").ifEmpty { "(nothing - package ${device.currentPackageName})" }
+
     /** The first-visit tour (presentation/common/tour/AppTour.kt) covers Home until skipped. */
     private fun MacrobenchmarkScope.dismissTour() {
         device.wait(Until.findObject(By.text("Skip")), 3_000)?.click()
@@ -97,6 +108,16 @@ internal object Journeys {
     /** A scan the way the handheld delivers it: the Sunmi imager broadcast (OemScannerReceiver). */
     fun MacrobenchmarkScope.scan(barcode: String) {
         device.executeShellCommand("am broadcast -a $SCAN_ACTION -p $packageName --es data $barcode")
+    }
+
+    /**
+     * [scan], then wait until the item shows (Home opens its On-hand page). Going back before it
+     * has opened leaves the page on top once it does.
+     */
+    fun MacrobenchmarkScope.scanAndWait(barcode: String) {
+        scan(barcode)
+        device.wait(Until.hasObject(By.text(barcode)), STEP_TIMEOUT_MS)
+        device.waitForIdle()
     }
 
     /** Opens a Home row by its label and comes back, waiting for each screen to settle. */

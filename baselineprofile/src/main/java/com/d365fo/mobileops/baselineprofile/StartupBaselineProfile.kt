@@ -5,7 +5,7 @@ import com.d365fo.mobileops.baselineprofile.Journeys.backToHome
 import com.d365fo.mobileops.baselineprofile.Journeys.clearAppData
 import com.d365fo.mobileops.baselineprofile.Journeys.ensureDemoHome
 import com.d365fo.mobileops.baselineprofile.Journeys.openAndBack
-import com.d365fo.mobileops.baselineprofile.Journeys.scan
+import com.d365fo.mobileops.baselineprofile.Journeys.scanAndWait
 import com.d365fo.mobileops.baselineprofile.Journeys.waitForFirstScreen
 import org.junit.Rule
 import org.junit.Test
@@ -69,8 +69,7 @@ class StartupBaselineProfile {
         ensureDemoHome()
         listOf("Receive", "Ship", "Count", "Activity").forEach { openAndBack(it) }
         Journeys.DEMO_ITEMS.forEach { item ->
-            scan(item)
-            device.waitForIdle()
+            scanAndWait(item)
             backToHome()
         }
     }

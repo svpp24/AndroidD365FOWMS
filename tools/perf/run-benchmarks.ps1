@@ -77,8 +77,12 @@ foreach ($b in $data.benchmarks) {
 $outDir = Join-Path $root "docs\perf"
 New-Item -ItemType Directory -Force $outDir | Out-Null
 $safeModel = ($model -replace '[^A-Za-z0-9_-]', '_')
-$out = Join-Path $outDir "results-$(Get-Date -Format 'yyyy-MM-dd')-$safeModel.md"
+# The class (if one was picked) and a counter keep one run from overwriting another of the same day.
+$stem = "results-$(Get-Date -Format 'yyyy-MM-dd')-$safeModel$(if ($Class) { '-' + ($Class -replace '[^A-Za-z0-9_-]', '_') })"
+$n = 1; $name = $stem
+while (Test-Path (Join-Path $outDir "$name.md")) { $n++; $name = "$stem-$n" }
+$out = Join-Path $outDir "$name.md"
 $lines | Out-File -Encoding utf8 $out
-Copy-Item $json.FullName (Join-Path $outDir "results-$(Get-Date -Format 'yyyy-MM-dd')-$safeModel.json") -Force
+Copy-Item $json.FullName (Join-Path $outDir "$name.json") -Force
 $lines | ForEach-Object { Write-Host $_ }
 Write-Host "`nWritten: $out"

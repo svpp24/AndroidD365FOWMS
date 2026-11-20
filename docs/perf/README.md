@@ -33,8 +33,8 @@ tools\perf\run-benchmarks.ps1                          # all, ~15-20 min
 tools\perf\run-benchmarks.ps1 -Class StartupBenchmark  # just startup
 ```
 
-The script writes two files to this folder: `results-<date>-<device>.md` (the table) and the raw
-`.json`. Commit both alongside the change they measure.
+The script writes two files to this folder: `results-<date>-<device>[-<class>][-<n>].md` (the
+table) and the raw `.json`. Commit both alongside the change they measure.
 
 Emulator numbers only show which way a change moves things. The targets are measured on the
 P2mini.

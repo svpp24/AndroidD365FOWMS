@@ -8,7 +8,7 @@ import com.d365fo.mobileops.baselineprofile.Journeys.backToHome
 import com.d365fo.mobileops.baselineprofile.Journeys.ensureDemoHome
 import com.d365fo.mobileops.baselineprofile.Journeys.grantPermissions
 import com.d365fo.mobileops.baselineprofile.Journeys.openAndBack
-import com.d365fo.mobileops.baselineprofile.Journeys.scan
+import com.d365fo.mobileops.baselineprofile.Journeys.scanAndWait
 import org.junit.Rule
 import org.junit.Test
 
@@ -61,8 +61,7 @@ class DemoFlowBenchmark {
     ) {
         repeat(4) {
             Journeys.DEMO_ITEMS.forEach { item ->
-                scan(item)
-                device.waitForIdle()
+                scanAndWait(item)
                 backToHome()
             }
         }
