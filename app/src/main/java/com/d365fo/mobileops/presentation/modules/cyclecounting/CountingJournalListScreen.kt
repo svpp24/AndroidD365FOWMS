@@ -225,10 +225,13 @@ fun CountingJournalListScreen(
             else -> listOf(0, 3)
         }
         var tab by rememberSaveable { mutableStateOf(0) }
-        val ofKind = if (kind == null) state.journals else state.journals.filter { it.kind == kind }
-        val (doneAny, openJournals) = ofKind.partition { it.journalId in state.doneIds }
-        // Open work is oldest first; finished work reads newest first.
-        val doneJournals = doneAny.sortedByDescending { it.journalDate ?: Long.MIN_VALUE }
+        // Worked out again only when the journals or the done set change, not on every recomposition.
+        val (openJournals, doneJournals) = androidx.compose.runtime.remember(state.journals, state.doneIds, kind) {
+            val ofKind = if (kind == null) state.journals else state.journals.filter { it.kind == kind }
+            val (doneAny, open) = ofKind.partition { it.journalId in state.doneIds }
+            // Open work is oldest first; finished work reads newest first.
+            open to doneAny.sortedByDescending { it.journalDate ?: Long.MIN_VALUE }
+        }
         val tabJournals = if (tab == 3) doneJournals else openJournals.filter {
             when (tab) {
                 1 -> it.onRecountTab

@@ -64,10 +64,20 @@ object Formatters {
         else -> word
     }
 
+    /**
+     * One formatter per pattern, locale and zone, built once: list rows call these for every row
+     * on every recomposition, and building a formatter parses its pattern each time
+     * (performance plan, phase 3). DateTimeFormatter is immutable and thread-safe.
+     */
+    private val formatters = java.util.concurrent.ConcurrentHashMap<Triple<String, Locale, ZoneId?>, DateTimeFormatter>()
+
+    private fun formatter(pattern: String, locale: Locale, zone: ZoneId? = null): DateTimeFormatter =
+        formatters.getOrPut(Triple(pattern, locale, zone)) {
+            DateTimeFormatter.ofPattern(pattern, locale).let { if (zone != null) it.withZone(zone) else it }
+        }
+
     fun shortDate(epochMs: Long, locale: Locale = Locale.getDefault()): String =
-        DateTimeFormatter.ofPattern("dd MMM", locale)
-            .withZone(ZoneId.systemDefault())
-            .format(Instant.ofEpochMilli(epochMs))
+        formatter("dd MMM", locale, ZoneId.systemDefault()).format(Instant.ofEpochMilli(epochMs))
 
     /**
      * A yyyy-MM-dd date from a service as a worker reads it: "Today", "Tomorrow", "15 Dec", or
@@ -79,7 +89,7 @@ object Formatters {
             today -> "Today"
             today.plusDays(1) -> "Tomorrow"
             today.minusDays(1) -> "Yesterday"
-            else -> DateTimeFormatter.ofPattern(if (date.year == today.year) "dd MMM" else "dd MMM yyyy", locale).format(date)
+            else -> formatter(if (date.year == today.year) "dd MMM" else "dd MMM yyyy", locale).format(date)
         }
     }
 
@@ -88,7 +98,5 @@ object Formatters {
         runCatching { LocalDate.parse(isoDate.trim().take(10)) }.getOrNull()?.takeIf { it.year > 1900 }
 
     fun clockTime(epochMs: Long, locale: Locale = Locale.getDefault()): String =
-        DateTimeFormatter.ofPattern("HH:mm", locale)
-            .withZone(ZoneId.systemDefault())
-            .format(Instant.ofEpochMilli(epochMs))
+        formatter("HH:mm", locale, ZoneId.systemDefault()).format(Instant.ofEpochMilli(epochMs))
 }

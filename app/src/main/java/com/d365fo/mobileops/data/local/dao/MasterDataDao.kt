@@ -43,6 +43,23 @@ data class ScannedItem(
 /** A category path and how many active items sit directly in it. */
 data class CategoryCount(val category: String, val items: Int)
 
+/** Turns what was typed into an FTS4 query for [com.d365fo.mobileops.data.local.entity.ItemFtsEntity]. */
+object ItemSearch {
+    /** At most this many words are matched; more only narrows an already short list. */
+    private const val MAX_WORDS = 6
+    private val WORD = Regex("[\\p{L}\\p{N}]+")
+
+    /**
+     * Each run of letters and digits in [query] as a word prefix, all of them required
+     * ("ibu 200" -> `ibu* 200*`); null when [query] has none (only punctuation - the item-number
+     * match still runs). Lower-cased so a typed AND, OR, NOT or NEAR is a word, not an operator.
+     */
+    fun matchExpression(query: String): String? {
+        val words = WORD.findAll(query.lowercase(java.util.Locale.ROOT)).map { it.value }.take(MAX_WORDS).toList()
+        return words.takeIf { it.isNotEmpty() }?.joinToString(" ") { "$it*" }
+    }
+}
+
 @Dao
 interface ItemDao {
 
@@ -78,16 +95,39 @@ interface ItemDao {
     @Query("SELECT * FROM item WHERE itemId = :itemId")
     suspend fun getItem(itemId: String): ItemEntity?
 
-    /** Home search's suggestions: items whose number or name contains [query], numbers first. */
+    /**
+     * Home search's suggestions: items with a word of their name or search name starting with
+     * each word of [query], or whose number contains [query]; numbers that start with it first.
+     *
+     * Was `LIKE '%q%'` on all three columns: a read of every row, up to a million, per search
+     * (performance plan, phase 3). Names now go through [ItemFtsEntity]; the number match reads
+     * only the item-number index (`SELECT rowid ... WHERE itemId LIKE`), not the rows.
+     */
+    suspend fun searchItems(query: String, limit: Int = 20): List<ItemEntity> {
+        val match = ItemSearch.matchExpression(query)
+        return if (match == null) searchItemsByNumber(query, limit) else searchItemsByWord(match, query, limit)
+    }
+
     @Query(
         """
         SELECT * FROM item
-        WHERE itemId LIKE '%' || :query || '%' OR itemName LIKE '%' || :query || '%' OR searchName LIKE '%' || :query || '%'
+        WHERE rowid IN (SELECT docid FROM item_fts WHERE item_fts MATCH :match
+                        UNION SELECT rowid FROM item WHERE itemId LIKE '%' || :query || '%')
         ORDER BY CASE WHEN itemId LIKE :query || '%' THEN 0 ELSE 1 END, itemId
         LIMIT :limit
         """,
     )
-    suspend fun searchItems(query: String, limit: Int = 20): List<ItemEntity>
+    suspend fun searchItemsByWord(match: String, query: String, limit: Int): List<ItemEntity>
+
+    @Query(
+        """
+        SELECT * FROM item
+        WHERE rowid IN (SELECT rowid FROM item WHERE itemId LIKE '%' || :query || '%')
+        ORDER BY CASE WHEN itemId LIKE :query || '%' THEN 0 ELSE 1 END, itemId
+        LIMIT :limit
+        """,
+    )
+    suspend fun searchItemsByNumber(query: String, limit: Int): List<ItemEntity>
 
     @Query("SELECT COUNT(*) FROM item")
     suspend fun itemCount(): Int
@@ -136,20 +176,44 @@ interface ItemDao {
      * number or name contains [query], or with [query] as a barcode. [all] searches every item,
      * [none] the items without a category; otherwise [path] and [below] ("path > %", LIKE-escaped).
      */
+    suspend fun searchInCategory(all: Boolean, none: Boolean, path: String, below: String, query: String, limit: Int): List<ItemEntity> {
+        // Names by word start, numbers anywhere - as [searchItems] (performance plan, phase 3).
+        val match = ItemSearch.matchExpression(query)
+        return if (match == null) {
+            searchInCategoryByNumber(all, none, path, below, query, limit)
+        } else {
+            searchInCategoryByWord(all, none, path, below, match, query, limit)
+        }
+    }
+
     @Query(
         """
         SELECT * FROM item
         WHERE active = 1
           AND (:all OR (:none AND (category IS NULL OR category = ''))
                OR category = :path OR category LIKE :below ESCAPE '\')
-          AND (itemId LIKE '%' || :query || '%' OR itemName LIKE '%' || :query || '%'
-               OR searchName LIKE '%' || :query || '%'
+          AND (rowid IN (SELECT docid FROM item_fts WHERE item_fts MATCH :match
+                         UNION SELECT rowid FROM item WHERE itemId LIKE '%' || :query || '%')
                OR itemId IN (SELECT itemId FROM barcode WHERE barcode = :query))
         ORDER BY CASE WHEN itemId LIKE :query || '%' THEN 0 ELSE 1 END, itemName, itemId
         LIMIT :limit
         """,
     )
-    suspend fun searchInCategory(all: Boolean, none: Boolean, path: String, below: String, query: String, limit: Int): List<ItemEntity>
+    suspend fun searchInCategoryByWord(all: Boolean, none: Boolean, path: String, below: String, match: String, query: String, limit: Int): List<ItemEntity>
+
+    @Query(
+        """
+        SELECT * FROM item
+        WHERE active = 1
+          AND (:all OR (:none AND (category IS NULL OR category = ''))
+               OR category = :path OR category LIKE :below ESCAPE '\')
+          AND (rowid IN (SELECT rowid FROM item WHERE itemId LIKE '%' || :query || '%')
+               OR itemId IN (SELECT itemId FROM barcode WHERE barcode = :query))
+        ORDER BY CASE WHEN itemId LIKE :query || '%' THEN 0 ELSE 1 END, itemName, itemId
+        LIMIT :limit
+        """,
+    )
+    suspend fun searchInCategoryByNumber(all: Boolean, none: Boolean, path: String, below: String, query: String, limit: Int): List<ItemEntity>
 
     @Query("SELECT * FROM item_unit WHERE itemId = :itemId ORDER BY unitId")
     suspend fun unitsOf(itemId: String): List<com.d365fo.mobileops.data.local.entity.ItemUnitEntity>
@@ -197,8 +261,23 @@ interface ItemDao {
     @Query("SELECT COUNT(*) FROM barcode")
     suspend fun barcodeCount(): Int
 
+    /**
+     * Replaces [items] by number. Deletes first, then inserts: a `REPLACE` removes the old row
+     * without firing delete triggers, which would leave the old name in [ItemFtsEntity]'s index
+     * under a row id a later item could be given.
+     */
+    @Transaction
+    suspend fun upsertItems(items: List<ItemEntity>) {
+        // 900: under the 999 bound variables SQLite allows before 3.32 (Android 8-10).
+        items.map { it.itemId }.chunked(900).forEach { deleteItems(it) }
+        insertItems(items)
+    }
+
+    @Query("DELETE FROM item WHERE itemId IN (:itemIds)")
+    suspend fun deleteItems(itemIds: List<String>)
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun upsertItems(items: List<ItemEntity>)
+    suspend fun insertItems(items: List<ItemEntity>)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertBarcodes(barcodes: List<BarcodeEntity>)

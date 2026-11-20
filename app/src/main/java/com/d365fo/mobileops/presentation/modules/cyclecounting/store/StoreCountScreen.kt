@@ -200,21 +200,44 @@ data class StoreCountState(
         get() = (knownBins.filter { it.isIn(locationId) }.map { it.binId } +
             draft?.lines.orEmpty().filter { it.locationId.equals(locationId, ignoreCase = true) && it.binId.isNotBlank() }.map { it.binId })
             .distinctBy { it.uppercase() }
+    /**
+     * Lines per location, and per location and bin - counted once per draft, not once per row of
+     * the location and bin lists (performance plan, phase 3: rows x lines on every recomposition).
+     */
+    private val linesByPlace: Map<String, Int> by lazy {
+        val counts = HashMap<String, Int>()
+        draft?.lines.orEmpty().forEach { line ->
+            counts.merge(placeKey(line.locationId, null), 1, Int::plus)
+            counts.merge(placeKey(line.locationId, line.binId), 1, Int::plus)
+        }
+        counts
+    }
+
+    /** The draft's lines by item number, for [isRequestedDone]. */
+    private val linesByItem: Map<String, List<StoreCountLine>> by lazy {
+        draft?.lines.orEmpty().groupBy { it.itemId.uppercase() }
+    }
+
     /** Lines counted in [location] (and in [bin] there). */
-    fun countedAt(location: String, bin: String? = null): Int = draft?.lines?.count {
-        it.locationId.equals(location, ignoreCase = true) && (bin == null || it.binId.equals(bin, ignoreCase = true))
-    } ?: 0
+    fun countedAt(location: String, bin: String? = null): Int = linesByPlace[placeKey(location, bin)] ?: 0
     val unsent: Int get() = draft?.lines?.count { !it.sent } ?: 0
     val needsLocation: Boolean get() = locationId.isBlank()
     val needsBin: Boolean get() = !needsLocation && binsRequired && binId.isBlank()
     /** Lines counted in this location, and in this bin. */
-    val atLocation: Int get() = draft?.lines?.count { it.locationId.equals(locationId, ignoreCase = true) } ?: 0
-    val inBin: Int get() = draft?.lines?.count { it.locationId.equals(locationId, ignoreCase = true) && it.binId.equals(binId, ignoreCase = true) } ?: 0
+    val atLocation: Int get() = countedAt(locationId)
+    val inBin: Int get() = countedAt(locationId, binId)
     val requested: List<com.d365fo.mobileops.data.counting.RequestedItem> get() = draft?.requested?.takeIf { it.isNotEmpty() } ?: preview
-    /** Requested rows with at least one line counted on this device. */
-    val requestedDone: Int get() = requested.count { r ->
-        draft?.lines.orEmpty().any { r.matches(it.itemId, it.locationId, it.configId, it.sizeId, it.colorId, it.styleId) }
+    /** Whether this device has counted a line for [r]: only the lines of its item are checked. */
+    fun isRequestedDone(r: com.d365fo.mobileops.data.counting.RequestedItem): Boolean {
+        val candidates = if (r.itemId.isBlank()) draft?.lines.orEmpty() else linesByItem[r.itemId.uppercase()].orEmpty()
+        return candidates.any { r.matches(it.itemId, it.locationId, it.configId, it.sizeId, it.colorId, it.styleId) }
     }
+
+    /** Requested rows with at least one line counted on this device. */
+    val requestedDone: Int by lazy { requested.count(::isRequestedDone) }
+
+    private fun placeKey(location: String, bin: String?): String =
+        if (bin == null) location.uppercase() else location.uppercase() + Char(0) + bin.uppercase()
 }
 
 /**
@@ -1271,7 +1294,7 @@ private fun StoreCountList(
                             )
                         }
                         items(draft.requested.size, key = { "requested-$it" }) { index ->
-                            RequestedRow(draft.requested[index], draft.lines)
+                            draft.requested[index].let { r -> RequestedRow(r, state.isRequestedDone(r)) }
                         }
                         item(key = "lines-caption") {
                             com.d365fo.mobileops.presentation.common.focus.FocusCaption(
@@ -1364,8 +1387,7 @@ internal fun StoreCountFocusSample(kind: Int) {
 
 /** One item a hazard or blind count asks for, ticked once this device has counted it. */
 @Composable
-private fun RequestedRow(r: com.d365fo.mobileops.data.counting.RequestedItem, lines: List<StoreCountLine>) {
-    val done = lines.any { r.matches(it.itemId, it.locationId, it.configId, it.sizeId, it.colorId, it.styleId) }
+private fun RequestedRow(r: com.d365fo.mobileops.data.counting.RequestedItem, done: Boolean) {
     FocusListRow(
         title = r.itemId.ifBlank { "Everything at ${r.locationId}" },
         titleIsCode = r.itemId.isNotBlank(),
@@ -1382,7 +1404,6 @@ private fun RequestedRow(r: com.d365fo.mobileops.data.counting.RequestedItem, li
 /** The items a hazard or blind count asks for - from the start screen and the location and bin steps (user, 10 Nov). */
 @Composable
 private fun RequestedItemsList(state: StoreCountState, onClose: () -> Unit) {
-    val lines = state.draft?.lines.orEmpty()
     FocusScreen(
         title = "Items to count",
         onBack = onClose,
@@ -1394,7 +1415,7 @@ private fun RequestedItemsList(state: StoreCountState, onClose: () -> Unit) {
                 com.d365fo.mobileops.presentation.common.focus.ListTaskBox("Items to count", com.d365fo.mobileops.presentation.common.focus.TaskIcons.Lines)
             }
             items(state.requested.size, key = { "requested-$it" }) { index ->
-                RequestedRow(state.requested[index], lines)
+                state.requested[index].let { r -> RequestedRow(r, state.isRequestedDone(r)) }
             }
         }
     }

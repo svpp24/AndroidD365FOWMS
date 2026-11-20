@@ -51,6 +51,23 @@ data class ItemEntity(
     val category: String? = null,
 )
 
+/**
+ * Word index over the item names, for item search (performance plan, phase 3). `LIKE '%q%'`
+ * read every row of a table that can hold a million items on each search; this finds the items
+ * whose name or search name has a word starting with what was typed (user, 20 Nov 2026: word
+ * start for names, anywhere for item numbers - see ItemDao.searchItems).
+ *
+ * FTS4, not FTS5: Android 8-9 (the P2mini) ships SQLite 3.18-3.22 without FTS5. Kept in step
+ * with `item` by Room's triggers (content = item); ItemDao.upsertItems deletes before it inserts
+ * so a replaced row leaves no stale entry behind.
+ */
+@androidx.room.Fts4(contentEntity = ItemEntity::class, tokenizer = androidx.room.FtsOptions.TOKENIZER_UNICODE61)
+@Entity(tableName = "item_fts")
+data class ItemFtsEntity(
+    val itemName: String,
+    val searchName: String?,
+)
+
 /** EcoResProductBarcode. One item can carry many barcodes (EAN, UPC, inner/outer pack). */
 @Entity(
     tableName = "barcode",

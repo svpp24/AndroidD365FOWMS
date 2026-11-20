@@ -465,6 +465,9 @@ fun TapToTypeField(value: String, onValueChange: (String) -> Unit, placeholder: 
  */
 
 
+/** How long typing has to pause before a list filters on it. */
+private const val QUERY_SETTLE_MS = 150L
+
 fun linesText(count: Int): String = if (count == 1) "1 line" else "$count lines"
 
 
@@ -494,9 +497,21 @@ internal fun VendorItemsScreen(
     val query = state.itemQuery.trim()
     // A barcode typed or scanned finds its item too (user, 17 Nov 2026).
     val barcodeItem = com.d365fo.mobileops.presentation.common.focus.rememberBarcodeItemId(query)
-    val shown = if (query.isBlank()) all else all.filter {
-        it.itemId.contains(query, ignoreCase = true) || it.name.contains(query, ignoreCase = true) ||
-            (barcodeItem != null && it.itemId.equals(barcodeItem, ignoreCase = true))
+    // Off the main thread, a moment after typing stops (performance plan, phase 3): a vendor's
+    // catalog runs to thousands of items, and this filtered all of them on every recomposition -
+    // each page that arrives while loading included. A new query cancels the filter in progress.
+    val shown by androidx.compose.runtime.produceState(initialValue = all, all, query, barcodeItem) {
+        if (query.isBlank()) {
+            value = all
+            return@produceState
+        }
+        kotlinx.coroutines.delay(QUERY_SETTLE_MS)
+        value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+            all.filter {
+                it.itemId.contains(query, ignoreCase = true) || it.name.contains(query, ignoreCase = true) ||
+                    (barcodeItem != null && it.itemId.equals(barcodeItem, ignoreCase = true))
+            }
+        }
     }
     var confirming by remember { mutableStateOf<com.d365fo.mobileops.data.repository.DraftLine?>(null) }
     confirming?.let { line -> RemoveLineDialog(line, onRemove = { confirming = null; onRemoveLine(line) }, onKeep = { confirming = null }) }
