@@ -69,11 +69,9 @@ class HSMobileOpsCountingService
     ///
     /// The warehouse filter is an exists join through InventJournalTrans/InventDim, not a plain
     /// field on the header - the header's own dimension defaults are not assumed here, since a
-    /// counting journal is commonly generated with the warehouse set only at the line. Line count
-    /// per journal is a second, per-journal aggregate query rather than one grouped three-table
-    /// join - a handful of open journals means a handful of extra round trips inside the same
-    /// AOS call, which costs nothing a caller outside this method can observe, and reads far more
-    /// plainly than the grouped alternative.
+    /// counting journal is commonly generated with the warehouse set only at the line. Line counts
+    /// come from one grouped query for every open count journal in the warehouse (performance
+    /// plan, phase 5) - was one query per journal, and a busy store has many open.
     /// </summary>
     public HSMobileOpsJournalListResponse listOpenJournals(HSMobileOpsJournalListRequest _request)
     {
@@ -84,6 +82,8 @@ class HSMobileOpsCountingService
         InventJournalTrans             inventJournalTrans;
         InventDim                      inventDim;
         HSMobileOpsCountMaster         countMaster;
+        InventJournalTable             countJournal;
+        Map                            linesByJournal = new Map(Types::String, Types::Int64);
         List                           rows = new List(Types::Class);
         DataAreaId                     company;
         InventLocationId               warehouseId;
@@ -118,6 +118,22 @@ class HSMobileOpsCountingService
             inventDim          = null;
             supervisor         = HSMobileOpsCountDualEngine::isSupervisor(HSMobileOpsUser::find(_request.parmUserId()));
 
+            // Lines in this warehouse, per open count journal - one query for all of them.
+            while select count(RecId) from inventJournalTrans
+                group by inventJournalTrans.JournalId
+                exists join inventDim
+                    where inventDim.InventDimId      == inventJournalTrans.InventDimId
+                       && inventDim.InventLocationId == warehouseId
+                exists join countJournal
+                    where countJournal.JournalId   == inventJournalTrans.JournalId
+                       && countJournal.JournalType == InventJournalType::Count
+                       && countJournal.Posted      == NoYes::No
+            {
+                linesByJournal.insert(inventJournalTrans.JournalId, inventJournalTrans.RecId);
+            }
+            inventJournalTrans = null;
+            inventDim          = null;
+
             while select RecId, JournalId, JournalNameId, CreatedDateTime, Description, HSMobileOpsDualCount, HSMobileOpsWallToWall
                 from inventJournalTable
                 where inventJournalTable.JournalType == InventJournalType::Count
@@ -143,19 +159,9 @@ class HSMobileOpsCountingService
                 {
                     continue;
                 }
-                lineCount = 0;
                 doneNote  = '';
-                inventJournalTrans = null;
-                inventDim          = null;
-
-                while select count(RecId) from inventJournalTrans
-                    where inventJournalTrans.JournalId == inventJournalTable.JournalId
-                    exists join inventDim
-                        where inventDim.InventDimId     == inventJournalTrans.InventDimId
-                           && inventDim.InventLocationId == warehouseId
-                {
-                    lineCount = inventJournalTrans.RecId;
-                }
+                lineCount = linesByJournal.exists(inventJournalTable.JournalId)
+                    ? linesByJournal.lookup(inventJournalTable.JournalId) : 0;
 
                 // Dual count: what is left for this person, so a line they have counted is not
                 // offered again and a journal with nothing left for them is not listed, except

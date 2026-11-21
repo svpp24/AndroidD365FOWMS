@@ -96,7 +96,7 @@ class HSMobileOpsSkuPageService
                     HSMobileOpsSkuPageService::variantPage(response, str2Int64(_request.parmAfterKey()), pageSize, scope);
                     break;
                 case 'CATEGORIES':
-                    HSMobileOpsSkuPageService::categoryPage(response, str2Int64(_request.parmAfterKey()), since, pageSize, scope);
+                    HSMobileOpsSkuPageService::categoryPage(response, _request.parmAfterKey(), since, pageSize, scope);
                     break;
                 case 'UNITS':
                     HSMobileOpsSkuPageService::unitPage(response, _request.parmAfterKey(), since, pageSize, '', scope);
@@ -721,6 +721,10 @@ class HSMobileOpsSkuPageService
     {
         HSMobileOpsSyncAssortItem   scopeItem;
         InventTable                 inventTable;
+        InventTableModule           inventModule;
+        InventTableModule           purchModule;
+        InventTableModule           salesModule;
+        Map                         symbols = new Map(Types::Int64, Types::String);
         Map                         factors = new Map(Types::String, Types::Real);
         Map                         decimals = new Map(Types::String, Types::Integer);
         System.Text.StringBuilder   json = new System.Text.StringBuilder();
@@ -756,7 +760,7 @@ class HSMobileOpsSkuPageService
                 {
                     json.Append(',');
                 }
-                json.Append(HSMobileOpsSkuPageService::unitRow(inventTable, factors, decimals));
+                json.Append(HSMobileOpsSkuPageService::unitRowOf(inventTable, factors, decimals, symbols));
                 last = inventTable.ItemId;
                 rows++;
             }
@@ -764,26 +768,63 @@ class HSMobileOpsSkuPageService
         else if (full)
         {
             ItemId upTo = _upTo ? _upTo : HSMobileOpsSkuPageService::lastItemId();
+            ItemId first;
+            List   page = new List(Types::Container);
 
+            // Performance plan, phase 5: the item's units in the same query (as itemPage reads
+            // them), then the page's own conversions and barcode units in one query each. Was
+            // about six queries per item - some 30,000 for a page of 5,000.
             while select ItemId, Product from inventTable
                 order by inventTable.ItemId
                 where inventTable.ItemId > _after
                    && inventTable.ItemId <= upTo
                    && inventTable.ItemType != ItemType::Service
                    && (!inventTable.ProductLifecycleStateId || inventTable.ProductLifecycleStateId == 'Active')
+                outer join UnitId from inventModule
+                    where inventModule.ItemId     == inventTable.ItemId
+                       && inventModule.ModuleType == ModuleInventPurchSales::Invent
+                outer join UnitId from purchModule
+                    where purchModule.ItemId     == inventTable.ItemId
+                       && purchModule.ModuleType == ModuleInventPurchSales::Purch
+                outer join UnitId from salesModule
+                    where salesModule.ItemId     == inventTable.ItemId
+                       && salesModule.ModuleType == ModuleInventPurchSales::Sales
             {
                 if (rows >= _pageSize)
                 {
                     more = true;
                     break;
                 }
-                if (rows)
+                if (!rows)
                 {
-                    json.Append(',');
+                    first = inventTable.ItemId;
                 }
-                json.Append(HSMobileOpsSkuPageService::unitRow(inventTable, factors, decimals));
+                page.addEnd([inventTable.ItemId, inventModule.UnitId, purchModule.UnitId, salesModule.UnitId]);
                 last = inventTable.ItemId;
                 rows++;
+            }
+            if (rows)
+            {
+                Map            own     = HSMobileOpsSkuPageService::ownUnitsBetween(first, last, symbols);
+                Map            coded   = HSMobileOpsSkuPageService::barcodeUnitsBetween(first, last);
+                ListEnumerator pageEnum = page.getEnumerator();
+                container      item;
+                ItemId         itemId;
+                int            written;
+
+                while (pageEnum.moveNext())
+                {
+                    item   = pageEnum.current();
+                    itemId = conPeek(item, 1);
+                    if (written)
+                    {
+                        json.Append(',');
+                    }
+                    json.Append(HSMobileOpsSkuPageService::unitRowFor(itemId, conPeek(item, 2), conPeek(item, 3), conPeek(item, 4),
+                        own.exists(itemId) ? own.lookup(itemId) : conNull(), own.exists(itemId),
+                        coded.exists(itemId) ? coded.lookup(itemId) : conNull(), factors, decimals));
+                    written++;
+                }
             }
         }
         else
@@ -815,7 +856,7 @@ class HSMobileOpsSkuPageService
                 {
                     json.Append(',');
                 }
-                json.Append(HSMobileOpsSkuPageService::unitRow(inventTable, factors, decimals));
+                json.Append(HSMobileOpsSkuPageService::unitRowOf(inventTable, factors, decimals, symbols));
                 last = inventTable.ItemId;
                 rows++;
             }
@@ -874,54 +915,151 @@ class HSMobileOpsSkuPageService
 ]]></Source>
 			</Method>
 			<Method>
-				<Name>unitRow</Name>
+				<Name>unitRowOf</Name>
 				<Source><![CDATA[
 
     /// <summary>
-    /// One UNITS row. Factors between two units with no product-specific conversion are the same
-    /// for every item, so they are worked out once per feed page (_factors).
+    /// One UNITS row of one item, its conversions and barcode units read for it alone - the
+    /// delta and the store paths, which see few items or items far apart.
     /// </summary>
-    private static str unitRow(InventTable _inventTable, Map _factors, Map _decimals)
+    private static str unitRowOf(InventTable _inventTable, Map _factors, Map _decimals, Map _symbols)
     {
-        System.Text.StringBuilder   json = new System.Text.StringBuilder();
-        UnitOfMeasureConversion     conversion;
-        InventItemBarcode           barcode;
-        EcoResProductUnitConverter  converter;
-        Set                         candidates = new Set(Types::String);
-        SetEnumerator               se;
-        str                         inventUnit = _inventTable.inventUnitId();
-        str                         purchUnit  = _inventTable.purchUnitId();
-        str                         salesUnit  = _inventTable.salesUnitId();
-        str                         unit;
-        str                         key;
-        boolean                     own;
-        real                        factor;
-        real                        inverse;
-        int                         units;
+        UnitOfMeasureConversion conversion;
+        InventItemBarcode       barcode;
+        container               ownUnits;
+        container               coded;
+        boolean                 own;
 
-        candidates.add(inventUnit);
-        candidates.add(purchUnit);
-        candidates.add(salesUnit);
         while select FromUnitOfMeasure, ToUnitOfMeasure from conversion
             where conversion.Product == _inventTable.Product
         {
             own = true;
-            candidates.add(UnitOfMeasure::find(conversion.FromUnitOfMeasure).Symbol);
-            candidates.add(UnitOfMeasure::find(conversion.ToUnitOfMeasure).Symbol);
+            ownUnits += [HSMobileOpsSkuPageService::symbolOf(conversion.FromUnitOfMeasure, _symbols),
+                         HSMobileOpsSkuPageService::symbolOf(conversion.ToUnitOfMeasure, _symbols)];
         }
         while select UnitID from barcode
             group by barcode.UnitID
             where barcode.itemId == _inventTable.ItemId
                && barcode.UnitID
         {
-            candidates.add(barcode.UnitID);
+            coded += [barcode.UnitID];
+        }
+        return HSMobileOpsSkuPageService::unitRowFor(_inventTable.ItemId, _inventTable.inventUnitId(), _inventTable.purchUnitId(),
+            _inventTable.salesUnitId(), ownUnits, own, coded, _factors, _decimals);
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>ownUnitsBetween</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The units of each item's own (product-specific) conversions, for the items from _first to
+    /// _last: item -> [unit, unit, ...]. Items with none are not in the map.
+    /// </summary>
+    private static Map ownUnitsBetween(ItemId _first, ItemId _last, Map _symbols)
+    {
+        Map                     own = new Map(Types::String, Types::Container);
+        InventTable             inventTable;
+        UnitOfMeasureConversion conversion;
+        container               units;
+
+        while select ItemId from inventTable
+            where inventTable.ItemId >= _first
+               && inventTable.ItemId <= _last
+            join FromUnitOfMeasure, ToUnitOfMeasure from conversion
+                where conversion.Product == inventTable.Product
+        {
+            units = own.exists(inventTable.ItemId) ? own.lookup(inventTable.ItemId) : conNull();
+            units += [HSMobileOpsSkuPageService::symbolOf(conversion.FromUnitOfMeasure, _symbols),
+                      HSMobileOpsSkuPageService::symbolOf(conversion.ToUnitOfMeasure, _symbols)];
+            own.insert(inventTable.ItemId, units);
+        }
+        return own;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>barcodeUnitsBetween</Name>
+				<Source><![CDATA[
+
+    /// <summary>The units barcodes are set up with, for the items from _first to _last: item -> [unit, ...].</summary>
+    private static Map barcodeUnitsBetween(ItemId _first, ItemId _last)
+    {
+        Map               coded = new Map(Types::String, Types::Container);
+        InventItemBarcode barcode;
+        container         units;
+
+        while select itemId, UnitID from barcode
+            group by barcode.itemId, barcode.UnitID
+            where barcode.itemId >= _first
+               && barcode.itemId <= _last
+               && barcode.UnitID
+        {
+            units = coded.exists(barcode.itemId) ? coded.lookup(barcode.itemId) : conNull();
+            units += [barcode.UnitID];
+            coded.insert(barcode.itemId, units);
+        }
+        return coded;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>symbolOf</Name>
+				<Source><![CDATA[
+
+    /// <summary>A unit's symbol from its RecId, looked up once per feed page.</summary>
+    private static UnitOfMeasureSymbol symbolOf(RefRecId _unit, Map _symbols)
+    {
+        if (!_symbols.exists(_unit))
+        {
+            _symbols.insert(_unit, UnitOfMeasure::find(_unit).Symbol);
+        }
+        return _symbols.lookup(_unit);
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>unitRowFor</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// One UNITS row. Factors between two units with no product-specific conversion are the same
+    /// for every item, so they are worked out once per feed page (_factors). _ownUnits and
+    /// _barcodeUnits are the units of the item's own conversions and of its barcodes.
+    /// </summary>
+    private static str unitRowFor(ItemId _itemId, str _inventUnit, str _purchUnit, str _salesUnit,
+        container _ownUnits, boolean _own, container _barcodeUnits, Map _factors, Map _decimals)
+    {
+        System.Text.StringBuilder   json = new System.Text.StringBuilder();
+        EcoResProductUnitConverter  converter;
+        Set                         candidates = new Set(Types::String);
+        SetEnumerator               se;
+        str                         inventUnit = _inventUnit;
+        str                         unit;
+        str                         key;
+        real                        factor;
+        real                        inverse;
+        int                         units;
+        int                         i;
+
+        candidates.add(_inventUnit);
+        candidates.add(_purchUnit);
+        candidates.add(_salesUnit);
+        for (i = 1; i <= conLen(_ownUnits); i++)
+        {
+            candidates.add(conPeek(_ownUnits, i));
+        }
+        for (i = 1; i <= conLen(_barcodeUnits); i++)
+        {
+            candidates.add(conPeek(_barcodeUnits, i));
         }
 
         json.Append('[');
-        json.Append(HSMobileOpsSkuPageService::jsonStr(_inventTable.ItemId)); json.Append(',');
-        json.Append(HSMobileOpsSkuPageService::jsonStr(inventUnit)); json.Append(',');
-        json.Append(HSMobileOpsSkuPageService::jsonStr(purchUnit)); json.Append(',');
-        json.Append(HSMobileOpsSkuPageService::jsonStr(salesUnit)); json.Append(',[');
+        json.Append(HSMobileOpsSkuPageService::jsonStr(_itemId)); json.Append(',');
+        json.Append(HSMobileOpsSkuPageService::jsonStr(_inventUnit)); json.Append(',');
+        json.Append(HSMobileOpsSkuPageService::jsonStr(_purchUnit)); json.Append(',');
+        json.Append(HSMobileOpsSkuPageService::jsonStr(_salesUnit)); json.Append(',[');
         se = candidates.getEnumerator();
         while (se.moveNext())
         {
@@ -938,14 +1076,14 @@ class HSMobileOpsSkuPageService
             else
             {
                 key = unit + '>' + inventUnit;
-                if (!own && _factors.exists(key))
+                if (!_own && _factors.exists(key))
                 {
                     factor = _factors.lookup(key);
                 }
                 else
                 {
                     converter = EcoResProductUnitConverter::newGivenUnitSymbolsForReleasedProduct(
-                        _inventTable.ItemId, InventDim::inventDimIdBlank(), unit, inventUnit, NoYes::No, NoYes::No);
+                        _itemId, InventDim::inventDimIdBlank(), unit, inventUnit, NoYes::No, NoYes::No);
                     if (converter.canValueBeConverted())
                     {
                         factor = converter.convertValue(1);
@@ -953,7 +1091,7 @@ class HSMobileOpsSkuPageService
                         if (factor > 0 && factor < 1)
                         {
                             converter = EcoResProductUnitConverter::newGivenUnitSymbolsForReleasedProduct(
-                                _inventTable.ItemId, InventDim::inventDimIdBlank(), inventUnit, unit, NoYes::No, NoYes::No);
+                                _itemId, InventDim::inventDimIdBlank(), inventUnit, unit, NoYes::No, NoYes::No);
                             inverse = converter.canValueBeConverted() ? converter.convertValue(1) : 0;
                             if (inverse > 0)
                             {
@@ -961,7 +1099,7 @@ class HSMobileOpsSkuPageService
                             }
                         }
                     }
-                    if (!own)
+                    if (!_own)
                     {
                         _factors.insert(key, factor);
                     }
@@ -1119,94 +1257,129 @@ class HSMobileOpsSkuPageService
     /// <summary>
     /// The CATEGORIES feed - see getSkuPage. Category changes do not touch InventTable, so a
     /// delta of ITEMS missed them (user, 13 Nov).
+    ///
+    /// In two stages, the key saying which: "123" - items whose category was set or changed
+    /// since _since; then "T:123" - items whose category is, or is under, a category node changed
+    /// since _since (a renamed or moved node changes the path of everything below it). Was every
+    /// product-category row again whenever any node changed (performance plan, phase 5). The
+    /// device passes the key back as it came, so it needs no change.
     /// </summary>
-    private static void categoryPage(HSMobileOpsSkuPageResponse _response, RecId _after, utcdatetime _since, int _pageSize, InventLocationId _scope = '')
+    private static void categoryPage(HSMobileOpsSkuPageResponse _response, str _after, utcdatetime _since, int _pageSize, InventLocationId _scope = '')
     {
-        HSMobileOpsSyncAssortItem scopeItem;
         EcoResProductCategory     productCategory;
-        EcoResCategory            changedCategory;
+        EcoResCategory            category;
+        EcoResCategory            changedNode;
         InventTable               inventTable;
         Map                       paths = new Map(Types::Int64, Types::String);
         RefRecId                  hierarchy = HSMobileOpsSkuPageService::retailHierarchy();
         System.Text.StringBuilder json = new System.Text.StringBuilder();
-        boolean                   treeChanged;
+        boolean                   underChanged = strStartsWith(_after, 'T:');
+        RecId                     after = str2Int64(underChanged ? subStr(_after, 3, strLen(_after)) : _after);
         int                       rows;
         RecId                     last;
         boolean                   more;
+        str                       nextKey;
 
         json.Append('[');
         // A full sync gets the category with each item; nothing to add.
         if (_since != DateTimeUtil::minValue() && hierarchy)
         {
-            select firstonly RecId from changedCategory
-                where changedCategory.CategoryHierarchy == hierarchy
-                   && changedCategory.ModifiedDateTime  >= _since;
-            treeChanged = changedCategory.RecId != 0;
-
-            if (_scope)
+            if (!underChanged)
             {
-                // A store that syncs by assortment: only its items.
                 while select RecId, Category from productCategory
                     order by productCategory.RecId
-                    where productCategory.RecId             > _after
+                    where productCategory.RecId             > after
                        && productCategory.CategoryHierarchy == hierarchy
-                       && (treeChanged || productCategory.ModifiedDateTime >= _since)
+                       && productCategory.ModifiedDateTime  >= _since
                     join ItemId from inventTable
                         where inventTable.Product  == productCategory.Product
                            && inventTable.ItemType != ItemType::Service
-                    exists join scopeItem
-                        where scopeItem.Warehouse == _scope
-                           && scopeItem.ItemId    == inventTable.ItemId
                 {
                     if (rows >= _pageSize)
                     {
                         more = true;
                         break;
                     }
-                    if (rows)
-                    {
-                        json.Append(',');
-                    }
-                    json.Append('[');
-                    json.Append(HSMobileOpsSkuPageService::jsonStr(inventTable.ItemId)); json.Append(',');
-                    json.Append(HSMobileOpsSkuPageService::jsonStr(HSMobileOpsSkuPageService::pathOf(productCategory.Category, paths)));
-                    json.Append(']');
                     last = productCategory.RecId;
+                    // A store that syncs by assortment: only its items.
+                    if (_scope && !HSMobileOpsSyncAssortItem::exist(_scope, inventTable.ItemId))
+                    {
+                        continue;
+                    }
+                    HSMobileOpsSkuPageService::categoryRow(json, rows, inventTable.ItemId, productCategory.Category, paths);
                     rows++;
+                }
+                nextKey = int642Str(last ? last : after);
+                if (!more)
+                {
+                    select firstonly RecId from changedNode
+                        where changedNode.CategoryHierarchy == hierarchy
+                           && changedNode.ModifiedDateTime  >= _since;
+                    if (changedNode.RecId)
+                    {
+                        // On to the items under the changed nodes.
+                        more    = true;
+                        nextKey = 'T:0';
+                    }
                 }
             }
             else
-            while select RecId, Category from productCategory
-                order by productCategory.RecId
-                where productCategory.RecId             > _after
-                   && productCategory.CategoryHierarchy == hierarchy
-                   && (treeChanged || productCategory.ModifiedDateTime >= _since)
-                join ItemId from inventTable
-                    where inventTable.Product  == productCategory.Product
-                       && inventTable.ItemType != ItemType::Service
             {
-                if (rows >= _pageSize)
+                while select RecId, Category from productCategory
+                    order by productCategory.RecId
+                    where productCategory.RecId             > after
+                       && productCategory.CategoryHierarchy == hierarchy
+                    join ItemId from inventTable
+                        where inventTable.Product  == productCategory.Product
+                           && inventTable.ItemType != ItemType::Service
+                    join NestedSetLeft, NestedSetRight from category
+                        where category.RecId == productCategory.Category
+                    // A changed node at or above the item's category.
+                    exists join changedNode
+                        where changedNode.CategoryHierarchy == hierarchy
+                           && changedNode.ModifiedDateTime  >= _since
+                           && changedNode.NestedSetLeft     <= category.NestedSetLeft
+                           && changedNode.NestedSetRight    >= category.NestedSetRight
                 {
-                    more = true;
-                    break;
+                    if (rows >= _pageSize)
+                    {
+                        more = true;
+                        break;
+                    }
+                    last = productCategory.RecId;
+                    if (_scope && !HSMobileOpsSyncAssortItem::exist(_scope, inventTable.ItemId))
+                    {
+                        continue;
+                    }
+                    HSMobileOpsSkuPageService::categoryRow(json, rows, inventTable.ItemId, productCategory.Category, paths);
+                    rows++;
                 }
-                if (rows)
-                {
-                    json.Append(',');
-                }
-                json.Append('[');
-                json.Append(HSMobileOpsSkuPageService::jsonStr(inventTable.ItemId)); json.Append(',');
-                json.Append(HSMobileOpsSkuPageService::jsonStr(HSMobileOpsSkuPageService::pathOf(productCategory.Category, paths)));
-                json.Append(']');
-                last = productCategory.RecId;
-                rows++;
+                nextKey = 'T:' + int642Str(last ? last : after);
             }
         }
         json.Append(']');
         _response.parmRowsJson(json.ToString());
         _response.parmRowCount(rows);
-        _response.parmNextKey(int642Str(last ? last : _after));
+        _response.parmNextKey(nextKey ? nextKey : _after);
         _response.parmHasMore(more);
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>categoryRow</Name>
+				<Source><![CDATA[
+
+    /// <summary>One CATEGORIES row, [itemId, category path], with a comma before it after the first.</summary>
+    private static void categoryRow(System.Text.StringBuilder _json, int _written, ItemId _itemId, RefRecId _category, Map _paths)
+    {
+        if (_written)
+        {
+            _json.Append(',');
+        }
+        _json.Append('[');
+        _json.Append(HSMobileOpsSkuPageService::jsonStr(_itemId)); _json.Append(',');
+        _json.Append(HSMobileOpsSkuPageService::jsonStr(HSMobileOpsSkuPageService::pathOf(_category, _paths)));
+        _json.Append(']');
     }
 ]]></Source>
 			</Method>

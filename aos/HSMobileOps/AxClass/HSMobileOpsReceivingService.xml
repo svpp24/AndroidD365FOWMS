@@ -274,6 +274,9 @@ class HSMobileOpsReceivingService
             join InventSiteId, InventLocationId, wMSLocationId,
                  configId, InventSizeId, InventColorId, InventStyleId from inventDim
                 where inventDim.InventDimId == purchLine.InventDimId
+            // The mobile description lines, in the same query - was a find per line (performance plan, phase 5).
+            outer join RFDescription1, RFDescription2 from whsItem
+                where whsItem.ItemId == purchLine.ItemId
         {
             orderedForLine = ordered.exists(purchLine.LineNumber)
                 ? ordered.lookup(purchLine.LineNumber) : 0;
@@ -296,7 +299,6 @@ class HSMobileOpsReceivingService
             line.parmItemName(purchLine.Name);
             // Shown on the handheld when filled in (Released products > Warehouse mobile device
             // description lines).
-            whsItem = WHSInventTable::find(purchLine.ItemId);
             line.parmMobileDescription1(whsItem.RFDescription1);
             line.parmMobileDescription2(whsItem.RFDescription2);
             line.parmPurchUnit(purchLine.PurchUnit);

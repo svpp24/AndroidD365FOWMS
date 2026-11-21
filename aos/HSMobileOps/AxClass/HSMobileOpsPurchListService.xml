@@ -27,6 +27,8 @@ class HSMobileOpsPurchListService
         HSMobileOpsOrderSummaryRow       row;
         List                             orders = new List(Types::Class);
         PurchTable                       purchTable;
+        VendTable                        vendTable;
+        DirPartyTable                    vendParty;
         PurchLine                        purchLine;
         InventTrans                      inventTrans;
         InventTransOrigin                inventTransOrigin;
@@ -59,12 +61,17 @@ class HSMobileOpsPurchListService
                    && (!warehouseId || purchTable.InventLocationId == warehouseId)
                    // Confirmed orders only (user, 14 Nov) - the receiving rule: a confirmation was posted.
                    && purchTable.DocumentStatus != DocumentStatus::None
+                outer join AccountNum, Party from vendTable
+                    where vendTable.AccountNum == purchTable.OrderAccount
+                outer join Name from vendParty
+                    where vendParty.RecId == vendTable.Party
             {
                 row = new HSMobileOpsOrderSummaryRow();
                 row.parmPurchId(purchTable.PurchId);
                 row.parmVendorAccount(purchTable.OrderAccount);
-                // The order's vendor name (PurchName), else the vendor master's.
-                row.parmVendorName(purchTable.PurchName ? purchTable.PurchName : VendTable::find(purchTable.OrderAccount).name());
+                // The order's vendor name (PurchName), else the vendor master's - joined in the
+                // query above, not looked up per order (performance plan, phase 5).
+                row.parmVendorName(purchTable.PurchName ? purchTable.PurchName : vendParty.Name);
                 row.parmStatus(enum2Symbol(enumNum(PurchStatus), purchTable.PurchStatus));
                 // Still Ordered in InventTrans, as HSMobileOpsReceivingService.orderedQtyByLine
                 // reads it. RemainPurchPhysical only falls at product receipt, and this app
@@ -115,6 +122,8 @@ class HSMobileOpsPurchListService
         HSMobileOpsOrderSummaryRow       row;
         List                             orders = new List(Types::Class);
         PurchTable                       purchTable;
+        VendTable                        vendTable;
+        DirPartyTable                    vendParty;
         PurchLine                        purchLine;
         InventTrans                      inventTrans;
         InventTransOrigin                inventTransOrigin;
@@ -142,6 +151,10 @@ class HSMobileOpsPurchListService
                    && purchTable.PurchaseType     == PurchaseType::Purch
                    // Confirmed orders only (user, 14 Nov) - the receiving rule: a confirmation was posted.
                    && purchTable.DocumentStatus   != DocumentStatus::None
+                outer join AccountNum, Party from vendTable
+                    where vendTable.AccountNum == purchTable.OrderAccount
+                outer join Name from vendParty
+                    where vendParty.RecId == vendTable.Party
                 exists join purchLine
                     where purchLine.PurchId     == purchTable.PurchId
                        && purchLine.PurchStatus != PurchStatus::Canceled
@@ -155,8 +168,9 @@ class HSMobileOpsPurchListService
                 row = new HSMobileOpsOrderSummaryRow();
                 row.parmPurchId(purchTable.PurchId);
                 row.parmVendorAccount(purchTable.OrderAccount);
-                // The order's vendor name (PurchName), else the vendor master's.
-                row.parmVendorName(purchTable.PurchName ? purchTable.PurchName : VendTable::find(purchTable.OrderAccount).name());
+                // The order's vendor name (PurchName), else the vendor master's - joined in the
+                // query above, not looked up per order (performance plan, phase 5).
+                row.parmVendorName(purchTable.PurchName ? purchTable.PurchName : vendParty.Name);
                 row.parmStatus(enum2Symbol(enumNum(PurchStatus), purchTable.PurchStatus));
                 row.parmHasOpenLines(true);
                 row.parmSiteId(purchTable.InventSiteId);
