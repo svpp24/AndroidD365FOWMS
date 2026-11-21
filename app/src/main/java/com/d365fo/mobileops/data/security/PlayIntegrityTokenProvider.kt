@@ -9,6 +9,9 @@ import com.google.android.play.core.integrity.StandardIntegrityManager.StandardI
 import com.google.android.play.core.integrity.StandardIntegrityManager.StandardIntegrityTokenRequest
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withTimeoutOrNull
 import timber.log.Timber
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -35,23 +38,51 @@ class PlayIntegrityTokenProvider @Inject constructor(
 ) {
     private val manager: StandardIntegrityManager by lazy { IntegrityManagerFactory.createStandard(context) }
 
-    // Warmed once, lazily, on first use rather than blocking app start - most launches never
-    // need a token at all (e.g. the license check is already inside its offline grace period).
+    // Prepared once per process: by [warmUp] in the background when the app starts with nobody
+    // signed in, else on first use. Never on the main thread or ahead of the first frame.
     @Volatile
     private var cachedProvider: StandardIntegrityTokenProvider? = null
+    private val preparing = Mutex()
 
+    /**
+     * Prepares the provider ahead of a sign-in (performance plan, phase 4): the several seconds
+     * it takes on a cold start then pass while the worker types, not after they tap Sign in.
+     */
+    suspend fun warmUp() {
+        cloudProjectNumber()?.let { provider(it) }
+    }
+
+    /**
+     * A token, or null. Waits at most [WAIT_MS]: nothing checks the token today, so a sign-in
+     * must not wait on Play Services - it used to wait with no limit at all.
+     */
     suspend fun requestToken(): String? {
-        val cloudProjectNumber = BuildConfig.INTEGRITY_CLOUD_PROJECT_NUMBER.toLongOrNull()
-        if (cloudProjectNumber == null || cloudProjectNumber <= 0L) {
+        val cloudProjectNumber = cloudProjectNumber() ?: return null
+        return withTimeoutOrNull(WAIT_MS) {
+            val provider = provider(cloudProjectNumber) ?: return@withTimeoutOrNull null
+            runCatching { requestFrom(provider) }
+                .onFailure { if (it is kotlinx.coroutines.CancellationException) throw it; Timber.w(it, "Play Integrity token request failed") }
+                .getOrNull()
+        }.also { if (it == null) Timber.w("Play Integrity: no token within %d ms - signing in without", WAIT_MS) }
+    }
+
+    private fun cloudProjectNumber(): Long? {
+        val number = BuildConfig.INTEGRITY_CLOUD_PROJECT_NUMBER.toLongOrNull()
+        if (number == null || number <= 0L) {
             Timber.w("INTEGRITY_CLOUD_PROJECT_NUMBER not configured - skipping Play Integrity")
             return null
         }
+        return number
+    }
 
-        val provider = cachedProvider ?: preparedProvider(cloudProjectNumber)?.also { cachedProvider = it } ?: return null
+    /** One preparation at a time: a sign-in during [warmUp] waits for it rather than starting another. */
+    private suspend fun provider(cloudProjectNumber: Long): StandardIntegrityTokenProvider? =
+        cachedProvider ?: preparing.withLock {
+            cachedProvider ?: preparedProvider(cloudProjectNumber)?.also { cachedProvider = it }
+        }
 
-        return runCatching { requestFrom(provider) }
-            .onFailure { Timber.w(it, "Play Integrity token request failed") }
-            .getOrNull()
+    private companion object {
+        const val WAIT_MS = 5_000L
     }
 
     private suspend fun preparedProvider(cloudProjectNumber: Long): StandardIntegrityTokenProvider? =
@@ -65,7 +96,7 @@ class PlayIntegrityTokenProvider @Inject constructor(
                     .addOnSuccessListener { cont.resume(it) }
                     .addOnFailureListener { cont.resumeWithException(it) }
             }
-        }.onFailure { Timber.w(it, "Play Integrity prepareIntegrityToken failed") }.getOrNull()
+        }.onFailure { if (it is kotlinx.coroutines.CancellationException) throw it; Timber.w(it, "Play Integrity prepareIntegrityToken failed") }.getOrNull()
 
     private suspend fun requestFrom(provider: StandardIntegrityTokenProvider): String =
         suspendCancellableCoroutine { cont ->

@@ -252,6 +252,12 @@ interface ItemDao {
     @Query("UPDATE item SET category = :category WHERE itemId = :itemId")
     suspend fun setCategory(itemId: String, category: String?)
 
+    /** A CATEGORIES page in one transaction - was a commit per item, up to 5,000 a page. */
+    @Transaction
+    suspend fun setCategories(rows: List<Pair<String, String?>>) {
+        rows.forEach { (itemId, category) -> setCategory(itemId, category) }
+    }
+
     @Query("SELECT * FROM item WHERE itemId IN (:itemIds)")
     suspend fun itemsByIds(itemIds: List<String>): List<ItemEntity>
 

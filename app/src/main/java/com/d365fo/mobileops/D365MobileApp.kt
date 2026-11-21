@@ -43,6 +43,7 @@ class D365MobileApp : Application(), Configuration.Provider {
     @Inject lateinit var moduleSwitches: dagger.Lazy<com.d365fo.mobileops.data.sync.ModuleSwitches>
     @Inject lateinit var deviceCleanup: dagger.Lazy<com.d365fo.mobileops.data.sync.DeviceCleanup>
     @Inject lateinit var selfIntegrityCheck: dagger.Lazy<com.d365fo.mobileops.data.security.SelfIntegrityCheck>
+    @Inject lateinit var playIntegrity: dagger.Lazy<com.d365fo.mobileops.data.security.PlayIntegrityTokenProvider>
 
     override val workManagerConfiguration: Configuration
         get() = Configuration.Builder()
@@ -151,6 +152,11 @@ class D365MobileApp : Application(), Configuration.Provider {
                             syncScheduler.get().syncMastersNow(com.d365fo.mobileops.data.repository.ManualSync.CHANGES)
                         }
                     }
+            }
+            // Nobody signed in: a sign-in is next, so Play Integrity is prepared now, not when
+            // Sign in is tapped (performance plan, phase 4).
+            if (sessions.get().session.value == null) {
+                applicationScope.launch { playIntegrity.get().warmUp() }
             }
             // Counting: keep claims alive, and give every unfinished End count a job again.
             claimHeartbeat.get().start()

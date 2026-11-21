@@ -15,6 +15,8 @@ import okio.Buffer
 import timber.log.Timber
 import java.io.IOException
 import java.security.MessageDigest
+import java.util.concurrent.Executor
+import java.util.concurrent.Executors
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -40,9 +42,15 @@ import javax.inject.Singleton
 class OfflineReadCacheInterceptor internal constructor(
     private val dao: dagger.Lazy<ReadCacheDao>,
     private val now: () -> Long,
+    /** Where copies are saved and pruned: off the network thread, so the answer is not held up by it. */
+    private val writer: Executor = Executor(Runnable::run),
 ) : Interceptor {
 
-    @Inject constructor(dao: dagger.Lazy<ReadCacheDao>) : this(dao, System::currentTimeMillis)
+    @Inject constructor(dao: dagger.Lazy<ReadCacheDao>) : this(
+        dao,
+        System::currentTimeMillis,
+        Executors.newSingleThreadExecutor { Thread(it, "offline-cache-writer").apply { isDaemon = true } },
+    )
 
     @Volatile private var writes = 0
 
@@ -66,18 +74,22 @@ class OfflineReadCacheInterceptor internal constructor(
         }
         if (!response.isSuccessful) return response
 
-        val body = response.body ?: return response
-        val contentType = body.contentType()
-        val text = body.string()
-        if (text.length <= MAX_BODY_CHARS) {
-            runCatching {
-                val now = now()
-                dao.get().save(ReadCacheEntity(key = key, path = operation, body = text, savedAt = now))
-                if (++writes % PRUNE_EVERY == 0) prune(now)
-            }.onFailure { Timber.w(it, "offline cache: could not keep %s", operation) }
+        // Performance plan, phase 4. Was: the whole answer read into a string before its size was
+        // checked, a new body built from it, and the copy saved on this (the caller's) thread.
+        // Now at most the limit is buffered, the answer goes on as it came, and the save is queued.
+        val copy = response.peekBody(MAX_BODY_BYTES + 1)
+        if (copy.contentLength() <= MAX_BODY_BYTES) {
+            val text = copy.string()
+            val savedAt = now()
+            writer.execute {
+                runCatching {
+                    dao.get().save(ReadCacheEntity(key = key, path = operation, body = text, savedAt = savedAt))
+                    if (++writes % PRUNE_EVERY == 0) prune(savedAt)
+                }.onFailure { Timber.w(it, "offline cache: could not keep %s", operation) }
+            }
         }
         OfflineReadNotice.freshAnswer()
-        return response.newBuilder().body(text.toResponseBody(contentType)).build()
+        return response
     }
 
     private fun replay(request: Request, key: String, operation: String): Response? {
@@ -111,7 +123,7 @@ class OfflineReadCacheInterceptor internal constructor(
         private const val WORKING_DATA_MAX_AGE_MS = 72 * HOUR_MS
         /** Items, barcodes, units, warehouses: these change rarely. */
         private const val MASTER_DATA_MAX_AGE_MS = 30 * 24 * HOUR_MS
-        private const val MAX_BODY_CHARS = 2_000_000
+        private const val MAX_BODY_BYTES = 2_000_000L
         private const val MAX_ENTRIES = 3_000
         private const val PRUNE_EVERY = 50
 

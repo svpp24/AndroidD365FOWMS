@@ -108,4 +108,34 @@ class OfflineReadCacheTest {
 
         assertThat(call("HSMobileOpsItemSvc/getItem").code).isEqualTo(200)
     }
+
+    @Test
+    fun `an answer over the size limit is passed on whole but not kept`() {
+        val big = """{"Rows":"${"x".repeat(2_100_000)}"}"""
+        server.enqueue(MockResponse().setBody(big))
+
+        assertThat(call("HSMobileOpsPurchListSvc/getOpenOrders").body!!.string()).isEqualTo(big)
+        assertThat(rows).isEmpty()
+    }
+
+    @Test
+    fun `the copy is saved by the writer, not on the calling thread`() {
+        val queued = mutableListOf<Runnable>()
+        val queuing = OkHttpClient.Builder()
+            .addInterceptor(OfflineReadCacheInterceptor({ dao }, { clock }, { queued += it }))
+            .build()
+        server.enqueue(MockResponse().setBody("""{"Success":true}"""))
+        val answer = queuing.newCall(
+            Request.Builder()
+                .url(server.url("/api/services/HSMobileOpsServiceGroup/HSMobileOpsItemSvc/getItem"))
+                .post("{}".toRequestBody("application/json".toMediaType()))
+                .tag(IdempotentRead::class.java, IdempotentRead)
+                .build(),
+        ).execute()
+
+        assertThat(answer.body!!.string()).isEqualTo("""{"Success":true}""")
+        assertThat(rows).isEmpty()
+        queued.forEach(Runnable::run)
+        assertThat(rows.values.single().body).isEqualTo("""{"Success":true}""")
+    }
 }

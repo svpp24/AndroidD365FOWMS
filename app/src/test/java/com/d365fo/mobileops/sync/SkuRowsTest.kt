@@ -78,4 +78,26 @@ class SkuRowsTest {
         assertThat(SkuRows.withOverlap("2026-10-09T00:05:00.123Z", 10)).isEqualTo("2026-10-08T23:55:00")
         assertThat(SkuRows.withOverlap("not a time", 10)).isEmpty()
     }
+
+    @Test
+    fun `parse reads a page row by row, like the whole-page parse it replaced`() {
+        val page = """
+            [["HST001","Ibuprofen \"200\" mg\nTabs","Pcs","Box","Pcs","1","0","0","1","A/B"],
+             ["","skipped: no item number"],
+             ["ÄÖ-1","Größe ½","Pcs","","","0","0","0","1"]]
+        """
+        var read = 0
+        val items = SkuRows.parse(page) { read++; SkuRows.item(it, 1L) }
+        assertThat(read).isEqualTo(3)
+        assertThat(items.map { it.itemId }).containsExactly("HST001", "ÄÖ-1").inOrder()
+        assertThat(items[0].itemName).isEqualTo("Ibuprofen \"200\" mg\nTabs")
+        assertThat(items[0].category).isEqualTo("A/B")
+        assertThat(items[1].itemName).isEqualTo("Größe ½")
+        assertThat(items).isEqualTo(rows(page).mapNotNull { SkuRows.item(it, 1L) })
+
+        // Nested arrays (the UNITS feed) and an empty page.
+        val units = SkuRows.parse("""[["X1","Pcs","","",[["Box","12","0"],["Pcs","1","2"]]]]""") { SkuRows.units(it, 1L) }
+        assertThat(units.single().units.map { it.unitId }).containsExactly("Box", "Pcs")
+        assertThat(SkuRows.parse("[]") { SkuRows.category(it) }).isEmpty()
+    }
 }

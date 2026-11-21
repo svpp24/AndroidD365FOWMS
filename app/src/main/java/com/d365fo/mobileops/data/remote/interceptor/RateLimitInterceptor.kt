@@ -20,14 +20,36 @@ class RateLimitInterceptor @Inject constructor() : Interceptor {
 
     private val permits = Semaphore(Constants.MAX_CONCURRENT_REQUESTS, true)
 
+    /** Whether this thread's call holds a slot - interceptors run on the caller's thread. */
+    private val holding = ThreadLocal<Boolean>()
+
     override fun intercept(chain: Interceptor.Chain): Response {
         permits.acquire()
+        holding.set(true)
         return try {
             chain.proceed(chain.request())
         } finally {
+            holding.remove()
             permits.release()
         }
     }
+
+    /**
+     * Runs [wait] with this thread's slot given back, then takes a slot again. For a call sleeping
+     * out a `Retry-After` ([RetryAfterInterceptor]): it used to keep its slot for up to 90 s, so
+     * a throttled minute also queued every other call on the device (performance plan, phase 4).
+     */
+    fun <T> withoutSlot(wait: () -> T): T {
+        if (holding.get() != true) return wait()
+        permits.release()
+        try {
+            return wait()
+        } finally {
+            permits.acquireUninterruptibly()
+        }
+    }
+
+    internal fun freeSlots(): Int = permits.availablePermits()
 }
 
 /**
@@ -53,6 +75,7 @@ object IdempotentRead
 @Singleton
 class RetryAfterInterceptor @Inject constructor(
     private val router: com.d365fo.mobileops.data.security.CredentialRouter,
+    private val slots: RateLimitInterceptor,
 ) : Interceptor {
 
     override fun intercept(chain: Interceptor.Chain): Response {
@@ -79,7 +102,7 @@ class RetryAfterInterceptor @Inject constructor(
 
             response.close()
             try {
-                Thread.sleep(waitMs)
+                slots.withoutSlot { Thread.sleep(waitMs) }
             } catch (interrupted: InterruptedException) {
                 Thread.currentThread().interrupt()
                 return chain.proceed(request)

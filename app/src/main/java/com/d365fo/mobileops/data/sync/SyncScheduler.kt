@@ -8,7 +8,9 @@ import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
+import androidx.work.WorkInfo
 import androidx.work.WorkManager
+import kotlinx.coroutines.flow.first
 import com.d365fo.mobileops.data.sync.worker.SkuSyncWorker
 import com.d365fo.mobileops.data.sync.worker.TransactionPushWorker
 import com.d365fo.mobileops.util.Constants
@@ -179,14 +181,19 @@ class SyncScheduler @Inject constructor(context: Context) {
     }
 
     /**
-     * A push run in a couple of minutes, for PostingFollowUp. One per two-minute slot: the run
-     * asking is itself the follow-up work, so keeping a single name would keep nothing new.
+     * A push run in a couple of minutes, for PostingFollowUp - unless one is already waiting.
+     *
+     * Was a new name per two-minute slot, so runs asking in different slots each left their own
+     * run waiting: more wake-ups than one every two minutes (performance plan, phase 4). Now
+     * one name: nothing new while a run waits; after the running one when the asker is it.
      */
-    fun requestPostingFollowUp(now: Long = System.currentTimeMillis()) {
-        val slot = TimeUnit.MILLISECONDS.toMinutes(now) / 2
+    suspend fun requestPostingFollowUp() {
+        val waiting = runCatching { workManager.getWorkInfosForUniqueWorkFlow(POSTING_FOLLOW_UP).first() }.getOrDefault(emptyList())
+            .any { it.state == WorkInfo.State.ENQUEUED || it.state == WorkInfo.State.BLOCKED }
+        if (waiting) return
         workManager.enqueueUniqueWork(
-            "$POSTING_FOLLOW_UP.$slot",
-            ExistingWorkPolicy.KEEP,
+            POSTING_FOLLOW_UP,
+            ExistingWorkPolicy.APPEND_OR_REPLACE,
             OneTimeWorkRequestBuilder<TransactionPushWorker>()
                 .setConstraints(connectedOnly)
                 .setInitialDelay(2, TimeUnit.MINUTES)

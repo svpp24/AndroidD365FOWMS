@@ -1,6 +1,7 @@
 package com.d365fo.mobileops.data.local.entity
 
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
 
 /**
@@ -10,7 +11,8 @@ import androidx.room.PrimaryKey
  * [key] is a hash of the method, URL and request body, so the legal entity, warehouse and order
  * the call asked about are all part of it. [body] is the response JSON, as received.
  */
-@Entity(tableName = "offline_read_cache")
+// savedAt indexed: pruning deletes by age and keeps the newest (performance plan, phase 4).
+@Entity(tableName = "offline_read_cache", indices = [Index("savedAt")])
 data class ReadCacheEntity(
     @PrimaryKey val key: String,
     /** The service operation, e.g. "HSMobileOpsReceivingSvc/getPurchaseOrder" - for diagnosis. */

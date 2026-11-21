@@ -10,12 +10,15 @@ import com.d365fo.mobileops.data.security.CompanyProvider
 import com.d365fo.mobileops.util.NetworkResult
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.jsonArray
 import timber.log.Timber
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -432,20 +435,34 @@ class SkuSyncRepository @Inject constructor(
     private suspend fun pageThrough(feed: String, full: Boolean, deadline: Long): FeedResult {
         // A full ITEMS download already carries each item's category.
         if (feed == FEED_CATEGORIES && full) return FeedResult.Finished
+        return coroutineScope { pageLoop(this, feed, full, deadline) }
+    }
+
+    /**
+     * [pageThrough]'s pages. The next page is asked for while this one is written (performance
+     * plan, phase 4): still one request at a time and the same pause between them, but the
+     * write no longer adds to the wait. The position is saved only after a page is written, so
+     * a page fetched ahead and not used is simply asked for again.
+     */
+    private suspend fun pageLoop(scope: CoroutineScope, feed: String, full: Boolean, deadline: Long): FeedResult {
         // Variants ignore the date - see initialKey.
         val since = if (full || feed == FEED_VARIANTS) "" else prefs.getString(KEY_CHANGED_SINCE, "").orEmpty()
+        suspend fun fetch(after: String) = errorMapper.safeCall {
+            service.getSkuPage(
+                SkuPageServiceRequest(
+                    SkuPageRequestBody(dataAreaId = company(), feed = feed, afterKey = after, changedSinceUtc = since, pageSize = PAGE_SIZE, warehouse = warehouse()),
+                ),
+            )
+        }
+        var ahead: Deferred<NetworkResult<com.d365fo.mobileops.data.remote.dto.SkuPageServiceResponse>>? = null
+        try {
         while (true) {
             if (System.currentTimeMillis() >= deadline) return FeedResult.OutOfTime
             progress(if (full) "Downloading ${areaName(feed)}" else "Fetching changed ${areaName(feed)}", prefs.getInt(countKey(feed), 0).toLong())
             val after = prefs.getString(KEY_AFTER, initialKey(feed, full)).orEmpty()
             val started = System.currentTimeMillis()
-            val result = errorMapper.safeCall {
-                service.getSkuPage(
-                    SkuPageServiceRequest(
-                        SkuPageRequestBody(dataAreaId = company(), feed = feed, afterKey = after, changedSinceUtc = since, pageSize = PAGE_SIZE, warehouse = warehouse()),
-                    ),
-                )
-            }
+            val result = ahead?.await() ?: fetch(after)
+            ahead = null
             val page = when (result) {
                 is NetworkResult.Success -> result.data
                 is NetworkResult.Error -> return FeedResult.Failed(result.failure.message, result.failure.retryable)
@@ -462,25 +479,42 @@ class SkuSyncRepository @Inject constructor(
                 prefs.edit().putString(KEY_CYCLE_SERVER_UTC, page.serverUtc).apply()
             }
 
-            val rows = Json.parseToJsonElement(page.rowsJson).jsonArray.map { it.jsonArray }
-            val now = System.currentTimeMillis()
-            when (feed) {
-                FEED_ITEMS -> itemDao.upsertItems(rows.mapNotNull { SkuRows.item(it, now) })
-                FEED_BARCODES -> itemDao.upsertBarcodes(rows.mapNotNull { SkuRows.barcode(it, now) })
-                FEED_VARIANTS -> itemDao.upsertVariants(rows.mapNotNull { SkuRows.variant(it, now) })
-                FEED_CATEGORIES -> rows.mapNotNull { SkuRows.category(it) }.forEach { (itemId, path) -> itemDao.setCategory(itemId, path) }
-                FEED_UNITS -> itemDao.applyUnitRows(rows.mapNotNull { SkuRows.units(it, now) })
+            val next = page.nextKey.ifBlank { after }
+            if (page.hasMore && System.currentTimeMillis() < deadline) {
+                ahead = scope.async { delay(PAGE_PAUSE_MS); fetch(next) }
             }
+            val written = writeRows(feed, page.rowsJson)
             prefs.edit()
-                .putString(KEY_AFTER, page.nextKey.ifBlank { after })
-                .putInt(countKey(feed), prefs.getInt(countKey(feed), 0) + rows.size)
+                .putString(KEY_AFTER, next)
+                .putInt(countKey(feed), prefs.getInt(countKey(feed), 0) + written)
                 .apply()
-            Timber.d("SKU sync: %s page after '%s' - %d rows in %d ms", feed, after, rows.size, System.currentTimeMillis() - started)
+            Timber.d("SKU sync: %s page after '%s' - %d rows in %d ms", feed, after, written, System.currentTimeMillis() - started)
             notePeakMemory()
 
             if (!page.hasMore) return FeedResult.Finished
-            delay(PAGE_PAUSE_MS)
         }
+        } finally {
+            ahead?.cancel()
+        }
+    }
+
+    /**
+     * Writes one page of [feed] rows to the cache; the number of rows read. Rows are parsed one
+     * at a time (see [SkuRows.parse]), and the CATEGORIES updates go in one transaction, not one
+     * commit per item (performance plan, phase 4).
+     */
+    private suspend fun writeRows(feed: String, rowsJson: String): Int {
+        val now = System.currentTimeMillis()
+        var count = 0
+        fun <T : Any> rows(map: (kotlinx.serialization.json.JsonArray) -> T?): List<T> = SkuRows.parse(rowsJson) { count++; map(it) }
+        when (feed) {
+            FEED_ITEMS -> itemDao.upsertItems(rows { SkuRows.item(it, now) })
+            FEED_BARCODES -> itemDao.upsertBarcodes(rows { SkuRows.barcode(it, now) })
+            FEED_VARIANTS -> itemDao.upsertVariants(rows { SkuRows.variant(it, now) })
+            FEED_CATEGORIES -> itemDao.setCategories(rows { SkuRows.category(it) })
+            FEED_UNITS -> itemDao.applyUnitRows(rows { SkuRows.units(it, now) })
+        }
+        return count
     }
 
     private fun countKey(feed: String) = "count_$feed"
@@ -570,16 +604,9 @@ class SkuSyncRepository @Inject constructor(
                     line++
                     if (line <= skip || text.isBlank()) continue
                     if (System.currentTimeMillis() >= deadline) return SnapshotResult.Pending
-                    val rows = Json.parseToJsonElement(text).jsonArray.map { it.jsonArray }
-                    val now = System.currentTimeMillis()
-                    when (feed) {
-                        FEED_ITEMS -> itemDao.upsertItems(rows.mapNotNull { SkuRows.item(it, now) })
-                        FEED_BARCODES -> itemDao.upsertBarcodes(rows.mapNotNull { SkuRows.barcode(it, now) })
-                        FEED_VARIANTS -> itemDao.upsertVariants(rows.mapNotNull { SkuRows.variant(it, now) })
-                        FEED_UNITS -> itemDao.applyUnitRows(rows.mapNotNull { SkuRows.units(it, now) })
-                    }
+                    val written = writeRows(feed, text)
                     prefs.edit().putInt(KEY_SNAP_LINE, line)
-                        .putInt(countKey(feed), prefs.getInt(countKey(feed), 0) + rows.size).apply()
+                        .putInt(countKey(feed), prefs.getInt(countKey(feed), 0) + written).apply()
                     progress("Loading ${areaName(feed)}", prefs.getInt(countKey(feed), 0).toLong(), areaRows)
                     notePeakMemory()
                 }

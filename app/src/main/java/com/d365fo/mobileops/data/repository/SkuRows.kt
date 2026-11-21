@@ -4,7 +4,9 @@ import com.d365fo.mobileops.data.local.entity.BarcodeEntity
 import com.d365fo.mobileops.data.local.entity.ItemEntity
 import com.d365fo.mobileops.data.local.entity.ItemVariantEntity
 import com.d365fo.mobileops.data.local.entity.TrackingRequirement
+import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.decodeToSequence
 import kotlinx.serialization.json.jsonPrimitive
 import java.math.BigDecimal
 import java.time.LocalDateTime
@@ -15,6 +17,19 @@ import java.time.format.DateTimeFormatter
  * entities - see SkuSyncRepository. The column order is the contract with D365FO.
  */
 internal object SkuRows {
+
+    /**
+     * A page's rows (a JSON array of positional arrays), each passed to [map] as it is read.
+     * Was one parse of the whole page into a tree, then the entities: a 5,000-row page held
+     * three times over (performance plan, phase 4). Now only one row's tree at a time.
+     */
+    @OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)
+    fun <T : Any> parse(rowsJson: String, map: (JsonArray) -> T?): List<T> =
+        Json.decodeToSequence(
+            rowsJson.byteInputStream(),
+            JsonArray.serializer(),
+            kotlinx.serialization.json.DecodeSequenceMode.ARRAY_WRAPPED,
+        ).mapNotNull(map).toList()
 
     private fun JsonArray.text(i: Int): String = getOrNull(i)?.jsonPrimitive?.content.orEmpty()
     private fun JsonArray.flag(i: Int): Boolean = text(i) == "1"

@@ -103,7 +103,7 @@ import com.d365fo.mobileops.data.local.entity.WorkerPermissionEntity
         com.d365fo.mobileops.data.local.entity.ItemUnitEntity::class,
         com.d365fo.mobileops.data.local.entity.ItemFtsEntity::class,
     ],
-    version = 25,
+    version = 26,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -532,7 +532,13 @@ abstract class D365Database : RoomDatabase() {
             }
         }
 
-        /** Units per item on the device (UNITS feed, 14 Nov). Filled by the next full item sync. */
+        /** 25 -> 26: an index on the offline read cache's savedAt, which its pruning sorts and filters by. */
+        private val MIGRATION_25_26 = object : androidx.room.migration.Migration(25, 26) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_offline_read_cache_savedAt` ON `offline_read_cache` (`savedAt`)")
+            }
+        }
+
         /**
          * 24 -> 25: the word index for item search (ItemFtsEntity, performance plan, phase 3).
          * Additive: a virtual table over `item`, Room's triggers that keep it in step, and one
@@ -550,6 +556,7 @@ abstract class D365Database : RoomDatabase() {
             }
         }
 
+        /** Units per item on the device (UNITS feed, 14 Nov). Filled by the next full item sync. */
         private val MIGRATION_23_24 = object : androidx.room.migration.Migration(23, 24) {
             override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
                 db.execSQL("CREATE TABLE IF NOT EXISTS `item_unit` (`itemId` TEXT NOT NULL, `unitId` TEXT NOT NULL, `factor` TEXT NOT NULL, `decimals` INTEGER NOT NULL, `modifiedAt` INTEGER NOT NULL, PRIMARY KEY(`itemId`, `unitId`))")
@@ -562,6 +569,7 @@ abstract class D365Database : RoomDatabase() {
                 MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7,
                 MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13,
                 MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25,
+                MIGRATION_25_26,
             )
     }
 }
