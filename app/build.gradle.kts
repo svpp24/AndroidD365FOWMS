@@ -222,14 +222,6 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
         isCoreLibraryDesugaringEnabled = false
     }
-    kotlinOptions {
-        jvmTarget = "17"
-        freeCompilerArgs += listOf(
-            "-opt-in=kotlinx.coroutines.ExperimentalCoroutinesApi",
-            "-opt-in=androidx.compose.material3.ExperimentalMaterial3Api",
-        )
-    }
-
     buildFeatures {
         compose = true
         buildConfig = true
@@ -252,6 +244,17 @@ android {
             isReturnDefaultValues = true
             isIncludeAndroidResources = true
         }
+    }
+}
+
+// Was android.kotlinOptions, which Kotlin 2.3 no longer accepts (performance plan, phase 6).
+kotlin {
+    compilerOptions {
+        jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
+        optIn.addAll(
+            "kotlinx.coroutines.ExperimentalCoroutinesApi",
+            "androidx.compose.material3.ExperimentalMaterial3Api",
+        )
     }
 }
 
@@ -324,7 +327,6 @@ dependencies {
 
     implementation(libs.kotlinx.serialization)
     implementation(libs.kotlinx.coroutines)
-    implementation(libs.security.crypto)
     implementation(libs.sqlite.ktx)
 
     implementation(libs.mlkit.barcode)

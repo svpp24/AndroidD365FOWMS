@@ -62,10 +62,9 @@ data class PurchOrderEntity(
         ),
     ],
     indices = [
-        Index("purchId"),
-        Index("itemId"),
+        // The unique (parent, lineNumber) index serves the parent lookups and the cascade;
+        // single-column parent and item indices were never used (performance plan, phase 6).
         Index(value = ["purchId", "lineNumber"], unique = true),
-        Index("warehouseId"),
     ],
 )
 data class PurchLineEntity(

@@ -12,7 +12,6 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    kotlinOptions { jvmTarget = "17" }
 
     defaultConfig {
         // The app's own minSdk (26): a profile generated against a higher minimum can reference
@@ -34,6 +33,10 @@ android {
         }
     }
     targetProjectPath = ":app"
+}
+
+kotlin {
+    compilerOptions { jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17 }
 }
 
 // Generation needs a rooted device or an AOSP/google_apis emulator image — a Play Store image

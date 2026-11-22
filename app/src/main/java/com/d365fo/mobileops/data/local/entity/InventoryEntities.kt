@@ -98,10 +98,9 @@ data class JournalEntity(
         ),
     ],
     indices = [
-        Index("journalId"),
-        Index("itemId"),
+        // The unique (parent, lineNumber) index serves the parent lookups and the cascade;
+        // single-column parent and item indices were never used (performance plan, phase 6).
         Index(value = ["journalId", "lineNumber"], unique = true),
-        Index("locationId"),
     ],
 )
 data class JournalLineEntity(
@@ -212,8 +211,8 @@ data class TransferOrderEntity(
         ),
     ],
     indices = [
-        Index("transferId"),
-        Index("itemId"),
+        // The unique (parent, lineNumber) index serves the parent lookups and the cascade;
+        // single-column parent and item indices were never used (performance plan, phase 6).
         Index(value = ["transferId", "lineNumber"], unique = true),
     ],
 )
@@ -292,8 +291,8 @@ data class SalesOrderEntity(
         ),
     ],
     indices = [
-        Index("salesId"),
-        Index("itemId"),
+        // The unique (parent, lineNumber) index serves the parent lookups and the cascade;
+        // single-column parent and item indices were never used (performance plan, phase 6).
         Index(value = ["salesId", "lineNumber"], unique = true),
     ],
 )
