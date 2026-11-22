@@ -57,6 +57,7 @@ class SkuSyncRepository @Inject constructor(
     @ApplicationContext private val context: Context,
     private val sessions: WorkerSessionRepository,
     private val secureStore: com.d365fo.mobileops.data.security.SecureStore,
+    private val blobs: com.d365fo.mobileops.data.remote.api.BlobTransferService,
 ) {
     private val prefs = context.getSharedPreferences("sku_sync", Context.MODE_PRIVATE)
 
@@ -650,9 +651,14 @@ class SkuSyncRepository @Inject constructor(
     /** The manifest's [index]th file - an area comes in parts, in order. */
     private fun fileFor(index: Int) = java.io.File(snapshotDir, "part-$index.zip")
 
-    /** Reads one part from D365FO and checks its size and SHA-256; false (file removed) when not intact. */
+    /**
+     * Reads one part from D365FO and checks its size and SHA-256; false (file removed) when not
+     * intact. As a download link streamed to the file when D365FO gives one (performance plan,
+     * phase 5), else - or when the link fails - as base64 in the answer, as before.
+     */
     private suspend fun download(file: com.d365fo.mobileops.data.remote.dto.SkuSnapshotFile, index: Int): Boolean {
         val target = fileFor(index)
+        streamed(file, target)?.let { return it }
         val result = errorMapper.safeCall {
             service.getSkuSnapshotPart(SkuPageServiceRequest(SkuPageRequestBody(dataAreaId = company(), feed = "", afterKey = file.id.toString())))
         }
@@ -675,6 +681,28 @@ class SkuSyncRepository @Inject constructor(
             target.delete()
             false
         }
+    }
+
+    /**
+     * The part through a download link: true or false when it came (intact or not), null when
+     * there was no link or it could not be read - then the base64 answer is asked for instead.
+     */
+    private suspend fun streamed(file: com.d365fo.mobileops.data.remote.dto.SkuSnapshotFile, target: java.io.File): Boolean? {
+        val result = errorMapper.safeCall {
+            service.getSkuSnapshotPart(SkuPageServiceRequest(SkuPageRequestBody(dataAreaId = company(), feed = "URL", afterKey = file.id.toString())))
+        }
+        val link = (result as? NetworkResult.Success)?.data?.takeIf { it.success }?.rowsJson
+            ?.takeIf { it.startsWith("https://") || it.startsWith("http://") } ?: return null
+        val (size, sha) = runCatching { blobs.downloadTo(link, target) }.getOrElse {
+            Timber.w("SKU snapshot: %s part %d link not readable (%s) - asking for it in the answer", file.area, file.part, it.message)
+            return null
+        }
+        if (size != file.bytes || !sha.equals(file.sha256, ignoreCase = true)) {
+            Timber.w("SKU snapshot: %s part %d not intact by link: size %d of %d", file.area, file.part, size, file.bytes)
+            target.delete()
+            return false
+        }
+        return true
     }
 
     private fun withOverlap(serverUtc: String): String = SkuRows.withOverlap(serverUtc, OVERLAP_MINUTES)

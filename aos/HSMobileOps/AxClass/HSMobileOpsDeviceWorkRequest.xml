@@ -4,7 +4,7 @@
 	<SourceCode>
 		<Declaration><![CDATA[
 /// <summary>
-/// HSMobileOpsDeviceWorkSvc request. ItemsJson is a JSON array of the device's unsent work (Key, UserName, WarehouseId, Kind, Reference, Summary, LineCount, CapturedMs, Payload); with Complete it is the device's whole set and rows not in it are removed. ClearDeviceId removes UserName's rows of another device - work restored from it.
+/// HSMobileOpsDeviceWorkSvc request. ItemsJson is a JSON array of the device's unsent work (Key, UserName, WarehouseId, Kind, Reference, Summary, LineCount, CapturedMs, Payload); with Complete it is the device's whole set and rows not in it are removed. Without Complete, RemovedKeysJson (a JSON array of keys) lists the rows to remove - the device then sends only what changed (performance plan, phase 5). ClearDeviceId removes UserName's rows of another device - work restored from it.
 /// </summary>
 [DataContractAttribute]
 class HSMobileOpsDeviceWorkRequest
@@ -17,6 +17,7 @@ class HSMobileOpsDeviceWorkRequest
     str        itemsJson;
     boolean    complete;
     str        clearDeviceId;
+    str        removedKeysJson;
 }
 ]]></Declaration>
 		<Methods>
@@ -113,6 +114,18 @@ class HSMobileOpsDeviceWorkRequest
     {
         clearDeviceId = _value;
         return clearDeviceId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmRemovedKeysJson</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('RemovedKeysJson')]
+    public str parmRemovedKeysJson(str _value = removedKeysJson)
+    {
+        removedKeysJson = _value;
+        return removedKeysJson;
     }
 ]]></Source>
 			</Method>

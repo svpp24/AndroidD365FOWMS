@@ -45,11 +45,13 @@ class WorkBackupWipeTest {
     fun `a wipe moves the backup to a new id and forgets the last set sent`() = runTest {
         val backup = backup()
         store["work_backup_hash"] = "abc"
+        store["work_backup_sent_items"] = "{}"
         assertThat(backup.backupDeviceId()).isEqualTo("device-123")
 
         backup.keepBeforeWipe(saveFirst = false)
         assertThat(backup.backupDeviceId()).isEqualTo("device-123~1")
         assertThat(store["work_backup_hash"]).isNull()
+        assertThat(store["work_backup_sent_items"]).isNull()
 
         backup.keepBeforeWipe()
         assertThat(backup.backupDeviceId()).isEqualTo("device-123~2")

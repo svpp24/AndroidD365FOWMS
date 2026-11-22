@@ -13,6 +13,7 @@ class HSMobileOpsDeviceWorkResponse
     str        errorCode;
     str        message;
     int        stored;
+    int        held;
     boolean    deviceCleanup;
     int        finishedJournalDays;
     int        orderHistoryDays;
@@ -158,6 +159,19 @@ class HSMobileOpsDeviceWorkResponse
     {
         disabledModules = _value;
         return disabledModules;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmHeld</Name>
+				<Source><![CDATA[
+
+    /// <summary>syncWork: the device's rows held after the call, not counting archived ones - the device checks its changes-only sends against it.</summary>
+    [DataMemberAttribute('Held')]
+    public int parmHeld(int _value = held)
+    {
+        held = _value;
+        return held;
     }
 ]]></Source>
 			</Method>

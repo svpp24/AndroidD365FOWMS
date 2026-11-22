@@ -7,8 +7,8 @@
 /// HSMobileOpsDeviceWorkSvc. A copy of each device's unsent work (postings waiting or refused,
 /// unfinished jobs, order drafts, counts not yet accepted) in HSMobileOpsDeviceWork, so a broken,
 /// lost or reinstalled handheld loses nothing: the worker restores it on the next device they sign
-/// in on. The device sends its whole set whenever it changes and it has a connection; the device's
-/// own copy stays the one that counts until D365FO has the posting.
+/// in on. The device sends what changed (or, now and then, its whole set) whenever it has a
+/// connection; the device's own copy stays the one that counts until D365FO has the posting.
 ///
 /// Every answer also carries the modules switched off on Module switches, for the app
 /// version asking - a broken module can be stopped from here without touching a handheld.
@@ -26,7 +26,10 @@ class HSMobileOpsDeviceWorkService
 
     /// <summary>
     /// Saves the device's unsent work. With Complete, rows of this device not in ItemsJson are
-    /// removed - the work was posted, discarded or finished. Resending the same set changes nothing.
+    /// removed - the work was posted, discarded or finished. Without it, ItemsJson holds only new
+    /// or changed rows and RemovedKeysJson the keys to remove (performance plan, phase 5: was the
+    /// whole set after every change). Held in the answer lets the device check the two agree.
+    /// Resending the same set changes nothing.
     /// </summary>
     [Wrappable(false), Hookable(false)]
     public HSMobileOpsDeviceWorkResponse syncWork(HSMobileOpsDeviceWorkRequest _request)
@@ -35,6 +38,7 @@ class HSMobileOpsDeviceWorkService
         HSMobileOpsDeviceWork         work;
         System.Object                 parsedObj;
         Newtonsoft.Json.Linq.JArray   jArray;
+        Newtonsoft.Json.Linq.JArray   removed;
         Newtonsoft.Json.Linq.JObject  jItem;
         Set                           keys = new Set(Types::String);
         int                           i;
@@ -62,6 +66,20 @@ class HSMobileOpsDeviceWorkService
                 return response;
             }
             jArray = parsedObj;
+        }
+        if (!_request.parmComplete() && _request.parmRemovedKeysJson())
+        {
+            try
+            {
+                parsedObj = Newtonsoft.Json.Linq.JArray::Parse(_request.parmRemovedKeysJson());
+            }
+            catch (Exception::CLRError)
+            {
+                response.parmErrorCode('INVALID_REQUEST');
+                response.parmMessage('The removed work list could not be read.');
+                return response;
+            }
+            removed = parsedObj;
         }
 
         try
@@ -124,6 +142,19 @@ class HSMobileOpsDeviceWorkService
                 }
             }
 
+            // Changes only: the rows the device no longer has. Archived rows stay, as with Complete.
+            for (i = 0; removed != null && i < removed.get_Count(); i++)
+            {
+                key = removed.get_Item(i).ToString();
+                if (key)
+                {
+                    delete_from work
+                        where work.DeviceId == deviceId
+                           && work.WorkKey  == key
+                           && work.Archived == NoYes::No;
+                }
+            }
+
             // Work restored on this device from another one: the other device's copy is done with.
             if (_request.parmClearDeviceId() && _request.parmClearDeviceId() != deviceId)
             {
@@ -145,6 +176,10 @@ class HSMobileOpsDeviceWorkService
             return response;
         }
 
+        select count(RecId) from work
+            where work.DeviceId == deviceId
+               && work.Archived == NoYes::No;
+        response.parmHeld(any2Int(work.RecId));
         response.parmStored(stored);
         response.parmSuccess(true);
         return response;

@@ -20,6 +20,11 @@ data class DeviceWorkRequestBody(
     @SerialName("Complete") val complete: Boolean = false,
     /** Work restored here from that device: D365FO removes [userName]'s rows of it. */
     @SerialName("ClearDeviceId") val clearDeviceId: String = "",
+    /**
+     * Without [complete]: keys of rows to remove - [itemsJson] then holds only new or changed
+     * rows. Null is not sent, so a D365FO without it never sees the field.
+     */
+    @SerialName("RemovedKeysJson") val removedKeysJson: String? = null,
 )
 
 /** One piece of unsent work, as sent in ItemsJson and returned by listWork. */
@@ -54,6 +59,8 @@ data class DeviceWorkServiceResponse(
     @SerialName("ErrorCode") val errorCode: String = "",
     @SerialName("Message") val message: String = "",
     @SerialName("Stored") val stored: Int = 0,
+    /** syncWork: the device's rows D365FO holds after the call, not archived ones; null from a D365FO without it. */
+    @SerialName("Held") val held: Int? = null,
     /** This device's own clean-up, from Mobile clean-up in D365FO. Days 0: never. */
     @SerialName("DeviceCleanup") val deviceCleanup: Boolean = true,
     @SerialName("FinishedJournalDays") val finishedJournalDays: Int = 7,
