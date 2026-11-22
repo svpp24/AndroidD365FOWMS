@@ -103,7 +103,7 @@ import com.d365fo.mobileops.data.local.entity.WorkerPermissionEntity
         com.d365fo.mobileops.data.local.entity.ItemUnitEntity::class,
         com.d365fo.mobileops.data.local.entity.ItemFtsEntity::class,
     ],
-    version = 26,
+    version = 27,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -540,6 +540,24 @@ abstract class D365Database : RoomDatabase() {
         }
 
         /**
+         * 26 -> 27: indices no query used (performance plan, phase 6) - each one slowed every item
+         * sync and journal download that wrote the rows. Line tables keep their unique
+         * (parent, lineNumber) index, which serves the parent lookups and the cascade deletes; item
+         * keeps modifiedAt and (category, active).
+         */
+        private val MIGRATION_26_27 = object : androidx.room.migration.Migration(26, 27) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                listOf(
+                    "index_item_itemName", "index_item_active",
+                    "index_invent_journal_line_journalId", "index_invent_journal_line_itemId", "index_invent_journal_line_locationId",
+                    "index_transfer_line_transferId", "index_transfer_line_itemId",
+                    "index_sales_line_salesId", "index_sales_line_itemId",
+                    "index_purch_line_purchId", "index_purch_line_itemId", "index_purch_line_warehouseId",
+                ).forEach { db.execSQL("DROP INDEX IF EXISTS `$it`") }
+            }
+        }
+
+        /**
          * 24 -> 25: the word index for item search (ItemFtsEntity, performance plan, phase 3).
          * Additive: a virtual table over `item`, Room's triggers that keep it in step, and one
          * rebuild to index the items already on the device. Nothing existing is changed.
@@ -569,7 +587,7 @@ abstract class D365Database : RoomDatabase() {
                 MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7,
                 MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13,
                 MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25,
-                MIGRATION_25_26,
+                MIGRATION_25_26, MIGRATION_26_27,
             )
     }
 }

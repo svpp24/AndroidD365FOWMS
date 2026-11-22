@@ -23,8 +23,8 @@ enum class TrackingRequirement {
 @Entity(
     tableName = "item",
     indices = [
-        Index("itemName"),
-        Index("active"),
+        // itemName and active indices dropped (performance plan, phase 6): search goes through
+        // item_fts, and (category, active) below serves every query that filtered on active.
         Index("modifiedAt"),
         // Covering index (load test, 13 Nov): Items by category counts and lists 1M items from it alone.
         Index("category", "active"),

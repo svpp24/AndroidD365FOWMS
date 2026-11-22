@@ -43,7 +43,7 @@ class CountingMigrationTest {
 
     @Test
     fun `7 to 8 moves on-hand off counting lines and keeps counts`() {
-        createVersion7 { db ->
+        createVersion(7) { db ->
             db.execSQL(
                 "INSERT INTO invent_journal (journalId, type, journalNameId, serverJournalNumber, description, " +
                     "journalDate, siteId, warehouseId, workerId, deviceId, status, blindCount, " +
@@ -87,9 +87,51 @@ class CountingMigrationTest {
         }
     }
 
-    /** Creates [DB] at version 7 from the exported schema, then lets [seed] insert rows. */
-    private fun createVersion7(seed: (SupportSQLiteDatabase) -> Unit) {
-        val schema = Json.parseToJsonElement(File(SCHEMA_DIR, "7.json").readText()).jsonObject["database"]!!.jsonObject
+    /**
+     * 26 -> 27 (performance plan, phase 6): the unused item and line indices are dropped, the
+     * unique (parent, lineNumber) ones stay, and the rows are untouched.
+     */
+    @Test
+    fun `26 to 27 drops the unused indices and keeps the rows`() {
+        createVersion(26) { db ->
+            db.execSQL("INSERT INTO purch_order (purchId, vendorAccount, vendorName, status, approved, modifiedAt, local_modified_at) VALUES ('PO-1', 'V1', 'Vendor', 'OPEN', 1, 0, 0)")
+            db.execSQL(
+                "INSERT INTO purch_line (lineId, purchId, lineNumber, itemId, itemName, purchaseUnit, inventoryUnit, " +
+                    "unitConversionFactor, orderedQuantity, receivedQuantity, lineStatus, modifiedAt, warehouseId) " +
+                    "VALUES ('PO-1-1', 'PO-1', 1, 'ITEM1', 'Item 1', 'ea', 'ea', '1', '5', '0', 'OPEN', 0, 'WH1')",
+            )
+        }
+
+        val room = Room.databaseBuilder(context, D365Database::class.java, DB)
+            .addMigrations(*D365Database.MIGRATIONS)
+            .allowMainThreadQueries()
+            .build()
+        try {
+            val db = room.openHelper.writableDatabase
+            val indices = db.query("SELECT name FROM sqlite_master WHERE type = 'index' AND name LIKE 'index_%'").use { c ->
+                buildList { while (c.moveToNext()) add(c.getString(0)) }
+            }
+            assertThat(indices).containsAtLeast(
+                "index_purch_line_purchId_lineNumber", "index_invent_journal_line_journalId_lineNumber",
+                "index_item_modifiedAt", "index_item_category_active",
+            )
+            assertThat(indices).containsNoneOf(
+                "index_item_itemName", "index_item_active", "index_purch_line_purchId", "index_purch_line_itemId",
+                "index_purch_line_warehouseId", "index_invent_journal_line_journalId", "index_invent_journal_line_itemId",
+                "index_invent_journal_line_locationId", "index_transfer_line_transferId", "index_sales_line_salesId",
+            )
+            db.query("SELECT itemId FROM purch_line WHERE purchId = 'PO-1'").use { c ->
+                assertThat(c.moveToFirst()).isTrue()
+                assertThat(c.getString(0)).isEqualTo("ITEM1")
+            }
+        } finally {
+            room.close()
+        }
+    }
+
+    /** Creates [DB] at [version] from the exported schema, then lets [seed] insert rows. */
+    private fun createVersion(version: Int, seed: (SupportSQLiteDatabase) -> Unit) {
+        val schema = Json.parseToJsonElement(File(SCHEMA_DIR, "$version.json").readText()).jsonObject["database"]!!.jsonObject
         val statements = buildList {
             schema["entities"]!!.jsonArray.forEach { entity ->
                 val e = entity.jsonObject
@@ -105,7 +147,7 @@ class CountingMigrationTest {
         val helper = FrameworkSQLiteOpenHelperFactory().create(
             SupportSQLiteOpenHelper.Configuration.builder(context)
                 .name(DB)
-                .callback(object : SupportSQLiteOpenHelper.Callback(7) {
+                .callback(object : SupportSQLiteOpenHelper.Callback(version) {
                     override fun onCreate(db: SupportSQLiteDatabase) = statements.forEach(db::execSQL)
                     override fun onUpgrade(db: SupportSQLiteDatabase, oldVersion: Int, newVersion: Int) = Unit
                 })
