@@ -38,7 +38,7 @@ internal data class WorkFileContent(
  */
 @Singleton
 class WorkFile @Inject constructor(
-    @ApplicationContext private val context: Context,
+    @param:ApplicationContext private val context: Context,
     private val backup: WorkBackup,
     private val json: Json,
     private val secureStore: SecureStore,

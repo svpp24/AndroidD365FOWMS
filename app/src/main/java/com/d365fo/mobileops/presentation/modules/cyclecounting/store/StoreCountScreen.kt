@@ -862,7 +862,7 @@ fun StoreCountScreen(onBack: () -> Unit, viewModel: StoreCountViewModel = hiltVi
         VariantPickerDialog(item = pending.item, onPick = viewModel::pickVariant, onDismiss = viewModel::cancelPending)
     }
 
-    if (showList && counting && draft != null) {
+    if (showList && counting) {
         androidx.activity.compose.BackHandler { showList = false }
         StoreCountList(
             state = state,
@@ -968,7 +968,7 @@ fun StoreCountScreen(onBack: () -> Unit, viewModel: StoreCountViewModel = hiltVi
         ),
         overlay = if (padOpen) { {
             QuantityPadSheet(
-                initial = if (pending!!.item.serialActive) "1" else "",
+                initial = if (pending.item.serialActive) "1" else "",
                 onSet = viewModel::confirmQuantity,
                 onDismiss = viewModel::cancelPending,
                 allowDecimal = true,
@@ -1012,7 +1012,7 @@ internal fun storeCountBand(state: StoreCountState): BandState? {
         state.back != null -> BandState(
             BandKind.Info,
             "Changing place",
-            "from " + listOfNotNull(state.back?.locationId, state.back?.binId).filter { it.isNotBlank() }.joinToString(" › "),
+            "from " + listOfNotNull(state.back.locationId, state.back.binId).filter { it.isNotBlank() }.joinToString(" › "),
         )
         // Where counting stands is in the task box now (user, 17 Nov 2026).
         else -> null

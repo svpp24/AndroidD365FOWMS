@@ -70,7 +70,7 @@ class SettingsViewModel @Inject constructor(
     private val unsentWork: com.d365fo.mobileops.data.sync.UnsentWork,
     private val offlineSignIn: com.d365fo.mobileops.data.security.OfflineSignIn,
     workerSessions: WorkerSessionRepository,
-    @dagger.hilt.android.qualifiers.ApplicationContext private val appContext: android.content.Context,
+    @param:dagger.hilt.android.qualifiers.ApplicationContext private val appContext: android.content.Context,
     private val workBackup: dagger.Lazy<com.d365fo.mobileops.data.sync.WorkBackup>,
     private val tokenProvider: com.d365fo.mobileops.data.security.TokenProvider,
     private val licenseRepository: com.d365fo.mobileops.data.repository.LicenseRepository,

@@ -25,7 +25,7 @@ import javax.inject.Singleton
  */
 @Singleton
 class TokenServiceClient @Inject constructor(
-    @AadClient private val http: OkHttpClient,
+    @param:AadClient private val http: OkHttpClient,
     private val json: Json,
 ) {
 

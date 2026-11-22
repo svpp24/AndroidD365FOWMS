@@ -27,7 +27,7 @@ import javax.inject.Singleton
  * unable to read the app's own signature at all - is treated as [tampered], never fail-open.
  */
 @Singleton
-class SelfIntegrityCheck @Inject constructor(@ApplicationContext private val context: Context) {
+class SelfIntegrityCheck @Inject constructor(@param:ApplicationContext private val context: Context) {
 
     val tampered: Boolean by lazy { computeTampered() }
 

@@ -729,6 +729,7 @@ class ReceivingFlowViewModel @Inject constructor(
      * wait on a database write, and a failed write must not reject the scan. The cost of losing
      * a save is having to re-scan; the cost of blocking one is a queue at the goods-in door.
      */
+    @OptIn(kotlinx.coroutines.DelicateCoroutinesApi::class) // CoroutineStart.ATOMIC: the save starts even if the screen is closing
     private fun persist() {
         val state = _state.value
         val purchId = state.capture.purchId ?: return

@@ -330,7 +330,7 @@ fun UnsentWorkPanel(viewModel: WorkSaveViewModel = hiltViewModel()) {
         icon = androidx.compose.material.icons.Icons.Filled.FileDownload,
         subtitle = "For when D365FO can't be reached.",
         chevron = true,
-        modifier = if (failed && message?.contains("D365FO") == true) Modifier.background(colors.infoBg.copy(alpha = 0.5f)) else Modifier,
+        modifier = if (failed && message.contains("D365FO")) Modifier.background(colors.infoBg.copy(alpha = 0.5f)) else Modifier,
         onClick = if (state.busy) null else ({ pinFor = PinPurpose.EXPORT }),
     )
     com.d365fo.mobileops.presentation.common.focus.FocusListRow(

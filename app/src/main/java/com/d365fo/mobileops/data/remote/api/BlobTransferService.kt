@@ -22,7 +22,7 @@ import javax.inject.Singleton
  */
 @Singleton
 class BlobTransferService @Inject constructor(
-    @BlobClient private val client: OkHttpClient,
+    @param:BlobClient private val client: OkHttpClient,
 ) {
     /**
      * Uploads [bytes] as a single Azure block blob. `x-ms-blob-type: BlockBlob` is required by

@@ -4,7 +4,7 @@ import androidx.benchmark.macro.CompilationMode
 import androidx.benchmark.macro.StartupMode
 import androidx.benchmark.macro.StartupTimingMetric
 import androidx.benchmark.macro.junit4.MacrobenchmarkRule
-import com.d365fo.mobileops.baselineprofile.Journeys.clearAppData
+import com.d365fo.mobileops.baselineprofile.Journeys.resetToOutOfBox
 import com.d365fo.mobileops.baselineprofile.Journeys.waitForFirstScreen
 import org.junit.Rule
 import org.junit.Test
@@ -38,7 +38,7 @@ class StartupBenchmark(@Suppress("unused") private val label: String, private va
         iterations = 10,
         setupBlock = {
             pressHome()
-            clearAppData()
+            resetToOutOfBox()
         },
     ) {
         startActivityAndWait()

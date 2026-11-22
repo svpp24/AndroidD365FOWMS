@@ -41,7 +41,7 @@ enum class FeedbackType(val label: String) { Problem("Problem"), Idea("Idea"), Q
  * PendingFlowResume: opening feedback from Settings later must not pick up an old screenshot.
  */
 @Singleton
-class FeedbackOrigin @Inject constructor(@ApplicationContext private val context: Context) {
+class FeedbackOrigin @Inject constructor(@param:ApplicationContext private val context: Context) {
     private var screen: String? = null
     private var screenshot: File? = null
 
@@ -87,7 +87,7 @@ const val MAX_PICTURES = 5
  */
 @Singleton
 class FeedbackRepository @Inject constructor(
-    @ApplicationContext private val context: Context,
+    @param:ApplicationContext private val context: Context,
     private val api: MobileOpsServiceApi,
     private val errorMapper: D365ErrorMapper,
     private val dao: OrderCreationDao,

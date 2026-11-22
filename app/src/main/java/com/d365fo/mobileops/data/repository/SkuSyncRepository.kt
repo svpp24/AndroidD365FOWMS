@@ -54,7 +54,7 @@ class SkuSyncRepository @Inject constructor(
     private val companyProvider: CompanyProvider,
     private val itemDao: ItemDao,
     private val ioDispatcher: CoroutineDispatcher,
-    @ApplicationContext private val context: Context,
+    @param:ApplicationContext private val context: Context,
     private val sessions: WorkerSessionRepository,
     private val secureStore: com.d365fo.mobileops.data.security.SecureStore,
     private val blobs: com.d365fo.mobileops.data.remote.api.BlobTransferService,
@@ -642,7 +642,7 @@ class SkuSyncRepository @Inject constructor(
             return null
         }
         val manifest = runCatching {
-            Json { ignoreUnknownKeys = true }.decodeFromString(com.d365fo.mobileops.data.remote.dto.SkuSnapshotManifest.serializer(), answer.rowsJson)
+            MANIFEST_JSON.decodeFromString(com.d365fo.mobileops.data.remote.dto.SkuSnapshotManifest.serializer(), answer.rowsJson)
         }.getOrNull()
         val known = setOf(FEED_ITEMS, FEED_BARCODES, FEED_VARIANTS, FEED_UNITS)
         return manifest?.takeIf { m -> m.builtAtUtc.isNotBlank() && m.files.isNotEmpty() && m.files.all { it.area in known && it.id > 0L } }
@@ -716,6 +716,8 @@ class SkuSyncRepository @Inject constructor(
         // Units per item, and the item's own units (InventTableModule) - 14 Nov.
         const val FEED_UNITS = "UNITS"
         val FEEDS = listOf(FEED_ITEMS, FEED_BARCODES, FEED_VARIANTS, FEED_CATEGORIES, FEED_UNITS)
+        /** Reads the snapshot manifest; one instance, as kotlinx.serialization advises. */
+        val MANIFEST_JSON = Json { ignoreUnknownKeys = true }
 
         // The server's maximum. 50k items + 65k barcodes is ~24 pages instead of ~60 - fewer round
         // trips; a page in memory is a few MB more, which a handheld does not notice.

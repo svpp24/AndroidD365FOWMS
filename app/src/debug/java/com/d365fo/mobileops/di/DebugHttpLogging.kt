@@ -10,7 +10,8 @@ import okhttp3.logging.HttpLoggingInterceptor
  * HEADERS, not BODY - see the long comment at the [NetworkModule] call site for the measured
  * reason (a 15 KB response taking 29 s to log versus 117 ms to actually answer).
  */
-internal fun debugHttpLoggingInterceptor(headerToRedact: String): Interceptor =
+// Nullable like the release half, so the shared call site's ?.let is not flagged in either variant.
+internal fun debugHttpLoggingInterceptor(headerToRedact: String): Interceptor? =
     HttpLoggingInterceptor().apply {
         level = HttpLoggingInterceptor.Level.HEADERS
         redactHeader(headerToRedact)

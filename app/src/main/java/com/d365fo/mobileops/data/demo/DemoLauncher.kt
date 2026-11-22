@@ -24,7 +24,7 @@ import javax.inject.Singleton
  */
 @Singleton
 class DemoLauncher @Inject constructor(
-    @ApplicationContext private val context: Context,
+    @param:ApplicationContext private val context: Context,
     private val connectionSettings: ConnectionSettings,
     private val workerSessions: WorkerSessionRepository,
     private val database: D365Database,

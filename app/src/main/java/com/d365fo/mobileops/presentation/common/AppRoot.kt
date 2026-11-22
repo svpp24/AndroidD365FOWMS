@@ -147,7 +147,7 @@ fun AppRoot(
 
         session is SessionState.Ready && licenseState is LicenseState.Blocked ->
             LicenseInvalidScreen(
-                state = licenseState as LicenseState.Blocked,
+                state = licenseState,
                 connectedTo = listOf(tenant.label, tenant.company).filter { it.isNotBlank() }.joinToString(" · "),
                 onRetry = licenseViewModel::validate,
                 onOpenSettings = { settingsWhileSignedOut = true },

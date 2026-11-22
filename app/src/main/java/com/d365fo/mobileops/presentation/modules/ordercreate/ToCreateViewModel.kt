@@ -224,7 +224,7 @@ class ToCreateViewModel @Inject constructor(
             state.collect { st ->
                 val p = st.pending
                 val key = p?.takeIf { st.enteringQty }?.let { it.item.itemId + "|" + it.variant }
-                if (key != null && key != lastKey && p != null && p.units.isEmpty()) loadUnits(p)
+                if (key != null && key != lastKey && p.units.isEmpty()) loadUnits(p)
                 lastKey = key
             }
         }

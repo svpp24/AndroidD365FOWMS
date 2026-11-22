@@ -510,6 +510,7 @@ class CountingScanViewModel @Inject constructor(
         return total
     }
 
+    @OptIn(kotlinx.coroutines.DelicateCoroutinesApi::class) // CoroutineStart.ATOMIC: the save starts even if the screen is closing
     private fun addScanned(line: CountLine, perScan: BigDecimal) {
         // ATOMIC + NonCancellable around the writes - see ReceivingFlowViewModel.persist.
         viewModelScope.launch(start = kotlinx.coroutines.CoroutineStart.ATOMIC) {
@@ -951,6 +952,7 @@ class CountingScanViewModel @Inject constructor(
     }
 
     /** OK in the popup. Whole pieces: digits only; "007" is 7; blank clears the count. */
+    @OptIn(kotlinx.coroutines.DelicateCoroutinesApi::class) // CoroutineStart.ATOMIC: the save starts even if the screen is closing
     fun confirmQuantity(journalLineId: String, text: String) {
         // ATOMIC + NonCancellable around the write - see ReceivingFlowViewModel.persist.
         viewModelScope.launch(start = kotlinx.coroutines.CoroutineStart.ATOMIC) {
@@ -980,6 +982,7 @@ class CountingScanViewModel @Inject constructor(
      * The focused check's one line: saves the quantity and ends the count in one step, then back
      * to the list. End count waits for a connection like any other; a refusal stays on screen.
      */
+    @OptIn(kotlinx.coroutines.DelicateCoroutinesApi::class) // CoroutineStart.ATOMIC: the save starts even if the screen is closing
     fun confirmAndEnd(text: String) {
         val line = state.value.focusLine ?: return
         viewModelScope.launch(start = kotlinx.coroutines.CoroutineStart.ATOMIC) {
