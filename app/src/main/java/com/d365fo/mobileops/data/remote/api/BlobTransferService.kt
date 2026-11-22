@@ -43,6 +43,39 @@ class BlobTransferService @Inject constructor(
         }
     }
 
+    /**
+     * Streams the blob at [sasUrl] into [target] - never all in memory - and returns its size and
+     * SHA-256 (lower-case hex), worked out on the way. The item snapshot parts (performance plan,
+     * phase 5). [target] is removed when the download fails.
+     */
+    suspend fun downloadTo(sasUrl: String, target: java.io.File): Pair<Long, String> = withContext(Dispatchers.IO) {
+        val request = Request.Builder().url(sasUrl).get().build()
+        try {
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) throw IOException("Blob download failed: HTTP ${response.code}")
+                val body = response.body ?: throw IOException("Blob download returned no body")
+                val digest = java.security.MessageDigest.getInstance("SHA-256")
+                var size = 0L
+                body.byteStream().use { input ->
+                    target.outputStream().buffered(64 * 1024).use { output ->
+                        val buffer = ByteArray(64 * 1024)
+                        while (true) {
+                            val read = input.read(buffer)
+                            if (read < 0) break
+                            digest.update(buffer, 0, read)
+                            output.write(buffer, 0, read)
+                            size += read
+                        }
+                    }
+                }
+                size to digest.digest().joinToString("") { "%02x".format(it) }
+            }
+        } catch (e: Exception) {
+            target.delete()
+            throw e
+        }
+    }
+
     suspend fun download(sasUrl: String): ByteArray = withContext(Dispatchers.IO) {
         val request = Request.Builder().url(sasUrl).get().build()
 

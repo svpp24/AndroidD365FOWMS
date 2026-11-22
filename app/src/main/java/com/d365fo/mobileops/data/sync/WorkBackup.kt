@@ -38,6 +38,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
@@ -190,9 +191,12 @@ data class RestoreResult(val restored: Int, val notes: List<String>) {
  * reinstalled handheld loses nothing (29 Oct: "how can we recover the stored data").
  *
  * Offline first: work is always captured here, and this device's copy stays the one that counts.
- * Whenever it changes, the whole set is sent once there is a connection - the same set twice is
- * not sent again, and a set D365FO couldn't take is retried every [RETRY_MS]. What D365FO holds
- * for this device is exactly what was last sent, so posted or discarded work drops off it.
+ * Whenever it changes, what changed is sent once there is a connection - new or changed items and
+ * the keys of removed ones (performance plan, phase 5: was the whole set after every pause in
+ * scanning). The whole set still goes the first time, after a failed send, once a day, and when
+ * D365FO's count of what it holds disagrees - see [backUpNow]. The same set twice is not sent
+ * again, and a set D365FO couldn't take is retried every [RETRY_MS]. What D365FO holds for this
+ * device is exactly what was last sent, so posted or discarded work drops off it.
  *
  * After sign-in, [savedElsewhere] finds the worker's work saved from another device (or an
  * earlier install of this one) and [restore] brings it here: postings keep their idempotency
@@ -253,7 +257,10 @@ class WorkBackup @Inject constructor(
         }
     }
 
-    /** Sends this device's set when it differs from the last one D365FO took. True when D365FO has it. */
+    /**
+     * Sends this device's set when it differs from the last one D365FO took - only what changed
+     * since then, or the whole set (see the class doc). True when D365FO has it.
+     */
     suspend fun backUpNow(): Boolean = lock.withLock {
         val company = company() ?: return@withLock false
         val items = snapshot()
@@ -268,25 +275,70 @@ class WorkBackup @Inject constructor(
             _waiting.value = false
             return@withLock true
         }
-        val body = request(company, itemsJson = itemsJson, complete = true)
-        val result = errorMapper.safeCall { api.syncWork(DeviceWorkServiceRequest(body)) }
-        val answer = (result as? NetworkResult.Success)?.data
-        answer?.let(cleanupSettings::update)
-        if (answer?.success == true) {
-            moduleSwitches.update(answer.disabledModules)
+        val itemHashes = items.associate { it.key to sha256(json.encodeToString(DeviceWorkItemDto.serializer(), it)) }
+        val now = System.currentTimeMillis()
+        val sent = sentItems(company)
+        val fullDue = now - (secureStore.getString(KEY_FULL_AT)?.toLongOrNull() ?: 0L) >= FULL_EVERY_MS
+        val answer = if (sent == null || fullDue) {
+            sendWork(company, items, itemsJson, complete = true)
+        } else {
+            val changed = WorkDelta.changed(items, itemHashes, sent)
+            val removed = WorkDelta.removed(itemHashes, sent)
+            sendWork(company, changed, json.encodeToString(ListSerializer(DeviceWorkItemDto.serializer()), changed), complete = false, removed = removed)
+                ?.let { delta ->
+                    // D365FO's count disagrees (or it predates the count): it may hold more or
+                    // less than this device thinks - send the whole set, which settles it.
+                    if (delta.held == WorkDelta.held(items)) delta
+                    else {
+                        Timber.w("work backup: D365FO holds %s item(s), this device %d - sending the whole set", delta.held, WorkDelta.held(items))
+                        sendWork(company, items, itemsJson, complete = true)
+                    }
+                }
+        }
+        if (answer != null) {
             secureStore.putString(KEY_HASH, hash)
-            val now = System.currentTimeMillis()
+            secureStore.putString(KEY_SENT_ITEMS, WorkDelta.encodeSent(json, company + "|" + backupDeviceId(), itemHashes))
+            if (answer.full) secureStore.putString(KEY_FULL_AT, now.toString())
             secureStore.putString(KEY_LAST_AT, now.toString())
             _lastBackupAt.value = now
             _waiting.value = false
-            Timber.i("work backup: %d item(s) saved in D365FO", items.size)
+            Timber.i("work backup: %d item(s) on the device, %d sent (%s)", items.size, answer.sent, if (answer.full) "whole set" else "changes")
             true
         } else {
+            // Unknown what D365FO took: the next send is the whole set.
+            secureStore.remove(KEY_SENT_ITEMS)
             _waiting.value = true
-            Timber.w("work backup: not saved - %s", (result as? NetworkResult.Error)?.failure?.message ?: answer?.errorCode)
             false
         }
     }
+
+    private class Sent(val full: Boolean, val sent: Int, val held: Int?)
+
+    /** One syncWork call; null when D365FO didn't take it. */
+    private suspend fun sendWork(
+        company: String,
+        items: List<DeviceWorkItemDto>,
+        itemsJson: String,
+        complete: Boolean,
+        removed: List<String> = emptyList(),
+    ): Sent? {
+        val body = request(company, itemsJson = itemsJson, complete = complete).copy(
+            removedKeysJson = removed.takeIf { it.isNotEmpty() }?.let { json.encodeToString(ListSerializer(String.serializer()), it) },
+        )
+        val result = errorMapper.safeCall { api.syncWork(DeviceWorkServiceRequest(body)) }
+        val answer = (result as? NetworkResult.Success)?.data
+        answer?.let(cleanupSettings::update)
+        if (answer?.success != true) {
+            Timber.w("work backup: not saved - %s", (result as? NetworkResult.Error)?.failure?.message ?: answer?.errorCode)
+            return null
+        }
+        moduleSwitches.update(answer.disabledModules)
+        return Sent(full = complete, sent = items.size + removed.size, held = answer.held)
+    }
+
+    /** Item key -> hash of what D365FO last took from this device, or null: then the whole set goes. */
+    private fun sentItems(company: String): Map<String, String>? =
+        secureStore.getString(KEY_SENT_ITEMS)?.let { WorkDelta.decodeSent(json, it, company + "|" + backupDeviceId()) }
 
     /**
      * Call before clearing the local database. Saves the current set (bounded: a deactivated or
@@ -308,6 +360,7 @@ class WorkBackup @Inject constructor(
         val generation = (secureStore.getString(KEY_GENERATION)?.toIntOrNull() ?: 0) + 1
         secureStore.putString(KEY_GENERATION, generation.toString())
         secureStore.remove(KEY_HASH)
+        secureStore.remove(KEY_SENT_ITEMS)
         Timber.w("work backup: local wipe - D365FO copy kept (saved now: %s), backing up as %s", saved, backupDeviceId())
     }
 
@@ -690,6 +743,11 @@ class WorkBackup @Inject constructor(
         const val KEY_HASH = "work_backup_hash"
         const val KEY_LAST_AT = "work_backup_last_at"
         const val KEY_GENERATION = "work_backup_generation"
+        /** What D365FO last took, per item - see [WorkDelta]. */
+        const val KEY_SENT_ITEMS = "work_backup_sent_items"
+        const val KEY_FULL_AT = "work_backup_full_at"
+        /** The whole set at least this often, whatever the changes say. */
+        const val FULL_EVERY_MS = 24 * 60 * 60 * 1000L
         const val KEEP_TIMEOUT_MS = 15_000L
         const val DEBOUNCE_MS = 4_000L
         const val RETRY_MS = 120_000L

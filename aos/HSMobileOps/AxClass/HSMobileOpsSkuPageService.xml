@@ -194,8 +194,11 @@ class HSMobileOpsSkuPageService
 
     /// <summary>
     /// One part of the current item snapshot (AfterKey = its id from getSkuSnapshot): RowsJson
-    /// is the ZIP as base64. NOT_FOUND when it is gone - a newer snapshot replaced it; the device
-    /// then starts its download again.
+    /// is the ZIP as base64. With Feed 'URL', RowsJson is instead a short-lived download link to
+    /// the ZIP in temporary storage, which the device reads as a plain binary stream (performance
+    /// plan, phase 5: base64 inside JSON held the file several times over, here and on the
+    /// device). NOT_FOUND when it is gone - a newer snapshot replaced it; the device then starts
+    /// its download again.
     /// </summary>
     public HSMobileOpsSkuPageResponse getSkuSnapshotPart(HSMobileOpsSkuPageRequest _request)
     {
@@ -218,7 +221,16 @@ class HSMobileOpsSkuPageService
                 response.parmErrorCode('NOT_FOUND');
                 return response;
             }
-            response.parmRowsJson(System.Convert::ToBase64String(Binary::constructFromContainer(file.Data).getMemoryStream().ToArray()));
+            if (_request.parmFeed() == 'URL')
+            {
+                System.IO.MemoryStream stream = Binary::constructFromContainer(file.Data).getMemoryStream();
+                response.parmRowsJson(File::SendFileToTempStore(stream, strFmt('HSMobileOpsSkuSnapshot-%1.zip', file.RecId),
+                    classStr(FileUploadTemporaryStorageStrategy), true));
+            }
+            else
+            {
+                response.parmRowsJson(System.Convert::ToBase64String(Binary::constructFromContainer(file.Data).getMemoryStream().ToArray()));
+            }
             response.parmRowCount(any2Int(file.RowCount));
         }
         response.parmSuccess(true);
