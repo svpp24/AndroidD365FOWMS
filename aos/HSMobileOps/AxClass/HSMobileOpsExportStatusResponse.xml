@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsExportStatusResponse</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+[DataContractAttribute]
+class HSMobileOpsExportStatusResponse
+{
+    boolean success;
+    str     errorCode;
+    /// <summary>
+    /// One of Queued / Running / Succeeded / Failed. A plain str, not an X++ enum, so a status
+    /// this app doesn't recognise yet still deserialises instead of throwing - the Android side
+    /// maps unrecognised values to a generic "still running" state rather than crashing on them.
+    /// </summary>
+    str     status;
+    /// <summary>
+    /// 0-100, or -1 when unknown. **Whether DMF's own execution status actually exposes
+    /// row-level progress on this application version is unconfirmed** - this field may end up
+    /// always -1 in practice, in which case the client falls back to an indeterminate spinner
+    /// rather than a fabricated number. See HSMobileOpsCountingService::getExportStatus's own
+    /// doc comment.
+    /// </summary>
+    int     percent;
+    str     downloadUrl;
+    str     failureReason;
+
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmSuccess</Name>
+				<Source><![CDATA[
+    [DataMemberAttribute('Success')]
+    public boolean parmSuccess(boolean _value = success)
+    {
+        success = _value;
+        return success;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmErrorCode</Name>
+				<Source><![CDATA[
+    [DataMemberAttribute('ErrorCode')]
+    public str parmErrorCode(str _value = errorCode)
+    {
+        errorCode = _value;
+        return errorCode;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmStatus</Name>
+				<Source><![CDATA[
+    [DataMemberAttribute('Status')]
+    public str parmStatus(str _value = status)
+    {
+        status = _value;
+        return status;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmPercent</Name>
+				<Source><![CDATA[
+    [DataMemberAttribute('Percent')]
+    public int parmPercent(int _value = percent)
+    {
+        percent = _value;
+        return percent;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmDownloadUrl</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Populated only once Status is Succeeded. A blob URL, not the package itself - the
+    /// download has to happen directly against storage, not proxied through this service, or
+    /// the whole reason for doing this via DMF instead of a bigger JSON response is lost. Which
+    /// of those two shapes getExportStatus's underlying DMF call actually returns is itself
+    /// unconfirmed - see the method's own doc comment.
+    /// </summary>
+    [DataMemberAttribute('DownloadUrl')]
+    public str parmDownloadUrl(str _value = downloadUrl)
+    {
+        downloadUrl = _value;
+        return downloadUrl;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmFailureReason</Name>
+				<Source><![CDATA[
+    [DataMemberAttribute('FailureReason')]
+    public str parmFailureReason(str _value = failureReason)
+    {
+        failureReason = _value;
+        return failureReason;
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

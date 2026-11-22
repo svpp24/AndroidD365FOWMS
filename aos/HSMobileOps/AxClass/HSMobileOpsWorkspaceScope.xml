@@ -1,0 +1,280 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsWorkspaceScope</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Which stores the signed-in D365FO user may see in the Mobile operations workspace and in the
+/// forms its tiles open. The tile queries call the methods below in their store range, so the
+/// number on a tile and the list behind it are scoped the same way, with no code in the forms.
+/// Administrators see all stores. Everyone else sees the warehouses of the handheld user that
+/// belongs to them: D365FO user, person, worker (personnel number), handheld user, user
+/// warehouses. A user with no such link sees no store, never every store.
+/// </summary>
+public final class HSMobileOpsWorkspaceScope
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>isAllStores</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// True for the HSMobileOpsAdministrator and system administrator roles.
+    /// </summary>
+    public static boolean isAllStores()
+    {
+        SecurityUserRole userRole;
+        SecurityRole     role;
+
+        select firstOnly RecId from userRole
+            where userRole.User == curUserId()
+               && userRole.AssignmentStatus == RoleAssignmentStatus::Enabled
+            exists join role
+                where role.RecId == userRole.SecurityRole
+                   && (role.AotName == 'HSMobileOpsAdministrator' || role.AotName == '-SYSADMIN-');
+
+        return userRole.RecId != 0;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>warehouses</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// The warehouses the signed-in user is assigned to, through their worker.
+    /// </summary>
+    public static Set warehouses()
+    {
+        Set                       ret = new Set(Types::String);
+        HSMobileOpsUserWarehouse  assignment;
+        HSMobileOpsUser           mobileUser;
+        HcmWorker                 worker;
+        DirPersonUser             personUser;
+
+        while select WarehouseId from assignment
+            exists join mobileUser
+                where mobileUser.RecId == assignment.UserRecId
+            exists join worker
+                where worker.PersonnelNumber == mobileUser.PersonnelNumber
+            exists join personUser
+                where personUser.PersonParty == worker.Person
+                   && personUser.User == curUserId()
+        {
+            ret.add(assignment.WarehouseId);
+        }
+
+        return ret;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>hasAnyStore</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// False when a non-administrator has no warehouse, so the workspace can say why it is empty.
+    /// </summary>
+    public static boolean hasAnyStore()
+    {
+        return HSMobileOpsWorkspaceScope::isAllStores() || !HSMobileOpsWorkspaceScope::warehouses().empty();
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>stores</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// The stores the tiles and lists cover for the signed-in user: null for every store
+    /// (administrator with no warehouse picked), otherwise the picked warehouse, or the user's
+    /// own warehouses when none is picked or the picked one is not theirs.
+    /// </summary>
+    public static Set stores()
+    {
+        str filter = HSMobileOpsWorkspaceFilter::current();
+        Set ret;
+
+        if (HSMobileOpsWorkspaceScope::isAllStores())
+        {
+            if (filter == '')
+            {
+                return null;
+            }
+
+            ret = new Set(Types::String);
+            ret.add(filter);
+            return ret;
+        }
+
+        ret = HSMobileOpsWorkspaceScope::warehouses();
+        if (filter != '' && ret.in(filter))
+        {
+            ret = new Set(Types::String);
+            ret.add(filter);
+        }
+
+        return ret;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>warehouseRange</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// The range value for a warehouse field: all rows for administrators (the wildcard), the user's warehouses otherwise, and a value that matches
+    /// nothing when the user has none.
+    /// </summary>
+    public static str warehouseRange(str _dataSourceName)
+    {
+        Set           stores = HSMobileOpsWorkspaceScope::stores();
+        SetEnumerator enumerator;
+        str           ret;
+
+        if (!stores)
+        {
+            return '*';
+        }
+
+        if (stores.empty())
+        {
+            return '#NOSTORE#';
+        }
+
+        enumerator = stores.getEnumerator();
+        while (enumerator.moveNext())
+        {
+            ret += (ret ? ',' : '') + queryValue(enumerator.current());
+        }
+
+        return ret;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>postQueue</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Store range for the posting queue tiles.
+    /// </summary>
+    [QueryRangeFunction]
+    public static str postQueue()
+    {
+        return HSMobileOpsWorkspaceScope::warehouseRange('HSMobileOpsPostQueue');
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>deviceWork</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Store range for the unsent device work tile.
+    /// </summary>
+    [QueryRangeFunction]
+    public static str deviceWork()
+    {
+        return HSMobileOpsWorkspaceScope::warehouseRange('HSMobileOpsDeviceWork');
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>countMaster</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Store range for the stock count tiles.
+    /// </summary>
+    [QueryRangeFunction]
+    public static str countMaster()
+    {
+        return HSMobileOpsWorkspaceScope::warehouseRange('HSMobileOpsCountMaster');
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>countWarehouse</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Store range for the cycle count tile.
+    /// </summary>
+    [QueryRangeFunction]
+    public static str countWarehouse()
+    {
+        return HSMobileOpsWorkspaceScope::warehouseRange('HSMobileOpsCountWarehouse');
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>device</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Store range for the device tiles (last warehouse the device signed in from).
+    /// </summary>
+    [QueryRangeFunction]
+    public static str device()
+    {
+        return HSMobileOpsWorkspaceScope::warehouseRange('HSMobileOpsDevice');
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>feedback</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Store range for the feedback tile.
+    /// </summary>
+    [QueryRangeFunction]
+    public static str feedback()
+    {
+        return HSMobileOpsWorkspaceScope::warehouseRange('HSMobileOpsFeedback');
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>users</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Range on the mobile user record id for the user tiles. Mobile users have no warehouse of
+    /// their own: a non-administrator sees the users assigned to one of their stores.
+    /// </summary>
+    [QueryRangeFunction]
+    public static str users()
+    {
+        Set                       userIds = new Set(Types::Int64);
+        SetEnumerator             stores;
+        SetEnumerator             ids;
+        HSMobileOpsUserWarehouse  assignment;
+        str                       ret;
+
+        Set storeSet = HSMobileOpsWorkspaceScope::stores();
+
+        if (!storeSet)
+        {
+            return '!0';
+        }
+
+        stores = storeSet.getEnumerator();
+        while (stores.moveNext())
+        {
+            while select UserRecId from assignment
+                where assignment.WarehouseId == stores.current()
+            {
+                userIds.add(assignment.UserRecId);
+            }
+        }
+
+        if (userIds.empty())
+        {
+            return '-1';
+        }
+
+        ids = userIds.getEnumerator();
+        while (ids.moveNext())
+        {
+            ret += (ret ? ',' : '') + int642Str(ids.current());
+        }
+
+        return ret;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

@@ -11,6 +11,9 @@
 		<AxSecurityDutyReference>
 			<Name>HSMobileOpsInquireUsers</Name>
 		</AxSecurityDutyReference>
+		<AxSecurityDutyReference>
+			<Name>HSMobileOpsViewWorkspace</Name>
+		</AxSecurityDutyReference>
 	</Duties>
 	<Privileges />
 	<SubRoles />

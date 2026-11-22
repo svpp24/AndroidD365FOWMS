@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsLicenseImport</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// The only writable path to HSMobileOpsLicenseSetup.CertificateString/LicenseKey - both fields
+/// are AllowEdit=No on the form itself (see that table's class doc), so this is genuinely the
+/// only way either one can change.
+///
+/// Runs the exact same certificate-then-license verification HSMobileOpsLicense::verify() uses
+/// at every live call (via HSMobileOpsLicense::verifyCertificateAndExtractCustomerKeyXml/
+/// verifyLicenseAgainstCustomerKey, factored out for this reason) - a pasted pair that would fail
+/// a real sign-in is refused here too, before anything is written, rather than being saved and
+/// only discovered broken the next time someone tries to use the app.
+///
+/// Called from HSMobileOpsLicenseSetup (the form)'s own Import button - see that form's
+/// classDeclaration for the two staging text controls this reads from.
+/// </summary>
+class HSMobileOpsLicenseImport
+{
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>import</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Verifies _certificateString/_licenseString together and, only on success, writes both to
+    /// the singleton HSMobileOpsLicenseSetup row. Throws with a specific, actionable reason on
+    /// any failure - malformed certificate, bad root signature, expired certificate window, bad
+    /// license signature, or a license that does not actually belong to the pasted certificate -
+    /// rather than saving a half-valid pair. Never writes only one of the two fields.
+    /// </summary>
+    public static void import(str _certificateString, str _licenseString)
+    {
+        str                      customerPublicKeyXml, licTenantId;
+        HSMobileOpsLicenseSetup  setup;
+
+        if (!_certificateString || !_licenseString)
+        {
+            throw error('Paste both a certificate and a license before importing.');
+        }
+
+        [customerPublicKeyXml, licTenantId] =
+            HSMobileOpsLicense::verifyCertificateAndExtractCustomerKeyXml(_certificateString);
+
+        if (!customerPublicKeyXml)
+        {
+            throw error(
+                'This certificate did not verify against the root key, or is outside its '
+              + 'validity window. Check it was copied in full, with no extra whitespace.');
+        }
+
+        if (!HSMobileOpsLicense::verifyLicenseAgainstCustomerKey(_licenseString, customerPublicKeyXml))
+        {
+            throw error(
+                'This license did not verify against the customer key carried by that '
+              + 'certificate. Check it was copied in full, and that it was issued for this certificate.');
+        }
+
+        ttsbegin;
+        setup = HSMobileOpsLicenseSetup::find(true);
+        if (!setup.RecId)
+        {
+            setup.initValue();
+        }
+        setup.CertificateString = _certificateString;
+        setup.LicenseKey        = _licenseString;
+        if (setup.RecId)
+        {
+            setup.update();
+        }
+        else
+        {
+            setup.insert();
+        }
+        ttscommit;
+
+        info('Certificate and license imported and verified.');
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>
