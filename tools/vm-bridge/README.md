@@ -27,7 +27,7 @@ PC   C:\Claude\vm-bridge\results\<id>.json/.log <---      status | compare | dep
 
 ```powershell
 tools\vm-bridge\vm.ps1 status                    # paths, services, admin rights
-tools\vm-bridge\vm.ps1 compare                   # repo vs VM model files
+tools\vm-bridge\vm.ps1 compare                   # repo vs VM model files (line endings ignored)
 tools\vm-bridge\vm.ps1 deploy AxClass/HSMobileOpsSkuPageService.xml
 tools\vm-bridge\vm.ps1 build -TimeoutSec 1200    # xppc on the HSMobileOps model; errors listed
 tools\vm-bridge\vm.ps1 restart                   # iisreset + batch service: load the new build

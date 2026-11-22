@@ -71,11 +71,22 @@ New-Item -ItemType Directory -Force -Path $Requests, $Results, $Done, $Backups |
 function Get-VmPath([string]$relative) {
     $rel = $relative -replace '/', '\'
     # Only the model's X++ objects: <AxType>\<name>.xml. Nothing else in or outside the model.
-    if ($rel -notmatch '^Ax[A-Za-z]+\\[A-Za-z0-9_]+\.xml$') { throw "not a model object: $relative" }
+    # Extensions carry dots (AxMenuExtension\MainMenu.HSMobileOps.xml); each dotted part is
+    # non-empty, so '..' never matches.
+    if ($rel -notmatch '^Ax[A-Za-z]+\\[A-Za-z0-9_]+(\.[A-Za-z0-9_]+)*\.xml$') { throw "not a model object: $relative" }
     return Join-Path $ModelDir $rel
 }
 
 function Get-Hash([string]$path) { (Get-FileHash -Algorithm SHA256 -LiteralPath $path).Hash }
+
+# For compare: the text without BOM and CRs, so a file that differs only in line endings (git's
+# CRLF checkout against Visual Studio's LF) counts as the same. vm.ps1 hashes the repo the same way.
+function Get-TextHash([string]$path) {
+    $text = [IO.File]::ReadAllText($path).Replace("`r", '')
+    $sha = [Security.Cryptography.SHA256]::Create()
+    try { -join ($sha.ComputeHash([Text.UTF8Encoding]::new($false).GetBytes($text)) | ForEach-Object { $_.ToString('X2') }) }
+    finally { $sha.Dispose() }
+}
 
 function Invoke-Status {
     $admin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
@@ -104,14 +115,14 @@ function Invoke-Compare($hashes) {
     if ($hashes) {
         $hashes.PSObject.Properties | ForEach-Object { $repoHash[$_.Name -replace '/', '\'] = $_.Value }
     } else {
-        Get-ChildItem -Path (Join-Path $Source 'Ax*\*.xml') -File | ForEach-Object { $repoHash[$_.FullName.Substring($Source.Length + 1)] = Get-Hash $_.FullName }
+        Get-ChildItem -Path (Join-Path $Source 'Ax*\*.xml') -File | ForEach-Object { $repoHash[$_.FullName.Substring($Source.Length + 1)] = Get-TextHash $_.FullName }
     }
     $repoFiles = @($repoHash.Keys | Sort-Object)
     $different = @(); $onlyRepo = @(); $same = 0
     foreach ($rel in $repoFiles) {
         $vm = Get-VmPath $rel
         if (-not (Test-Path -LiteralPath $vm)) { $onlyRepo += $rel; continue }
-        if ($repoHash[$rel] -ne (Get-Hash $vm)) { $different += $rel } else { $same++ }
+        if ($repoHash[$rel] -ne (Get-TextHash $vm)) { $different += $rel } else { $same++ }
     }
     $repoSet = @{}; $repoFiles | ForEach-Object { $repoSet[$_.ToLower()] = $true }
     $onlyVm = Get-ChildItem -Path (Join-Path $ModelDir 'Ax*\*.xml') -File |
