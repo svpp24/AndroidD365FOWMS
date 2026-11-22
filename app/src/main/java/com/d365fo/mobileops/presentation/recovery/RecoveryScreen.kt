@@ -33,7 +33,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
@@ -345,8 +344,10 @@ fun UnsentWorkPanel(viewModel: WorkSaveViewModel = hiltViewModel()) {
 
 @Composable
 private fun PinDialog(purpose: PinPurpose, onPin: (String) -> Unit, onCancel: () -> Unit) {
-    var pin by remember { mutableStateOf("") }
-    var again by remember { mutableStateOf("") }
+    val pinState = androidx.compose.foundation.text.input.rememberTextFieldState()
+    val againState = androidx.compose.foundation.text.input.rememberTextFieldState()
+    val pin = pinState.text.toString()
+    val again = againState.text.toString()
     val export = purpose == PinPurpose.EXPORT
     val ok = pin.length >= 4 && (!export || pin == again)
     AlertDialog(
@@ -355,23 +356,16 @@ private fun PinDialog(purpose: PinPurpose, onPin: (String) -> Unit, onCancel: ()
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(if (export) "At least 4 digits." else "The PIN chosen when the file was saved.")
-                OutlinedTextField(
-                    value = pin,
-                    onValueChange = { pin = it.filter(Char::isDigit) },
-                    label = { Text("PIN") },
-                    singleLine = true,
-                    visualTransformation = PasswordVisualTransformation(),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                com.d365fo.mobileops.presentation.common.components.PinField(
+                    state = pinState,
+                    label = "PIN",
+                    imeAction = if (export) androidx.compose.ui.text.input.ImeAction.Next else androidx.compose.ui.text.input.ImeAction.Done,
                     modifier = Modifier.fillMaxWidth(),
                 )
                 if (export) {
-                    OutlinedTextField(
-                        value = again,
-                        onValueChange = { again = it.filter(Char::isDigit) },
-                        label = { Text("PIN again") },
-                        singleLine = true,
-                        visualTransformation = PasswordVisualTransformation(),
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                    com.d365fo.mobileops.presentation.common.components.PinField(
+                        state = againState,
+                        label = "PIN again",
                         modifier = Modifier.fillMaxWidth(),
                     )
                 }

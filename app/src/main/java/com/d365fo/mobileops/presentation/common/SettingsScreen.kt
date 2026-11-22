@@ -98,8 +98,6 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.d365fo.mobileops.BuildConfig
 import com.d365fo.mobileops.R
-import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.input.VisualTransformation
 import com.d365fo.mobileops.data.local.entity.WorkerDirectoryEntity
 import com.d365fo.mobileops.data.local.entity.WorkerPermissionEntity
 import com.d365fo.mobileops.data.logging.LogEntry

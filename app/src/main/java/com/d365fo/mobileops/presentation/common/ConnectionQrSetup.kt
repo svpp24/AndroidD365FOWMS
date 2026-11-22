@@ -16,7 +16,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -257,7 +256,8 @@ fun ConnectionQrSetup(
 
 @Composable
 private fun PinDialog(wrongPin: Boolean, onPin: (String) -> Unit, onCancel: () -> Unit) {
-    var pin by remember { mutableStateOf("") }
+    val pinState = androidx.compose.foundation.text.input.rememberTextFieldState()
+    val pin = pinState.text.toString()
     AlertDialog(
         onDismissRequest = onCancel,
         title = { Text("Setup PIN") },
@@ -267,12 +267,11 @@ private fun PinDialog(wrongPin: Boolean, onPin: (String) -> Unit, onCancel: () -
                     if (wrongPin) "Wrong PIN. Try again."
                     else "Enter the setup PIN.",
                 )
-                OutlinedTextField(
-                    value = pin,
-                    onValueChange = { pin = it },
-                    singleLine = true,
-                    visualTransformation = PasswordVisualTransformation(),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                // Not filtered to digits, as before: whatever the setup PIN holds is passed on.
+                com.d365fo.mobileops.presentation.common.components.PinField(
+                    state = pinState,
+                    digitsOnly = false,
+                    onDone = { if (pin.isNotBlank()) onPin(pin) },
                     modifier = Modifier.fillMaxWidth(),
                 )
             }

@@ -36,7 +36,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -237,23 +236,20 @@ fun WorkerLoginScreen(
                         .heightIn(min = 60.dp)
                         .focusRequester(userNameFocus),
                 )
-                OutlinedTextField(
-                    value = state.password,
-                    // A PIN is digits only (HSMobileOpsPassword::policyFailure), typed on the number pad.
-                    onValueChange = { value -> viewModel.onPasswordChange(value.filter { it.isDigit() }) },
-                    label = { Text("PIN") },
-                    singleLine = true,
+                // A PIN is digits only (HSMobileOpsPassword::policyFailure), typed on the number pad.
+                // The ViewModel keeps it (and clears it after a failed sign-in), so the field's
+                // state follows it - see rememberSyncedTextFieldState.
+                com.d365fo.mobileops.presentation.common.components.PinField(
+                    state = com.d365fo.mobileops.presentation.common.components.rememberSyncedTextFieldState(
+                        state.password,
+                        viewModel::onPasswordChange,
+                    ),
+                    label = "PIN",
                     enabled = !state.busy,
-                    visualTransformation = PasswordVisualTransformation(),
+                    onDone = viewModel::signIn,
                     shape = FocusShapes.button,
                     colors = focusFieldColors(),
                     textStyle = FocusType.fieldValue,
-                    keyboardOptions = KeyboardOptions(
-                        keyboardType = KeyboardType.NumberPassword,
-                        autoCorrectEnabled = false,
-                        imeAction = ImeAction.Done,
-                    ),
-                    keyboardActions = KeyboardActions(onDone = { viewModel.signIn() }),
                     modifier = Modifier
                         .fillMaxWidth()
                         .heightIn(min = 60.dp)
