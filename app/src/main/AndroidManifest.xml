@@ -38,7 +38,7 @@
             android:screenOrientation="portrait"
             android:windowSoftInputMode="adjustResize"
             android:configChanges="orientation|screenSize|keyboardHidden|keyboard|navigation"
-            android:theme="@style/Theme.D365MobileOps">
+            android:theme="@style/Theme.D365MobileOps.Starting">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />

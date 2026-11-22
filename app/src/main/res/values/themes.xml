@@ -1,4 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <style name="Theme.D365MobileOps" parent="android:Theme.Material.Light.NoActionBar" />
+
+    <!-- MainActivity's theme until its first screen is ready (core-splashscreen, performance plan,
+         phase 1): the same launch screen on every Android version - before Android 12 there was
+         only a blank window - kept up while the app decides what to show (MainActivity), then
+         Theme.D365MobileOps.
+
+         Android 12+ shows the icon inside a circle two-thirds its size; the launcher icon's
+         slanted H reached past it and lost two corners. The launch screen has its own copy of the
+         logo, scaled to fit, so the launcher icon keeps its full size. -->
+    <style name="Theme.D365MobileOps.Starting" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">#FFFFFF</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_splash_logo</item>
+        <item name="postSplashScreenTheme">@style/Theme.D365MobileOps</item>
+    </style>
 </resources>

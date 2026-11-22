@@ -58,6 +58,11 @@ import com.d365fo.mobileops.presentation.common.components.WarningBanner
 @Composable
 fun AppRoot(
     syncStatus: androidx.compose.runtime.State<SyncStatus>,
+    /**
+     * Once the first screen is a real one rather than the "checking" spinner - MainActivity keeps
+     * the launch screen up until then (performance plan, phase 1).
+     */
+    onFirstScreen: () -> Unit = {},
     sessionViewModel: SessionViewModel = hiltViewModel(),
     workerSessionViewModel: WorkerSessionViewModel = hiltViewModel(),
     settingsViewModel: SettingsViewModel = hiltViewModel(),
@@ -70,6 +75,7 @@ fun AppRoot(
     // (see SelfIntegrityCheck) gets no path forward at all, not even to reconfigure a
     // connection. Debug builds are never flagged - see that class's own doc.
     if (integrityViewModel.tampered) {
+        androidx.compose.runtime.SideEffect(onFirstScreen)
         TamperedScreen()
         return
     }
@@ -90,6 +96,12 @@ fun AppRoot(
     }
     val tenant by settingsViewModel.tenant.collectAsStateWithLifecycle()
     val navController = rememberNavController()
+
+    // The two spinners below: the device check (NotConfiguredScreen's Checking) and the license
+    // check. Until one of them is decided the launch screen stays - see MainActivity.
+    val deciding = session is SessionState.Checking ||
+        (session is SessionState.Ready && licenseState is LicenseState.Checking)
+    LaunchedEffect(deciding) { if (!deciding) onFirstScreen() }
 
     // The device gate (AAD token) has to clear before this can call any AOS service at all -
     // re-runs every time the device gate itself flips back to Ready (a fresh launch, or a

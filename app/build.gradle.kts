@@ -288,6 +288,8 @@ if (providers.gradleProperty("composeReports").isPresent) {
 
 dependencies {
     implementation(libs.androidx.core.ktx)
+    // The launch screen stays up until the app knows which screen to show (performance plan, phase 1).
+    implementation(libs.androidx.splashscreen)
     // Applies the baseline profile bundled in the APK. Without it the profile ships but is
     // never installed, and the app starts exactly as slowly as before.
     implementation(libs.androidx.profileinstaller)

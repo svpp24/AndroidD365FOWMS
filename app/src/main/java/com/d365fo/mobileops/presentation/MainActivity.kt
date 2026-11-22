@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.os.SystemClock
 import android.view.KeyEvent
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
@@ -12,6 +13,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.core.content.ContextCompat
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import com.d365fo.mobileops.data.crash.CrashLoopGuard
@@ -54,8 +56,30 @@ class MainActivity : ComponentActivity() {
     private val requestNotificationPermission =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
 
+    /** Set by AppRoot once its first screen is a real one, not the "checking" spinner. */
+    @Volatile private var firstScreenReady = false
+
     override fun onCreate(savedInstanceState: Bundle?) {
+        // The launch screen stays until AppRoot knows what to show - the device check, and the
+        // license check after it - instead of a blank spinner in between (performance plan,
+        // phase 1). Never longer than MAX_SPLASH_MS: the license check can wait on D365FO, and
+        // past that the spinner says the app is working rather than a launch screen that looks
+        // stuck. The condition is asked before each frame, so it has to stay this cheap.
+        val splash = installSplashScreen()
         super.onCreate(savedInstanceState)
+        val shownAt = SystemClock.uptimeMillis()
+        splash.setKeepOnScreenCondition {
+            val keep = !firstScreenReady && SystemClock.uptimeMillis() - shownAt < MAX_SPLASH_MS
+            if (!keep) {
+                // Once - the condition isn't asked again after it says no.
+                timber.log.Timber.i(
+                    "launch screen: released after %d ms (%s)",
+                    SystemClock.uptimeMillis() - shownAt,
+                    if (firstScreenReady) "first screen ready" else "time limit",
+                )
+            }
+            keep
+        }
 
         hideSystemBars()
 
@@ -73,6 +97,7 @@ class MainActivity : ComponentActivity() {
         // Stopped again and again at start: the recovery screen instead of the app, so unsent
         // work can be saved before anyone reinstalls (see CrashLoopGuard).
         val recovery = CrashLoopGuard.inRecovery(this)
+        if (recovery) firstScreenReady = true
         setContent {
             val palette by themePreferences.palette.collectAsState()
             val scale by displayPreferences.scale.collectAsState()
@@ -91,7 +116,7 @@ class MainActivity : ComponentActivity() {
                     androidx.compose.runtime.CompositionLocalProvider(
                         com.d365fo.mobileops.presentation.common.focus.LocalScanBridge provides scannerBridge,
                     ) {
-                        AppRoot(syncStatus = status)
+                        AppRoot(syncStatus = status, onFirstScreen = { firstScreenReady = true })
                     }
                 }
             }
@@ -218,5 +243,10 @@ class MainActivity : ComponentActivity() {
         // open it can starve other apps of a tone channel on a device that scans all shift.
         scanFeedback.release()
         super.onDestroy()
+    }
+
+    private companion object {
+        /** The longest the launch screen waits for AppRoot's first screen - see onCreate. */
+        const val MAX_SPLASH_MS = 2_000L
     }
 }
