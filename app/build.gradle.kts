@@ -327,7 +327,6 @@ dependencies {
 
     implementation(libs.kotlinx.serialization)
     implementation(libs.kotlinx.coroutines)
-    implementation(libs.security.crypto)
     implementation(libs.sqlite.ktx)
 
     implementation(libs.mlkit.barcode)

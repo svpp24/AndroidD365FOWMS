@@ -2,8 +2,6 @@ package com.d365fo.mobileops.data.security
 
 import android.content.Context
 import android.content.SharedPreferences
-import androidx.security.crypto.EncryptedSharedPreferences
-import androidx.security.crypto.MasterKey
 import timber.log.Timber
 import java.security.KeyStore
 import javax.inject.Inject
@@ -18,8 +16,12 @@ import javax.inject.Singleton
  * file. A non-secret value still in the encrypted file from an earlier version is moved across
  * the first time it is read, so callers never notice.
  *
- * The master key lives in the Android Keystore (hardware-backed where available) and is
- * never exportable; EncryptedSharedPreferences holds the ciphertext.
+ * The secrets sit in [SecretFile]: names and values encrypted with keys wrapped by an Android
+ * Keystore key (hardware-backed where available, never exportable). It replaced androidx.security's
+ * EncryptedSharedPreferences, deprecated (performance plan, phase 6, 22 Nov 2026); the old file
+ * and its Keystore key are deleted on first use, so a device updated from an earlier version
+ * starts unconfigured and is set up again by scanning its QR code - devices were all still in
+ * testing, so nothing was carried across.
  *
  * **Every read/write is wrapped and logged (via Timber - see LogStore), not left to throw or
  * fail silently.** Confirmed live on a real device: values written earlier the same day (a
@@ -32,99 +34,70 @@ import javax.inject.Singleton
  * as a logged exception in the in-app log viewer instead of silent, confusing data loss.
  */
 @Singleton
-class SecureStore @Inject constructor(private val context: Context) {
+class SecureStore internal constructor(
+    private val context: Context,
+    private val wrapper: KeyWrapper,
+) {
+    constructor(context: Context) : this(context, KeystoreKeyWrapper(SECRET_KEY_ALIAS))
 
     /**
-     * Built on first use, not in the constructor.
-     *
-     * EncryptedSharedPreferences.create() generates or unwraps a Keystore master key and opens
-     * an encrypted file. Held as a constructor property it ran during Hilt graph construction -
-     * inside Application.onCreate, on the main thread, ahead of the first frame. Nothing needs
-     * it before the first screen asks a question of it, and by then it can be reached off the
-     * main thread.
+     * Built on first use, not in the constructor: opening it unwraps its keys through the
+     * Keystore, which has no place in Application.onCreate on the main thread ahead of the first
+     * frame (performance plan, phase 1). If that fails outright, the file and key are reset and
+     * opened fresh - the "not configured" state every caller already handles (NotConfiguredScreen,
+     * NO_LICENSE, ...) - rather than failing on every access forever.
      */
-    private val prefs: SharedPreferences by lazy {
+    private val secrets: SecretFile by lazy {
+        removeOldStore()
+        val file = context.getSharedPreferences(SECRET_FILE_NAME, Context.MODE_PRIVATE)
         try {
-            createPrefs()
+            SecretFile(file, wrapper).open()
         } catch (e: Exception) {
-            // A corrupt file or a Keystore key EncryptedSharedPreferences can no longer unwrap
-            // (see the class doc) would otherwise throw on every single access forever - this
-            // device would never recover without an uninstall. Wiping the file and the Keystore
-            // alias and rebuilding fresh loses whatever was in it, exactly like the "genuinely
-            // never configured" state every caller already handles gracefully (NotConfiguredScreen,
-            // NO_LICENSE, "Device sign-in required", ...) - a clean, understood failure mode
-            // instead of a wedged one.
-            Timber.e(e, "SecureStore: opening encrypted prefs failed, resetting store")
-            resetCorruptedStore()
-            createPrefs()
+            Timber.e(e, "SecureStore: opening the secret file failed, resetting it")
+            file.edit().clear().commit()
+            wrapper.reset()
+            SecretFile(file, wrapper).open()
         }
     }
 
-    private fun createPrefs(): SharedPreferences =
-        EncryptedSharedPreferences.create(
-            context,
-            FILE_NAME,
-            MasterKey.Builder(context, MASTER_KEY_ALIAS)
-                .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
-                .setUserAuthenticationRequired(false)
-                .build(),
-            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
-        )
-
-    private fun resetCorruptedStore() {
-        context.deleteSharedPreferences(FILE_NAME)
+    /** EncryptedSharedPreferences' file and Keystore key from before phase 6 - not read, deleted once. */
+    private fun removeOldStore() {
+        val old = java.io.File(context.applicationInfo.dataDir, "shared_prefs/$OLD_FILE_NAME.xml")
+        if (!old.exists()) return
+        context.deleteSharedPreferences(OLD_FILE_NAME)
         runCatching {
             val ks = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
-            if (ks.containsAlias(MASTER_KEY_ALIAS)) ks.deleteEntry(MASTER_KEY_ALIAS)
-        }.onFailure { Timber.e(it, "SecureStore: failed to clear the Keystore alias during reset") }
+            if (ks.containsAlias(OLD_MASTER_KEY_ALIAS)) ks.deleteEntry(OLD_MASTER_KEY_ALIAS)
+        }.onFailure { Timber.e(it, "SecureStore: deleting the old Keystore key failed") }
+        Timber.w("SecureStore: the old encrypted store was removed - this device is set up again by scanning its QR code")
     }
 
-    /**
-     * Everything that is not a secret - plain, no Keystore involved. On first use, the non-secret
-     * values an earlier version kept in the encrypted file are moved across in one go.
-     */
+    /** Everything that is not a secret - plain, no Keystore involved. */
     private val plain: SharedPreferences by lazy {
-        context.getSharedPreferences(PLAIN_FILE_NAME, Context.MODE_PRIVATE).also { moveOutOfEncrypted(it) }
+        context.getSharedPreferences(PLAIN_FILE_NAME, Context.MODE_PRIVATE)
     }
 
-    private fun moveOutOfEncrypted(target: SharedPreferences) {
-        if (target.getBoolean(KEY_MOVED, false)) return
-        runCatching {
-            val moved = prefs.all.filterKeys { !isSecret(it) }
-            val edit = target.edit()
-            moved.forEach { (key, value) ->
-                when (value) {
-                    is String -> edit.putString(key, value)
-                    is Long -> edit.putLong(key, value)
-                    is Boolean -> edit.putBoolean(key, value)
-                    is Int -> edit.putInt(key, value)
-                    is Float -> edit.putFloat(key, value)
-                }
-            }
-            edit.putBoolean(KEY_MOVED, true)
-            check(edit.commit()) { "writing the plain preferences failed" }
-            prefs.edit().apply { moved.keys.forEach { remove(it) } }.apply()
-            Timber.i("SecureStore: %d non-secret values moved out of the encrypted file", moved.size)
-        }.onFailure { Timber.e(it, "SecureStore: moving non-secret values failed - retried next start") }
+    fun getString(key: String): String? =
+        safeRead(key) { if (isSecret(key)) secrets.getString(key) else plain.getString(key, null) }
+    fun putString(key: String, value: String?) = safeWrite(key) {
+        if (isSecret(key)) secrets.putString(key, value) else plain.edit().putString(key, value).apply()
     }
-
-    private fun store(key: String): SharedPreferences = if (isSecret(key)) prefs else plain
-
-    fun getString(key: String): String? = safeRead(key) { store(key).getString(key, null) }
-    fun putString(key: String, value: String?) = safeWrite(key) { store(key).edit().putString(key, value).apply() }
-    fun getLong(key: String, default: Long = 0L): Long = safeRead(key) { store(key).getLong(key, default) } ?: default
-    fun putLong(key: String, value: Long) = safeWrite(key) { store(key).edit().putLong(key, value).apply() }
+    fun getLong(key: String, default: Long = 0L): Long =
+        safeRead(key) { if (isSecret(key)) secrets.getLong(key) else plain.getLong(key, default) } ?: default
+    fun putLong(key: String, value: Long) = safeWrite(key) {
+        if (isSecret(key)) secrets.putLong(key, value) else plain.edit().putLong(key, value).apply()
+    }
     fun getBoolean(key: String, default: Boolean = false): Boolean =
-        safeRead(key) { store(key).getBoolean(key, default) } ?: default
-    fun putBoolean(key: String, value: Boolean) = safeWrite(key) { store(key).edit().putBoolean(key, value).apply() }
+        safeRead(key) { if (isSecret(key)) secrets.getBoolean(key) else plain.getBoolean(key, default) } ?: default
+    fun putBoolean(key: String, value: Boolean) = safeWrite(key) {
+        if (isSecret(key)) secrets.putBoolean(key, value) else plain.edit().putBoolean(key, value).apply()
+    }
     fun remove(key: String) = safeWrite(key) {
-        if (!isSecret(key)) plain.edit().remove(key).apply()
-        prefs.edit().remove(key).apply()
+        if (isSecret(key)) secrets.remove(key) else plain.edit().remove(key).apply()
     }
     fun clear() = safeWrite("<all>") {
         plain.edit().clear().apply()
-        prefs.edit().clear().apply()
+        secrets.clear()
     }
 
     /**
@@ -177,7 +150,6 @@ class SecureStore @Inject constructor(private val context: Context) {
      * since the database became plain SQLite (1.0.89 converted every device). Removed once.
      */
     fun forgetDatabaseKey() = safeWrite(KEY_DB_PASSPHRASE) {
-        if (prefs.contains(KEY_DB_PASSPHRASE)) prefs.edit().remove(KEY_DB_PASSPHRASE).apply()
         java.io.File(context.noBackupFilesDir, "db_key.bak").delete()
         val ks = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
         if (ks.containsAlias("d365_mobileops_db_key_backup")) ks.deleteEntry("d365_mobileops_db_key_backup")
@@ -202,23 +174,19 @@ class SecureStore @Inject constructor(private val context: Context) {
     fun lastLicenseValidationUtcMillis(): Long? = getString(KEY_LICENSE_LAST_VALIDATION)?.toLongOrNull()
     fun setLastLicenseValidationUtcMillis(value: Long) = putString(KEY_LICENSE_LAST_VALIDATION, value.toString())
 
-    // No Keystore work in the constructor (performance plan, phase 1, 20 Nov 2026). It used to
-    // load the Keystore and create MASTER_KEY_ALIAS here, on every launch, on the main thread -
-    // but MasterKey.Builder in createPrefs() creates that same key (AES-256-GCM) when it is
-    // missing, at the point it is actually needed.
-
-    private fun ByteArray.toHex(): String = joinToString("") { "%02x".format(it) }
-    private fun String.hexToBytes(): ByteArray =
-        chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+    // No Keystore work in the constructor (performance plan, phase 1, 20 Nov 2026): the secret
+    // file's key is made or unwrapped when the file is first used.
 
     companion object {
-        private const val FILE_NAME = "d365_secure_store"
-        private const val MASTER_KEY_ALIAS = "d365_mobileops_master"
+        private const val SECRET_FILE_NAME = "d365_secrets"
+        private const val SECRET_KEY_ALIAS = "d365_mobileops_secrets"
+        /** EncryptedSharedPreferences' file and key, before phase 6 - see [removeOldStore]. */
+        private const val OLD_FILE_NAME = "d365_secure_store"
+        private const val OLD_MASTER_KEY_ALIAS = "d365_mobileops_master"
         private const val ANDROID_KEYSTORE = "AndroidKeyStore"
 
         private const val KEY_DB_PASSPHRASE = "db_passphrase"
         private const val PLAIN_FILE_NAME = "d365_prefs"
-        private const val KEY_MOVED = "moved_from_encrypted_store"
 
         /** Keys whose name starts with one of these are kept encrypted. */
         private val SECRET_PREFIXES = listOf(

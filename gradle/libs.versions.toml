@@ -14,7 +14,6 @@ okhttp = "4.12.0"
 serialization = "1.7.3"
 retrofit-serialization = "1.0.0"
 coroutines = "1.9.0"
-security-crypto = "1.1.0-alpha06"
 sqlite = "2.4.0"
 mlkit-barcode = "17.3.0"
 play-integrity = "1.4.0"
@@ -82,7 +81,6 @@ kotlinx-serialization = { module = "org.jetbrains.kotlinx:kotlinx-serialization-
 kotlinx-coroutines    = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "coroutines" }
 kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "coroutines" }
 
-security-crypto = { module = "androidx.security:security-crypto", version.ref = "security-crypto" }
 sqlite-ktx      = { module = "androidx.sqlite:sqlite-ktx", version.ref = "sqlite" }
 
 mlkit-barcode = { module = "com.google.mlkit:barcode-scanning", version.ref = "mlkit-barcode" }
