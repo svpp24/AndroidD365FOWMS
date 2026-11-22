@@ -1005,9 +1005,14 @@ private fun IdleTimeoutSlider(
     selected: IdleTimeout,
     onSelect: (IdleTimeout) -> Unit,
 ) {
-    var sliderValue by remember(selected) { mutableFloatStateOf(selected.minutes.toFloat()) }
     val minV = IdleTimeout.entries.first().minutes.toFloat()
     val maxV = IdleTimeout.entries.last().minutes.toFloat()
+    // Material 3 1.5 takes a custom thumb and track only with a SliderState (the value-based
+    // overload that did was removed - AGP 9 move, Compose BOM 2026.11).
+    val state = remember(selected) {
+        androidx.compose.material3.SliderState(selected.minutes.toFloat(), IdleTimeout.entries.size - 2, minV..maxV)
+    }
+    val sliderValue = state.value
     val fraction = ((sliderValue - minV) / (maxV - minV)).coerceIn(0f, 1f)
 
     Column(modifier = Modifier.fillMaxWidth().padding(horizontal = SIDE)) {
@@ -1026,15 +1031,13 @@ private fun IdleTimeoutSlider(
             modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
         )
         Slider(
-            value = sliderValue,
-            onValueChange = { sliderValue = it },
+            state = state,
+            onValueChange = { state.value = it },
             onValueChangeFinished = {
-                val nearest = IdleTimeout.entries.minBy { kotlin.math.abs(it.minutes - sliderValue.toLong()) }
-                sliderValue = nearest.minutes.toFloat()
+                val nearest = IdleTimeout.entries.minBy { kotlin.math.abs(it.minutes - state.value.toLong()) }
+                state.value = nearest.minutes.toFloat()
                 onSelect(nearest)
             },
-            valueRange = minV..maxV,
-            steps = IdleTimeout.entries.size - 2,
             // Square, filled, bordered - this app's own "square, not a stock circle" identity
             // (see SquareButtons.kt) applied to the one stock-Material control left using the
             // default. Bigger than the stock thumb too, easier to find and drag with gloves on.

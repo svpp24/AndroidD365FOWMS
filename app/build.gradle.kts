@@ -3,7 +3,8 @@ import java.util.Properties
 
 plugins {
     alias(libs.plugins.android.application)
-    alias(libs.plugins.kotlin.android)
+    // No kotlin-android: AGP 9 compiles Kotlin itself. The root build keeps that plugin on the
+    // classpath (apply false), which sets the Kotlin version AGP's built-in support uses.
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.ksp)
@@ -47,7 +48,11 @@ val buildDate: String = LocalDate.now().toString()
 
 android {
     namespace = "com.d365fo.mobileops"
-    compileSdk = 36
+    // 37.1+ for Compose 1.13 (BOM 2026.11); targetSdk stays 36. AGP 9 names minor SDK levels
+    // this way - plain `compileSdk = 37` is 37.0.
+    compileSdk {
+        version = release(37) { minorApiLevel = 2 }
+    }
 
     defaultConfig {
         // Ship ARM only. The x86 and x86_64 slices exist for emulators and account for 18.7 MB
@@ -214,8 +219,10 @@ android {
         }
     }
     // perf takes release's no-op HTTP logging, so request logging doesn't skew its timings.
-    sourceSets.getByName("perf").java.srcDir("src/release/java")
-    sourceSets.getByName("macrobench").java.srcDir("src/release/java")
+    // Kotlin sources: with AGP 9's built-in Kotlin a directory added to `java` is no longer
+    // compiled as Kotlin - it has to be on `kotlin`.
+    sourceSets.getByName("perf").kotlin.directories.add("src/release/java")
+    sourceSets.getByName("macrobench").kotlin.directories.add("src/release/java")
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17

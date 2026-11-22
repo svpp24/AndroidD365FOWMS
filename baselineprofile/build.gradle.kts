@@ -1,12 +1,11 @@
 plugins {
     alias(libs.plugins.android.test)
-    alias(libs.plugins.kotlin.android)
     alias(libs.plugins.baselineprofile)
 }
 
 android {
     namespace = "com.d365fo.mobileops.baselineprofile"
-    compileSdk = 35
+    compileSdk = 37
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
