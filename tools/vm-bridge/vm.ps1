@@ -40,10 +40,15 @@ if ($Action -eq 'compare') {
     # Hashed here: the VM reading every repo file over the RDP drive takes many minutes.
     $model = Join-Path (Split-Path $PSScriptRoot -Parent | Split-Path -Parent) 'aos\HSMobileOps'
     $hashes = [ordered]@{}
-    # Only the model's X++ objects (Ax*\*.xml) - the same set the VM compares.
+    # Only the model's X++ objects (Ax*\*.xml) - the same set the VM compares. The text without
+    # BOM and CRs, as vm-watcher.ps1 hashes it: line endings alone don't count as a difference.
+    $sha = [Security.Cryptography.SHA256]::Create()
+    $utf8 = [Text.UTF8Encoding]::new($false)
     Get-ChildItem -Path (Join-Path $model 'Ax*\*.xml') -File | Sort-Object FullName | ForEach-Object {
-        $hashes[$_.FullName.Substring($model.Length + 1) -replace '\\', '/'] = (Get-FileHash -Algorithm SHA256 -LiteralPath $_.FullName).Hash
+        $text = [IO.File]::ReadAllText($_.FullName).Replace("`r", '')
+        $hashes[$_.FullName.Substring($model.Length + 1) -replace '\\', '/'] = -join ($sha.ComputeHash($utf8.GetBytes($text)) | ForEach-Object { $_.ToString('X2') })
     }
+    $sha.Dispose()
     $request.hashes = $hashes
 }
 $body = $request | ConvertTo-Json -Depth 4
