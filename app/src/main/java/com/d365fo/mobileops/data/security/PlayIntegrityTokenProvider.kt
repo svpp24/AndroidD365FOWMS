@@ -34,7 +34,7 @@ import kotlin.coroutines.resumeWithException
  */
 @Singleton
 class PlayIntegrityTokenProvider @Inject constructor(
-    @ApplicationContext private val context: Context,
+    @param:ApplicationContext private val context: Context,
 ) {
     private val manager: StandardIntegrityManager by lazy { IntegrityManagerFactory.createStandard(context) }
 

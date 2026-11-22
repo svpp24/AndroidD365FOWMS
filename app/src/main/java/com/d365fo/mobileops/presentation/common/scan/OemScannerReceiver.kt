@@ -40,7 +40,7 @@ class OemScannerReceiver(
         // question asked when a handheld appears not to be scanning, and it is the one that took
         // longest to answer here — the length rather than the value, so a logcat capture taken on
         // the floor does not carry stock data off the device.
-        Timber.i("scan received: %d chars via %s", decoded.length, intent?.action)
+        Timber.i("scan received: %d chars via %s", decoded.length, intent.action)
         onScan(decoded)
     }
 

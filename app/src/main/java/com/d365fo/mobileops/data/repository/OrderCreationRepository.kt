@@ -235,7 +235,7 @@ class OrderCreationRepository @Inject constructor(
     private val json: Json,
     /** Sends outlive the screen that queued them - see [queueAndSend]. */
     private val applicationScope: kotlinx.coroutines.CoroutineScope,
-    @dagger.hilt.android.qualifiers.ApplicationContext private val appContext: android.content.Context,
+    @param:dagger.hilt.android.qualifiers.ApplicationContext private val appContext: android.content.Context,
     private val listCache: ListCache,
 ) {
     private fun company(): String = companyProvider().orEmpty()

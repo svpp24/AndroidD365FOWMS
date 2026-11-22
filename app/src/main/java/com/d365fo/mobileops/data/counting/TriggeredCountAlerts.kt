@@ -30,7 +30,7 @@ import javax.inject.Singleton
  */
 @Singleton
 class TriggeredCountAlerts @Inject constructor(
-    @ApplicationContext private val context: Context,
+    @param:ApplicationContext private val context: Context,
     private val journals: CountingJournalRepository,
     private val secureStore: SecureStore,
     private val notifier: SyncNotifier,

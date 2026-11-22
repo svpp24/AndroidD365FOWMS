@@ -301,7 +301,7 @@ class TransferFlowViewModel @Inject constructor(
                     persist()
                 }
                 is NetworkResult.Error -> if (result.failure is AppFailure.BusinessRule) {
-                    if ((result.failure as AppFailure.BusinessRule).d365ErrorCode == "ALREADY_PICKED") {
+                    if (result.failure.d365ErrorCode == "ALREADY_PICKED") {
                         // Picked in D365FO before (a session lost on the device, say): it ships
                         // as it is when picking is confirmed.
                         _state.update { s ->
@@ -646,6 +646,7 @@ class TransferFlowViewModel @Inject constructor(
     }
 
     /** See ReceivingFlowViewModel.persist: fire-and-forget, never blocking a scan. */
+    @OptIn(kotlinx.coroutines.DelicateCoroutinesApi::class) // CoroutineStart.ATOMIC: the save starts even if the screen is closing
     private fun persist() {
         val state = _state.value
         val capture = state.capture

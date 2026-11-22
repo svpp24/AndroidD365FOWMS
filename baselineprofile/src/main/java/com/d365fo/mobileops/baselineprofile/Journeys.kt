@@ -41,7 +41,7 @@ internal object Journeys {
      * dialog, so granting it measures the same launch a worker gets. On older APIs the grant
      * fails harmlessly.
      */
-    fun MacrobenchmarkScope.clearAppData() {
+    fun MacrobenchmarkScope.resetToOutOfBox() {
         device.executeShellCommand("pm clear $packageName")
         grantPermissions()
         // Something (a grant, or the app's own scheduled work) can wake the process again after

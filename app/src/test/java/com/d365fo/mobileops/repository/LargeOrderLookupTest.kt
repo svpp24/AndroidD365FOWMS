@@ -1,5 +1,6 @@
 package com.d365fo.mobileops.repository
 
+import okhttp3.ResponseBody.Companion.toResponseBody
 import com.d365fo.mobileops.data.remote.api.MobileOpsServiceApi
 import com.d365fo.mobileops.data.remote.dto.LineServiceResponse
 import com.d365fo.mobileops.data.remote.dto.PurchLineServiceDto
@@ -149,7 +150,7 @@ class LargeOrderLookupTest {
         runTest(dispatcher) {
             coEvery { service.getLinesForItem(any(), any()) } returns Response.error(
                 404,
-                okhttp3.ResponseBody.Companion.create(null, "{}"),
+                "{}".toResponseBody(null),
             )
 
             repository.lookupLinesForItem("PO-1", "A00001")

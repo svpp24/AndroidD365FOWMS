@@ -32,7 +32,7 @@ import javax.inject.Singleton
 class ClaimHeartbeat @Inject constructor(
     private val manager: CountClaimManager,
     private val scope: CoroutineScope,
-    @ApplicationContext private val context: Context,
+    @param:ApplicationContext private val context: Context,
 ) {
     private var loop: Job? = null
 

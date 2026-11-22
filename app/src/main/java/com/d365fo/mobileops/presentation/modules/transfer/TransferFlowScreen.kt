@@ -1,7 +1,7 @@
 package com.d365fo.mobileops.presentation.modules.transfer
 
 import com.d365fo.mobileops.presentation.common.focus.FocusTask
-import androidx.compose.material.icons.outlined.ReceiptLong
+import androidx.compose.material.icons.automirrored.outlined.ReceiptLong
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.QrCodeScanner
 import androidx.compose.material.icons.outlined.Dialpad
@@ -863,7 +863,7 @@ private fun transferTask(state: TransferFlowState, mode: TransferMode): com.d365
     val T = { t: String, d: String?, ic: androidx.compose.ui.graphics.vector.ImageVector, done: Boolean -> FocusTask(t, d, ic, done) }
     return when (state.step) {
         // "Scan order" / "Scan an item" (user, 17 Nov 2026), for ship and receive alike.
-        TransferStep.TRANSFER_ORDER -> T("Scan order", null, i.ReceiptLong, false)
+        TransferStep.TRANSFER_ORDER -> T("Scan order", null, Icons.AutoMirrored.Outlined.ReceiptLong, false)
         TransferStep.ITEM -> {
             val last = state.captured.lastOrNull()
             val lines = state.outstandingLineCount ?: state.order?.outstandingLineCount

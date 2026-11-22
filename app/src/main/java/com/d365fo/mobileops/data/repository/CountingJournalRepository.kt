@@ -100,7 +100,7 @@ class CountingJournalRepository @Inject constructor(
     private val itemDao: com.d365fo.mobileops.data.local.dao.ItemDao,
     private val json: Json,
     private val ioDispatcher: CoroutineDispatcher,
-    @ApplicationContext private val context: Context,
+    @param:ApplicationContext private val context: Context,
     private val listCache: ListCache,
 ) {
 

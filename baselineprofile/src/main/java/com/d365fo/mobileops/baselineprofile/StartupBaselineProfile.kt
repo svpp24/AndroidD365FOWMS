@@ -2,7 +2,7 @@ package com.d365fo.mobileops.baselineprofile
 
 import androidx.benchmark.macro.junit4.BaselineProfileRule
 import com.d365fo.mobileops.baselineprofile.Journeys.backToHome
-import com.d365fo.mobileops.baselineprofile.Journeys.clearAppData
+import com.d365fo.mobileops.baselineprofile.Journeys.resetToOutOfBox
 import com.d365fo.mobileops.baselineprofile.Journeys.ensureDemoHome
 import com.d365fo.mobileops.baselineprofile.Journeys.openAndBack
 import com.d365fo.mobileops.baselineprofile.Journeys.scanAndWait
@@ -51,7 +51,7 @@ class StartupBaselineProfile {
         includeInStartupProfile = true,
     ) {
         pressHome()
-        clearAppData()
+        resetToOutOfBox()
         startActivityAndWait()
         // Wait for something the first screen actually renders rather than a fixed sleep.
         waitForFirstScreen()

@@ -77,7 +77,7 @@ class ScanRouterTest {
                     ScanContext.Flow(
                         accepts = setOf(ScanKind.ITEM),
                         documentKind = ScanKind.PURCHASE_ORDER,
-                        currentDocument = (route.identity as ScanIdentity.Document).documentId,
+                        currentDocument = route.identity.documentId,
                         documentItemIds = setOf("BSR-11397-0"),
                     ),
                 )

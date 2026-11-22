@@ -63,7 +63,7 @@ class WorkerSessionRepository @Inject constructor(
     private val offlineSignIn: OfflineSignIn,
     private val reachability: com.d365fo.mobileops.data.sync.AosReachabilityMonitor,
     private val signInLog: com.d365fo.mobileops.data.sync.SignInLogRecorder,
-    @ApplicationContext private val context: Context,
+    @param:ApplicationContext private val context: Context,
 ) {
 
     /** Writes the offline verifier after a sign-in, so its PBKDF2 rounds don't slow the sign-in. */

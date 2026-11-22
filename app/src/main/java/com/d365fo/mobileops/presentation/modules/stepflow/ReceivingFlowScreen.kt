@@ -1,7 +1,7 @@
 package com.d365fo.mobileops.presentation.modules.stepflow
 
 import com.d365fo.mobileops.presentation.common.focus.FocusTask
-import androidx.compose.material.icons.outlined.ReceiptLong
+import androidx.compose.material.icons.automirrored.outlined.ReceiptLong
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.QrCodeScanner
 import androidx.compose.material.icons.outlined.Dialpad
@@ -871,8 +871,8 @@ private fun receivingTask(state: ReceivingFlowState): com.d365fo.mobileops.prese
     val item = c.item?.itemNumber ?: c.line?.itemId.orEmpty()
     val T = { t: String, d: String?, ic: androidx.compose.ui.graphics.vector.ImageVector, done: Boolean -> FocusTask(t, d, ic, done) }
     return when (state.step) {
-        ReceivingStep.PURCHASE_ORDER -> T("Scan the PO", "on the delivery paperwork", i.ReceiptLong, false)
-        ReceivingStep.PACKING_SLIP -> T("Scan the delivery note", null, i.ReceiptLong, false)
+        ReceivingStep.PURCHASE_ORDER -> T("Scan the PO", "on the delivery paperwork", Icons.AutoMirrored.Outlined.ReceiptLong, false)
+        ReceivingStep.PACKING_SLIP -> T("Scan the delivery note", null, Icons.AutoMirrored.Outlined.ReceiptLong, false)
         ReceivingStep.ITEM -> {
             val last = state.captured.lastOrNull()
             when {
