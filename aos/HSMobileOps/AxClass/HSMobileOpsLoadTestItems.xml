@@ -1,0 +1,542 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsLoadTestItems</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Load-test data for the handheld (user, 13 Nov): up to a million released products, numbered
+/// LT-0000001 onwards, each with one EAN-13 barcode (29 + number + check digit), copied from a
+/// template item's setup - product, name, released item, units, item and model group, storage
+/// and tracking dimension groups, default order settings - and spread round-robin over the lowest
+/// categories of the retail product hierarchy. No inventory transactions and no standard insert
+/// logic: rows are written directly, a thousand items per transaction, so a run that stops can be
+/// started again and carries on after the last LT item. Delete removes exactly what Create wrote.
+///
+/// Run it in batch (SysClassRunner: cls=HSMobileOpsLoadTestItems, then Run in the background).
+/// For test companies only - never production.
+/// </summary>
+class HSMobileOpsLoadTestItems extends RunBaseBatch
+{
+    ItemId      templateItemId;
+    int         itemCount;
+    NoYesId     deleteItems;
+
+    DialogField templateField;
+    DialogField countField;
+    DialogField deleteField;
+
+    Map         lists;
+
+    #define.CurrentVersion(1)
+    #localmacro.CurrentList
+        templateItemId,
+        itemCount,
+        deleteItems
+    #endmacro
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>new</Name>
+				<Source><![CDATA[
+
+    protected void new()
+    {
+        super();
+        templateItemId = 'BSR-40776-0';
+        itemCount      = 1000000;
+        deleteItems    = NoYes::No;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>pack</Name>
+				<Source><![CDATA[
+
+    public container pack()
+    {
+        return [#CurrentVersion, #CurrentList];
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>unpack</Name>
+				<Source><![CDATA[
+
+    public boolean unpack(container _packed)
+    {
+        Integer version = RunBase::getVersion(_packed);
+
+        switch (version)
+        {
+            case #CurrentVersion:
+                [version, #CurrentList] = _packed;
+                return true;
+        }
+        return false;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>dialog</Name>
+				<Source><![CDATA[
+
+    public Object dialog()
+    {
+        DialogRunbase dialog = super();
+
+        templateField = dialog.addFieldValue(extendedTypeStr(ItemId), templateItemId, 'Template item',
+            'Its setup is copied to every test item. It needs a barcode and no variants.');
+        countField    = dialog.addFieldValue(extendedTypeStr(Counter), itemCount, 'Number of items',
+            'Items LT-0000001 up to this number; a run carries on after the last LT item.');
+        deleteField   = dialog.addFieldValue(extendedTypeStr(NoYesId), deleteItems, 'Delete the test items instead',
+            'Removes every LT- item, its product and barcode - nothing else.');
+        return dialog;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>getFromDialog</Name>
+				<Source><![CDATA[
+
+    public boolean getFromDialog()
+    {
+        templateItemId = templateField.value();
+        itemCount      = countField.value();
+        deleteItems    = deleteField.value();
+        return super();
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>validate</Name>
+				<Source><![CDATA[
+
+    public boolean validate(Object _calledFrom = null)
+    {
+        if (!deleteItems)
+        {
+            if (itemCount < 1 || itemCount > 9999999)
+            {
+                return checkFailed('Number of items must be between 1 and 9,999,999.');
+            }
+            if (!InventTable::find(templateItemId).RecId)
+            {
+                return checkFailed(strFmt('Template item %1 does not exist.', templateItemId));
+            }
+        }
+        return super(_calledFrom);
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>canGoBatch</Name>
+				<Source><![CDATA[
+
+    public boolean canGoBatch()
+    {
+        return true;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>canRunInNewSession</Name>
+				<Source><![CDATA[
+
+    /// <summary>A long job: run from the dialog it goes to its own session, not the browser's.</summary>
+    protected boolean canRunInNewSession()
+    {
+        return true;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>run</Name>
+				<Source><![CDATA[
+
+    public void run()
+    {
+        if (deleteItems)
+        {
+            this.deleteAll();
+        }
+        else
+        {
+            this.createAll();
+        }
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>itemIdOf</Name>
+				<Source><![CDATA[
+
+    private static ItemId itemIdOf(int _number)
+    {
+        return 'LT-' + strRFix(int2Str(_number), 7, '0');
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>barcodeOf</Name>
+				<Source><![CDATA[
+
+    /// <summary>EAN-13 in the 20-29 in-store range, so it can never be a real product's.</summary>
+    private static str barcodeOf(int _number)
+    {
+        str  code = '29' + strRFix(int2Str(_number), 10, '0');
+        int  total;
+        int  i;
+        int  digit;
+
+        for (i = 1; i <= 12; i++)
+        {
+            digit = str2Int(subStr(code, i, 1));
+            total += (i mod 2 == 1) ? digit : digit * 3;
+        }
+        return code + int2Str((10 - (total mod 10)) mod 10);
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>lastNumber</Name>
+				<Source><![CDATA[
+
+    /// <summary>The highest LT- item number there is, 0 for none.</summary>
+    private static int lastNumber()
+    {
+        InventTable inventTable;
+
+        select firstonly ItemId from inventTable
+            order by inventTable.ItemId desc
+            where inventTable.ItemId like 'LT-*';
+        return inventTable.ItemId ? str2Int(subStr(inventTable.ItemId, 4, 7)) : 0;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>add</Name>
+				<Source><![CDATA[
+
+    /// <summary>Queues a row for its table's insert list - written without insert logic.</summary>
+    private void add(Common _record)
+    {
+        RecordInsertList list;
+
+        if (!lists.exists(_record.TableId))
+        {
+            list = new RecordInsertList(_record.TableId, true, true, true, false, false);
+            lists.insert(_record.TableId, list);
+        }
+        list = lists.lookup(_record.TableId);
+        list.add(_record);
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>flush</Name>
+				<Source><![CDATA[
+
+    private void flush()
+    {
+        MapEnumerator e = lists.getEnumerator();
+        RecordInsertList list;
+
+        while (e.moveNext())
+        {
+            list = e.currentValue();
+            list.insertDatabase();
+        }
+        lists = new Map(Types::Integer, Types::Class);
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>templateRows</Name>
+				<Source><![CDATA[
+
+    /// <summary>Every row of _table that belongs to the template, by item number or by product.</summary>
+    private List templateRows(TableId _table, FieldId _keyField, anytype _key)
+    {
+        List                 rows = new List(Types::Record);
+        Query                query = new Query();
+        QueryBuildDataSource ds = query.addDataSource(_table);
+        QueryRun             queryRun;
+
+        ds.addRange(_keyField).value(queryValue(_key));
+        queryRun = new QueryRun(query);
+        while (queryRun.next())
+        {
+            rows.addEnd(queryRun.get(_table));
+        }
+        return rows;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>copyRows</Name>
+				<Source><![CDATA[
+
+    /// <summary>Queues a copy of each template row with its key field set to _value.</summary>
+    private void copyRows(List _rows, FieldId _keyField, anytype _value)
+    {
+        ListEnumerator e = _rows.getEnumerator();
+        Common         source;
+        Common         copy;
+
+        while (e.moveNext())
+        {
+            source = e.current();
+            copy = new DictTable(source.TableId).makeRecord();
+            buf2Buf(source, copy);
+            copy.(_keyField) = _value;
+            this.add(copy);
+        }
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>createAll</Name>
+				<Source><![CDATA[
+
+    private void createAll()
+    {
+        InventTable                         template = InventTable::find(templateItemId);
+        InventTable                         inventTable;
+        InventItemBarcode                   templateBarcode;
+        InventItemBarcode                   barcode;
+        EcoResDistinctProduct               product;
+        EcoResProductTranslation            translation;
+        EcoResProductCategory               productCategory;
+        EcoResCategory                      category;
+        EcoResCategory                      child;
+        EcoResCategoryHierarchyRole         role;
+        LanguageId                          language = CompanyInfo::languageId();
+        List                                moduleRows;
+        List                                itemGroupRows;
+        List                                modelGroupRows;
+        List                                storageItemRows;
+        List                                trackingItemRows;
+        List                                storageProductRows;
+        List                                trackingProductRows;
+        List                                inventSetupRows;
+        List                                purchSetupRows;
+        List                                salesSetupRows;
+        container                           leaves;
+        int                                 first = HSMobileOpsLoadTestItems::lastNumber() + 1;
+        int                                 n;
+        int                                 chunkEnd;
+        int                                 made;
+        ItemId                              itemId;
+        str                                 name;
+
+        select firstonly templateBarcode where templateBarcode.ItemId == template.ItemId;
+        if (!templateBarcode.RecId)
+        {
+            throw error(strFmt('Template item %1 has no barcode.', template.ItemId));
+        }
+        select firstonly CategoryHierarchy from role
+            where role.NamedCategoryHierarchyRole == EcoResCategoryNamedHierarchyRole::Retail;
+        // The lowest categories - the ones with no category under them.
+        while select RecId from category
+            where category.CategoryHierarchy == role.CategoryHierarchy
+               && category.Level            >= 2
+            notexists join child
+                where child.ParentCategory == category.RecId
+        {
+            leaves += category.RecId;
+        }
+
+        moduleRows          = this.templateRows(tableNum(InventTableModule), fieldNum(InventTableModule, ItemId), template.ItemId);
+        itemGroupRows       = this.templateRows(tableNum(InventItemGroupItem), fieldNum(InventItemGroupItem, ItemId), template.ItemId);
+        modelGroupRows      = this.templateRows(tableNum(InventModelGroupItem), fieldNum(InventModelGroupItem, ItemId), template.ItemId);
+        storageItemRows     = this.templateRows(tableNum(EcoResStorageDimensionGroupItem), fieldNum(EcoResStorageDimensionGroupItem, ItemId), template.ItemId);
+        trackingItemRows    = this.templateRows(tableNum(EcoResTrackingDimensionGroupItem), fieldNum(EcoResTrackingDimensionGroupItem, ItemId), template.ItemId);
+        inventSetupRows     = this.templateRows(tableNum(InventItemInventSetup), fieldNum(InventItemInventSetup, ItemId), template.ItemId);
+        purchSetupRows      = this.templateRows(tableNum(InventItemPurchSetup), fieldNum(InventItemPurchSetup, ItemId), template.ItemId);
+        salesSetupRows      = this.templateRows(tableNum(InventItemSalesSetup), fieldNum(InventItemSalesSetup, ItemId), template.ItemId);
+        storageProductRows  = this.templateRows(tableNum(EcoResStorageDimensionGroupProduct), fieldNum(EcoResStorageDimensionGroupProduct, Product), template.Product);
+        trackingProductRows = this.templateRows(tableNum(EcoResTrackingDimensionGroupProduct), fieldNum(EcoResTrackingDimensionGroupProduct, Product), template.Product);
+
+        lists = new Map(Types::Integer, Types::Class);
+        for (n = first; n <= itemCount; n = chunkEnd + 1)
+        {
+            chunkEnd = min(n + 999, itemCount);
+            ttsbegin;
+            while (n <= chunkEnd)
+            {
+                itemId = HSMobileOpsLoadTestItems::itemIdOf(n);
+                name   = strFmt('LOAD TEST %1', strRFix(int2Str(n), 7, '0'));
+
+                product.clear();
+                product.DisplayProductNumber = itemId;
+                product.SearchName           = name;
+                product.ProductType          = EcoResProductType::Item;
+                product.doInsert();
+
+                translation.clear();
+                translation.Product    = product.RecId;
+                translation.LanguageId = language;
+                translation.Name       = name;
+                this.add(translation);
+
+                if (conLen(leaves))
+                {
+                    productCategory.clear();
+                    productCategory.Product           = product.RecId;
+                    productCategory.Category          = conPeek(leaves, (n mod conLen(leaves)) + 1);
+                    productCategory.CategoryHierarchy = role.CategoryHierarchy;
+                    this.add(productCategory);
+                }
+                this.copyRows(storageProductRows, fieldNum(EcoResStorageDimensionGroupProduct, Product), product.RecId);
+                this.copyRows(trackingProductRows, fieldNum(EcoResTrackingDimensionGroupProduct, Product), product.RecId);
+
+                inventTable.clear();
+                buf2Buf(template, inventTable);
+                inventTable.ItemId    = itemId;
+                inventTable.Product   = product.RecId;
+                inventTable.NameAlias = name;
+                this.add(inventTable);
+
+                this.copyRows(moduleRows, fieldNum(InventTableModule, ItemId), itemId);
+                this.copyRows(itemGroupRows, fieldNum(InventItemGroupItem, ItemId), itemId);
+                this.copyRows(modelGroupRows, fieldNum(InventModelGroupItem, ItemId), itemId);
+                this.copyRows(storageItemRows, fieldNum(EcoResStorageDimensionGroupItem, ItemId), itemId);
+                this.copyRows(trackingItemRows, fieldNum(EcoResTrackingDimensionGroupItem, ItemId), itemId);
+                this.copyRows(inventSetupRows, fieldNum(InventItemInventSetup, ItemId), itemId);
+                this.copyRows(purchSetupRows, fieldNum(InventItemPurchSetup, ItemId), itemId);
+                this.copyRows(salesSetupRows, fieldNum(InventItemSalesSetup, ItemId), itemId);
+
+                barcode.clear();
+                buf2Buf(templateBarcode, barcode);
+                barcode.ItemId      = itemId;
+                barcode.itemBarCode = HSMobileOpsLoadTestItems::barcodeOf(n);
+                this.add(barcode);
+
+                n++;
+                made++;
+            }
+            this.flush();
+            ttscommit;
+            n = chunkEnd;
+        }
+        info(strFmt('%1 load-test items created (LT-%2 to %3), copied from %4.', made,
+            strRFix(int2Str(first), 7, '0'), HSMobileOpsLoadTestItems::itemIdOf(itemCount), template.ItemId));
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>deleteAll</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Removes every LT- item and what Create wrote for it, a thousand items per transaction:
+    /// product-side rows first (found through the item), then the products, then the item rows.
+    /// </summary>
+    private void deleteAll()
+    {
+        InventTable                         inventTable;
+        InventTableModule                   module;
+        InventItemGroupItem                 itemGroup;
+        InventModelGroupItem                modelGroup;
+        EcoResStorageDimensionGroupItem     storageItem;
+        EcoResTrackingDimensionGroupItem    trackingItem;
+        InventItemInventSetup               inventSetup;
+        InventItemPurchSetup                purchSetup;
+        InventItemSalesSetup                salesSetup;
+        InventItemBarcode                   barcode;
+        EcoResProductTranslation            translation;
+        EcoResProductCategory               productCategory;
+        EcoResStorageDimensionGroupProduct  storageProduct;
+        EcoResTrackingDimensionGroupProduct trackingProduct;
+        EcoResDistinctProduct               product;
+        int                                 last = HSMobileOpsLoadTestItems::lastNumber();
+        int                                 n;
+        ItemId                              fromId;
+        ItemId                              toId;
+
+        for (n = 1; n <= last; n += 1000)
+        {
+            fromId = HSMobileOpsLoadTestItems::itemIdOf(n);
+            toId   = HSMobileOpsLoadTestItems::itemIdOf(min(n + 999, last));
+            ttsbegin;
+
+            translation.skipDataMethods(true); translation.skipDeleteActions(true); translation.skipDatabaseLog(true); translation.skipEvents(true);
+            delete_from translation
+                exists join inventTable
+                    where inventTable.Product == translation.Product
+                       && inventTable.ItemId  >= fromId && inventTable.ItemId <= toId;
+            productCategory.skipDataMethods(true); productCategory.skipDeleteActions(true); productCategory.skipDatabaseLog(true); productCategory.skipEvents(true);
+            delete_from productCategory
+                exists join inventTable
+                    where inventTable.Product == productCategory.Product
+                       && inventTable.ItemId  >= fromId && inventTable.ItemId <= toId;
+            storageProduct.skipDataMethods(true); storageProduct.skipDeleteActions(true); storageProduct.skipDatabaseLog(true); storageProduct.skipEvents(true);
+            delete_from storageProduct
+                exists join inventTable
+                    where inventTable.Product == storageProduct.Product
+                       && inventTable.ItemId  >= fromId && inventTable.ItemId <= toId;
+            trackingProduct.skipDataMethods(true); trackingProduct.skipDeleteActions(true); trackingProduct.skipDatabaseLog(true); trackingProduct.skipEvents(true);
+            delete_from trackingProduct
+                exists join inventTable
+                    where inventTable.Product == trackingProduct.Product
+                       && inventTable.ItemId  >= fromId && inventTable.ItemId <= toId;
+            product.skipDataMethods(true); product.skipDeleteActions(true); product.skipDatabaseLog(true); product.skipEvents(true);
+            delete_from product
+                where product.DisplayProductNumber >= fromId && product.DisplayProductNumber <= toId;
+
+            barcode.skipDataMethods(true); barcode.skipDeleteActions(true); barcode.skipDatabaseLog(true); barcode.skipEvents(true);
+            delete_from barcode where barcode.ItemId >= fromId && barcode.ItemId <= toId;
+            module.skipDataMethods(true); module.skipDeleteActions(true); module.skipDatabaseLog(true); module.skipEvents(true);
+            delete_from module where module.ItemId >= fromId && module.ItemId <= toId;
+            itemGroup.skipDataMethods(true); itemGroup.skipDeleteActions(true); itemGroup.skipDatabaseLog(true); itemGroup.skipEvents(true);
+            delete_from itemGroup where itemGroup.ItemId >= fromId && itemGroup.ItemId <= toId;
+            modelGroup.skipDataMethods(true); modelGroup.skipDeleteActions(true); modelGroup.skipDatabaseLog(true); modelGroup.skipEvents(true);
+            delete_from modelGroup where modelGroup.ItemId >= fromId && modelGroup.ItemId <= toId;
+            storageItem.skipDataMethods(true); storageItem.skipDeleteActions(true); storageItem.skipDatabaseLog(true); storageItem.skipEvents(true);
+            delete_from storageItem where storageItem.ItemId >= fromId && storageItem.ItemId <= toId;
+            trackingItem.skipDataMethods(true); trackingItem.skipDeleteActions(true); trackingItem.skipDatabaseLog(true); trackingItem.skipEvents(true);
+            delete_from trackingItem where trackingItem.ItemId >= fromId && trackingItem.ItemId <= toId;
+            inventSetup.skipDataMethods(true); inventSetup.skipDeleteActions(true); inventSetup.skipDatabaseLog(true); inventSetup.skipEvents(true);
+            delete_from inventSetup where inventSetup.ItemId >= fromId && inventSetup.ItemId <= toId;
+            purchSetup.skipDataMethods(true); purchSetup.skipDeleteActions(true); purchSetup.skipDatabaseLog(true); purchSetup.skipEvents(true);
+            delete_from purchSetup where purchSetup.ItemId >= fromId && purchSetup.ItemId <= toId;
+            salesSetup.skipDataMethods(true); salesSetup.skipDeleteActions(true); salesSetup.skipDatabaseLog(true); salesSetup.skipEvents(true);
+            delete_from salesSetup where salesSetup.ItemId >= fromId && salesSetup.ItemId <= toId;
+            inventTable.skipDataMethods(true); inventTable.skipDeleteActions(true); inventTable.skipDatabaseLog(true); inventTable.skipEvents(true);
+            delete_from inventTable where inventTable.ItemId >= fromId && inventTable.ItemId <= toId;
+
+            ttscommit;
+        }
+        info(strFmt('Load-test items removed (LT-0000001 to %1).', HSMobileOpsLoadTestItems::itemIdOf(last)));
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>description</Name>
+				<Source><![CDATA[
+
+    public static ClassDescription description()
+    {
+        return 'Inventory hub load-test items';
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>main</Name>
+				<Source><![CDATA[
+
+    public static void main(Args _args)
+    {
+        HSMobileOpsLoadTestItems job = new HSMobileOpsLoadTestItems();
+
+        if (job.prompt())
+        {
+            job.runOperation();
+        }
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

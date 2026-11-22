@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsResolveExportExecutionResponse</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// [success] false with [errorCode] `'PENDING'` means the batch job hasn't reached the point of
+/// creating its own `DMFExecution` row yet - not a failure, just not ready; the app keeps polling
+/// `HSMobileOpsCountingService::resolveExportExecution` on the same interval it polls anything
+/// else. Any other [errorCode] is a real failure. [executionId] is set only when [success].
+/// </summary>
+[DataContractAttribute]
+class HSMobileOpsResolveExportExecutionResponse
+{
+    boolean success;
+    str     errorCode;
+    str     executionId;
+
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmSuccess</Name>
+				<Source><![CDATA[
+    [DataMemberAttribute('Success')]
+    public boolean parmSuccess(boolean _value = success)
+    {
+        success = _value;
+        return success;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmErrorCode</Name>
+				<Source><![CDATA[
+    [DataMemberAttribute('ErrorCode')]
+    public str parmErrorCode(str _value = errorCode)
+    {
+        errorCode = _value;
+        return errorCode;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmExecutionId</Name>
+				<Source><![CDATA[
+    [DataMemberAttribute('ExecutionId')]
+    public str parmExecutionId(str _value = executionId)
+    {
+        executionId = _value;
+        return executionId;
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

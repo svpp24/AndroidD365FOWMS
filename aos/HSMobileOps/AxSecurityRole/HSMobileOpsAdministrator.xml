@@ -14,6 +14,9 @@
 		<AxSecurityDutyReference>
 			<Name>HSMobileOpsMaintainLicense</Name>
 		</AxSecurityDutyReference>
+		<AxSecurityDutyReference>
+			<Name>HSMobileOpsViewWorkspace</Name>
+		</AxSecurityDutyReference>
 	</Duties>
 	<Privileges>
 		<AxSecurityPrivilegeReference>

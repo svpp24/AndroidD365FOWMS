@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsExportStartResponse</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+[DataContractAttribute]
+class HSMobileOpsExportStartResponse
+{
+    boolean success;
+    str     errorCode;
+    str     executionId;
+
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmSuccess</Name>
+				<Source><![CDATA[
+    [DataMemberAttribute('Success')]
+    public boolean parmSuccess(boolean _value = success)
+    {
+        success = _value;
+        return success;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmErrorCode</Name>
+				<Source><![CDATA[
+    [DataMemberAttribute('ErrorCode')]
+    public str parmErrorCode(str _value = errorCode)
+    {
+        errorCode = _value;
+        return errorCode;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmExecutionId</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Handed back to getExportStatus to poll this run - see HSMobileOpsCountingService's own
+    /// class doc: getExportStatus does not exist yet, so this id has nowhere to go yet either.
+    /// </summary>
+    [DataMemberAttribute('ExecutionId')]
+    public str parmExecutionId(str _value = executionId)
+    {
+        executionId = _value;
+        return executionId;
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>
