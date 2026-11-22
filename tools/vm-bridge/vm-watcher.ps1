@@ -12,6 +12,7 @@
       status   what this VM has: paths, services, admin rights
       compare  repo model files vs the VM's model files (same / different / only on one side)
       deploy   copy the named repo files into the model; each overwritten file is backed up first
+      fetch    copy the named model files from the VM to the PC, to diff them there (read-only)
       build    compile the model (xppc), errors in the summary
       restart  restart IIS (the AOS) and the batch service, to load a new build
       dbsync   full database sync (only when tables or enums changed; long)
@@ -37,8 +38,30 @@ if (-not $Packages) {
 if (-not $Packages) { throw 'PackagesLocalDirectory not found - pass -Packages <path>' }
 if (-not (Test-Path $Bridge)) { throw "$Bridge not reachable - is the PC's C: drive shared in this RDP session (Local Resources > More > Drives)?" }
 
+# Models on the VM by their descriptors (<package>\Descriptor\<model>.xml): a few hundred small
+# files. Listing class folders instead reads hundreds of thousands of files - minutes on the VM.
+function Get-Models {
+    Get-ChildItem -Path $Packages -Directory -ErrorAction SilentlyContinue | ForEach-Object {
+        $descriptors = Join-Path $_.FullName 'Descriptor'
+        if (Test-Path $descriptors) {
+            Get-ChildItem -LiteralPath $descriptors -Filter *.xml -File -ErrorAction SilentlyContinue |
+                ForEach-Object { [pscustomobject]@{ Package = $_.Directory.Parent.Name; Model = $_.BaseName } }
+        }
+    }
+}
+Write-Host "vm-bridge: starting (packages $Packages)"
+# The model may sit under another package or model name than HSMobileOps\HSMobileOps.
+if (-not (Test-Path (Join-Path $Packages "$Package\$Model"))) {
+    $found = @(Get-Models | Where-Object { Test-Path (Join-Path $Packages "$($_.Package)\$($_.Model)\AxClass\HSMobileOpsSkuPageService.xml") })
+    if ($found.Count -eq 1) {
+        $Package = $found[0].Package
+        $Model   = $found[0].Model
+    }
+}
 $PackageDir = Join-Path $Packages $Package
 $ModelDir   = Join-Path $PackageDir $Model
+$boundParams = $PSBoundParameters
+$scriptTime  = (Get-Item -LiteralPath $PSCommandPath).LastWriteTime
 $Requests   = Join-Path $Bridge 'requests'
 $Results    = Join-Path $Bridge 'results'
 $Done       = Join-Path $Bridge 'done'
@@ -47,8 +70,8 @@ New-Item -ItemType Directory -Force -Path $Requests, $Results, $Done, $Backups |
 # Repo path (relative to aos\HSMobileOps) -> path on the VM. Descriptor sits at package level.
 function Get-VmPath([string]$relative) {
     $rel = $relative -replace '/', '\'
-    if ($rel -match '(^|\\)\.\.(\\|$)' -or [IO.Path]::IsPathRooted($rel)) { throw "not a model path: $relative" }
-    if ($rel -like 'Descriptor\*') { return Join-Path $PackageDir $rel }
+    # Only the model's X++ objects: <AxType>\<name>.xml. Nothing else in or outside the model.
+    if ($rel -notmatch '^Ax[A-Za-z]+\\[A-Za-z0-9_]+\.xml$') { throw "not a model object: $relative" }
     return Join-Path $ModelDir $rel
 }
 
@@ -65,6 +88,8 @@ function Invoke-Status {
         "admin: $admin",
         "packages: $Packages",
         "model folder: $ModelDir (exists: $(Test-Path $ModelDir))",
+        "models with HSMobileOpsSkuPageService: $((@(Get-Models | Where-Object { Test-Path (Join-Path $Packages "$($_.Package)\$($_.Model)\AxClass\HSMobileOpsSkuPageService.xml") }) | ForEach-Object { "$($_.Package)\$($_.Model)" }) -join '; ')",
+        "models named like HSMobile / HS: $((@(Get-Models | Where-Object { $_.Package -like 'HS*' -or $_.Model -like 'HS*' }) | ForEach-Object { "$($_.Package)\$($_.Model)" }) -join '; ')",
         "xppc: $(Test-Path (Join-Path $Packages 'bin\xppc.exe'))",
         "SyncEngine: $(Test-Path (Join-Path $Packages 'bin\SyncEngine.exe'))",
         "services: $($services -join ', ')",
@@ -73,16 +98,23 @@ function Invoke-Status {
     return @{ ok = $true; summary = ($lines -join "`n"); log = ($lines -join "`n") }
 }
 
-function Invoke-Compare {
-    $repoFiles = Get-ChildItem -LiteralPath $Source -Recurse -File | ForEach-Object { $_.FullName.Substring($Source.Length + 1) }
+function Invoke-Compare($hashes) {
+    # The PC sends the repo's hashes (vm.ps1): reading every repo file over the RDP drive takes many minutes.
+    $repoHash = @{}
+    if ($hashes) {
+        $hashes.PSObject.Properties | ForEach-Object { $repoHash[$_.Name -replace '/', '\'] = $_.Value }
+    } else {
+        Get-ChildItem -Path (Join-Path $Source 'Ax*\*.xml') -File | ForEach-Object { $repoHash[$_.FullName.Substring($Source.Length + 1)] = Get-Hash $_.FullName }
+    }
+    $repoFiles = @($repoHash.Keys | Sort-Object)
     $different = @(); $onlyRepo = @(); $same = 0
     foreach ($rel in $repoFiles) {
         $vm = Get-VmPath $rel
         if (-not (Test-Path -LiteralPath $vm)) { $onlyRepo += $rel; continue }
-        if ((Get-Hash (Join-Path $Source $rel)) -ne (Get-Hash $vm)) { $different += $rel } else { $same++ }
+        if ($repoHash[$rel] -ne (Get-Hash $vm)) { $different += $rel } else { $same++ }
     }
     $repoSet = @{}; $repoFiles | ForEach-Object { $repoSet[$_.ToLower()] = $true }
-    $onlyVm = Get-ChildItem -LiteralPath $ModelDir -Recurse -File -Include *.xml |
+    $onlyVm = Get-ChildItem -Path (Join-Path $ModelDir 'Ax*\*.xml') -File |
         ForEach-Object { $_.FullName.Substring($ModelDir.Length + 1) } |
         Where-Object { -not $repoSet.ContainsKey($_.ToLower()) }
     $log = @("same: $same", '', "different ($($different.Count)):") + $different +
@@ -115,6 +147,22 @@ function Invoke-Deploy($files, [string]$id) {
     }
     $log += "backups: $backup"
     return @{ ok = $true; summary = "$(@($files).Count) file(s): " + (($log | Where-Object { $_ -notlike 'backups:*' } | ForEach-Object { ($_ -split '\s+')[0] } | Group-Object | ForEach-Object { "$($_.Count) $($_.Name)" }) -join ', '); log = ($log -join "`n") }
+}
+
+function Invoke-Fetch($files, [string]$id) {
+    # Read-only: copies the named model objects from the VM to the PC (bridge\fetched\<id>), for diffing there.
+    if (-not $files -or @($files).Count -eq 0) { throw 'fetch needs files' }
+    $target = Join-Path (Join-Path $Bridge 'fetched') $id
+    $log = @()
+    foreach ($rel in $files) {
+        $from = Get-VmPath $rel
+        if (-not (Test-Path -LiteralPath $from)) { $log += "missing  $rel"; continue }
+        $to = Join-Path $target ($rel -replace '/', '\')
+        New-Item -ItemType Directory -Force -Path (Split-Path $to) | Out-Null
+        Copy-Item -LiteralPath $from -Destination $to -Force
+        $log += "fetched  $rel"
+    }
+    return @{ ok = $true; summary = "$(@($log | Where-Object { $_ -like 'fetched*' }).Count) of $(@($files).Count) fetched to $target"; log = ($log -join "`n") }
 }
 
 function Invoke-Build([string]$id) {
@@ -166,9 +214,17 @@ function Write-Result([string]$id, [string]$action, $result, [datetime]$started)
 
 Write-Host "vm-bridge: watching $Requests (packages $Packages). Ctrl+C to stop."
 while ($true) {
+    # The PC changed this script: start again with the new version (no restart in the RDP session).
+    if ((Get-Item -LiteralPath $PSCommandPath).LastWriteTime -ne $scriptTime) {
+        Write-Host "$(Get-Date -Format T)  script changed - reloading"
+        & $PSCommandPath @boundParams
+        return
+    }
     foreach ($file in (Get-ChildItem -LiteralPath $Requests -Filter *.json | Sort-Object Name)) {
         $started = Get-Date
         $id = $file.BaseName
+        # Seen by vm.ps1: picked up and working, however long it takes.
+        Set-Content -LiteralPath (Join-Path $Results "$id.started") -Value $started.ToString('o')
         $action = '?'
         try {
             $request = Get-Content -Raw -LiteralPath $file.FullName | ConvertFrom-Json
@@ -176,8 +232,9 @@ while ($true) {
             Write-Host "$(Get-Date -Format T)  $id  $action ..."
             $result = switch ($action) {
                 'status'  { Invoke-Status }
-                'compare' { Invoke-Compare }
+                'compare' { Invoke-Compare $request.hashes }
                 'deploy'  { Invoke-Deploy $request.files $id }
+                'fetch'   { Invoke-Fetch $request.files $id }
                 'build'   { Invoke-Build $id }
                 'restart' { Invoke-Restart }
                 'dbsync'  { Invoke-DbSync }
@@ -187,7 +244,8 @@ while ($true) {
             $result = @{ ok = $false; summary = "failed: $($_.Exception.Message)"; log = ($_ | Out-String) }
         }
         Write-Result $id $action $result $started
-        Move-Item -LiteralPath $file.FullName -Destination (Join-Path $Done $file.Name) -Force
+        # The PC may have withdrawn the request meanwhile: not an error.
+        Move-Item -LiteralPath $file.FullName -Destination (Join-Path $Done $file.Name) -Force -ErrorAction SilentlyContinue
         Write-Host "$(Get-Date -Format T)  $id  $action -> $(if ($result.ok) { 'ok' } else { 'FAILED' })"
     }
     Start-Sleep -Seconds 2
