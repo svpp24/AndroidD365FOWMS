@@ -8,8 +8,11 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.input.TextFieldDecorator
+import androidx.compose.foundation.text.input.TextFieldLineLimits
+import androidx.compose.foundation.text.input.clearText
+import androidx.compose.foundation.text.input.rememberTextFieldState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material3.Icon
@@ -78,13 +81,14 @@ fun ScanPillField(
         return
     }
 
-    var text by rememberSaveable { mutableStateOf("") }
+    // Kept across a rotation or process death, as the rememberSaveable string was.
+    val text = rememberTextFieldState()
     val focus = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
     var hadFocus by remember { mutableStateOf(false) }
     fun close() {
         keyboard?.hide()
-        text = ""
+        text.clearText()
         typing = false
     }
 
@@ -98,10 +102,10 @@ fun ScanPillField(
     }
     BackHandler { close() }
 
+    // State-based (Compose 1.13 deprecated the value-based one). Single line: no newline gets in.
     BasicTextField(
-        value = text,
-        onValueChange = { text = it.replace("\n", "") },
-        singleLine = true,
+        state = text,
+        lineLimits = TextFieldLineLimits.SingleLine,
         textStyle = FocusType.fieldValue.copy(color = FocusColors.ink),
         // No blinking cursor - the pill's orange border says where the typing goes.
         cursorBrush = SolidColor(Color.Transparent),
@@ -111,11 +115,11 @@ fun ScanPillField(
             keyboardType = keyboardType,
             imeAction = ImeAction.Done,
         ),
-        keyboardActions = KeyboardActions(onDone = {
-            val value = text.trim()
+        onKeyboardAction = {
+            val value = text.text.toString().trim()
             close()
             if (value.isNotEmpty()) submit(value)
-        }),
+        },
         modifier = modifier
             .fillMaxWidth()
             .focusRequester(focus)
@@ -123,7 +127,7 @@ fun ScanPillField(
                 if (it.isFocused) hadFocus = true else if (hadFocus) close()
             }
             .semantics { contentDescription = label },
-        decorationBox = { field ->
+        decorator = TextFieldDecorator { field ->
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -133,7 +137,7 @@ fun ScanPillField(
             ) {
                 Icon(BarcodeGlyph, contentDescription = null, tint = FocusColors.navy, modifier = Modifier.size(26.dp))
                 Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
-                    if (text.isEmpty()) Text(label, style = FocusType.pill, color = FocusColors.muted)
+                    if (text.text.isEmpty()) Text(label, style = FocusType.pill, color = FocusColors.muted)
                     field()
                 }
                 Icon(Icons.Filled.Keyboard, contentDescription = null, tint = FocusColors.action, modifier = Modifier.size(24.dp))

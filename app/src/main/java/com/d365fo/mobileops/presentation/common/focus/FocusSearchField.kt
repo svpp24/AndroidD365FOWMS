@@ -10,8 +10,8 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.input.TextFieldLineLimits
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Search
@@ -49,6 +49,9 @@ fun FocusSearchField(
 ) {
     var focused by remember { mutableStateOf(false) }
     val focusManager = LocalFocusManager.current
+    // The state-based field (Compose 1.13 deprecated the value-based one); callers still pass a
+    // value - the list filters from their ViewModel.
+    val state = com.d365fo.mobileops.presentation.common.components.rememberSyncedTextFieldState(value, onValueChange)
     val shell = if (focused) {
         Modifier.clip(FocusShapes.pill).background(FocusColors.surface).border(3.dp, FocusColors.action, FocusShapes.pill)
     } else {
@@ -65,19 +68,18 @@ fun FocusSearchField(
     ) {
         Icon(Icons.Filled.Search, contentDescription = null, tint = FocusColors.navy, modifier = Modifier.size(24.dp))
         Box(Modifier.weight(1f).padding(vertical = 12.dp)) {
-            if (value.isEmpty()) Text(placeholder, style = FocusType.pill, color = FocusColors.muted)
+            if (state.text.isEmpty()) Text(placeholder, style = FocusType.pill, color = FocusColors.muted)
             BasicTextField(
-                value = value,
-                onValueChange = onValueChange,
-                singleLine = true,
+                state = state,
+                lineLimits = TextFieldLineLimits.SingleLine,
                 textStyle = FocusType.pill.copy(color = FocusColors.ink),
                 cursorBrush = SolidColor(FocusColors.action),
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
+                onKeyboardAction = { focusManager.clearFocus() },
                 modifier = Modifier.fillMaxWidth().onFocusChanged { focused = it.isFocused },
             )
         }
-        if (value.isNotEmpty()) {
+        if (state.text.isNotEmpty()) {
             IconButton(onClick = { onValueChange("") }, modifier = Modifier.heightIn(min = 48.dp)) {
                 Icon(Icons.Filled.Clear, contentDescription = "Clear search", tint = FocusColors.muted)
             }
