@@ -3,6 +3,7 @@ package com.d365fo.mobileops.data.remote.interceptor
 import com.d365fo.mobileops.BuildConfig
 import okhttp3.Interceptor
 import okhttp3.Response
+import okhttp3.ResponseBody.Companion.toResponseBody
 import java.io.IOException
 
 /**
@@ -42,7 +43,7 @@ object SimulatedThrottle : Interceptor {
                 .code(429)
                 .message("Too Many Requests")
                 .header("Retry-After", retryAfterSeconds.toString())
-                .body(okhttp3.ResponseBody.create(null, ""))
+                .body("".toResponseBody(null))
                 .build()
         }
         return chain.proceed(chain.request())

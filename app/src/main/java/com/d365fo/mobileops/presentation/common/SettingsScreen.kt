@@ -2,7 +2,6 @@ package com.d365fo.mobileops.presentation.common
 
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Assignment
 import androidx.compose.material.icons.filled.Route
 import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.Dns
@@ -52,6 +51,7 @@ import androidx.compose.material.icons.outlined.Warehouse
 import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.outlined.Link
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Assignment
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
@@ -82,11 +82,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.ClipEntry
+import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
@@ -103,6 +103,7 @@ import com.d365fo.mobileops.data.local.entity.WorkerPermissionEntity
 import com.d365fo.mobileops.data.logging.LogEntry
 import com.d365fo.mobileops.domain.model.WarehouseWorkflow
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.launch
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import com.d365fo.mobileops.data.security.DisplayScale
@@ -538,7 +539,9 @@ private fun SettingsMenu(
 @Composable
 private fun LogsSection(viewModel: LogViewerViewModel = hiltViewModel()) {
     val entries by viewModel.entries.collectAsStateWithLifecycle()
-    val clipboard = LocalClipboardManager.current
+    // LocalClipboard is the suspend API that replaced LocalClipboardManager.
+    val clipboard = LocalClipboard.current
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
     val context = LocalContext.current
     var expandedId by remember { mutableStateOf<Long?>(null) }
     var shown by remember { mutableStateOf(LOG_PAGE) }
@@ -551,8 +554,12 @@ private fun LogsSection(viewModel: LogViewerViewModel = hiltViewModel()) {
             com.d365fo.mobileops.presentation.common.focus.FocusButton(
                 "Copy all",
                 onClick = {
-                    clipboard.setText(AnnotatedString(entries.joinToString("\n") { it.toLogLine() }))
-                    Toast.makeText(context, "Copied ${entries.size} log lines", Toast.LENGTH_SHORT).show()
+                    val text = entries.joinToString("\n") { it.toLogLine() }
+                    val count = entries.size
+                    scope.launch {
+                        clipboard.setClipEntry(ClipEntry(android.content.ClipData.newPlainText("Logs", text)))
+                        Toast.makeText(context, "Copied $count log lines", Toast.LENGTH_SHORT).show()
+                    }
                 },
                 modifier = Modifier.weight(1f),
             )
@@ -1183,7 +1190,7 @@ private fun OfflineSection(warehouseId: String?, viewModel: OfflineReadyViewMode
     val saved = readiness.savedAt?.takeIf { readiness.warehouseId == warehouseId }
     com.d365fo.mobileops.presentation.common.focus.FocusListRow(
         title = "Open orders and counts",
-        icon = androidx.compose.material.icons.Icons.Filled.Assignment,
+        icon = androidx.compose.material.icons.Icons.AutoMirrored.Filled.Assignment,
         subtitle = when {
             readiness.running -> "Saving…"
             saved != null -> "${readiness.purchaseOrders} POs · ${readiness.transferOrders} TOs · ${readiness.counts} " +
