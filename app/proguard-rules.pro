@@ -13,11 +13,6 @@
 # --- Room -----------------------------------------------------------------
 -keep class * extends androidx.room.RoomDatabase { <init>(); }
 
-# --- MSAL -----------------------------------------------------------------
--keep class com.microsoft.identity.** { *; }
--keep class com.microsoft.aad.** { *; }
--dontwarn com.microsoft.identity.**
-
 # --- Offline licensing (certificate-chain design) --------------------------
 # The general kotlinx.serialization rule above already globs this package, but an explicit
 # block keeps the licensing payload classes self-documenting and defensive against that glob
