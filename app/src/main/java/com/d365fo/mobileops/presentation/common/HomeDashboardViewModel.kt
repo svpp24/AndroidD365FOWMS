@@ -92,7 +92,7 @@ class HomeDashboardViewModel @Inject constructor(
             // Kept for a short while like the PO and transfer figures (ListCache) - Home showed again
             // on every return, and asked each time (13 Nov, performance). The Count lists ask fresh.
             val open = (listCache.get("counts:${wh.uppercase()}", ttlMs = 45_000L) { countRequests.counts(wh) } as? NetworkResult.Success)?.data?.count { it.open }
-            Timber.w("Home counts: open counts in %d ms", System.currentTimeMillis() - started)
+            Timber.i("Home counts: open counts in %d ms", System.currentTimeMillis() - started)
             if (open != null) set(wh) { it.copy(countsInProgress = open) }
         }
         viewModelScope.launch {
@@ -100,7 +100,7 @@ class HomeDashboardViewModel @Inject constructor(
             // receive - one received in full earlier today no longer counts (user, 9 Nov: the
             // card said 3 while the list showed 1).
             val due = (lookup.lookupOrdersForToday(wh) as? NetworkResult.Success)?.data?.count { it.receivable }
-            Timber.w("Home counts: POs due today in %d ms", System.currentTimeMillis() - started)
+            Timber.i("Home counts: POs due today in %d ms", System.currentTimeMillis() - started)
             if (due != null) set(wh) { it.copy(posDueToday = due) }
         }
         viewModelScope.launch {
@@ -108,7 +108,7 @@ class HomeDashboardViewModel @Inject constructor(
             // the overdue ones stay in Enquiry > Transfer orders.
             val today = java.time.LocalDate.now().toString()
             val open = (transfers.openTransferOrders(wh) as? NetworkResult.Success)?.data
-            Timber.w("Home counts: transfers in %d ms", System.currentTimeMillis() - started)
+            Timber.i("Home counts: transfers in %d ms", System.currentTimeMillis() - started)
             if (open != null) {
                 set(wh) {
                     it.copy(

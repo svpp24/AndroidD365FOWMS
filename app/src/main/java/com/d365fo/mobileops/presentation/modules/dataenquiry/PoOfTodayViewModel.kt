@@ -41,11 +41,15 @@ data class PoOfTodayState(
     val busy: Boolean = false,
     val error: String? = null,
 ) {
-    /** The orders under the chosen chip whose number or vendor holds the search text. */
+    /** The orders under the chosen chip whose number or vendor (account or name) holds the search text. */
     val visible: List<PurchaseOrderSummary>
-        get() = orders.filter { it.dueIn(filter) }.filter {
-            query.isBlank() || it.purchId.contains(query.trim(), ignoreCase = true) ||
-                it.vendorAccount.contains(query.trim(), ignoreCase = true)
+        get() {
+            val q = query.trim()
+            return orders.filter { it.dueIn(filter) }.filter {
+                q.isEmpty() || it.purchId.contains(q, ignoreCase = true) ||
+                    it.vendorAccount.contains(q, ignoreCase = true) ||
+                    it.vendorName.contains(q, ignoreCase = true)
+            }
         }
 }
 

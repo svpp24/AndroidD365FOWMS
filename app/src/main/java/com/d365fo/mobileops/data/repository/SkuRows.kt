@@ -4,6 +4,7 @@ import com.d365fo.mobileops.data.local.entity.BarcodeEntity
 import com.d365fo.mobileops.data.local.entity.ItemEntity
 import com.d365fo.mobileops.data.local.entity.ItemVariantEntity
 import com.d365fo.mobileops.data.local.entity.TrackingRequirement
+import com.d365fo.mobileops.util.collapseSpaces
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.decodeToSequence
@@ -41,7 +42,7 @@ internal object SkuRows {
         val serial = flag(6)
         ItemEntity(
             itemId = itemId,
-            itemName = text(1),
+            itemName = text(1).collapseSpaces(),
             searchName = text(1).ifBlank { null },
             inventoryUnit = text(2),
             purchaseUnit = text(3).ifBlank { null },

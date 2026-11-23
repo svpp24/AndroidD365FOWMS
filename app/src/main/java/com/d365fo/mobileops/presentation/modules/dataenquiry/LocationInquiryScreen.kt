@@ -74,7 +74,7 @@ fun LocationInquiryScreen(
     // open for put-away); a band only when the location can't be found or read. Scan or type the
     // next location in the pill.
     com.d365fo.mobileops.presentation.common.focus.FocusScreen(
-        title = "Location inquiry",
+        title = "Location enquiry",
         // In the location's category tree the arrow goes up a level, as the system Back does.
         onBack = { if (!viewModel.categoryUp()) onBack() },
         counter = state.warehouseId.takeIf { it.isNotBlank() },
@@ -137,7 +137,7 @@ fun LocationEntryScreen(
     onBack: () -> Unit,
 ) {
     TextEntryScreen(
-        title = "Location inquiry",
+        title = "Location enquiry",
         hint = "Scan or enter location",
         onBack = onBack,
         onSubmit = { value ->

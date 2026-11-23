@@ -783,7 +783,7 @@ internal fun screenLabel(route: String?): String = when {
     route == Routes.PURCHASE_RETURN -> "Purchase return"
     route.startsWith("orders/po/confirm") -> "PO confirmation"
     route.startsWith("counting/") -> "Inventory count"
-    route.startsWith(Routes.INQUIRY_LOCATION) -> "Location inquiry"
+    route.startsWith(Routes.INQUIRY_LOCATION) -> "Location enquiry"
     route == Routes.INQUIRY_PO_TODAY -> "Purchase orders"
     route.startsWith(Routes.INQUIRY_ITEMS) -> "Items by category"
     route == Routes.INQUIRY_PRICE -> "Price check"

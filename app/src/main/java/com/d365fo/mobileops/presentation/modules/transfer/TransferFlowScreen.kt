@@ -1014,7 +1014,7 @@ fun TransferEntryScreen(
 
 /** What the scan box asks for at each transfer step (#30, user 16 Nov 2026). */
 internal fun transferScanLabel(step: TransferStep, ship: Boolean = true): String = when (step) {
-    TransferStep.TRANSFER_ORDER -> "Scan the transfer number"
+    TransferStep.TRANSFER_ORDER -> "Scan the order number"
     TransferStep.ITEM -> if (ship) "Scan an item to ship" else "Scan an item to receive"
     TransferStep.QUANTITY -> "Type the quantity"
     TransferStep.LOCATION -> "Scan the location"

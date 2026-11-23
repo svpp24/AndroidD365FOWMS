@@ -60,6 +60,8 @@ class ScanRoutingTest {
         fun `an unknown barcode is turned away`() = runTest {
             val r = route("ZZZ", ScanContext.Home) as ScanRoute.Reject
             assertThat(r.reason).isEqualTo(RejectReason.UNKNOWN)
+            // Home only opens things, so it never says "nothing added".
+            assertThat(r.line).isEqualTo("ZZZ · no item, order or location")
         }
     }
 
@@ -125,7 +127,9 @@ class ScanRoutingTest {
 
         @Test
         fun `an unknown barcode is turned away`() = runTest {
-            assertThat((route("ZZZ", onOrder) as ScanRoute.Reject).reason).isEqualTo(RejectReason.UNKNOWN)
+            val r = route("ZZZ", onOrder) as ScanRoute.Reject
+            assertThat(r.reason).isEqualTo(RejectReason.UNKNOWN)
+            assertThat(r.line).isEqualTo("ZZZ · nothing added")
         }
     }
 

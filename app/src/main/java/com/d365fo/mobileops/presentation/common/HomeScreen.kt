@@ -190,7 +190,7 @@ internal val MODULES = listOf(
     // Same order DataEnquiryScreen used to list them in; the three with route = null are exactly
     // the three that screen's own EnquiryTile list already marked not built yet.
     ModuleTile(
-        title = "Location inquiry",
+        title = "Location enquiry",
         summary = "Check a location",
         detail = "Scan a location to see what is on it, by category.",
         d365 = "WarehouseLocations (OData reads only)",
