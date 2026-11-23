@@ -31,6 +31,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -91,6 +96,11 @@ fun ScanPillField(
         text.clearText()
         typing = false
     }
+    fun send() {
+        val value = text.text.toString().trim()
+        close()
+        if (value.isNotEmpty()) submit(value)
+    }
 
     DisposableEffect(Unit) {
         bridge.enabled = false
@@ -115,13 +125,17 @@ fun ScanPillField(
             keyboardType = keyboardType,
             imeAction = ImeAction.Done,
         ),
-        onKeyboardAction = {
-            val value = text.text.toString().trim()
-            close()
-            if (value.isNotEmpty()) submit(value)
-        },
+        onKeyboardAction = { send() },
         modifier = modifier
             .fillMaxWidth()
+            // A hardware Enter (keyboard or wedge) sends on key-up, not key-down: sent on the down,
+            // the pill was gone before the up arrived, and that stray up gave focus to the first
+            // control on the screen (Back or the Home header showed a grey focus ring).
+            .onPreviewKeyEvent { event ->
+                if (event.key != Key.Enter && event.key != Key.NumPadEnter) return@onPreviewKeyEvent false
+                if (event.type == KeyEventType.KeyUp) send()
+                true
+            }
             .focusRequester(focus)
             .onFocusChanged {
                 if (it.isFocused) hadFocus = true else if (hadFocus) close()

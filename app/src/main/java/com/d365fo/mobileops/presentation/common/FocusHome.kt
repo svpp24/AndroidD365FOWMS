@@ -436,7 +436,7 @@ internal fun FocusHomeSample(band: Boolean = false) {
         warehouseCode = "AAC",
         warehouseName = "BSP - American Academy of Cosmetic Surgery Hospital",
         online = !band,
-        band = if (band) BandState(BandKind.Bad, "Not recognised", "XJ-55-AB · nothing added") else null,
+        band = if (band) BandState(BandKind.Bad, "Not recognised", "XJ-55-AB · no item, order or location") else null,
         rows = listOf(
             HomeEntry(LineIcons.Receive, "Receive", "4") {},
             HomeEntry(LineIcons.Ship, "Ship", "12") {},

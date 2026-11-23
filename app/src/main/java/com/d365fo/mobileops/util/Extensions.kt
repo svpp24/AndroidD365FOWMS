@@ -27,5 +27,10 @@ fun BigDecimal.deviationPercentFrom(expected: BigDecimal): BigDecimal =
         .multiply(BigDecimal(100))
         .setScale(2, RoundingMode.HALF_UP)
 
+private val SPACE_RUN = Regex(" {2,}")
+
+/** A D365 name for display: trimmed, runs of spaces as one ("BECLOMET  NASAL AQUA"). */
+fun String.collapseSpaces(): String = trim().replace(SPACE_RUN, " ")
+
 fun <T> List<T>.chunkedForRoom(): List<List<T>> = chunked(Constants.DB_BATCH_SIZE)
 fun <T> List<T>.chunkedForOData(): List<List<T>> = chunked(Constants.ODATA_BATCH_WRITE_SIZE)

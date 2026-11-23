@@ -106,7 +106,7 @@ private fun routeFromHome(identity: ScanIdentity): ScanRoute = when (identity) {
     }
     is ScanIdentity.Bin -> ScanRoute.StartStoreCount(identity, identity.bin)
     is ScanIdentity.Location -> ScanRoute.OpenLocation(identity, identity.locationId)
-    is ScanIdentity.Unknown -> unknown(identity)
+    is ScanIdentity.Unknown -> unknown(identity, fromHome = true)
 }
 
 private fun routeInFlow(identity: ScanIdentity, flow: ScanContext.Flow): ScanRoute {
@@ -155,19 +155,24 @@ private fun routeInFlow(identity: ScanIdentity, flow: ScanContext.Flow): ScanRou
     )
 }
 
-private fun unknown(identity: ScanIdentity): ScanRoute.Reject {
+/**
+ * Nothing on the device matches. In a flow the scan would have added a line, so the band says
+ * nothing was added; on Home a scan only opens something, so it says what the code is not.
+ */
+private fun unknown(identity: ScanIdentity, fromHome: Boolean = false): ScanRoute.Reject {
     val gs1 = (identity as? ScanIdentity.Unknown)?.gs1
+    val outcome = if (fromHome) "no item, order or location" else "nothing added"
     return if (gs1 != null) {
         ScanRoute.Reject(
             identity, RejectReason.UNKNOWN,
             "Item not found",
-            "GTIN ${gs1.gtin} · nothing added",
+            "GTIN ${gs1.gtin} · $outcome",
         )
     } else {
         ScanRoute.Reject(
             identity, RejectReason.UNKNOWN,
             "Not recognised",
-            "${identity.raw.value.trim()} · nothing added",
+            "${identity.raw.value.trim()} · $outcome",
         )
     }
 }

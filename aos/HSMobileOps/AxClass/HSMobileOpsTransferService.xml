@@ -81,7 +81,7 @@ class HSMobileOpsTransferService
             if (!transferTable.RecId)
             {
                 response.parmErrorCode('NOT_FOUND');
-                response.parmMessage(strFmt('No transfer order %1 in %2', transferId, company));
+                response.parmMessage(strFmt('No transfer order %1 in %2', transferId, strUpr(company)));
                 return response;
             }
 

@@ -215,8 +215,10 @@ fun PriceCheckScreen(
             FocusCenter(task = FocusTask("Scan an item", "to see its price", androidx.compose.material.icons.Icons.Outlined.QrCodeScanner), caption = "", code = "")
             return@FocusScreen
         }
-        Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())) {
-            Column(Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) {
+        // The top gap sits outside the scroll, so scrolled content clips 8 dp below the result band
+        // rather than flush against it (it looked as if the band covered Check price).
+        Column(Modifier.weight(1f).fillMaxWidth().padding(top = 8.dp).verticalScroll(rememberScrollState())) {
+            Column(Modifier.padding(start = 20.dp, end = 20.dp, bottom = 8.dp)) {
                 Text(item.itemId, style = FocusType.rowCode, color = FocusColors.ink)
                 if (item.itemName.isNotBlank()) Text(item.itemName, style = FocusType.description, color = FocusColors.inkSoft)
                 val variant = listOfNotNull(item.variant.configId, item.variant.sizeId, item.variant.colorId, item.variant.styleId)

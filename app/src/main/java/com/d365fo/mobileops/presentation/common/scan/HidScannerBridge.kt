@@ -152,13 +152,7 @@ class HidScannerBridge @Inject constructor() {
      * this only ever swallows the phantom one.
      */
     fun justScanned(withinMs: Long = JUST_SCANNED_WINDOW_MS): Boolean {
-        val elapsed = System.currentTimeMillis() - lastScanAtMs
-        // Temporary diagnostic - the fixed window has missed this live at least twice despite
-        // being in the right place, so the actual gap needs to be measured directly rather
-        // than guessed at again. Remove once the real gap (and a window that reliably covers
-        // it) is confirmed.
-        timber.log.Timber.tag("BackKeyDiag").d("justScanned check: elapsed=%dms window=%dms", elapsed, withinMs)
-        return elapsed < withinMs
+        return System.currentTimeMillis() - lastScanAtMs < withinMs
     }
 
     /**

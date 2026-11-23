@@ -19,6 +19,7 @@ import com.d365fo.mobileops.domain.model.PurchaseOrder
 import com.d365fo.mobileops.domain.model.PurchaseOrderLine
 import com.d365fo.mobileops.domain.model.TrackingRequirement
 import com.d365fo.mobileops.util.Formatters
+import com.d365fo.mobileops.util.collapseSpaces
 import java.math.BigDecimal
 
 // ---------------------------------------------------------------------------------------
@@ -193,8 +194,9 @@ fun ReleasedProductDto.toEntity(
     locationMandatory: Boolean,
 ): ItemEntity = ItemEntity(
     itemId = itemNumber,
-    // ReleasedProductsV2 has no ProductName; SearchName is the only name it publishes.
-    itemName = searchName.orEmpty(),
+    // ReleasedProductsV2 has no ProductName; SearchName is the only name it publishes. Runs of
+    // spaces are collapsed for display ("BECLOMET  NASAL AQUA"); searchName keeps D365's text.
+    itemName = searchName.orEmpty().collapseSpaces(),
     searchName = searchName,
     inventoryUnit = inventoryUnit.orEmpty(),
     purchaseUnit = purchaseUnit,

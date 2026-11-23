@@ -40,6 +40,13 @@ class SkuRowsTest {
     }
 
     @Test
+    fun `item name shows runs of spaces as one, search name keeps D365's text`() {
+        val item = SkuRows.item(rows("""[["BSR-10063-0"," BECLOMET  NASAL AQUA ","Pcs","","","0","0","0","1"]]""").single(), 0L)!!
+        assertThat(item.itemName).isEqualTo("BECLOMET NASAL AQUA")
+        assertThat(item.searchName).isEqualTo(" BECLOMET  NASAL AQUA ")
+    }
+
+    @Test
     fun `item row without an item number is skipped`() {
         assertThat(SkuRows.item(rows("""[["  ","x","Pcs","","","0","0","0","1"]]""").single(), 0L)).isNull()
     }

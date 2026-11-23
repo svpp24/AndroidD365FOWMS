@@ -104,7 +104,7 @@ class HSMobileOpsReceivingService
             if (!purchTable.RecId)
             {
                 return HSMobileOpsReceivingService::fail(
-                    response, 'NOT_FOUND', strFmt('No purchase order %1 in %2', purchId, company));
+                    response, 'NOT_FOUND', strFmt('No purchase order %1 in %2', purchId, strUpr(company)));
             }
 
             response.parmPurchId(purchTable.PurchId);
