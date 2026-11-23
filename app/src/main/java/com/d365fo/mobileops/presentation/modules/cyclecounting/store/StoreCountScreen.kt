@@ -594,7 +594,35 @@ class StoreCountViewModel @Inject constructor(
     }
 
     fun pickVariant(variant: OrderVariant) = _state.update { s -> s.copy(pending = s.pending?.copy(variant = variant)) }
-    fun setBatch(value: String) = _state.update { s -> s.copy(pending = s.pending?.copy(batchId = value.trim())) }
+    /**
+     * The batch of the pending item. Checked against D365FO first: any text was taken (a made-up
+     * "TESTBATCH1" was counted and sent, 23 Nov 2026), and a batch the item does not have cannot
+     * go on a counting journal. Without a connection it is taken as scanned, as before, so
+     * counting still works offline - D365FO checks it again when the count is sent.
+     */
+    fun setBatch(value: String) {
+        val batch = value.trim()
+        val pending = _state.value.pending ?: return
+        if (batch.isEmpty()) return
+        fun accept() = _state.update { s ->
+            // Only if the worker is still on that item - an Undo meanwhile wins.
+            if (s.pending?.item?.itemId == pending.item.itemId) s.copy(busy = false, error = null, pending = s.pending.copy(batchId = batch))
+            else s.copy(busy = false)
+        }
+        if (!online) return accept()
+        _state.update { it.copy(busy = true, error = null) }
+        viewModelScope.launch {
+            when (val result = lookup.isBatchRegistered(pending.item.itemId, batch)) {
+                is NetworkResult.Success ->
+                    if (result.data) accept()
+                    else _state.update { it.copy(busy = false, error = "No batch $batch of ${pending.item.itemId} in D365FO - not counted.") }
+                is NetworkResult.Error ->
+                    if (result.failure.retryable) accept()
+                    else _state.update { it.copy(busy = false, error = result.failure.message) }
+                NetworkResult.Loading -> _state.update { it.copy(busy = false) }
+            }
+        }
+    }
     fun setSerial(value: String) = _state.update { s -> s.copy(pending = s.pending?.copy(serialId = value.trim())) }
     fun cancelPending() = _state.update { it.copy(pending = null) }
 

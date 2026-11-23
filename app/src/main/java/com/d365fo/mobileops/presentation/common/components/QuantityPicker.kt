@@ -1,6 +1,7 @@
 package com.d365fo.mobileops.presentation.common.components
 
 import androidx.compose.foundation.border
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -12,11 +13,14 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.d365fo.mobileops.presentation.common.theme.WarehouseDimens
@@ -66,6 +70,10 @@ fun QuantityPicker(
     // Harbour: the item code in the accent as the title, what is left as a pill, the number in
     // an accent box on the right, grey keys, and the action as the gradient button.
     val parts = subtitle?.takeIf { it.isNotBlank() }?.split(" · ").orEmpty()
+    // With a hardware keyboard or wedge the dialog opens in key mode, where Compose gives focus to
+    // its first control - the "1" key lit up, and a stray Enter would have typed a 1. Focus is
+    // parked on the number box instead: it shows nothing and does nothing (23 Nov 2026).
+    val park = remember { FocusRequester() }
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = androidx.compose.ui.graphics.Color.White,
@@ -81,6 +89,8 @@ fun QuantityPicker(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.verticalScroll(rememberScrollState()),
             ) {
+                // Inside the dialog's own content, so the number box is there to take the focus.
+                LaunchedEffect(Unit) { runCatching { park.requestFocus() } }
                 // The item code, then what else the quantity is for (name, batch, unit) under it.
                 parts.firstOrNull()?.let {
                     Text(it, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, color = WarehouseStatusColors.text1)
@@ -97,6 +107,8 @@ fun QuantityPicker(
                     textAlign = androidx.compose.ui.text.style.TextAlign.End,
                     modifier = Modifier
                         .fillMaxWidth()
+                        .focusRequester(park)
+                        .focusable()
                         .border(2.dp, WarehouseStatusColors.accent, androidx.compose.foundation.shape.RoundedCornerShape(10.dp))
                         .padding(horizontal = 12.dp, vertical = 6.dp),
                 )
