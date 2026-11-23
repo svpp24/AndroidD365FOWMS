@@ -53,6 +53,8 @@ data class CountListState(
     val error: String? = null,
     /** A cycle count supervisor does not count a hazard count - they see it by category (user, 10 Nov). */
     val supervisor: Boolean = false,
+    /** A blind count that waits for the supervisor - just asked for, or tapped. Shown in the band. */
+    val waitingFor: String? = null,
 ) {
     /** Soonest due first (user, 10 Nov); counts without a due time after them. */
     val open: List<CountSummary> get() = counts.filter { it.open }
@@ -77,19 +79,21 @@ class CountListViewModel @Inject constructor(
     val state = _state.asStateFlow()
 
     /**
-     * A blind count straight away (user, 16 Nov 2026): no categories - the supervisor tells the
-     * worker what to count. A worker then counts it ([onCreated] with its id); a supervisor sees
-     * it in the list.
+     * Asks for a blind count (user, 16 Nov 2026: any worker may). It is made empty and waits for
+     * the supervisor, who adds what to count in the count control center (user, 23 Nov 2026) -
+     * D365FO refuses to count it before that, so it is not opened: it shows in the list as
+     * waiting. One empty count is enough, so a second tap points at the one already waiting.
      */
-    fun startBlind(onCreated: (String) -> Unit) {
+    fun startBlind() {
         val wh = warehouse ?: return
         if (_state.value.loading) return
-        _state.update { it.copy(loading = true, error = null) }
+        _state.value.open.firstOrNull { it.waitingForItems }?.let { return showWaiting(it.masterId) }
+        _state.update { it.copy(loading = true, error = null, waitingFor = null) }
         viewModelScope.launch {
             when (val r = requests.create(CountType.BLIND, wh, emptyList(), emptyList())) {
                 is NetworkResult.Success -> {
+                    _state.update { it.copy(waitingFor = r.data.masterId.takeIf { id -> id.isNotBlank() }) }
                     refresh()
-                    if (!_state.value.supervisor && r.data.masterId.isNotBlank()) onCreated(r.data.masterId)
                 }
                 is NetworkResult.Error -> _state.update { it.copy(loading = false, error = r.failure.message) }
                 NetworkResult.Loading -> Unit
@@ -97,12 +101,22 @@ class CountListViewModel @Inject constructor(
         }
     }
 
+    /** A waiting blind count was tapped: say why it does not open. */
+    fun showWaiting(masterId: String) = _state.update { it.copy(waitingFor = masterId) }
+
     fun refresh() {
         val wh = warehouse ?: return _state.update { it.copy(loading = false, error = "No warehouse is assigned to you.") }
         _state.update { it.copy(loading = true, error = null) }
         viewModelScope.launch {
             when (val r = requests.counts(wh)) {
-                is NetworkResult.Success -> _state.update { s -> s.copy(loading = false, counts = r.data.filter { it.type == s.type }) }
+                is NetworkResult.Success -> _state.update { s ->
+                    s.copy(
+                        loading = false,
+                        counts = r.data.filter { it.type == s.type },
+                        // Gone once the supervisor has added items; kept when an older AOS does not list it.
+                        waitingFor = s.waitingFor?.takeUnless { id -> r.data.any { it.masterId == id && !it.waitingForItems } },
+                    )
+                }
                 is NetworkResult.Error -> _state.update { it.copy(loading = false, error = r.failure.message) }
                 NetworkResult.Loading -> Unit
             }
@@ -138,6 +152,11 @@ fun CountListScreen(
         band = when {
             state.error != null -> BandState(BandKind.Bad, "Not loaded", state.error)
             state.loading -> BandState(BandKind.Info, "Loading", "Asking D365FO for the counts of ${state.warehouseId.orEmpty()}")
+            state.waitingFor != null -> BandState(
+                BandKind.Info,
+                "Waiting for the supervisor",
+                "${state.waitingFor} has nothing to count yet",
+            )
             state.open.isEmpty() && state.type != CountType.WALL_TO_WALL ->
                 BandState(BandKind.Info, "Nothing to count", "No open ${state.type.label.lowercase()} in ${state.warehouseId.orEmpty()}")
             reviewHint != null -> BandState(BandKind.Warn, "Review $reviewHint in D365FO", "Count control center")
@@ -163,14 +182,14 @@ fun CountListScreen(
                     subtitle = if (state.type == CountType.WALL_TO_WALL) {
                         "The whole of ${state.warehouseId.orEmpty()}, for every counter here."
                     } else if (state.type == CountType.BLIND) {
-                        if (state.supervisor) "Starts at once. Tell the counter what to count." else "Starts at once. Count what your supervisor asked for."
+                        if (state.supervisor) "Add what to count in the count control center." else "Your supervisor adds what to count. You count it then."
                     } else {
                         "By category or item. Every counter of ${state.warehouseId.orEmpty()} sees it."
                     },
                     icon = androidx.compose.material.icons.Icons.Default.Add,
                     chevron = true,
                     onClick = {
-                        if (state.type == CountType.BLIND) viewModel.startBlind { id -> onJoin(id, CountType.BLIND) } else onCreate(state.type)
+                        if (state.type == CountType.BLIND) viewModel.startBlind() else onCreate(state.type)
                     },
                 )
             }
@@ -198,6 +217,7 @@ fun CountListScreen(
                         count = when {
                             state.supervisor && c.type == CountType.WALL_TO_WALL -> "Control center"
                             state.supervisor -> null
+                            c.waitingForItems -> "Waiting"
                             c.myStatus == "Counting" -> "Yours"
                             c.myStatus == "Submitted" -> "Ended"
                             else -> null
@@ -208,6 +228,8 @@ fun CountListScreen(
                             // Hazard and blind: the supervisor sees the items by category.
                             state.supervisor && c.type != CountType.WALL_TO_WALL -> ({ onCategories(c.masterId) })
                             state.supervisor -> ({ reviewHint = c.masterId })
+                            // Nothing to count yet: D365FO would refuse the join, so say so here.
+                            c.waitingForItems -> ({ viewModel.showWaiting(c.masterId) })
                             else -> ({ onJoin(if (c.type == CountType.WALL_TO_WALL) null else c.masterId, c.type) })
                         },
                     )

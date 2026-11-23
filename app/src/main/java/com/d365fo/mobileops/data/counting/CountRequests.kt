@@ -53,6 +53,11 @@ data class CountSummary(
 ) {
     /** Still being counted - it can be joined. */
     val open: Boolean get() = status == "Open" || status == "Counting"
+    /**
+     * A blind count nobody can count yet: the supervisor has not added what to count (in the count
+     * control center). D365FO refuses a join until then (NO_ITEMS).
+     */
+    val waitingForItems: Boolean get() = type == CountType.BLIND && open && itemCount == 0
     /** The journal exists: counted, on-hand and variance can be shown. */
     val hasResults: Boolean get() = status == "JournalCreated" || status == "Posted"
 }
