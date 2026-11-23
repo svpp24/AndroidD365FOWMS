@@ -1,6 +1,7 @@
 package com.d365fo.mobileops.presentation.common.focus
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -80,9 +81,22 @@ fun ScanPillField(
     val bridge = LocalScanBridge.current
     val submit = onSubmit ?: bridge::submitTypedScan
     var typing by rememberSaveable { mutableStateOf(false) }
+    // Set when the typing field closes. With a hardware keyboard or wedge the screen is in key
+    // mode, where Compose gives focus to the first control once the field is gone - Back, or the
+    // Home header, showed a grey focus ring, and a stray Enter there would have pressed it. Focus
+    // is parked on an inert target on the resting pill instead: nothing lights, nothing clicks.
+    var parkFocus by remember { mutableStateOf(false) }
 
     if (!typing) {
-        ScanPill(onTap = { typing = true }, modifier = modifier, label = label, onPanel = onPanel, enabled = enabled)
+        val park = remember { FocusRequester() }
+        ScanPill(
+            onTap = { typing = true },
+            modifier = if (parkFocus) modifier.focusRequester(park).focusable() else modifier,
+            label = label,
+            onPanel = onPanel,
+            enabled = enabled,
+        )
+        if (parkFocus) LaunchedEffect(Unit) { runCatching { park.requestFocus() } }
         return
     }
 
@@ -91,14 +105,16 @@ fun ScanPillField(
     val focus = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
     var hadFocus by remember { mutableStateOf(false) }
-    fun close() {
+    /** [park]: the worker closed it by key (Enter, Back) - not by tapping something else, which keeps its focus. */
+    fun close(park: Boolean = false) {
         keyboard?.hide()
         text.clearText()
+        parkFocus = park
         typing = false
     }
     fun send() {
         val value = text.text.toString().trim()
-        close()
+        close(park = true)
         if (value.isNotEmpty()) submit(value)
     }
 
@@ -110,7 +126,7 @@ fun ScanPillField(
         focus.requestFocus()
         keyboard?.show()
     }
-    BackHandler { close() }
+    BackHandler { close(park = true) }
 
     // State-based (Compose 1.13 deprecated the value-based one). Single line: no newline gets in.
     BasicTextField(
@@ -128,9 +144,8 @@ fun ScanPillField(
         onKeyboardAction = { send() },
         modifier = modifier
             .fillMaxWidth()
-            // A hardware Enter (keyboard or wedge) sends on key-up, not key-down: sent on the down,
-            // the pill was gone before the up arrived, and that stray up gave focus to the first
-            // control on the screen (Back or the Home header showed a grey focus ring).
+            // A hardware Enter (keyboard or wedge) sends on key-up, not key-down, so its key-up
+            // is not left over for whatever holds focus once the pill is gone.
             .onPreviewKeyEvent { event ->
                 if (event.key != Key.Enter && event.key != Key.NumPadEnter) return@onPreviewKeyEvent false
                 if (event.type == KeyEventType.KeyUp) send()
@@ -138,7 +153,7 @@ fun ScanPillField(
             }
             .focusRequester(focus)
             .onFocusChanged {
-                if (it.isFocused) hadFocus = true else if (hadFocus) close()
+                if (it.isFocused) hadFocus = true else if (hadFocus && typing) close()
             }
             .semantics { contentDescription = label },
         decorator = TextFieldDecorator { field ->
