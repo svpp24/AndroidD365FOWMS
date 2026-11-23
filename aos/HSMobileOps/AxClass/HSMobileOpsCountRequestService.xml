@@ -272,8 +272,10 @@ class HSMobileOpsCountRequestService
                 {
                     continue;
                 }
-                // A blind or hazard count made in the control center shows once it has items.
-                if ((master.MasterType == HSMobileOpsCountMasterType::Blind || master.MasterType == HSMobileOpsCountMasterType::Hazard)
+                // A hazard count made in the control center shows once it has items. A blind count
+                // shows from the start (ItemCount 0): the worker who asked for it sees it waiting
+                // for the supervisor to add what to count - joinCount still refuses it until then.
+                if (master.MasterType == HSMobileOpsCountMasterType::Hazard
                     && !master.RequestedItemCount)
                 {
                     continue;
