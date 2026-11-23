@@ -22,6 +22,9 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.semantics.editableText
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -109,9 +112,13 @@ fun PinField(
     textStyle: TextStyle = LocalTextStyle.current,
 ) {
     val labelContent: (@Composable TextFieldLabelScope.() -> Unit)? = label?.let { text -> { Text(text) } }
+    // The secure field hides the digits on screen but still reports them as its text to
+    // accessibility services (a UI dump read the PIN back, 23 Nov 2026). Report dots instead,
+    // as a platform password field does; the outer semantics win over the field's own.
+    val masked = AnnotatedString("•".repeat(state.text.length))
     OutlinedSecureTextField(
         state = state,
-        modifier = modifier,
+        modifier = modifier.semantics { editableText = masked },
         enabled = enabled,
         textStyle = textStyle,
         label = labelContent,

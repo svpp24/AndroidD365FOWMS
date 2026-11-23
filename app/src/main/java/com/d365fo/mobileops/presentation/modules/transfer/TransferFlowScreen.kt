@@ -203,7 +203,7 @@ fun TransferFlowScreen(
                     l.unitId,
                 ).joinToString(" · ")
             },
-            hint = hintFor(state),
+            hint = hintFor(state, onPad = true),
             confirmLabel = "Confirm",
             initial = reopenWith,
             replaceInitial = reopenWith.isNotEmpty(),
@@ -904,7 +904,8 @@ private fun promptFor(state: TransferFlowState): String = when (state.step) {
     TransferStep.CONFIRM -> "Confirm"
 }
 
-private fun hintFor(state: TransferFlowState): String? = when (state.step) {
+/** [onPad]: for the quantity dialog, which has no "all outstanding" button to say what is left. */
+private fun hintFor(state: TransferFlowState, onPad: Boolean = false): String? = when (state.step) {
     // No information lines under the scan card (feedback: "these kind of info not required").
     TransferStep.TRANSFER_ORDER -> null
 
@@ -912,11 +913,19 @@ private fun hintFor(state: TransferFlowState): String? = when (state.step) {
     // "All lines scanned" - the list badge in the top bar already counts what is scanned.
     TransferStep.ITEM -> null
 
-    // Receiving shows nothing under "Enter quantity" (feedback 65173f62): the "Receive all
-    // outstanding (n)" button already gives the number, and the entry unit shows on its chip.
-    TransferStep.QUANTITY -> state.capture.line?.takeIf { state.capture.mode == TransferMode.SHIP }?.let { line ->
-        "${com.d365fo.mobileops.util.Formatters.qtyUnit(line.remainingQuantity, line.unitId)} still to ship" +
-            (state.entryUnit?.let { unit -> " · entering in $unit" } ?: "")
+    // What is left. Receiving shows nothing on the entry screen (feedback 65173f62): its "Receive
+    // all outstanding (n)" button gives the number. The quantity dialog has no such button, so
+    // there it said nothing about what was left (23 Nov 2026) - it gets the same figure as the
+    // line list: what the shipment says is coming, when known.
+    TransferStep.QUANTITY -> state.capture.line?.let { line ->
+        if (state.capture.mode == TransferMode.SHIP) {
+            "${com.d365fo.mobileops.util.Formatters.qtyUnit(line.remainingQuantity, line.unitId)} still to ship" +
+                (state.entryUnit?.let { unit -> " · entering in $unit" } ?: "")
+        } else if (onPad) {
+            "${com.d365fo.mobileops.util.Formatters.qtyUnit(state.suggestedQuantity ?: line.remainingQuantity, line.unitId)} still to receive"
+        } else {
+            null
+        }
     }
 
     TransferStep.LOCATION -> null
