@@ -53,6 +53,7 @@ import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material3.Icon
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.ui.draw.clip
 import com.d365fo.mobileops.presentation.common.focus.BandKind
 import com.d365fo.mobileops.presentation.common.focus.BandState
@@ -105,6 +106,23 @@ fun WorkerLoginScreen(
             keyboardController?.hide()
         }
     }
+    // A sign-in attempt disables the PIN field, which drops its focus; after a refused one the
+    // focus did not come back - with a hardware keyboard it went to the menu button (grey ring),
+    // and the worker had to tap the field to try again (23 Nov 2026). Back to the PIN then.
+    var wasBusy by remember { mutableStateOf(false) }
+    LaunchedEffect(state.busy) {
+        if (wasBusy && !state.busy) runCatching { passwordFocus.requestFocus() }
+        wasBusy = state.busy
+    }
+    // The fields and Sign in are at the bottom. The PIN is focused before the keyboard is up, so
+    // nothing brought it into view once the keyboard took its room: it sat behind the keyboard
+    // and the PIN was typed unseen. Scroll to the bottom whenever the keyboard shows.
+    val scroll = rememberScrollState()
+    @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+    val keyboardUp = androidx.compose.foundation.layout.WindowInsets.isImeVisible
+    LaunchedEffect(keyboardUp, scroll.maxValue) {
+        if (keyboardUp) scroll.animateScrollTo(scroll.maxValue)
+    }
     // hide() alone still lost the race on this device (keyboard up on every arrival, seen in
     // release builds), so the field is read-only until tapped, as the counting scan box is.
     var typing by remember { mutableStateOf(false) }
@@ -133,36 +151,39 @@ fun WorkerLoginScreen(
             showOffline = false
         }
     }
-    androidx.compose.foundation.layout.BoxWithConstraints(
+    Column(
         modifier = Modifier
             .fillMaxSize()
             .background(FocusColors.page)
             .imePadding(),
+        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
+        // The menu and the reason the last attempt failed stay put above the scrolling part: with
+        // the keyboard up the screen scrolls to its fields, and "wrong PIN" must not scroll away.
+        Row(
+            horizontalArrangement = Arrangement.End,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 4.dp, end = 8.dp),
+        ) {
+            HamburgerButton(open = menuOpen, onClick = { menuOpen = !menuOpen })
+        }
+        FocusMenu(
+            open = menuOpen,
+            onDismiss = { menuOpen = false },
+            items = listOf(FocusMenuItem(Icons.Filled.Settings, "Connection settings") { menuOpen = false; onOpenSettings() }),
+        )
+        // Why the last attempt failed comes first, before anything else on the screen.
+        val problem = state.error ?: signOutNotice
+        problem?.let { ResultBand(BandState(BandKind.Bad, it), modifier = Modifier.padding(bottom = 8.dp)) }
+      androidx.compose.foundation.layout.BoxWithConstraints(modifier = Modifier.weight(1f).fillMaxWidth()) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
+                .verticalScroll(scroll)
                 .heightIn(min = maxHeight),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Row(
-                horizontalArrangement = Arrangement.End,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 4.dp, end = 8.dp),
-            ) {
-                HamburgerButton(open = menuOpen, onClick = { menuOpen = !menuOpen })
-            }
-            FocusMenu(
-                open = menuOpen,
-                onDismiss = { menuOpen = false },
-                items = listOf(FocusMenuItem(Icons.Filled.Settings, "Connection settings") { menuOpen = false; onOpenSettings() }),
-            )
-
-            // Why the last attempt failed comes first, before anything else on the screen.
-            val problem = state.error ?: signOutNotice
-            problem?.let { ResultBand(BandState(BandKind.Bad, it), modifier = Modifier.padding(bottom = 8.dp)) }
             if (showOffline) {
                 ResultBand(
                     BandState(BandKind.Warn, "Offline", "Signed in here in the last ${OfflineSignIn.VALID_DAYS} days? You can still sign in."),
@@ -266,6 +287,7 @@ fun WorkerLoginScreen(
                 )
             }
         }
+      }
     }
 }
 
