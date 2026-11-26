@@ -16,8 +16,17 @@ class HSMobileOpsCountRefresh
 				<Source><![CDATA[
     public static void main(Args _args)
     {
-        HSMobileOpsCountMaster master = _args ? _args.record() : null;
+        Common                 record = _args ? _args.record() : null;
+        HSMobileOpsCountMaster master;
 
+        // Count control center, by store: the selected store journal.
+        if (record && record.TableId == tableNum(HSMobileOpsCountStoreJournal) && record.RecId)
+        {
+            HSMobileOpsCountStoreJournalEngine::refresh(record.RecId);
+            HSMobileOpsCountRefresh::researchCaller(_args);
+            return;
+        }
+        master = record;
         if (!master || !master.RecId)
         {
             throw error('Select a stock count first.');
@@ -27,6 +36,18 @@ class HSMobileOpsCountRefresh
             throw error(strFmt('%1 is being transferred. Check it again once that is done.', master.MasterId));
         }
         HSMobileOpsCountControl::refresh(master.RecId);
+        HSMobileOpsCountRefresh::researchCaller(_args);
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>researchCaller</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Reads the calling form's data again, keeping the selected rows.
+    /// </summary>
+    public static void researchCaller(Args _args)
+    {
         if (_args && _args.caller() is FormRun)
         {
             FormRun callerForm = _args.caller() as FormRun;

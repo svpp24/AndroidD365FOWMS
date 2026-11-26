@@ -30,6 +30,8 @@ final class HSMobileOpsJournalCheckPost_Extension
             // Wall-to-wall: every location complete; and no journal moves stock in a frozen warehouse.
             ok = HSMobileOpsCountWallToWall::checkJournalCanPost(this.parmJournalId(),
                 this.parmJournalCheckPostType() == JournalCheckPostType::Post) && ok;
+            // One journal per store: not while a bin counted twice is undecided.
+            ok = HSMobileOpsCountStoreJournalEngine::checkCanPost(this.parmJournalId()) && ok;
         }
         return next checkJournal(_journalTransList) && ok;
     }

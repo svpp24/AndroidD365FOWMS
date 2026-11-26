@@ -222,6 +222,37 @@ public class HSMobileOpsCountStageLine extends common
 			<HelpText>When the on-hand was read.</HelpText>
 			<Label>On-hand at</Label>
 		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldInt64">
+			<Name>StoreJournalRecId</Name>
+			<AllowEdit>No</AllowEdit>
+			<ExtendedDataType>RefRecId</ExtendedDataType>
+			<HelpText>The store journal this blind count goes into (Count types: One journal per store).</HelpText>
+			<Label>Store journal</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>ItemName</Name>
+			<AllowEdit>No</AllowEdit>
+			<Label>Item name</Label>
+			<StringSize>60</StringSize>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>CounterName</Name>
+			<AllowEdit>No</AllowEdit>
+			<HelpText>The counter's name, stored for the Count control center.</HelpText>
+			<Label>Counter</Label>
+			<StringSize>60</StringSize>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>MasterId</Name>
+			<AllowEdit>No</AllowEdit>
+			<HelpText>The stock count's number, stored for the Count control center.</HelpText>
+			<Label>Blind count</Label>
+			<StringSize>30</StringSize>
+		</AxTableField>
 	</Fields>
 	<FullTextIndexes />
 	<Indexes>
@@ -261,6 +292,30 @@ public class HSMobileOpsCountStageLine extends common
 				</AxTableIndexField>
 			</Fields>
 		</AxTableIndex>
+		<AxTableIndex>
+			<Name>StoreJournalKeyIdx</Name>
+			<AllowDuplicates>Yes</AllowDuplicates>
+			<Fields>
+				<AxTableIndexField>
+					<DataField>StoreJournalRecId</DataField>
+				</AxTableIndexField>
+				<AxTableIndexField>
+					<DataField>DuplicateKey</DataField>
+				</AxTableIndexField>
+			</Fields>
+		</AxTableIndex>
+		<AxTableIndex>
+			<Name>StoreJournalStockIdx</Name>
+			<AllowDuplicates>Yes</AllowDuplicates>
+			<Fields>
+				<AxTableIndexField>
+					<DataField>StoreJournalRecId</DataField>
+				</AxTableIndexField>
+				<AxTableIndexField>
+					<DataField>StockKey</DataField>
+				</AxTableIndexField>
+			</Fields>
+		</AxTableIndex>
 	</Indexes>
 	<Mappings />
 	<Relations>
@@ -292,6 +347,22 @@ public class HSMobileOpsCountStageLine extends common
 					i:type="AxTableRelationConstraintField">
 					<Name>StageRecId</Name>
 					<Field>StageRecId</Field>
+					<RelatedField>RecId</RelatedField>
+				</AxTableRelationConstraint>
+			</Constraints>
+		</AxTableRelation>
+		<AxTableRelation xmlns=""
+			i:type="AxTableRelationForeignKey">
+			<Name>HSMobileOpsCountStoreJournal</Name>
+			<Cardinality>ZeroMore</Cardinality>
+			<RelatedTable>HSMobileOpsCountStoreJournal</RelatedTable>
+			<RelatedTableCardinality>ZeroOne</RelatedTableCardinality>
+			<RelationshipType>Association</RelationshipType>
+			<Constraints>
+				<AxTableRelationConstraint xmlns=""
+					i:type="AxTableRelationConstraintField">
+					<Name>StoreJournalRecId</Name>
+					<Field>StoreJournalRecId</Field>
 					<RelatedField>RecId</RelatedField>
 				</AxTableRelationConstraint>
 			</Constraints>

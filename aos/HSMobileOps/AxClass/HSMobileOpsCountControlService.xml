@@ -1,0 +1,677 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsCountControlService</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Count control in the handheld app (store supervisor): the store journal of the supervisor's
+/// store, its bins counted twice, counters, blind counts and lines with variance; deciding a bin;
+/// hold, release and post. Only a Cycle count supervisor (HSMobileOpsCountDualEngine::isSupervisor)
+/// for the store that is their default warehouse - every call checks it here; hiding the module in
+/// the app is not enough. The decision goes through HSMobileOpsCountControl::decide, so it is
+/// logged the same as in the control center. New service only: no existing operation changes.
+/// </summary>
+class HSMobileOpsCountControlService
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>refusal</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Why this caller may not use Count control for this store: INVALID_REQUEST, NOT_SUPERVISOR
+    /// or NOT_DEFAULT_WAREHOUSE; blank when they may. Run inside the company.
+    /// </summary>
+    private static str refusal(HSMobileOpsCountCtlRequest _request)
+    {
+        HSMobileOpsUser          user;
+        HSMobileOpsUserWarehouse defaultWarehouse;
+
+        if (!_request.parmUserName() || !_request.parmWarehouseId())
+        {
+            return 'INVALID_REQUEST';
+        }
+        user = HSMobileOpsUser::find(_request.parmUserName());
+        if (!HSMobileOpsCountDualEngine::isSupervisor(user))
+        {
+            return 'NOT_SUPERVISOR';
+        }
+        defaultWarehouse = HSMobileOpsUserWarehouse::findDefault(user.RecId);
+        if (!defaultWarehouse.RecId || strUpr(defaultWarehouse.WarehouseId) != strUpr(_request.parmWarehouseId()))
+        {
+            return 'NOT_DEFAULT_WAREHOUSE';
+        }
+        return '';
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>start</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// A response refused for a bad company, or blank when the company exists.
+    /// </summary>
+    private static HSMobileOpsCountCtlResponse start(HSMobileOpsCountCtlRequest _request)
+    {
+        HSMobileOpsCountCtlResponse response = new HSMobileOpsCountCtlResponse();
+
+        response.parmSuccess(false);
+        if (!_request || !_request.parmDataAreaId() || !CompanyInfo::findDataArea(_request.parmDataAreaId()).RecId)
+        {
+            response.parmErrorCode('INVALID_REQUEST');
+            response.parmMessage('DataAreaId, UserName and WarehouseId are required.');
+        }
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>refuse</Name>
+				<Source><![CDATA[
+
+    private static HSMobileOpsCountCtlResponse refuse(HSMobileOpsCountCtlResponse _response, str _code, str _message = '')
+    {
+        _response.parmErrorCode(_code);
+        switch (_code)
+        {
+            case 'NOT_SUPERVISOR':
+                _response.parmMessage(_message ? _message : 'Count control is for cycle count supervisors.');
+                break;
+            case 'NOT_DEFAULT_WAREHOUSE':
+                _response.parmMessage(_message ? _message : 'Count control covers only your default store.');
+                break;
+            default:
+                _response.parmMessage(_message);
+        }
+        return _response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>openJournal</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The store's open store journal; empty when it has none.
+    /// </summary>
+    private static HSMobileOpsCountStoreJournal openJournal(InventLocationId _store)
+    {
+        HSMobileOpsCountStoreJournal storeJournal;
+
+        select firstonly storeJournal
+            where storeJournal.InventLocationId == _store
+               && storeJournal.Posted           == NoYes::No;
+        return storeJournal;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>getCountControl</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The Count control screen: the store, its open store journal and the four tiles.
+    /// PayloadJson {StoreId, StoreName, Tiles{BinsCountedTwice, CountersCounting, BlindCountsToday,
+    /// LinesWithVariance}, StoreJournal{...} or no StoreJournal when there is none}.
+    /// </summary>
+    public HSMobileOpsCountCtlResponse getCountControl(HSMobileOpsCountCtlRequest _request)
+    {
+        HSMobileOpsCountCtlResponse  response = HSMobileOpsCountControlService::start(_request);
+        HSMobileOpsCountStoreJournal storeJournal;
+        HSMobileOpsCountMaster       master;
+        Newtonsoft.Json.Linq.JObject payload = new Newtonsoft.Json.Linq.JObject();
+        Newtonsoft.Json.Linq.JObject tiles = new Newtonsoft.Json.Linq.JObject();
+        Newtonsoft.Json.Linq.JObject journal;
+        str                          code;
+        utcdatetime                  dayStart;
+        InventLocationId             store;
+        InventJournalTrans           varianceTrans;
+
+        if (response.parmErrorCode())
+        {
+            return response;
+        }
+        changecompany (_request.parmDataAreaId())
+        {
+            code = HSMobileOpsCountControlService::refusal(_request);
+            if (code)
+            {
+                return HSMobileOpsCountControlService::refuse(response, code);
+            }
+            store = InventLocation::find(_request.parmWarehouseId()).InventLocationId;
+            HSMobileOpsCountStoreJournalEngine::refreshOpen();
+            storeJournal = HSMobileOpsCountControlService::openJournal(store);
+            dayStart = DateTimeUtil::newDateTime(DateTimeUtil::getSystemDate(DateTimeUtil::getUserPreferredTimeZone()), 0,
+                DateTimeUtil::getUserPreferredTimeZone());
+            select count(RecId) from master
+                where master.InventLocationId == store
+                   && master.MasterType       == HSMobileOpsCountMasterType::Blind
+                   && master.Status           != HSMobileOpsCountMasterStatus::Cancelled
+                   && master.StartedUtc       >= dayStart;
+
+            HSMobileOpsCountControlService::put(payload, 'StoreId', store);
+            HSMobileOpsCountControlService::put(payload, 'StoreName', InventLocation::find(store).Name);
+            HSMobileOpsCountControlService::put(tiles, 'BinsCountedTwice', int2Str(storeJournal.CountedTwiceCount));
+            HSMobileOpsCountControlService::put(tiles, 'CountersCounting', int2Str(storeJournal.CountingNow));
+            HSMobileOpsCountControlService::put(tiles, 'BlindCountsToday', int642Str(master.RecId));
+            // The same lines the Variance lines screen lists (user, 25 Nov 2026: the tile said 7, the screen 2).
+            if (storeJournal.JournalId)
+            {
+                select count(RecId) from varianceTrans
+                    where varianceTrans.JournalId == storeJournal.JournalId
+                       && varianceTrans.Counted   != varianceTrans.InventOnHand;
+            }
+            HSMobileOpsCountControlService::put(tiles, 'LinesWithVariance', int642Str(varianceTrans.RecId));
+            payload.Add('Tiles', tiles);
+            if (storeJournal.RecId)
+            {
+                journal = new Newtonsoft.Json.Linq.JObject();
+                HSMobileOpsCountControlService::put(journal, 'JournalId', storeJournal.JournalId);
+                HSMobileOpsCountControlService::put(journal, 'Status', enum2Symbol(enumNum(HSMobileOpsCountStoreJournalStatus), storeJournal.Status));
+                HSMobileOpsCountControlService::put(journal, 'StatusLabel', enum2Str(storeJournal.Status));
+                HSMobileOpsCountControlService::put(journal, 'BlindCounts', int2Str(storeJournal.BlindCount));
+                HSMobileOpsCountControlService::put(journal, 'Lines', int2Str(storeJournal.LineCount));
+                HSMobileOpsCountControlService::put(journal, 'CountedTwice', int2Str(storeJournal.CountedTwiceCount));
+                HSMobileOpsCountControlService::put(journal, 'OnHold', storeJournal.OnHold ? 'true' : 'false');
+                HSMobileOpsCountControlService::put(journal, 'HeldBy', storeJournal.HoldBy);
+                HSMobileOpsCountControlService::put(journal, 'PostMessage', storeJournal.PostMessage);
+                payload.Add('StoreJournal', journal);
+            }
+        }
+        response.parmPayloadJson(payload.ToString());
+        response.parmSuccess(true);
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>getCountedTwice</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Bins counted twice in the store journal, to decide or decided (Decided). PayloadJson
+    /// {ToDecide, Decided, Bins[{LineId, LocationId, BinId, ItemId, ItemName, OnHand, Decision,
+    /// Counts[{LineId, Counter, CounterName, MasterId, CountedAt, Qty, Included}]}]}. LineId of a
+    /// bin is the line to send to decideBin with Keep for that count.
+    /// </summary>
+    public HSMobileOpsCountCtlResponse getCountedTwice(HSMobileOpsCountCtlRequest _request)
+    {
+        HSMobileOpsCountCtlResponse  response = HSMobileOpsCountControlService::start(_request);
+        HSMobileOpsCountStoreJournal storeJournal;
+        HSMobileOpsCountStageLine    line;
+        HSMobileOpsCountStage        stage;
+        HSMobileOpsCountMaster       master;
+        Newtonsoft.Json.Linq.JObject payload = new Newtonsoft.Json.Linq.JObject();
+        Newtonsoft.Json.Linq.JArray  bins = new Newtonsoft.Json.Linq.JArray();
+        Newtonsoft.Json.Linq.JObject bin;
+        Newtonsoft.Json.Linq.JArray  counts;
+        Newtonsoft.Json.Linq.JObject countRow;
+        Map                          decidedByKey = new Map(Types::String, Types::Enum);
+        MapEnumerator                keys;
+        str                          code;
+        str                          lastKey;
+        int                          toDecide;
+        int                          decided;
+        boolean                      wantDecided = _request && _request.parmDecided();
+
+        if (response.parmErrorCode())
+        {
+            return response;
+        }
+        changecompany (_request.parmDataAreaId())
+        {
+            code = HSMobileOpsCountControlService::refusal(_request);
+            if (code)
+            {
+                return HSMobileOpsCountControlService::refuse(response, code);
+            }
+            storeJournal = HSMobileOpsCountControlService::openJournal(InventLocation::find(_request.parmWarehouseId()).InventLocationId);
+            if (storeJournal.RecId)
+            {
+                HSMobileOpsCountStoreJournalEngine::refresh(storeJournal.RecId);
+                // Each bin decided or not: one decision for all its counts.
+                while select DuplicateKey, Decision from line
+                    where line.StoreJournalRecId == storeJournal.RecId
+                       && line.IsDuplicate       == NoYes::Yes
+                {
+                    if (!decidedByKey.exists(line.DuplicateKey))
+                    {
+                        decidedByKey.insert(line.DuplicateKey, line.Decision);
+                    }
+                }
+                keys = decidedByKey.getEnumerator();
+                while (keys.moveNext())
+                {
+                    if (keys.currentValue() == HSMobileOpsCountDuplicateDecision::None)
+                    {
+                        toDecide++;
+                    }
+                    else
+                    {
+                        decided++;
+                    }
+                }
+                while select line
+                    order by DuplicateKey, CountedUtc
+                    where line.StoreJournalRecId == storeJournal.RecId
+                       && line.IsDuplicate       == NoYes::Yes
+                       && (( wantDecided && line.Decision != HSMobileOpsCountDuplicateDecision::None)
+                        || (!wantDecided && line.Decision == HSMobileOpsCountDuplicateDecision::None))
+                    join DisplayName, DeviceId from stage
+                        where stage.RecId == line.StageRecId
+                    join MasterId from master
+                        where master.RecId == line.MasterRecId
+                {
+                    if (line.DuplicateKey != lastKey)
+                    {
+                        bin = new Newtonsoft.Json.Linq.JObject();
+                        counts = new Newtonsoft.Json.Linq.JArray();
+                        HSMobileOpsCountControlService::put(bin, 'LineId', int642Str(line.RecId));
+                        HSMobileOpsCountControlService::put(bin, 'LocationId', line.WMSLocationId);
+                        HSMobileOpsCountControlService::put(bin, 'BinId', line.BinId);
+                        HSMobileOpsCountControlService::put(bin, 'ItemId', line.ItemId);
+                        HSMobileOpsCountControlService::put(bin, 'ItemName', line.ItemName);
+                        HSMobileOpsCountControlService::put(bin, 'OnHand', HSMobileOpsCountControlService::num(line.OnHandQty));
+                        HSMobileOpsCountControlService::put(bin, 'Decision', enum2Symbol(enumNum(HSMobileOpsCountDuplicateDecision), line.Decision));
+                        bin.Add('Counts', counts);
+                        bins.Add(bin);
+                        lastKey = line.DuplicateKey;
+                    }
+                    countRow = new Newtonsoft.Json.Linq.JObject();
+                    HSMobileOpsCountControlService::put(countRow, 'LineId', int642Str(line.RecId));
+                    HSMobileOpsCountControlService::put(countRow, 'Counter', line.UserName);
+                    HSMobileOpsCountControlService::put(countRow, 'CounterName', stage.DisplayName ? stage.DisplayName : line.UserName);
+                    HSMobileOpsCountControlService::put(countRow, 'MasterId', master.MasterId);
+                    HSMobileOpsCountControlService::put(countRow, 'CountedAt', HSMobileOpsCountControlService::isoUtc(line.CountedUtc));
+                    HSMobileOpsCountControlService::put(countRow, 'Qty', HSMobileOpsCountControlService::num(line.Qty));
+                    HSMobileOpsCountControlService::put(countRow, 'Included', line.Included ? 'true' : 'false');
+                    counts.Add(countRow);
+                }
+            }
+        }
+        HSMobileOpsCountControlService::put(payload, 'ToDecide', int2Str(toDecide));
+        HSMobileOpsCountControlService::put(payload, 'Decided', int2Str(decided));
+        payload.Add('Bins', bins);
+        response.parmPayloadJson(payload.ToString());
+        response.parmSuccess(true);
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>decideBin</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The supervisor's decision on a bin counted twice: KEEP (the count LineId), SUM or REJECT.
+    /// The same decision, log and journal line as the control center.
+    /// </summary>
+    public HSMobileOpsCountCtlResponse decideBin(HSMobileOpsCountCtlRequest _request)
+    {
+        HSMobileOpsCountCtlResponse       response = HSMobileOpsCountControlService::start(_request);
+        HSMobileOpsCountStoreJournal      storeJournal;
+        HSMobileOpsCountStageLine         line;
+        HSMobileOpsCountDuplicateDecision decision;
+        str                               code;
+        int                               infologFrom = infologLine();
+
+        if (response.parmErrorCode())
+        {
+            return response;
+        }
+        changecompany (_request.parmDataAreaId())
+        {
+            code = HSMobileOpsCountControlService::refusal(_request);
+            if (code)
+            {
+                return HSMobileOpsCountControlService::refuse(response, code);
+            }
+            switch (strUpr(_request.parmDecision()))
+            {
+                case 'KEEP':   decision = HSMobileOpsCountDuplicateDecision::KeepThis; break;
+                case 'SUM':    decision = HSMobileOpsCountDuplicateDecision::Sum; break;
+                case 'REJECT': decision = HSMobileOpsCountDuplicateDecision::Reject; break;
+                default:
+                    return HSMobileOpsCountControlService::refuse(response, 'INVALID_REQUEST', 'Decision must be KEEP, SUM or REJECT.');
+            }
+            storeJournal = HSMobileOpsCountControlService::openJournal(InventLocation::find(_request.parmWarehouseId()).InventLocationId);
+            line = HSMobileOpsCountStageLine::findRecId(str2Int64(_request.parmLineId()));
+            if (!line.RecId || !storeJournal.RecId || line.StoreJournalRecId != storeJournal.RecId)
+            {
+                return HSMobileOpsCountControlService::refuse(response, 'BIN_NOT_FOUND', 'This bin is not in your store journal any more.');
+            }
+            if (!line.IsDuplicate)
+            {
+                return HSMobileOpsCountControlService::refuse(response, 'NOTHING_TO_DECIDE', 'This bin was counted once - there is nothing to decide.');
+            }
+            try
+            {
+                HSMobileOpsCountControl::decide(line, decision, _request.parmUserName());
+            }
+            catch (Exception::Error)
+            {
+                return HSMobileOpsCountControlService::refuse(response, 'DECIDE_FAILED',
+                    infologLine() > infologFrom ? HSMobileOpsCountWallToWall::errorsSince(infologFrom) : 'D365FO gave no reason');
+            }
+        }
+        response.parmSuccess(true);
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>getCounters</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Everyone counting in the store journal's blind counts. PayloadJson [{UserName, Name,
+    /// MasterId, DeviceId, StartedAt, Lines, LastScanAt, Ended}].
+    /// </summary>
+    public HSMobileOpsCountCtlResponse getCounters(HSMobileOpsCountCtlRequest _request)
+    {
+        HSMobileOpsCountCtlResponse  response = HSMobileOpsCountControlService::start(_request);
+        HSMobileOpsCountStoreJournal storeJournal;
+        HSMobileOpsCountStage        stage;
+        HSMobileOpsCountMaster       master;
+        HSMobileOpsCountStageLine    line;
+        Newtonsoft.Json.Linq.JArray  rows = new Newtonsoft.Json.Linq.JArray();
+        Newtonsoft.Json.Linq.JObject row;
+        str                          code;
+
+        if (response.parmErrorCode())
+        {
+            return response;
+        }
+        changecompany (_request.parmDataAreaId())
+        {
+            code = HSMobileOpsCountControlService::refusal(_request);
+            if (code)
+            {
+                return HSMobileOpsCountControlService::refuse(response, code);
+            }
+            storeJournal = HSMobileOpsCountControlService::openJournal(InventLocation::find(_request.parmWarehouseId()).InventLocationId);
+            while select stage
+                order by StartedUtc
+                where stage.StoreJournalRecId == storeJournal.RecId
+                   && storeJournal.RecId      != 0
+                join MasterId, Status from master
+                    where master.RecId  == stage.MasterRecId
+                       && master.Status != HSMobileOpsCountMasterStatus::Cancelled
+            {
+                select maxOf(CountedUtc) from line where line.StageRecId == stage.RecId;
+                row = new Newtonsoft.Json.Linq.JObject();
+                HSMobileOpsCountControlService::put(row, 'UserName', stage.UserName);
+                HSMobileOpsCountControlService::put(row, 'Name', stage.DisplayName ? stage.DisplayName : stage.UserName);
+                HSMobileOpsCountControlService::put(row, 'MasterId', master.MasterId);
+                HSMobileOpsCountControlService::put(row, 'DeviceId', stage.DeviceId);
+                HSMobileOpsCountControlService::put(row, 'StartedAt', HSMobileOpsCountControlService::isoUtc(stage.StartedUtc));
+                HSMobileOpsCountControlService::put(row, 'Lines', int2Str(stage.LineCount));
+                HSMobileOpsCountControlService::put(row, 'LastScanAt', HSMobileOpsCountControlService::isoUtc(line.CountedUtc));
+                HSMobileOpsCountControlService::put(row, 'Ended',
+                    stage.Status == HSMobileOpsCountStageStatus::Submitted || master.Status != HSMobileOpsCountMasterStatus::Open ? 'true' : 'false');
+                rows.Add(row);
+            }
+        }
+        response.parmPayloadJson(rows.ToString());
+        response.parmSuccess(true);
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>getBlindCounts</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The blind counts going into the store journal. PayloadJson [{MasterId, Description, Status,
+    /// Counters, Lines, StartedAt, InJournal, Message}].
+    /// </summary>
+    public HSMobileOpsCountCtlResponse getBlindCounts(HSMobileOpsCountCtlRequest _request)
+    {
+        HSMobileOpsCountCtlResponse  response = HSMobileOpsCountControlService::start(_request);
+        HSMobileOpsCountStoreJournal storeJournal;
+        HSMobileOpsCountMaster       master;
+        Newtonsoft.Json.Linq.JArray  rows = new Newtonsoft.Json.Linq.JArray();
+        Newtonsoft.Json.Linq.JObject row;
+        str                          code;
+
+        if (response.parmErrorCode())
+        {
+            return response;
+        }
+        changecompany (_request.parmDataAreaId())
+        {
+            code = HSMobileOpsCountControlService::refusal(_request);
+            if (code)
+            {
+                return HSMobileOpsCountControlService::refuse(response, code);
+            }
+            storeJournal = HSMobileOpsCountControlService::openJournal(InventLocation::find(_request.parmWarehouseId()).InventLocationId);
+            while select master
+                order by StartedUtc
+                where master.StoreJournalRecId == storeJournal.RecId
+                   && storeJournal.RecId       != 0
+                   && master.Status            != HSMobileOpsCountMasterStatus::Cancelled
+            {
+                row = new Newtonsoft.Json.Linq.JObject();
+                HSMobileOpsCountControlService::put(row, 'MasterId', master.MasterId);
+                HSMobileOpsCountControlService::put(row, 'Description', master.Description);
+                HSMobileOpsCountControlService::put(row, 'Status', enum2Str(master.Status));
+                HSMobileOpsCountControlService::put(row, 'Counters', int2Str(master.CounterCount));
+                HSMobileOpsCountControlService::put(row, 'Lines', int2Str(master.LineCount));
+                HSMobileOpsCountControlService::put(row, 'StartedAt', HSMobileOpsCountControlService::isoUtc(master.StartedUtc));
+                HSMobileOpsCountControlService::put(row, 'InJournal', master.Status == HSMobileOpsCountMasterStatus::Transferred ? 'true' : 'false');
+                HSMobileOpsCountControlService::put(row, 'Message', master.TransferMessage);
+                rows.Add(row);
+            }
+        }
+        response.parmPayloadJson(rows.ToString());
+        response.parmSuccess(true);
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>getVarianceLines</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The store journal's lines whose count differs from on-hand. PayloadJson [{ItemId, ItemName,
+    /// LocationId, BatchId, SerialId, Counted, OnHand, Variance}].
+    /// </summary>
+    public HSMobileOpsCountCtlResponse getVarianceLines(HSMobileOpsCountCtlRequest _request)
+    {
+        HSMobileOpsCountCtlResponse  response = HSMobileOpsCountControlService::start(_request);
+        HSMobileOpsCountStoreJournal storeJournal;
+        InventJournalTrans           journalTrans;
+        InventDim                    inventDim;
+        Newtonsoft.Json.Linq.JArray  rows = new Newtonsoft.Json.Linq.JArray();
+        Newtonsoft.Json.Linq.JObject row;
+        str                          code;
+
+        if (response.parmErrorCode())
+        {
+            return response;
+        }
+        changecompany (_request.parmDataAreaId())
+        {
+            code = HSMobileOpsCountControlService::refusal(_request);
+            if (code)
+            {
+                return HSMobileOpsCountControlService::refuse(response, code);
+            }
+            storeJournal = HSMobileOpsCountControlService::openJournal(InventLocation::find(_request.parmWarehouseId()).InventLocationId);
+            if (storeJournal.JournalId)
+            {
+                while select journalTrans
+                    order by LineNum
+                    where journalTrans.JournalId == storeJournal.JournalId
+                       && journalTrans.Counted   != journalTrans.InventOnHand
+                    join inventDim
+                        where inventDim.inventDimId == journalTrans.InventDimId
+                {
+                    row = new Newtonsoft.Json.Linq.JObject();
+                    HSMobileOpsCountControlService::put(row, 'ItemId', journalTrans.ItemId);
+                    HSMobileOpsCountControlService::put(row, 'ItemName', InventTable::find(journalTrans.ItemId).defaultProductName());
+                    HSMobileOpsCountControlService::put(row, 'LocationId', inventDim.wMSLocationId);
+                    HSMobileOpsCountControlService::put(row, 'BatchId', inventDim.inventBatchId);
+                    HSMobileOpsCountControlService::put(row, 'SerialId', inventDim.inventSerialId);
+                    HSMobileOpsCountControlService::put(row, 'Counted', HSMobileOpsCountControlService::num(journalTrans.Counted));
+                    HSMobileOpsCountControlService::put(row, 'OnHand', HSMobileOpsCountControlService::num(journalTrans.InventOnHand));
+                    HSMobileOpsCountControlService::put(row, 'Variance', HSMobileOpsCountControlService::num(journalTrans.Counted - journalTrans.InventOnHand));
+                    rows.Add(row);
+                }
+            }
+        }
+        response.parmPayloadJson(rows.ToString());
+        response.parmSuccess(true);
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>holdStoreJournal</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Hold (Hold true) or Release (Hold false) the store journal: a held one is skipped by the
+    /// nightly posting.
+    /// </summary>
+    public HSMobileOpsCountCtlResponse holdStoreJournal(HSMobileOpsCountCtlRequest _request)
+    {
+        HSMobileOpsCountCtlResponse  response = HSMobileOpsCountControlService::start(_request);
+        HSMobileOpsCountStoreJournal storeJournal;
+        str                          code;
+        int                          infologFrom = infologLine();
+
+        if (response.parmErrorCode())
+        {
+            return response;
+        }
+        changecompany (_request.parmDataAreaId())
+        {
+            code = HSMobileOpsCountControlService::refusal(_request);
+            if (code)
+            {
+                return HSMobileOpsCountControlService::refuse(response, code);
+            }
+            storeJournal = HSMobileOpsCountControlService::openJournal(InventLocation::find(_request.parmWarehouseId()).InventLocationId);
+            if (!storeJournal.RecId)
+            {
+                return HSMobileOpsCountControlService::refuse(response, 'NO_STORE_JOURNAL', 'This store has no open store journal.');
+            }
+            try
+            {
+                HSMobileOpsCountStoreJournalEngine::hold(storeJournal.RecId, _request.parmHold(), _request.parmUserName());
+            }
+            catch (Exception::Error)
+            {
+                return HSMobileOpsCountControlService::refuse(response, _request.parmHold() ? 'ALREADY_ON_HOLD' : 'NOT_ON_HOLD',
+                    infologLine() > infologFrom ? HSMobileOpsCountWallToWall::errorsSince(infologFrom) : '');
+            }
+        }
+        response.parmSuccess(true);
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>postStoreJournal</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// Post now. Refused, with the reason, while bins counted twice are undecided (BINS_UNDECIDED),
+    /// while it is on hold (ON_HOLD) or when it has nothing in it yet (NOTHING_TO_POST).
+    /// </summary>
+    public HSMobileOpsCountCtlResponse postStoreJournal(HSMobileOpsCountCtlRequest _request)
+    {
+        HSMobileOpsCountCtlResponse  response = HSMobileOpsCountControlService::start(_request);
+        HSMobileOpsCountStoreJournal storeJournal;
+        str                          code;
+        int                          undecided;
+        int                          infologFrom = infologLine();
+
+        if (response.parmErrorCode())
+        {
+            return response;
+        }
+        changecompany (_request.parmDataAreaId())
+        {
+            code = HSMobileOpsCountControlService::refusal(_request);
+            if (code)
+            {
+                return HSMobileOpsCountControlService::refuse(response, code);
+            }
+            storeJournal = HSMobileOpsCountControlService::openJournal(InventLocation::find(_request.parmWarehouseId()).InventLocationId);
+            if (!storeJournal.RecId)
+            {
+                return HSMobileOpsCountControlService::refuse(response, 'NO_STORE_JOURNAL', 'This store has no open store journal.');
+            }
+            HSMobileOpsCountStoreJournalEngine::refresh(storeJournal.RecId);
+            storeJournal = HSMobileOpsCountStoreJournal::find(storeJournal.RecId);
+            undecided = HSMobileOpsCountStoreJournalEngine::undecidedCount(storeJournal.RecId);
+            if (undecided)
+            {
+                return HSMobileOpsCountControlService::refuse(response, 'BINS_UNDECIDED',
+                    strFmt("Won't post until %1 bin(s) are decided.", undecided));
+            }
+            if (storeJournal.OnHold)
+            {
+                return HSMobileOpsCountControlService::refuse(response, 'ON_HOLD', 'The store journal is on hold. Release it first.');
+            }
+            if (!storeJournal.JournalId || !storeJournal.LineCount)
+            {
+                return HSMobileOpsCountControlService::refuse(response, 'NOTHING_TO_POST', 'The store journal has nothing in it yet.');
+            }
+            try
+            {
+                HSMobileOpsCountStoreJournalEngine::post(storeJournal.RecId, true, _request.parmUserName());
+            }
+            catch (Exception::Error)
+            {
+                return HSMobileOpsCountControlService::refuse(response, 'POST_FAILED',
+                    infologLine() > infologFrom ? HSMobileOpsCountWallToWall::errorsSince(infologFrom) : 'D365FO gave no reason');
+            }
+            response.parmMessage(strFmt('Store journal %1 is posted.', storeJournal.JournalId));
+        }
+        response.parmSuccess(true);
+        return response;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>isoUtc</Name>
+				<Source><![CDATA[
+
+    private static str isoUtc(utcdatetime _value)
+    {
+        return _value == utcDateTimeNull() ? '' : DateTimeUtil::toStr(_value) + 'Z';
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>num</Name>
+				<Source><![CDATA[
+
+    private static str num(real _value)
+    {
+        return num2Str(_value, 0, 6, DecimalSeparator::Dot, ThousandSeparator::None);
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>put</Name>
+				<Source><![CDATA[
+
+    private static void put(Newtonsoft.Json.Linq.JObject _obj, str _name, str _value)
+    {
+        _obj.Add(_name, new Newtonsoft.Json.Linq.JValue(_value));
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

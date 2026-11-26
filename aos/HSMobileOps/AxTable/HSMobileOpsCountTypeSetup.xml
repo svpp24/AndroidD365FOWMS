@@ -78,6 +78,13 @@ public class HSMobileOpsCountTypeSetup extends common
 			<Label>Auto-post</Label>
 			<EnumType>NoYes</EnumType>
 		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldEnum">
+			<Name>OneJournalPerStore</Name>
+			<HelpText>Blind counts only. Every blind count of a store goes into the store's open journal until it is posted, instead of a journal of its own. Bins counted twice across those counts wait for the supervisor.</HelpText>
+			<Label>One journal per store</Label>
+			<EnumType>NoYes</EnumType>
+		</AxTableField>
 	</Fields>
 	<FullTextIndexes />
 	<Indexes>

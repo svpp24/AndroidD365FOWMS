@@ -1,0 +1,215 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxForm xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns="Microsoft.Dynamics.AX.Metadata.V6">
+	<Name>HSMobileOpsCountSelectedBinPart</Name>
+	<SourceCode>
+		<Methods xmlns="">
+			<Method>
+				<Name>classDeclaration</Name>
+				<Source><![CDATA[
+			/// <summary>
+			/// Count control center FactBox: every count of the selected bin counted twice, and what they
+			/// add up to.
+			/// </summary>
+			[Form]
+			public class HSMobileOpsCountSelectedBinPart extends FormRun
+			{
+			}
+			]]></Source>
+			</Method>
+		</Methods>
+		<DataSources xmlns="">
+			<DataSource>
+				<Name>HSMobileOpsCountStageLine</Name>
+				<Methods>
+					<Method>
+						<Name>active</Name>
+						<Source><![CDATA[
+					        public int active()
+					        {
+					            int                       ret = super();
+					            HSMobileOpsCountStageLine selected = HSMobileOpsCountStageLine;
+					            HSMobileOpsCountStageLine total;
+
+					            LocationBin.text(selected.BinId ? strFmt('%1 / %2', selected.WMSLocationId, selected.BinId) : selected.WMSLocationId);
+					            ItemText.text(strFmt('%1 %2', selected.ItemId, selected.ItemName));
+					            OnHand.realValue(selected.OnHandQty);
+					            if (selected.StoreJournalRecId)
+					            {
+					                select sum(Qty) from total
+					                    where total.StoreJournalRecId == selected.StoreJournalRecId
+					                       && total.DuplicateKey      == selected.DuplicateKey;
+					            }
+					            else
+					            {
+					                select sum(Qty) from total
+					                    where total.MasterRecId  == selected.MasterRecId
+					                       && total.DuplicateKey == selected.DuplicateKey;
+					            }
+					            AddedTogether.realValue(selected.RecId ? total.Qty : 0);
+					            BinCount_ds.executeQuery();
+					            return ret;
+					        }
+					]]></Source>
+					</Method>
+				</Methods>
+			</DataSource>
+			<DataSource>
+				<Name>BinCount</Name>
+				<Methods>
+					<Method>
+						<Name>executeQuery</Name>
+						<Source><![CDATA[
+					        /// <summary>
+					        /// The selected bin's counts, first count first.
+					        /// </summary>
+					        public void executeQuery()
+					        {
+					            QueryBuildDataSource      source = this.queryBuildDataSource();
+					            HSMobileOpsCountStageLine selected = HSMobileOpsCountStageLine;
+
+					            SysQuery::findOrCreateRange(source, fieldNum(HSMobileOpsCountStageLine, DuplicateKey)).value(SysQuery::value(selected.DuplicateKey));
+					            SysQuery::findOrCreateRange(source, fieldNum(HSMobileOpsCountStageLine, StoreJournalRecId)).value(selected.StoreJournalRecId ? SysQuery::value(selected.StoreJournalRecId) : '');
+					            SysQuery::findOrCreateRange(source, fieldNum(HSMobileOpsCountStageLine, MasterRecId)).value(selected.StoreJournalRecId ? '' : SysQuery::value(selected.MasterRecId));
+					            super();
+					        }
+					]]></Source>
+					</Method>
+					<Method>
+						<Name>init</Name>
+						<Source><![CDATA[
+					        public void init()
+					        {
+					            super();
+					            this.queryBuildDataSource().addSortField(fieldNum(HSMobileOpsCountStageLine, CountedUtc));
+					        }
+					]]></Source>
+					</Method>
+				</Methods>
+			</DataSource>
+		</DataSources>
+		<DataControls xmlns="" />
+		<Members xmlns="" />
+	</SourceCode>
+	<DataSources>
+		<AxFormDataSource xmlns="">
+			<Name>HSMobileOpsCountStageLine</Name>
+			<Table>HSMobileOpsCountStageLine</Table>
+			<Fields />
+			<ReferencedDataSources />
+			<AllowCreate>No</AllowCreate>
+			<AllowDelete>No</AllowDelete>
+			<AllowEdit>No</AllowEdit>
+			<InsertIfEmpty>No</InsertIfEmpty>
+			<DataSourceLinks />
+			<DerivedDataSources />
+		</AxFormDataSource>
+		<AxFormDataSource xmlns="">
+			<Name>BinCount</Name>
+			<Table>HSMobileOpsCountStageLine</Table>
+			<Fields />
+			<ReferencedDataSources />
+			<AllowCreate>No</AllowCreate>
+			<AllowDelete>No</AllowDelete>
+			<AllowEdit>No</AllowEdit>
+			<InsertIfEmpty>No</InsertIfEmpty>
+			<DataSourceLinks />
+			<DerivedDataSources />
+		</AxFormDataSource>
+	</DataSources>
+	<Design>
+		<Caption xmlns="">Selected bin</Caption>
+		<DataSource xmlns="">HSMobileOpsCountStageLine</DataSource>
+		<Controls xmlns="">
+			<AxFormControl xmlns=""
+				i:type="AxFormGroupControl">
+				<Name>Details</Name>
+				<Type>Group</Type>
+				<WidthMode>SizeToAvailable</WidthMode>
+				<FormControlExtension
+					i:nil="true" />
+				<Controls>
+					<AxFormControl xmlns=""
+						i:type="AxFormStringControl">
+						<Name>LocationBin</Name>
+						<AllowEdit>No</AllowEdit>
+						<AutoDeclaration>Yes</AutoDeclaration>
+						<Skip>Yes</Skip>
+						<Type>String</Type>
+						<FormControlExtension
+							i:nil="true" />
+						<Label>Location / bin</Label>
+					</AxFormControl>
+					<AxFormControl xmlns=""
+						i:type="AxFormStringControl">
+						<Name>ItemText</Name>
+						<AllowEdit>No</AllowEdit>
+						<AutoDeclaration>Yes</AutoDeclaration>
+						<Skip>Yes</Skip>
+						<Type>String</Type>
+						<FormControlExtension
+							i:nil="true" />
+						<Label>Item</Label>
+					</AxFormControl>
+					<AxFormControl xmlns=""
+						i:type="AxFormRealControl">
+						<Name>OnHand</Name>
+						<AllowEdit>No</AllowEdit>
+						<AutoDeclaration>Yes</AutoDeclaration>
+						<Skip>Yes</Skip>
+						<Type>Real</Type>
+						<FormControlExtension
+							i:nil="true" />
+						<ExtendedDataType>InventQty</ExtendedDataType>
+						<Label>On-hand</Label>
+					</AxFormControl>
+					<AxFormControl xmlns=""
+						i:type="AxFormGridControl">
+						<Name>CountsGrid</Name>
+						<AllowEdit>No</AllowEdit>
+						<Type>Grid</Type>
+						<FormControlExtension
+							i:nil="true" />
+						<Controls>
+							<AxFormControl xmlns=""
+								i:type="AxFormStringControl">
+								<Name>Count_Counter</Name>
+								<Type>String</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<DataField>CounterName</DataField>
+								<DataSource>BinCount</DataSource>
+							</AxFormControl>
+							<AxFormControl xmlns=""
+								i:type="AxFormRealControl">
+								<Name>Count_Qty</Name>
+								<Type>Real</Type>
+								<FormControlExtension
+									i:nil="true" />
+								<DataField>Qty</DataField>
+								<DataSource>BinCount</DataSource>
+								<Label>Counted</Label>
+							</AxFormControl>
+						</Controls>
+						<DataSource>BinCount</DataSource>
+						<MultiSelect>No</MultiSelect>
+						<ShowRowLabels>No</ShowRowLabels>
+					</AxFormControl>
+					<AxFormControl xmlns=""
+						i:type="AxFormRealControl">
+						<Name>AddedTogether</Name>
+						<AllowEdit>No</AllowEdit>
+						<AutoDeclaration>Yes</AutoDeclaration>
+						<Skip>Yes</Skip>
+						<Type>Real</Type>
+						<FormControlExtension
+							i:nil="true" />
+						<ExtendedDataType>InventQty</ExtendedDataType>
+						<Label>Added together</Label>
+					</AxFormControl>
+				</Controls>
+				<FrameType>None</FrameType>
+			</AxFormControl>
+		</Controls>
+	</Design>
+	<Parts />
+</AxForm>

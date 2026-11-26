@@ -45,4 +45,10 @@ abstract class CountingModule {
 
     @Binds @Singleton
     abstract fun bindSupervisorCountRepository(impl: LiveSupervisorCountRepository): SupervisorCountRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindCountControlRepository(
+        impl: com.d365fo.mobileops.data.countcontrol.LiveCountControlRepository,
+    ): com.d365fo.mobileops.domain.countcontrol.CountControlRepository
 }

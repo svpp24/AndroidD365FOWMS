@@ -24,6 +24,12 @@
 					<Name>HSMobileOpsCountBinLine</Name>
 					<MenuItemName>HSMobileOpsCountBinLine</MenuItemName>
 				</AxMenuElement>
+				<AxMenuElement xmlns=""
+					i:type="AxMenuElementMenuItem">
+					<Name>HSMobileOpsCountStoreJournalPostBatch</Name>
+					<MenuItemName>HSMobileOpsCountStoreJournalPostBatch</MenuItemName>
+					<MenuItemType>Action</MenuItemType>
+				</AxMenuElement>
 			</Elements>
 		</AxMenuElement>
 		<AxMenuElement xmlns=""

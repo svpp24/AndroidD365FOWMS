@@ -60,6 +60,10 @@
 			<Service>HSMobileOpsCountSupervisorSvc</Service>
 		</AxServiceGroupService>
 		<AxServiceGroupService>
+			<Name>HSMobileOpsCountControlSvc</Name>
+			<Service>HSMobileOpsCountControlSvc</Service>
+		</AxServiceGroupService>
+		<AxServiceGroupService>
 			<Name>HSMobileOpsLicenseSvc</Name>
 			<Service>HSMobileOpsLicenseSvc</Service>
 		</AxServiceGroupService>

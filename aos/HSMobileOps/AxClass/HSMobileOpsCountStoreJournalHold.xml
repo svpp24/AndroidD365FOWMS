@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsCountStoreJournalHold</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Count control center: Hold and Release (menu item parameter HOLD or RELEASE). A held store
+/// journal is skipped by the nightly posting until it is released.
+/// </summary>
+class HSMobileOpsCountStoreJournalHold
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>main</Name>
+				<Source><![CDATA[
+    public static void main(Args _args)
+    {
+        HSMobileOpsCountStoreJournal storeJournal = _args ? _args.record() : null;
+
+        if (!storeJournal || !storeJournal.RecId)
+        {
+            throw error('Select a store first.');
+        }
+        HSMobileOpsCountStoreJournalEngine::hold(storeJournal.RecId, _args.parm() != 'RELEASE');
+        HSMobileOpsCountRefresh::researchCaller(_args);
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

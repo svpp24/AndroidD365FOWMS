@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxMenuItemAction xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsCountStoreJournalOpen</Name>
+	<Label>Open journal</Label>
+	<HelpText>Open the store journal in D365FO's counting journals.</HelpText>
+	<Object>HSMobileOpsCountStoreJournalOpen</Object>
+	<ObjectType>Class</ObjectType>
+</AxMenuItemAction>

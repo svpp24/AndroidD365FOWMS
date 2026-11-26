@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsCountStoreJournalOpen</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Count control center: Open journal - the store journal in D365FO's counting journals.
+/// </summary>
+class HSMobileOpsCountStoreJournalOpen
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>main</Name>
+				<Source><![CDATA[
+    public static void main(Args _args)
+    {
+        HSMobileOpsCountStoreJournal storeJournal = _args ? _args.record() : null;
+
+        if (!storeJournal || !storeJournal.RecId)
+        {
+            throw error('Select a store first.');
+        }
+        InventJournalTable journalTable = InventJournalTable::find(storeJournal.JournalId);
+        Args               journalArgs = new Args(formStr(InventJournalCount));
+        FormRun            journalForm;
+
+        if (!journalTable.RecId)
+        {
+            throw error(strFmt('The store journal of %1 has no journal yet. It is made when the first blind count goes into it.', storeJournal.InventLocationId));
+        }
+        // The counting journal's lines, as D365FO opens them from Counting journals > Lines.
+        journalArgs.record(journalTable);
+        journalForm = classFactory.formRunClass(journalArgs);
+        journalForm.init();
+        journalForm.run();
+        journalForm.detach();
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>
