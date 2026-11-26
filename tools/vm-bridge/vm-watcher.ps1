@@ -53,7 +53,9 @@ function Get-Models {
 }
 Write-Host "vm-bridge: starting (packages $Packages)"
 # The model may sit under another package or model name than HSMobileOps\HSMobileOps.
-if (-not (Test-Path (Join-Path $Packages "$Package\$Model"))) {
+# Only when no package was named: a watcher started for another model (-Package) must never
+# fall back to the mobile-ops model.
+if (-not $PSBoundParameters.ContainsKey('Package') -and -not (Test-Path (Join-Path $Packages "$Package\$Model"))) {
     $found = @(Get-Models | Where-Object { Test-Path (Join-Path $Packages "$($_.Package)\$($_.Model)\AxClass\HSMobileOpsSkuPageService.xml") })
     if ($found.Count -eq 1) {
         $Package = $found[0].Package
@@ -72,6 +74,8 @@ New-Item -ItemType Directory -Force -Path $Requests, $Results, $Done, $Backups |
 # Repo path (relative to aos\HSMobileOps) -> path on the VM. Descriptor sits at package level.
 function Get-VmPath([string]$relative) {
     $rel = $relative -replace '/', '\'
+    # The model's descriptor (a new model needs one): <package>\Descriptor\<model>.xml.
+    if ($rel -eq "Descriptor\$Model.xml") { return Join-Path $PackageDir $rel }
     # Only the model's X++ objects: <AxType>\<name>.xml. Nothing else in or outside the model.
     # Extensions carry dots (AxMenuExtension\MainMenu.HSMobileOps.xml); each dotted part is
     # non-empty, so '..' never matches.
@@ -218,6 +222,7 @@ function Invoke-FetchStd($files, [string]$id) {
 function Invoke-Build([string]$id) {
     $bin = Join-Path $Packages 'bin'
     $out = Join-Path $PackageDir 'bin'
+    New-Item -ItemType Directory -Force -Path $out | Out-Null
     $logFile = Join-Path $Backups "$id-xppc.log"
     $xppcArgs = @(
         "-metadata=$Packages", "-compilermetadata=$Packages", "-output=$out", "-modelmodule=$Package",
@@ -243,9 +248,13 @@ function Invoke-Restart {
     return @{ ok = $true; summary = 'IIS and batch restarted'; log = ($log -join "`n") }
 }
 
-function Invoke-DbSync {
+function Invoke-DbSync($tables) {
     $connect = 'Data Source=localhost;Initial Catalog=AxDB;Integrated Security=True;Enlist=True;Application Name=AXVSSDK'
-    $console = & (Join-Path $Packages 'bin\SyncEngine.exe') -syncmode=fullall "-metadatabinaries=$Packages" "-connect=$connect" -fallbacktobinary 2>&1 | Out-String
+    $list = @($tables | Where-Object { $_ })
+    foreach ($t in $list) { if ($t -notmatch '^[A-Za-z0-9_]+$') { throw "bad table name: $t" } }
+    # Named tables only (partial sync; the list is one argument so its commas stay inside it), or everything.
+    $mode = if ($list) { @('-syncmode=partiallist', ('-synclist=' + ($list -join ','))) } else { @('-syncmode=fullall') }
+    $console = & (Join-Path $Packages 'bin\SyncEngine.exe') @mode "-metadatabinaries=$Packages" "-connect=$connect" -fallbacktobinary 2>&1 | Out-String
     $code = $LASTEXITCODE
     $tail = (($console -split "`r?`n") | Select-Object -Last 15) -join "`n"
     return @{ ok = ($code -eq 0); summary = "exit $code`n$tail"; log = $console }
@@ -289,7 +298,7 @@ while ($true) {
                 'fetchstd' { Invoke-FetchStd $request.files $id }
                 'build'   { Invoke-Build $id }
                 'restart' { Invoke-Restart }
-                'dbsync'  { Invoke-DbSync }
+                'dbsync'  { Invoke-DbSync $request.tables }
                 default   { @{ ok = $false; summary = "unknown action '$action'"; log = '' } }
             }
         } catch {
