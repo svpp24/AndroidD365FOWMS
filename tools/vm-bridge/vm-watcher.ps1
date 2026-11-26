@@ -13,6 +13,8 @@
       compare  repo model files vs the VM's model files (same / different / only on one side)
       deploy   copy the named repo files into the model; each overwritten file is backed up first
       fetch    copy the named model files from the VM to the PC, to diff them there (read-only)
+      find     list objects in any package by file name wildcard, optionally containing a regex (read-only)
+      fetchstd copy named objects from any package (Package/Model/AxType/Name.xml) to the PC (read-only)
       build    compile the model (xppc), errors in the summary
       restart  restart IIS (the AOS) and the batch service, to load a new build
       dbsync   full database sync (only when tables or enums changed; long)
@@ -176,6 +178,43 @@ function Invoke-Fetch($files, [string]$id) {
     return @{ ok = $true; summary = "$(@($log | Where-Object { $_ -like 'fetched*' }).Count) of $(@($files).Count) fetched to $target"; log = ($log -join "`n") }
 }
 
+# Read-only look at standard code. names: file name wildcards (e.g. 'ITM*', '*Markup*'); types: AxType
+# folders (default all Ax*); packages: package wildcards (default all); pattern: optional content regex.
+function Invoke-Find($request) {
+    $names = @($request.names | Where-Object { $_ }); if (-not $names) { throw 'find needs names' }
+    foreach ($n in @($names) + @($request.types) + @($request.packages)) { if ($n -and $n -notmatch '^[A-Za-z0-9_*?.]+$') { throw "bad wildcard: $n" } }
+    $types = @($request.types | Where-Object { $_ }); if (-not $types) { $types = @('Ax*') }
+    $pkgs = @($request.packages | Where-Object { $_ }); if (-not $pkgs) { $pkgs = @('*') }
+    $hits = foreach ($pk in $pkgs) { foreach ($t in $types) { foreach ($n in $names) {
+        $nn = if ($n -like '*.xml') { $n } else { "$n.xml" }
+        Get-ChildItem -Path (Join-Path $Packages "$pk\*\$t\$nn") -File -ErrorAction SilentlyContinue } } }
+    $hits = @($hits | Sort-Object FullName -Unique)
+    if ($request.pattern) {
+        $rx = [string]$request.pattern
+        $hits = @($hits | Where-Object { Select-String -LiteralPath $_.FullName -Pattern $rx -Quiet })
+    }
+    $max = if ($request.max) { [int]$request.max } else { 400 }
+    $rel = @($hits | Select-Object -First $max | ForEach-Object { $_.FullName.Substring($Packages.Length + 1) -replace '\\', '/' })
+    return @{ ok = $true; summary = "$($hits.Count) match(es)$(if ($hits.Count -gt $max) { ", first $max listed" })`n" + ($rel -join "`n"); log = ($rel -join "`n") }
+}
+
+function Invoke-FetchStd($files, [string]$id) {
+    if (-not $files -or @($files).Count -eq 0) { throw 'fetchstd needs files' }
+    $target = Join-Path (Join-Path $Bridge 'fetched') $id
+    $log = @()
+    foreach ($relative in $files) {
+        $rel = $relative -replace '/', '\'
+        if ($rel -notmatch '^[A-Za-z0-9_]+\\[A-Za-z0-9_ ]+\\Ax[A-Za-z]+\\[A-Za-z0-9_]+(\.[A-Za-z0-9_]+)*\.xml$') { $log += "refused  $relative"; continue }
+        $from = Join-Path $Packages $rel
+        if (-not (Test-Path -LiteralPath $from)) { $log += "missing  $relative"; continue }
+        $to = Join-Path $target $rel
+        New-Item -ItemType Directory -Force -Path (Split-Path $to) | Out-Null
+        Copy-Item -LiteralPath $from -Destination $to -Force
+        $log += "fetched  $relative"
+    }
+    return @{ ok = $true; summary = "$(@($log | Where-Object { $_ -like 'fetched*' }).Count) of $(@($files).Count) fetched to $target`n" + ($log -join "`n"); log = ($log -join "`n") }
+}
+
 function Invoke-Build([string]$id) {
     $bin = Join-Path $Packages 'bin'
     $out = Join-Path $PackageDir 'bin'
@@ -246,6 +285,8 @@ while ($true) {
                 'compare' { Invoke-Compare $request.hashes }
                 'deploy'  { Invoke-Deploy $request.files $id }
                 'fetch'   { Invoke-Fetch $request.files $id }
+                'find'    { Invoke-Find $request }
+                'fetchstd' { Invoke-FetchStd $request.files $id }
                 'build'   { Invoke-Build $id }
                 'restart' { Invoke-Restart }
                 'dbsync'  { Invoke-DbSync }
