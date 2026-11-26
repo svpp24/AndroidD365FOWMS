@@ -264,7 +264,7 @@ internal fun FocusHomeLayout(
                         contentDescription = "$userLabel, $warehouseCode $warehouseName, " + if (online) "online" else "offline"
                     },
             ) {
-                // Code chip (user, 26 Nov 2026): the warehouse code in a navy chip that reads as the
+                // Code chip (user, 26 Nov 2026): the warehouse code in an orange chip that reads as the
                 // first word of its name; the name wraps under it as one paragraph - no avatar, no
                 // online mark. Past two lines it gets smaller, down to 15 sp. Never cut off.
                 var nameSize by remember(warehouseName) { mutableStateOf(18f) }
@@ -294,7 +294,7 @@ internal fun FocusHomeLayout(
                                 modifier = Modifier
                                     .fillMaxSize()
                                     .clip(RoundedCornerShape(7.dp))
-                                    .background(FocusColors.navy),
+                                    .background(FocusColors.action), // orange (user, 26 Nov 2026)
                             ) {
                                 Text(code, style = chipStyle, color = FocusColors.surface)
                             }
