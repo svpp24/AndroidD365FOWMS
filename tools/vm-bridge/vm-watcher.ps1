@@ -208,7 +208,9 @@ function Invoke-FetchStd($files, [string]$id) {
     $log = @()
     foreach ($relative in $files) {
         $rel = $relative -replace '/', '\'
-        if ($rel -notmatch '^[A-Za-z0-9_]+\\[A-Za-z0-9_ ]+\\Ax[A-Za-z]+\\[A-Za-z0-9_]+(\.[A-Za-z0-9_]+)*\.xml$') { $log += "refused  $relative"; continue }
+        # A model object (Package\Model\AxType\Name.xml) or a package's descriptor (Package\Descriptor\Model.xml).
+        if ($rel -notmatch '^[A-Za-z0-9_]+\\[A-Za-z0-9_ ]+\\Ax[A-Za-z]+\\[A-Za-z0-9_]+(\.[A-Za-z0-9_]+)*\.xml$' -and
+            $rel -notmatch '^[A-Za-z0-9_]+\\Descriptor\\[A-Za-z0-9_ ]+\.xml$') { $log += "refused  $relative"; continue }
         $from = Join-Path $Packages $rel
         if (-not (Test-Path -LiteralPath $from)) { $log += "missing  $relative"; continue }
         $to = Join-Path $target $rel
@@ -232,20 +234,24 @@ function Invoke-Build([string]$id) {
     $code = $LASTEXITCODE
     $text = $console
     if (Test-Path $logFile) { $text += "`n----- xppc log -----`n" + (Get-Content -Raw $logFile) }
+    # The XML log carries the detail (the inner exception of a metadata error, for one).
+    if (Test-Path "$logFile.xml") { $text += "`n----- xppc xml log -----`n" + (Get-Content -Raw "$logFile.xml") }
     $errors = ($text -split "`r?`n") | Where-Object { $_ -match '(?i)\berror\b' -and $_ -notmatch '(?i)\b0 errors?\b' } | Select-Object -Unique -First 60
     $summary = "exit $code, $(@($errors).Count) error line(s)"
     if ($errors) { $summary += "`n" + ($errors -join "`n") }
     return @{ ok = ($code -eq 0 -and -not $errors); summary = $summary; log = $text }
 }
 
-function Invoke-Restart {
+function Invoke-Restart([bool]$iisOnly) {
     $log = @()
     $log += (& iisreset /restart 2>&1 | Out-String)
-    if (Get-Service -Name DynamicsAxBatch -ErrorAction SilentlyContinue) {
+    # IIS only: leaves the batch service, and any batch job another user has running, alone.
+    if (-not $iisOnly -and (Get-Service -Name DynamicsAxBatch -ErrorAction SilentlyContinue)) {
         Restart-Service -Name DynamicsAxBatch -Force
         $log += "DynamicsAxBatch: $((Get-Service DynamicsAxBatch).Status)"
     }
-    return @{ ok = $true; summary = 'IIS and batch restarted'; log = ($log -join "`n") }
+    $log += "W3SVC: $((Get-Service W3SVC).Status)"
+    return @{ ok = $true; summary = $(if ($iisOnly) { 'IIS restarted' } else { 'IIS and batch restarted' }) + "`n" + ($log | Select-Object -Last 1); log = ($log -join "`n") }
 }
 
 function Invoke-DbSync($tables) {
@@ -297,7 +303,7 @@ while ($true) {
                 'find'    { Invoke-Find $request }
                 'fetchstd' { Invoke-FetchStd $request.files $id }
                 'build'   { Invoke-Build $id }
-                'restart' { Invoke-Restart }
+                'restart' { Invoke-Restart ([bool]$request.iisOnly) }
                 'dbsync'  { Invoke-DbSync $request.tables }
                 default   { @{ ok = $false; summary = "unknown action '$action'"; log = '' } }
             }

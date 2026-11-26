@@ -18,6 +18,7 @@ param(
     [string[]]$Packages,
     [string]$Pattern,
     [string[]]$Tables,
+    [switch]$IisOnly,
     [int]$Max = 400,
     [int]$TimeoutSec = 540,
     [string]$Result,
@@ -43,6 +44,7 @@ if (-not $Action) { throw 'an action is needed: status, compare, deploy, build, 
 $id = "$(Get-Date -Format 'yyyyMMdd-HHmmss')-$Action"
 $request = [ordered]@{ action = $Action; files = @($Files | Where-Object { $_ }) }
 if ($Action -eq 'dbsync' -and $Tables) { $request.tables = @($Tables) }
+if ($Action -eq 'restart' -and $IisOnly) { $request.iisOnly = $true }
 if ($Action -eq 'find') { $request.names = @($Names); $request.types = @($Types); $request.packages = @($Packages); $request.pattern = $Pattern; $request.max = $Max }
 if ($Action -eq 'compare') {
     # Hashed here: the VM reading every repo file over the RDP drive takes many minutes.
