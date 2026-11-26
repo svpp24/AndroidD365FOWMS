@@ -92,9 +92,9 @@ val NavigationTour = listOf(
         text = "Anything that could not be sent shows here in red.",
     ),
     TourStep(
-        targets = listOf("row_Settings"),
+        targets = listOf("signout"),
         title = "End of shift",
-        text = "Settings, feedback and Sign out are here.",
+        text = "Settings and Sign out are in this menu.",
     ),
 )
 

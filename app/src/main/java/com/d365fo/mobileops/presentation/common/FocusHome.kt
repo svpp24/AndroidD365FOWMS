@@ -63,6 +63,7 @@ import com.d365fo.mobileops.presentation.common.focus.FocusMenuItem
 import com.d365fo.mobileops.presentation.common.focus.HamburgerButton
 import com.d365fo.mobileops.presentation.common.focus.HomeOnHandPanel
 import com.d365fo.mobileops.presentation.common.focus.HomeRow
+import androidx.compose.foundation.text.appendInlineContent
 import com.d365fo.mobileops.presentation.common.focus.ResultBand
 import com.d365fo.mobileops.presentation.common.theme.FocusColors
 import com.d365fo.mobileops.presentation.common.theme.FocusType
@@ -227,20 +228,7 @@ internal fun FocusHomeLayout(
     onFeedback: (() -> Unit)? = null,
     userLabel: String = initials,
 ) {
-    // Settings is a Home row (user, 26 Nov 2026), not a menu button: it opens a page with App
-    // settings, Send feedback and Sign out (Sign out still asks first, on Home).
-    var settingsOpen by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
-    if (settingsOpen) {
-        androidx.activity.compose.BackHandler { settingsOpen = false }
-        HomeSettingsPage(
-            onBack = { settingsOpen = false },
-            onSettings = { settingsOpen = false; onSettings() },
-            onFeedback = onFeedback?.let { feedback -> { settingsOpen = false; feedback() } },
-            onSignOut = onSignOut?.let { signOut -> { settingsOpen = false; signOut() } },
-        )
-        return
-    }
-    val allRows = rows + HomeEntry(LineIcons.Settings, "Settings", null) { settingsOpen = true }
+    var menuOpen by remember { mutableStateOf(false) }
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -255,7 +243,7 @@ internal fun FocusHomeLayout(
             modifier = Modifier
                 .fillMaxWidth()
                 .heightIn(min = FocusDimens.topBar + 8.dp)
-                .padding(horizontal = FocusDimens.side, vertical = 6.dp),
+                .padding(start = FocusDimens.side, end = 8.dp, top = 6.dp, bottom = 6.dp),
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
@@ -276,50 +264,68 @@ internal fun FocusHomeLayout(
                         contentDescription = "$userLabel, $warehouseCode $warehouseName, " + if (online) "online" else "offline"
                     },
             ) {
-                // Joined badge (user, 26 Nov 2026): one outlined badge, the warehouse code on a navy
-                // end and its name on the white part - no avatar, no online mark. The name wraps and,
-                // past two lines, gets smaller down to 14 sp. Never cut off.
-                var nameSize by remember(warehouseName) { mutableStateOf(16f) }
-                val badge = RoundedCornerShape(14.dp)
-                Row(
-                    Modifier
-                        .weight(1f)
-                        .height(IntrinsicSize.Min)
-                        .clip(badge)
-                        .border(1.5.dp, FocusColors.navy, badge)
-                        .background(FocusColors.surface)
-                        .tourTarget("connection"),
-                ) {
-                    if (warehouseCode.isNotBlank()) {
-                        Box(
-                            contentAlignment = Alignment.Center,
-                            modifier = Modifier
-                                .fillMaxHeight()
-                                .background(FocusColors.navy)
-                                .padding(horizontal = 10.dp, vertical = 8.dp),
-                        ) {
-                            Text(
-                                warehouseCode.uppercase(),
-                                style = FocusType.rowCode.copy(fontSize = 14.sp, lineHeight = 17.sp,
-                                    fontWeight = androidx.compose.ui.text.font.FontWeight.ExtraBold),
-                                color = FocusColors.surface,
-                            )
+                // Code chip (user, 26 Nov 2026): the warehouse code in a navy chip that reads as the
+                // first word of its name; the name wraps under it as one paragraph - no avatar, no
+                // online mark. Past two lines it gets smaller, down to 15 sp. Never cut off.
+                var nameSize by remember(warehouseName) { mutableStateOf(18f) }
+                val code = warehouseCode.uppercase()
+                val name = if (warehouseName.isNotBlank() && warehouseName != warehouseCode) warehouseName else ""
+                val chipStyle = FocusType.rowCode.copy(fontSize = 13.sp, lineHeight = 16.sp,
+                    fontWeight = androidx.compose.ui.text.font.FontWeight.ExtraBold)
+                val measurer = androidx.compose.ui.text.rememberTextMeasurer()
+                val density = androidx.compose.ui.platform.LocalDensity.current
+                val chipWidth = with(density) { (measurer.measure(code, chipStyle).size.width + 14.dp.roundToPx()).toSp() }
+                val chipHeight = with(density) { (measurer.measure(code, chipStyle).size.height + 4.dp.roundToPx()).toSp() }
+                Text(
+                    androidx.compose.ui.text.buildAnnotatedString {
+                        if (code.isNotBlank()) {
+                            appendInlineContent("chip", code)
+                            append(" ")
                         }
-                    }
-                    Text(
-                        if (warehouseName.isNotBlank()) warehouseName else warehouseCode,
-                        style = FocusType.rowTitle.copy(fontSize = nameSize.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.ExtraBold),
-                        color = FocusColors.ink,
-                        lineHeight = (nameSize + 4f).sp,
-                        onTextLayout = { layout -> if (layout.lineCount > 2 && nameSize > 14f) nameSize -= 1f },
-                        modifier = Modifier
-                            .weight(1f)
-                            .align(Alignment.CenterVertically)
-                            .padding(horizontal = 10.dp, vertical = 7.dp),
-                    )
-                }
+                        append(name)
+                    },
+                    inlineContent = mapOf(
+                        "chip" to androidx.compose.foundation.text.InlineTextContent(
+                            androidx.compose.ui.text.Placeholder(chipWidth, chipHeight,
+                                androidx.compose.ui.text.PlaceholderVerticalAlign.TextCenter),
+                        ) {
+                            Box(
+                                contentAlignment = Alignment.Center,
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .clip(RoundedCornerShape(7.dp))
+                                    .background(FocusColors.navy),
+                            ) {
+                                Text(code, style = chipStyle, color = FocusColors.surface)
+                            }
+                        },
+                    ),
+                    style = FocusType.rowTitle.copy(fontSize = nameSize.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.ExtraBold),
+                    color = FocusColors.ink,
+                    lineHeight = (nameSize + 5f).sp,
+                    onTextLayout = { layout -> if (layout.lineCount > 2 && nameSize > 15f) nameSize -= 1f },
+                    modifier = Modifier.weight(1f).tourTarget("connection"),
+                )
+            }
+            // Settings, Send feedback and Sign out stay in the menu (user, 26 Nov 2026).
+            Box(Modifier.tourTarget("signout")) {
+                HamburgerButton(open = menuOpen, onClick = { menuOpen = !menuOpen })
             }
         }
+        FocusMenu(
+            open = menuOpen,
+            onDismiss = { menuOpen = false },
+            items = listOfNotNull(
+                FocusMenuItem(Icons.Filled.Settings, "Settings") { menuOpen = false; onSettings() },
+                // Feedback lives here only (user, 15 Nov 2026), with pictures from the gallery.
+                onFeedback?.let { feedback ->
+                    FocusMenuItem(Icons.AutoMirrored.Filled.Chat, "Send feedback") { menuOpen = false; feedback() }
+                },
+                onSignOut?.let { signOut ->
+                    FocusMenuItem(Icons.AutoMirrored.Filled.Logout, "Sign out", color = FocusColors.badIcon) { menuOpen = false; signOut() }
+                },
+            ),
+        )
 
         band?.let { ResultBand(it, modifier = Modifier.padding(bottom = 12.dp), onDismiss = onBandDismiss) }
 
@@ -333,7 +339,7 @@ internal fun FocusHomeLayout(
             restoreCard(Modifier.padding(horizontal = FocusDimens.side, vertical = 4.dp))
             val selected = LocalHomeSelected.current
             Row(Modifier.fillMaxWidth().tourTarget("tiles")) {
-                allRows.forEach { row ->
+                rows.forEach { row ->
                     val on = row.title == selected
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
@@ -379,7 +385,7 @@ internal fun FocusHomeLayout(
             restoreCard(Modifier.padding(horizontal = FocusDimens.side, vertical = 8.dp))
             Column(Modifier.tourTarget("tiles")) {
                 val selected = LocalHomeSelected.current
-                allRows.forEach { row ->
+                rows.forEach { row ->
                     HomeRow(
                         modifier = (if (row.title == selected) Modifier.background(FocusColors.infoBg.copy(alpha = 0.6f)) else Modifier)
                             .tourTarget("row_${row.title}"),
@@ -396,24 +402,6 @@ internal fun FocusHomeLayout(
         }
     }
 }
-/** Home's Settings row opens this: App settings, Send feedback (here only), Sign out. */
-@Composable
-private fun HomeSettingsPage(
-    onBack: () -> Unit,
-    onSettings: () -> Unit,
-    onFeedback: (() -> Unit)?,
-    onSignOut: (() -> Unit)?,
-) {
-    com.d365fo.mobileops.presentation.common.focus.FocusScreen(title = "Settings", onBack = onBack) {
-        HomeRow(icon = LineIcons.Settings, title = "App settings", onClick = onSettings)
-        onFeedback?.let { HomeRow(icon = LineIcons.Feedback, title = "Send feedback", onClick = it) }
-        onSignOut?.let {
-            HomeRow(icon = LineIcons.SignOut, title = "Sign out", onClick = it, iconColor = FocusColors.badIcon,
-                modifier = Modifier.tourTarget("signout"))
-        }
-    }
-}
-
 /**
  * Receive's count: POs due today plus transfers coming in - only when the ones the worker may
  * receive are both known; a figure D365FO couldn't give is left out, never guessed.
