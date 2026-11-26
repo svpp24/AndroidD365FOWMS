@@ -28,6 +28,8 @@ object LineIcons {
     private const val MORE = "M8 6h12M8 12h12M8 18h12M4 6h0M4 12h0M4 18h0"
     private const val POSTING = "M4 17l6-6 4 4 6-8"
     private const val FEEDBACK = "M4 5h16v11H8l-4 4z"
+    private const val GEAR = "M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6zM12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"
+    private const val SIGN_OUT = "M10 4H5v16h5M15 8l4 4-4 4M19 12H9"
     private const val LINK = "M9 15l6-6M10 6l1-1a4 4 0 0 1 6 6l-1 1M14 18l-1 1a4 4 0 0 1-6-6l1-1"
     private const val TOUR = "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 11v6M12 7h0"
     private const val ABOUT = "M6 3h9l3 3v15H6zM9 9h6M9 13h6M9 17h4"
@@ -100,6 +102,8 @@ object LineIcons {
     val Warehouse = line("Warehouse", STORE, THIN)
     val Posting = line("Posting", POSTING, THIN)
     val Feedback = line("Feedback", FEEDBACK, THIN)
+    val Settings = line("Settings", GEAR, BADGE)
+    val SignOut = line("SignOut", SIGN_OUT, BADGE)
     val Link = line("Link", LINK, THIN)
     val Tour = line("Tour", TOUR, THIN)
     val About = line("About", ABOUT, THIN)

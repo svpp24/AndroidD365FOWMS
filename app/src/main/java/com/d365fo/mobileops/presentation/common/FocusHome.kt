@@ -227,7 +227,20 @@ internal fun FocusHomeLayout(
     onFeedback: (() -> Unit)? = null,
     userLabel: String = initials,
 ) {
-    var menuOpen by remember { mutableStateOf(false) }
+    // Settings is a Home row (user, 26 Nov 2026), not a menu button: it opens a page with App
+    // settings, Send feedback and Sign out (Sign out still asks first, on Home).
+    var settingsOpen by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
+    if (settingsOpen) {
+        androidx.activity.compose.BackHandler { settingsOpen = false }
+        HomeSettingsPage(
+            onBack = { settingsOpen = false },
+            onSettings = { settingsOpen = false; onSettings() },
+            onFeedback = onFeedback?.let { feedback -> { settingsOpen = false; feedback() } },
+            onSignOut = onSignOut?.let { signOut -> { settingsOpen = false; signOut() } },
+        )
+        return
+    }
+    val allRows = rows + HomeEntry(LineIcons.Settings, "Settings", null) { settingsOpen = true }
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -306,24 +319,7 @@ internal fun FocusHomeLayout(
                     )
                 }
             }
-            Box(Modifier.tourTarget("signout")) {
-                HamburgerButton(open = menuOpen, onClick = { menuOpen = !menuOpen })
-            }
         }
-        FocusMenu(
-            open = menuOpen,
-            onDismiss = { menuOpen = false },
-            items = listOfNotNull(
-                FocusMenuItem(Icons.Filled.Settings, "Settings") { menuOpen = false; onSettings() },
-                // Feedback lives here only (user, 15 Nov 2026), with pictures from the gallery.
-                onFeedback?.let { feedback ->
-                    FocusMenuItem(Icons.AutoMirrored.Filled.Chat, "Send feedback") { menuOpen = false; feedback() }
-                },
-                onSignOut?.let { signOut ->
-                    FocusMenuItem(Icons.AutoMirrored.Filled.Logout, "Sign out", color = FocusColors.badIcon) { menuOpen = false; signOut() }
-                },
-            ),
-        )
 
         band?.let { ResultBand(it, modifier = Modifier.padding(bottom = 12.dp), onDismiss = onBandDismiss) }
 
@@ -337,7 +333,7 @@ internal fun FocusHomeLayout(
             restoreCard(Modifier.padding(horizontal = FocusDimens.side, vertical = 4.dp))
             val selected = LocalHomeSelected.current
             Row(Modifier.fillMaxWidth().tourTarget("tiles")) {
-                rows.forEach { row ->
+                allRows.forEach { row ->
                     val on = row.title == selected
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
@@ -383,7 +379,7 @@ internal fun FocusHomeLayout(
             restoreCard(Modifier.padding(horizontal = FocusDimens.side, vertical = 8.dp))
             Column(Modifier.tourTarget("tiles")) {
                 val selected = LocalHomeSelected.current
-                rows.forEach { row ->
+                allRows.forEach { row ->
                     HomeRow(
                         modifier = (if (row.title == selected) Modifier.background(FocusColors.infoBg.copy(alpha = 0.6f)) else Modifier)
                             .tourTarget("row_${row.title}"),
@@ -400,6 +396,24 @@ internal fun FocusHomeLayout(
         }
     }
 }
+/** Home's Settings row opens this: App settings, Send feedback (here only), Sign out. */
+@Composable
+private fun HomeSettingsPage(
+    onBack: () -> Unit,
+    onSettings: () -> Unit,
+    onFeedback: (() -> Unit)?,
+    onSignOut: (() -> Unit)?,
+) {
+    com.d365fo.mobileops.presentation.common.focus.FocusScreen(title = "Settings", onBack = onBack) {
+        HomeRow(icon = LineIcons.Settings, title = "App settings", onClick = onSettings)
+        onFeedback?.let { HomeRow(icon = LineIcons.Feedback, title = "Send feedback", onClick = it) }
+        onSignOut?.let {
+            HomeRow(icon = LineIcons.SignOut, title = "Sign out", onClick = it, iconColor = FocusColors.badIcon,
+                modifier = Modifier.tourTarget("signout"))
+        }
+    }
+}
+
 /**
  * Receive's count: POs due today plus transfers coming in - only when the ones the worker may
  * receive are both known; a figure D365FO couldn't give is left out, never guessed.
