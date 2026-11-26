@@ -263,42 +263,47 @@ internal fun FocusHomeLayout(
                         contentDescription = "$userLabel, $warehouseCode $warehouseName, " + if (online) "online" else "offline"
                     },
             ) {
-                // Nameplate (user, 26 Nov 2026): an orange bar, the warehouse code in small capitals
-                // above its name - no avatar, no online mark. The name wraps and, past two lines, gets
-                // smaller down to 15 sp. Never cut off.
-                var nameSize by remember(warehouseName) { mutableStateOf(18f) }
+                // Joined badge (user, 26 Nov 2026): one outlined badge, the warehouse code on a navy
+                // end and its name on the white part - no avatar, no online mark. The name wraps and,
+                // past two lines, gets smaller down to 14 sp. Never cut off.
+                var nameSize by remember(warehouseName) { mutableStateOf(16f) }
+                val badge = RoundedCornerShape(14.dp)
                 Row(
                     Modifier
                         .weight(1f)
                         .height(IntrinsicSize.Min)
+                        .clip(badge)
+                        .border(1.5.dp, FocusColors.navy, badge)
+                        .background(FocusColors.surface)
                         .tourTarget("connection"),
                 ) {
-                    Box(
-                        Modifier
-                            .width(4.dp)
-                            .fillMaxHeight()
-                            .clip(RoundedCornerShape(2.dp))
-                            .background(FocusColors.action),
-                    )
-                    Column(Modifier.padding(start = 10.dp, top = 2.dp, bottom = 2.dp)) {
-                        if (warehouseCode.isNotBlank()) {
+                    if (warehouseCode.isNotBlank()) {
+                        Box(
+                            contentAlignment = Alignment.Center,
+                            modifier = Modifier
+                                .fillMaxHeight()
+                                .background(FocusColors.navy)
+                                .padding(horizontal = 10.dp, vertical = 8.dp),
+                        ) {
                             Text(
                                 warehouseCode.uppercase(),
-                                style = FocusType.rowCode.copy(fontSize = 13.sp, lineHeight = 16.sp, letterSpacing = 0.8.sp,
-                                    fontWeight = androidx.compose.ui.text.font.FontWeight.Black),
-                                color = FocusColors.action,
-                            )
-                        }
-                        if (warehouseName.isNotBlank() && warehouseName != warehouseCode) {
-                            Text(
-                                warehouseName,
-                                style = FocusType.rowTitle.copy(fontSize = nameSize.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.ExtraBold),
-                                color = FocusColors.ink,
-                                lineHeight = (nameSize + 4f).sp,
-                                onTextLayout = { layout -> if (layout.lineCount > 2 && nameSize > 15f) nameSize -= 1f },
+                                style = FocusType.rowCode.copy(fontSize = 14.sp, lineHeight = 17.sp,
+                                    fontWeight = androidx.compose.ui.text.font.FontWeight.ExtraBold),
+                                color = FocusColors.surface,
                             )
                         }
                     }
+                    Text(
+                        if (warehouseName.isNotBlank()) warehouseName else warehouseCode,
+                        style = FocusType.rowTitle.copy(fontSize = nameSize.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.ExtraBold),
+                        color = FocusColors.ink,
+                        lineHeight = (nameSize + 4f).sp,
+                        onTextLayout = { layout -> if (layout.lineCount > 2 && nameSize > 14f) nameSize -= 1f },
+                        modifier = Modifier
+                            .weight(1f)
+                            .align(Alignment.CenterVertically)
+                            .padding(horizontal = 10.dp, vertical = 7.dp),
+                    )
                 }
             }
             Box(Modifier.tourTarget("signout")) {
