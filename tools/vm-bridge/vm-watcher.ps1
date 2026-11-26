@@ -166,6 +166,26 @@ function Invoke-Deploy($files, [string]$id) {
     return @{ ok = $true; summary = "$(@($files).Count) file(s): " + (($log | Where-Object { $_ -notlike 'backups:*' } | ForEach-Object { ($_ -split '\s+')[0] } | Group-Object | ForEach-Object { "$($_.Count) $($_.Name)" }) -join ', '); log = ($log -join "`n") }
 }
 
+function Invoke-Remove($files, [string]$id) {
+    # Deletes the named objects from the model (only Ax*\Name.xml, never the descriptor), each one
+    # backed up to C:\Temp\vm-bridge-backups\<id>\ first. Rebuild afterwards.
+    if (-not $files -or @($files).Count -eq 0) { throw 'remove needs files' }
+    $backup = Join-Path $Backups $id
+    $log = @()
+    foreach ($rel in $files) {
+        if (($rel -replace '/', '\') -like 'Descriptor\*') { throw "remove never deletes the descriptor: $rel" }
+        $target = Get-VmPath $rel
+        if (-not (Test-Path -LiteralPath $target)) { $log += "missing  $rel"; continue }
+        $saved = Join-Path $backup ($rel -replace '/', '\')
+        New-Item -ItemType Directory -Force -Path (Split-Path $saved) | Out-Null
+        Copy-Item -LiteralPath $target -Destination $saved
+        Remove-Item -LiteralPath $target
+        $log += "removed  $rel"
+    }
+    $log += "backups: $backup"
+    return @{ ok = $true; summary = ($log -join "`n"); log = ($log -join "`n") }
+}
+
 function Invoke-Fetch($files, [string]$id) {
     # Read-only: copies the named model objects from the VM to the PC (bridge\fetched\<id>), for diffing there.
     if (-not $files -or @($files).Count -eq 0) { throw 'fetch needs files' }
@@ -300,6 +320,7 @@ while ($true) {
                 'compare' { Invoke-Compare $request.hashes }
                 'deploy'  { Invoke-Deploy $request.files $id }
                 'fetch'   { Invoke-Fetch $request.files $id }
+                'remove'  { Invoke-Remove $request.files $id }
                 'find'    { Invoke-Find $request }
                 'fetchstd' { Invoke-FetchStd $request.files $id }
                 'build'   { Invoke-Build $id }

@@ -11,7 +11,7 @@
     tools\vm-bridge\vm.ps1 -Result 20261122-101500-build     # read an earlier answer
 #>
 param(
-    [Parameter(Position = 0)][ValidateSet('status', 'compare', 'deploy', 'fetch', 'find', 'fetchstd', 'build', 'restart', 'dbsync')][string]$Action,
+    [Parameter(Position = 0)][ValidateSet('status', 'compare', 'deploy', 'remove', 'fetch', 'find', 'fetchstd', 'build', 'restart', 'dbsync')][string]$Action,
     [Parameter(Position = 1, ValueFromRemainingArguments = $true)][string[]]$Files,
     [string[]]$Names,
     [string[]]$Types,
