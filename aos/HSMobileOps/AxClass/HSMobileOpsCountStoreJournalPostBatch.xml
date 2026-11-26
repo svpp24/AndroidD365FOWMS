@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsCountStoreJournalPostBatch</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// The nightly posting of store journals (One journal per store): posts every store journal that
+/// is not on hold, has no bin counted twice to decide, nobody still counting and something in it.
+/// Schedule it to recur each night from Inventory hub > Counting > Post store journals.
+/// </summary>
+class HSMobileOpsCountStoreJournalPostBatch extends RunBaseBatch implements BatchRetryable
+{
+    #define.CurrentVersion(1)
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>isRetryable</Name>
+				<Source><![CDATA[
+
+    [Hookable(false)]
+    public final boolean isRetryable()
+    {
+        return true;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>run</Name>
+				<Source><![CDATA[
+
+    public void run()
+    {
+        int posted = HSMobileOpsCountStoreJournalEngine::postReady();
+
+        info(strFmt('%1 store journal(s) posted.', posted));
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>description</Name>
+				<Source><![CDATA[
+
+    public static ClassDescription description()
+    {
+        return 'Mobile ops: post store journals';
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>canGoBatch</Name>
+				<Source><![CDATA[
+
+    public boolean canGoBatch()
+    {
+        return true;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>pack</Name>
+				<Source><![CDATA[
+
+    public container pack()
+    {
+        return [#CurrentVersion];
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>unpack</Name>
+				<Source><![CDATA[
+
+    public boolean unpack(container _packedClass)
+    {
+        return RunBase::getVersion(_packedClass) == #CurrentVersion;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>main</Name>
+				<Source><![CDATA[
+
+    public static void main(Args _args)
+    {
+        HSMobileOpsCountStoreJournalPostBatch task = new HSMobileOpsCountStoreJournalPostBatch();
+
+        if (task.prompt())
+        {
+            task.runOperation();
+        }
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

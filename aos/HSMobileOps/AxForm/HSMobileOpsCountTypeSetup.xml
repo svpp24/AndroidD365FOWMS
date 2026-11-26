@@ -77,6 +77,15 @@ public class HSMobileOpsCountTypeSetup extends FormRun
 									<DataField>AutoPost</DataField>
 									<DataSource>HSMobileOpsCountTypeSetup</DataSource>
 								</AxFormControl>
+								<AxFormControl xmlns=""
+									i:type="AxFormCheckBoxControl">
+									<Name>HSMobileOpsCountTypeSetup_OneJournalPerStore</Name>
+									<Type>CheckBox</Type>
+									<FormControlExtension
+										i:nil="true" />
+									<DataField>OneJournalPerStore</DataField>
+									<DataSource>HSMobileOpsCountTypeSetup</DataSource>
+								</AxFormControl>
 				</Controls>
 				<DataSource>HSMobileOpsCountTypeSetup</DataSource>
 			</AxFormControl>

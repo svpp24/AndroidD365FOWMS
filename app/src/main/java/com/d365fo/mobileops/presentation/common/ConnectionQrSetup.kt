@@ -209,12 +209,18 @@ fun ConnectionQrSetup(
     viewModel: ConnectionQrViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    // In a bottom row the button is as tall as the one beside it (equal buttons, 18 Nov 2026), and
+    // the result is not shown inside the half-width row: there it squeezed the button and wrapped
+    // the message a few letters a line. Success goes to the screen's own band (onConnected);
+    // a failure shows as a dialog.
+    val inRow = com.d365fo.mobileops.presentation.common.focus.LocalInActionRow.current
     androidx.compose.runtime.LaunchedEffect(state) {
-        if (state is ConnectionQrState.Done) onConnected()
+        if (state is ConnectionQrState.Done) {
+            onConnected()
+            if (inRow) viewModel.dismiss()
+        }
     }
 
-    // In a bottom row the button is as tall as the one beside it (equal buttons, 18 Nov 2026).
-    val inRow = com.d365fo.mobileops.presentation.common.focus.LocalInActionRow.current
     Column(modifier = modifier.fillMaxWidth().then(if (inRow) Modifier.fillMaxHeight() else Modifier), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         com.d365fo.mobileops.presentation.common.focus.FocusButton(
             text = if (state is ConnectionQrState.Applying) "Setting up…" else "Scan connection QR",
@@ -222,11 +228,22 @@ fun ConnectionQrSetup(
             primary = true,
             modifier = Modifier.fillMaxWidth(),
         )
-        when (val s = state) {
-            is ConnectionQrState.Done -> com.d365fo.mobileops.presentation.common.components.SuccessBanner(s.message, viewModel::dismiss)
-            is ConnectionQrState.Failed -> com.d365fo.mobileops.presentation.common.components.ErrorBanner(s.message, onDismiss = viewModel::dismiss)
-            else -> Unit
+        if (!inRow) {
+            when (val s = state) {
+                is ConnectionQrState.Done -> com.d365fo.mobileops.presentation.common.components.SuccessBanner(s.message, viewModel::dismiss)
+                is ConnectionQrState.Failed -> com.d365fo.mobileops.presentation.common.components.ErrorBanner(s.message, onDismiss = viewModel::dismiss)
+                else -> Unit
+            }
         }
+    }
+    val failed = state as? ConnectionQrState.Failed
+    if (inRow && failed != null) {
+        AlertDialog(
+            onDismissRequest = viewModel::dismiss,
+            title = { Text("Connection QR") },
+            text = { Text(failed.message) },
+            confirmButton = { androidx.compose.material3.TextButton(onClick = viewModel::dismiss) { Text("OK") } },
+        )
     }
 
     when (val s = state) {

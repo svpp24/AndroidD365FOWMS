@@ -1,0 +1,125 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.19.0/dist/tabler-icons.min.css">
+<style>
+*{box-sizing:border-box}body{margin:0;font-family:"Segoe UI",Arial,sans-serif;font-size:13px;color:#212121;background:#f8f8f8;width:1600px;height:900px;overflow:hidden}
+.top{height:40px;background:#000;color:#fff;display:flex;align-items:center;padding:0 12px;gap:14px}
+.top .ti{font-size:18px}.top .app{font-weight:600;font-size:14px}
+.top .srch{margin-left:auto;display:flex;gap:18px;align-items:center}
+.cmp{font-size:12px;padding:2px 6px}
+.av{width:26px;height:26px;border-radius:50%;background:#0078d4;display:flex;align-items:center;justify-content:center;font-size:11px}
+.nav{position:absolute;top:40px;left:0;width:44px;bottom:0;background:#fff;border-right:1px solid #e1e1e1;display:flex;flex-direction:column;align-items:center;gap:20px;padding-top:12px;color:#444}
+.nav .ti{font-size:18px}
+.main{position:absolute;top:40px;left:44px;right:0;bottom:0}
+.ap{background:#fff;border-bottom:1px solid #e1e1e1}
+.aptabs{display:flex;align-items:center;gap:22px;padding:6px 14px 0;font-size:13px}
+.aptabs span{padding-bottom:6px}.aptabs .on{border-bottom:2px solid #0078d4;font-weight:600}
+.aptabs .ti{font-size:16px;color:#444}
+.apb{display:flex;gap:28px;padding:8px 14px 10px;background:#f4f4f4;border-top:1px solid #e1e1e1}
+.grp .gt{font-size:11px;color:#666;margin-bottom:4px}
+.grp .bs{display:flex;gap:14px}
+.btn{display:flex;align-items:center;gap:5px;color:#212121;font-size:12.5px}.btn .ti{color:#0078d4;font-size:16px}
+.btn.dis{color:#a6a6a6}.btn.dis .ti{color:#a6a6a6}
+.body{display:flex;height:calc(100% - 92px)}
+.content{flex:1;padding:8px 18px;overflow:hidden}
+.sv{font-size:12px;color:#666}
+h1{font-size:20px;font-weight:600;margin:2px 0 10px}
+.tiles{display:flex;gap:10px;margin-bottom:12px}
+.tile{width:168px;height:84px;background:#fff;border:1px solid #d6d6d6;padding:8px 10px;display:flex;flex-direction:column;justify-content:space-between;position:relative}
+.tile.sel{outline:2px solid #0078d4}
+.tile .tt{font-size:12.5px;line-height:1.25}.tile .tn{font-size:26px;font-weight:300}
+.tile.red{border-left:4px solid #c50f1f}.tile.amb{border-left:4px solid #d88a00}.tile.grn{border-left:4px solid #107c10}
+.flt{display:flex;gap:10px;align-items:center;margin-bottom:6px}
+.qf{width:220px;height:28px;border:1px solid #8a8a8a;background:#fff;display:flex;align-items:center;padding:0 6px;color:#767676;gap:6px}
+.dd{height:28px;border:1px solid #c8c8c8;background:#fff;padding:0 8px;display:flex;align-items:center;gap:20px;font-size:12.5px}
+.dd small{color:#666;margin-right:-14px}
+.chip{background:#deecf9;border:1px solid #0078d4;padding:2px 8px;font-size:12px;display:flex;gap:6px;align-items:center}
+table{border-collapse:collapse;width:100%;background:#fff;border:1px solid #e1e1e1}
+th{font-weight:600;font-size:12px;text-align:left;color:#444;padding:6px 8px;border-bottom:1px solid #c8c8c8;white-space:nowrap}
+td{padding:6px 8px;border-bottom:1px solid #edebe9;font-size:12.5px}
+tr.sel td{background:#cfe4fa}
+.rc{width:26px}.circ{width:14px;height:14px;border:1px solid #8a8a8a;border-radius:50%;display:inline-block;vertical-align:middle}
+tr.sel .circ{background:#0078d4;border-color:#0078d4}
+.lnk{color:#0078d4}
+.st{display:inline-flex;align-items:center;gap:5px}
+.dot{width:8px;height:8px;border-radius:50%}
+.r{background:#c50f1f}.a{background:#d88a00}.g{background:#107c10}
+.fast{background:#fff;border:1px solid #e1e1e1;margin-top:10px}
+.fh{display:flex;align-items:center;gap:10px;padding:7px 10px;border-bottom:1px solid #edebe9}
+.fh b{font-size:14px;font-weight:600}.fh .sum{color:#666;font-size:12px;margin-left:8px}
+.fh .ti{font-size:14px;color:#444}
+.fb{padding:6px 10px 10px}
+.tb{display:flex;gap:16px;margin-bottom:6px}
+.fact{width:290px;background:#fff;border-left:1px solid #e1e1e1;padding:10px 14px}
+.fact h3{font-size:14px;font-weight:600;margin:4px 0 10px;display:flex;justify-content:space-between}
+.kv{display:flex;justify-content:space-between;padding:4px 0;font-size:12.5px;border-bottom:1px solid #f3f2f1}.kv span:first-child{color:#666}
+.fact .sec{margin-top:18px}
+.msg{background:#fff4ce;border:1px solid #f1d38b;padding:6px 10px;margin-bottom:10px;font-size:12.5px;display:flex;gap:8px;align-items:center}
+.new{background:#0078d4;color:#fff;font-size:10px;padding:1px 5px;border-radius:2px;margin-left:6px;vertical-align:middle}
+</style></head><body>
+<div class="top"><i class="ti ti-grid-dots"></i><span class="app">Finance and Operations</span>
+<div class="srch"><i class="ti ti-search"></i><span class="cmp">DAT</span><i class="ti ti-bell"></i><i class="ti ti-settings"></i><i class="ti ti-help"></i><div class="av">AD</div></div></div>
+<div class="nav"><i class="ti ti-menu-2"></i><i class="ti ti-home"></i><i class="ti ti-star"></i><i class="ti ti-clock"></i><i class="ti ti-layout-grid"></i><i class="ti ti-list"></i></div>
+<div class="main">
+<div class="ap">
+<div class="aptabs"><i class="ti ti-arrow-left"></i><span class="on">Stock count</span><span>Store journal</span><span>Counted twice</span><span>Options</span><i class="ti ti-search"></i></div>
+<div class="apb">
+<div class="grp"><div class="gt">New</div><div class="bs"><span class="btn"><i class="ti ti-plus"></i>Blind count</span><span class="btn"><i class="ti ti-alert-triangle"></i>Hazard count</span></div></div>
+<div class="grp"><div class="gt">Store journal</div><div class="bs"><span class="btn"><i class="ti ti-file-text"></i>Open journal</span><span class="btn"><i class="ti ti-send"></i>Post now</span><span class="btn"><i class="ti ti-player-pause"></i>Hold</span><span class="btn dis"><i class="ti ti-player-play"></i>Release</span></div></div>
+<div class="grp"><div class="gt">Counted twice</div><div class="bs"><span class="btn"><i class="ti ti-check"></i>Keep selected</span><span class="btn"><i class="ti ti-sum"></i>Add together</span><span class="btn"><i class="ti ti-x"></i>Reject both</span></div></div>
+<div class="grp"><div class="gt">Count</div><div class="bs"><span class="btn"><i class="ti ti-refresh"></i>Look for duplicates</span><span class="btn"><i class="ti ti-ban"></i>Cancel count</span></div></div>
+<div class="grp"><div class="gt">View</div><div class="bs"><span class="btn"><i class="ti ti-building-store"></i>By store</span><span class="btn"><i class="ti ti-list-numbers"></i>By count</span></div></div>
+</div></div>
+<div class="body"><div class="content">
+<div class="sv">Standard view <i class="ti ti-chevron-down" style="font-size:11px"></i></div>
+<h1>Count control center</h1>
+<div class="tiles">
+<div class="tile red sel"><div class="tt">Stores with bins counted twice</div><div class="tn">7</div></div>
+<div class="tile red"><div class="tt">Journals failed to create</div><div class="tn">2</div></div>
+<div class="tile amb"><div class="tt">Counters not ended after 24h</div><div class="tn">14</div></div>
+<div class="tile amb"><div class="tt">Journals on hold</div><div class="tn">3</div></div>
+<div class="tile grn"><div class="tt">Posting tonight</div><div class="tn">431</div></div>
+<div class="tile"><div class="tt">Posted last 7 days</div><div class="tn">1,926</div></div>
+</div>
+<div class="flt"><div class="qf"><i class="ti ti-filter"></i>Filter</div>
+<div class="dd"><small>Warehouse group</small>All<i class="ti ti-chevron-down"></i></div>
+<div class="dd"><small>Count type</small>Blind<i class="ti ti-chevron-down"></i></div>
+<div class="dd"><small>From</small>17/11/2026<i class="ti ti-calendar"></i></div>
+<div class="chip">Bins counted twice<i class="ti ti-x"></i></div></div>
+<table><tr><th class="rc"></th><th>Store</th><th>Name</th><th>Warehouse group</th><th>Store journal</th><th>Blind counts</th><th>Lines</th><th>Counted twice</th><th>Counting now</th><th>Last count</th><th>Status</th></tr>
+<tr class="sel"><td class="rc"><span class="circ"></span></td><td class="lnk">S0142</td><td>Marina</td><td>DXB-NORTH</td><td class="lnk">CJ-018231</td><td>3</td><td>412</td><td>2</td><td>0</td><td>23/11/2026 10:42</td><td><span class="st"><span class="dot r"></span>Waiting for supervisor</span></td></tr>
+<tr><td class="rc"><span class="circ"></span></td><td class="lnk">S0287</td><td>Al Barsha</td><td>DXB-NORTH</td><td class="lnk">CJ-018236</td><td>2</td><td>305</td><td>1</td><td>1</td><td>23/11/2026 11:20</td><td><span class="st"><span class="dot r"></span>Waiting for supervisor</span></td></tr>
+<tr><td class="rc"><span class="circ"></span></td><td class="lnk">S0405</td><td>Khalidiya</td><td>AUH</td><td class="lnk">CJ-018238</td><td>4</td><td>688</td><td>5</td><td>0</td><td>23/11/2026 09:05</td><td><span class="st"><span class="dot r"></span>Waiting for supervisor</span></td></tr>
+<tr><td class="rc"><span class="circ"></span></td><td class="lnk">S0512</td><td>Al Majaz</td><td>SHJ</td><td class="lnk">CJ-018241</td><td>2</td><td>144</td><td>1</td><td>0</td><td>22/11/2026 18:40</td><td><span class="st"><span class="dot r"></span>Waiting for supervisor</span></td></tr>
+<tr><td class="rc"><span class="circ"></span></td><td class="lnk">S0533</td><td>Nahda</td><td>SHJ</td><td class="lnk">CJ-018243</td><td>3</td><td>390</td><td>3</td><td>2</td><td>23/11/2026 12:01</td><td><span class="st"><span class="dot r"></span>Waiting for supervisor</span></td></tr>
+</table>
+<div class="fast"><div class="fh"><i class="ti ti-chevron-down"></i><b>Counted twice</b><span class="sum">S0142 Marina · CJ-018231 · 2 bins to decide</span></div>
+<div class="fb"><table><tr><th class="rc"></th><th>Location</th><th>Bin</th><th>Item</th><th>Item name</th><th>Counter</th><th>Blind count</th><th>Counted</th><th>On-hand</th><th>Counted at</th><th>Decision</th></tr>
+<tr class="sel"><td class="rc"><span class="circ"></span></td><td>A-01</td><td>03</td><td>10220</td><td>Olive oil 1L</td><td>Ravi</td><td>BC-0091</td><td>6</td><td>7</td><td>23/11/2026 08:14</td><td>Not decided</td></tr>
+<tr><td class="rc"><span class="circ"></span></td><td>A-01</td><td>03</td><td>10220</td><td>Olive oil 1L</td><td>Sara</td><td>BC-0094</td><td>8</td><td>7</td><td>23/11/2026 13:40</td><td>Not decided</td></tr>
+<tr><td class="rc"><span class="circ"></span></td><td>C-04</td><td>01</td><td>30871</td><td>Rice 5kg</td><td>Ravi</td><td>BC-0091</td><td>12</td><td>15</td><td>23/11/2026 08:51</td><td>Not decided</td></tr>
+<tr><td class="rc"><span class="circ"></span></td><td>C-04</td><td>01</td><td>30871</td><td>Rice 5kg</td><td>Ahmed</td><td>BC-0097</td><td>12</td><td>15</td><td>23/11/2026 10:42</td><td>Not decided</td></tr>
+</table></div></div>
+<div class="fast" style="margin-top:6px"><div class="fh"><i class="ti ti-chevron-right"></i><b>Blind counts</b><span class="sum">BC-0091 · BC-0094 · BC-0097</span></div></div>
+<div class="fast" style="margin-top:6px"><div class="fh"><i class="ti ti-chevron-right"></i><b>Counted lines</b><span class="sum">412 lines · 38 with variance</span></div></div>
+<div class="fast" style="margin-top:6px"><div class="fh"><i class="ti ti-chevron-right"></i><b>Counters</b><span class="sum">3 counters · all ended</span></div></div>
+<div class="fast" style="margin-top:6px"><div class="fh"><i class="ti ti-chevron-right"></i><b>Decision log</b><span class="sum">No decisions yet</span></div></div>
+</div>
+<div class="fact"><h3>Store journal <i class="ti ti-chevron-up" style="font-size:14px"></i></h3>
+<div class="msg"><i class="ti ti-alert-circle" style="color:#d88a00"></i>Won't post until 2 bins are decided.</div>
+<div class="kv"><span>Store</span><span>S0142 Marina</span></div>
+<div class="kv"><span>Journal</span><span class="lnk">CJ-018231</span></div>
+<div class="kv"><span>Created</span><span>22/11/2026 08:20</span></div>
+<div class="kv"><span>Blind counts</span><span>3</span></div>
+<div class="kv"><span>Lines</span><span>412</span></div>
+<div class="kv"><span>Lines with variance</span><span>38</span></div>
+<div class="kv"><span>Posting</span><span>Nightly batch</span></div>
+<div class="sec"><h3>Selected bin <i class="ti ti-chevron-up" style="font-size:14px"></i></h3>
+<div class="kv"><span>Location / bin</span><span>A-01 / 03</span></div>
+<div class="kv"><span>Item</span><span>10220 Olive oil 1L</span></div>
+<div class="kv"><span>On-hand</span><span>7</span></div>
+<div class="kv"><span>Ravi (first)</span><span>6</span></div>
+<div class="kv"><span>Sara (second)</span><span>8</span></div>
+<div class="kv"><span>Added together</span><span>14</span></div></div>
+</div></div></div>
+</body></html>

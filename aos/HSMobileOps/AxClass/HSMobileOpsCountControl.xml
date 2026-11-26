@@ -78,7 +78,21 @@ class HSMobileOpsCountControl
         master.Status           = HSMobileOpsCountMasterStatus::Open;
         master.CreatedByUser    = _userName;
         master.StartedUtc       = DateTimeUtil::utcNow();
+        // One journal per store: a blind count joins the store's open store journal.
+        if (_type == HSMobileOpsCountMasterType::Blind && HSMobileOpsCountStoreJournalEngine::isOn())
+        {
+            master.StoreJournalRecId = HSMobileOpsCountStoreJournalEngine::openFor(_store).RecId;
+        }
         master.insert();
+        // A hazard count is listed by store too (user, 25 Nov 2026): its store gets a row, not a link.
+        if (_type == HSMobileOpsCountMasterType::Hazard)
+        {
+            HSMobileOpsCountStoreJournalEngine::openFor(_store);
+        }
+        if (master.StoreJournalRecId)
+        {
+            HSMobileOpsCountStoreJournalEngine::refreshTotals(master.StoreJournalRecId);
+        }
         return master;
     }
 ]]></Source>
@@ -132,6 +146,7 @@ class HSMobileOpsCountControl
             stage.DeviceId    = _deviceId;
             stage.Status      = HSMobileOpsCountStageStatus::Counting;
             stage.StartedUtc  = DateTimeUtil::utcNow();
+            stage.StoreJournalRecId = _master.StoreJournalRecId;
             stage.insert();
             return stage;
         }
@@ -258,6 +273,15 @@ class HSMobileOpsCountControl
         str                       duplicateKey;
         int                       undecided;
 
+        // One journal per store: counted twice is across the whole store journal.
+        master = HSMobileOpsCountControl::masterOf(_masterRecId);
+        if (master.StoreJournalRecId)
+        {
+            HSMobileOpsCountStoreJournalEngine::refresh(master.StoreJournalRecId);
+            HSMobileOpsCountControl::refreshVariances(_masterRecId);
+            return;
+        }
+
         ttsbegin;
         master = HSMobileOpsCountControl::masterOf(_masterRecId);
         // Lines staged before on-hand was recorded (10 Nov) get their stock key now.
@@ -376,17 +400,34 @@ class HSMobileOpsCountControl
     /// <summary>
     /// The supervisor's decision on the duplicate the selected line belongs to: KeepThis keeps
     /// only the selected count, Sum adds every count of it together, Reject keeps none (the item
-    /// is counted again; the recount is a new duplicate to decide).
+    /// is counted again; the recount is a new duplicate to decide). _decidedBy: the supervisor
+    /// for the decision log - the app's supervisor; in D365FO the signed-in user.
     /// </summary>
-    public static void decide(HSMobileOpsCountStageLine _selected, HSMobileOpsCountDuplicateDecision _decision)
+    public static void decide(HSMobileOpsCountStageLine _selected, HSMobileOpsCountDuplicateDecision _decision, UserId _decidedBy = curUserId())
     {
-        HSMobileOpsCountStageLine line;
-        HSMobileOpsCountMaster    master;
+        HSMobileOpsCountStageLine    line;
+        HSMobileOpsCountMaster       master;
+        HSMobileOpsCountStoreJournal storeJournal;
+        Set                          stockKeys = new Set(Types::String);
+        // One journal per store: the bin's counts in every blind count of the store journal.
+        RefRecId                     scopeStoreJournal = _selected.StoreJournalRecId;
+        RefRecId                     scopeMaster = scopeStoreJournal ? 0 : _selected.MasterRecId;
 
-        master = HSMobileOpsCountControl::masterOf(_selected.MasterRecId);
-        if (master.Status != HSMobileOpsCountMasterStatus::Open)
+        if (scopeStoreJournal)
         {
-            throw error(strFmt('%1 is %2 - it can no longer be changed.', master.MasterId, master.Status));
+            storeJournal = HSMobileOpsCountStoreJournal::find(scopeStoreJournal);
+            if (storeJournal.Posted)
+            {
+                throw error(strFmt('Store journal %1 is posted - it can no longer be changed.', storeJournal.JournalId));
+            }
+        }
+        else
+        {
+            master = HSMobileOpsCountControl::masterOf(_selected.MasterRecId);
+            if (master.Status != HSMobileOpsCountMasterStatus::Open)
+            {
+                throw error(strFmt('%1 is %2 - it can no longer be changed.', master.MasterId, master.Status));
+            }
         }
         if (!_selected.IsDuplicate)
         {
@@ -394,7 +435,8 @@ class HSMobileOpsCountControl
         }
         ttsbegin;
         while select forUpdate line
-            where line.MasterRecId  == _selected.MasterRecId
+            where ((scopeStoreJournal != 0 && line.StoreJournalRecId == scopeStoreJournal)
+                || (scopeMaster       != 0 && line.MasterRecId       == scopeMaster))
                && line.DuplicateKey == _selected.DuplicateKey
         {
             line.Decision = _decision;
@@ -411,8 +453,15 @@ class HSMobileOpsCountControl
                     break;
             }
             line.update();
+            stockKeys.add(line.StockKey);
         }
         ttscommit;
+        HSMobileOpsCountStoreJournalEngine::logDecision(_selected, _decision, _decidedBy);
+        // Counts already in the store journal: its line for the stock follows the decision.
+        if (scopeStoreJournal && storeJournal.JournalId)
+        {
+            HSMobileOpsCountStoreJournalEngine::syncLines(scopeStoreJournal, stockKeys);
+        }
         HSMobileOpsCountControl::refresh(_selected.MasterRecId);
     }
 ]]></Source>
@@ -481,6 +530,10 @@ class HSMobileOpsCountControl
         LineNum                   lineNum;
         int                       written;
         str                       groupKey;
+        HSMobileOpsCountStoreJournal storeJournal;
+        Set                       stockKeys = new Set(Types::String);
+        boolean                   storeScope;
+        RefRecId                  storeJournalRecId;
 
         HSMobileOpsCountControl::refresh(_masterRecId);
         master = HSMobileOpsCountControl::masterOf(_masterRecId);
@@ -489,7 +542,15 @@ class HSMobileOpsCountControl
         {
             throw error(strFmt('%1 is %2 - it can only be transferred once.', master.MasterId, master.Status));
         }
-        if (master.DuplicateCount)
+        // One journal per store: the count goes into the store's open store journal. Bins counted
+        // twice do not hold it back - they hold back the store journal's posting.
+        storeScope = master.StoreJournalRecId != 0;
+        if (storeScope)
+        {
+            storeJournal = HSMobileOpsCountStoreJournalEngine::currentFor(master);
+            master       = HSMobileOpsCountControl::masterOf(_masterRecId);
+        }
+        if (master.DuplicateCount && !storeScope)
         {
             throw error(strFmt('%1 item(s) in %2 were counted more than once and are not decided yet. Keep one count, add them together or reject them first.',
                 master.DuplicateCount, master.MasterId));
@@ -512,12 +573,30 @@ class HSMobileOpsCountControl
         }
 
         ttsbegin;
+        if (storeScope)
+        {
+            // Several blind counts of a store can be transferred at once (each its own batch
+            // task). The store journal is locked until this transfer commits, so the next one
+            // waits and then adds to the journal this one made (test, 24 Nov 2026: two parallel
+            // transfers both tried to make the store's journal - "Cannot edit a record").
+            storeJournalRecId = storeJournal.RecId;
+            select pessimisticLock storeJournal where storeJournal.RecId == storeJournalRecId;
+        }
         if (master.SourceJournalId)
         {
             journalTable = InventJournalTable::find(master.SourceJournalId, true);
             if (!journalTable.RecId || journalTable.Posted)
             {
                 throw error(strFmt('Counting journal %1 no longer exists or has been posted.', master.SourceJournalId));
+            }
+        }
+        else if (storeScope && storeJournal.JournalId)
+        {
+            // The store's journal already exists: the lines are added to it.
+            journalTable = InventJournalTable::find(storeJournal.JournalId, true);
+            if (!journalTable.RecId || journalTable.Posted)
+            {
+                throw error(strFmt('Store journal %1 no longer exists or has been posted.', storeJournal.JournalId));
             }
         }
         else
@@ -532,12 +611,39 @@ class HSMobileOpsCountControl
             journalTableData = JournalTableData::newTable(journalTable);
             journalTable.JournalId = journalTableData.nextJournalId();
             journalTableData.initFromJournalName(journalName);
-            journalTable.Description = subStr(strFmt('%1 count %2', enum2Str(master.MasterType), master.MasterId), 1, 60);
+            journalTable.Description = storeScope
+                ? subStr(strFmt('Blind counts %1', master.InventLocationId), 1, 60)
+                : subStr(strFmt('%1 count %2', enum2Str(master.MasterType), master.MasterId), 1, 60);
             journalTable.insert();
+            if (storeScope)
+            {
+                storeJournal = HSMobileOpsCountStoreJournal::find(storeJournal.RecId, true);
+                storeJournal.JournalId = journalTable.JournalId;
+                storeJournal.update();
+            }
         }
 
         select maxOf(LineNum) from lastTrans where lastTrans.JournalId == journalTable.JournalId;
         lineNum = lastTrans.LineNum;
+
+        if (storeScope)
+        {
+            // Each stock's journal line is what its kept counts add up to, across the store journal.
+            update_recordset line
+                setting StoreJournalRecId = storeJournal.RecId
+                where line.MasterRecId       == _masterRecId
+                   && line.StoreJournalRecId != storeJournal.RecId;
+            while select StockKey from line
+                group by StockKey
+                where line.MasterRecId == _masterRecId
+            {
+                stockKeys.add(line.StockKey);
+            }
+            written = HSMobileOpsCountStoreJournalEngine::syncLines(storeJournal.RecId, stockKeys, _masterRecId);
+            totals  = new Map(Types::String, Types::Real);
+            // syncLines updated the journal header: read it again before this method updates it.
+            journalTable = InventJournalTable::find(journalTable.JournalId, true);
+        }
 
         e = totals.getEnumerator();
         while (e.moveNext())
@@ -579,6 +685,10 @@ class HSMobileOpsCountControl
         ttscommit;
 
         HSMobileOpsCountAssortment::flagUnexpected(journalTable.JournalId);
+        if (storeScope)
+        {
+            HSMobileOpsCountStoreJournalEngine::refresh(storeJournal.RecId);
+        }
         info(strFmt('%1: %2 counted line(s) transferred to counting journal %3.', master.MasterId, written, journalTable.JournalId));
         return journalTable.JournalId;
     }
@@ -615,6 +725,13 @@ class HSMobileOpsCountControl
                    && inventDim.InventColorId    == _counted.InventColorId
                    && inventDim.InventStyleId    == _counted.InventStyleId;
 
+        if (!inventSum.RecId)
+        {
+            // The count names no batch, serial or location the stock carries (25 Nov 2026: the line
+            // took a new blank dimension with on-hand 0 while the item had 59 at the store, so
+            // posting would have added the count on top): the stock record a blank matches.
+            inventSum = HSMobileOpsCountControl::stockRecord(_counted, _store);
+        }
         if (inventSum.RecId)
         {
             lineDim = InventDim::find(inventSum.InventDimId);
@@ -665,6 +782,58 @@ class HSMobileOpsCountControl
         journalTrans.Counted      = _qty;
         journalTrans.Qty          = _qty - journalTrans.InventOnHand;
         journalTrans.insert();
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>stockRecord</Name>
+				<Source><![CDATA[
+
+    /// <summary>
+    /// The store's one stock record of the counted line, matched as onHand does: each product
+    /// dimension, batch, serial and location the line names, a blank one any. None when several
+    /// match (test, 26 Nov 2026: an item counted without a batch had 12 batches at AAC - putting
+    /// the count on one batch would leave the others' stock untouched).
+    /// </summary>
+    public static InventSum stockRecord(HSMobileOpsCountStageLine _line, InventLocationId _store)
+    {
+        InventSum inventSum;
+        InventSum none;
+        InventDim inventDim;
+
+        select count(RecId) from inventSum
+            where inventSum.ItemId == _line.ItemId
+               && inventSum.Closed == NoYes::No
+               && inventSum.PhysicalInvent > 0
+            exists join inventDim
+                where inventDim.inventDimId      == inventSum.InventDimId
+                   && inventDim.InventLocationId == _store
+                   && (_line.WMSLocationId  == '' || inventDim.wMSLocationId  == _line.WMSLocationId)
+                   && (_line.ConfigId       == '' || inventDim.configId       == _line.ConfigId)
+                   && (_line.InventSizeId   == '' || inventDim.InventSizeId   == _line.InventSizeId)
+                   && (_line.InventColorId  == '' || inventDim.InventColorId  == _line.InventColorId)
+                   && (_line.InventStyleId  == '' || inventDim.InventStyleId  == _line.InventStyleId)
+                   && (_line.InventBatchId  == '' || inventDim.inventBatchId  == _line.InventBatchId)
+                   && (_line.InventSerialId == '' || inventDim.inventSerialId == _line.InventSerialId);
+        if (inventSum.RecId != 1)
+        {
+            return none;
+        }
+        select firstonly inventSum order by PhysicalInvent desc
+            where inventSum.ItemId == _line.ItemId
+               && inventSum.Closed == NoYes::No
+               && inventSum.PhysicalInvent > 0
+            exists join inventDim
+                where inventDim.inventDimId      == inventSum.InventDimId
+                   && inventDim.InventLocationId == _store
+                   && (_line.WMSLocationId  == '' || inventDim.wMSLocationId  == _line.WMSLocationId)
+                   && (_line.ConfigId       == '' || inventDim.configId       == _line.ConfigId)
+                   && (_line.InventSizeId   == '' || inventDim.InventSizeId   == _line.InventSizeId)
+                   && (_line.InventColorId  == '' || inventDim.InventColorId  == _line.InventColorId)
+                   && (_line.InventStyleId  == '' || inventDim.InventStyleId  == _line.InventStyleId)
+                   && (_line.InventBatchId  == '' || inventDim.inventBatchId  == _line.InventBatchId)
+                   && (_line.InventSerialId == '' || inventDim.inventSerialId == _line.InventSerialId);
+        return inventSum;
     }
 ]]></Source>
 			</Method>
@@ -831,7 +1000,9 @@ class HSMobileOpsCountControl
         boolean                posted;
         str                    message;
 
+        // A store journal posts as a whole, by the nightly posting or Post now.
         if (master.Status != HSMobileOpsCountMasterStatus::Transferred || !master.TransferredJournalId
+         || master.StoreJournalRecId
          || !HSMobileOpsCountTypeSetup::find(master.MasterType).AutoPost)
         {
             return;

@@ -64,8 +64,9 @@ public class HSMobileOpsCountItem extends common
 				<Source><![CDATA[
 
     /// <summary>
-    /// Only a supervisor's open blind count takes items from this form: a hazard count's come
-    /// from the outside system, and a wall to wall count counts everything.
+    /// An open blind or hazard count takes items from the control center (user, 25 Nov 2026: hazard
+    /// counts made in D365FO need them too; the outside system's are inserted directly). A wall to
+    /// wall count counts everything.
     /// </summary>
     public boolean validateWrite()
     {
@@ -76,11 +77,9 @@ public class HSMobileOpsCountItem extends common
         {
             ret = checkFailed(strFmt('%1 is %2 - its items can no longer be changed.', master.MasterId, master.Status));
         }
-        else if (master.MasterType != HSMobileOpsCountMasterType::Blind)
+        else if (master.MasterType != HSMobileOpsCountMasterType::Blind && master.MasterType != HSMobileOpsCountMasterType::Hazard)
         {
-            ret = checkFailed(master.MasterType == HSMobileOpsCountMasterType::Hazard
-                ? "A hazard count's items come from the outside system."
-                : 'A wall to wall count counts everything - it has no item list.');
+            ret = checkFailed('A wall to wall count counts everything - it has no item list.');
         }
         if (ret && !this.ItemId && !this.WMSLocationId)
         {
@@ -107,9 +106,10 @@ public class HSMobileOpsCountItem extends common
         boolean                ret = super();
         HSMobileOpsCountMaster master = HSMobileOpsCountControl::masterOf(this.MasterRecId);
 
-        if (ret && (master.Status != HSMobileOpsCountMasterStatus::Open || master.MasterType != HSMobileOpsCountMasterType::Blind))
+        if (ret && (master.Status != HSMobileOpsCountMasterStatus::Open
+                 || (master.MasterType != HSMobileOpsCountMasterType::Blind && master.MasterType != HSMobileOpsCountMasterType::Hazard)))
         {
-            ret = checkFailed("Only an open blind count's items can be removed.");
+            ret = checkFailed("Only an open blind or hazard count's items can be removed.");
         }
         return ret;
     }

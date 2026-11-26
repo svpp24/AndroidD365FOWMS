@@ -10,7 +10,6 @@ import androidx.compose.foundation.border
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.layout.wrapContentHeight
-import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -18,6 +17,10 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -146,6 +149,11 @@ internal fun FocusHome(
         if (has(WarehouseWorkflow.INVENTORY_COUNT)) {
             add(HomeEntry(HOME_ICONS[2], "Count", figures.countsInProgress?.toString()) { openGroup(ModuleGroup.COUNT) })
         }
+        // Count control (spec section 4, 24 Nov 2026): a cycle count supervisor, in the store that is
+        // their default warehouse. D365FO checks both again on every call.
+        if (showsCountControl(session)) {
+            add(HomeEntry(HOME_ICONS[2], "Count control", null) { onRecord("Count control"); onOpen(Routes.COUNT_CONTROL) })
+        }
         if (has(WarehouseWorkflow.PO_CREATE, WarehouseWorkflow.TO_CREATE, WarehouseWorkflow.PURCHASE_RETURN)) {
             add(HomeEntry(HOME_ICONS[3], "Create", null) { openGroup(ModuleGroup.CREATE) })
         }
@@ -238,7 +246,7 @@ internal fun FocusHomeLayout(
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
                 modifier = Modifier
                     .weight(1f)
                     .tourTarget("warehouse")
@@ -255,17 +263,43 @@ internal fun FocusHomeLayout(
                         contentDescription = "$userLabel, $warehouseCode $warehouseName, " + if (online) "online" else "offline"
                     },
             ) {
-                StatusAvatar(initials = initials, tag = warehouseCode, online = online, modifier = Modifier.tourTarget("connection"))
-                Text(
-                    warehouseName,
-                    // 20 sp (user, 17 Nov 2026: bigger warehouse name), was 16.
-                    style = FocusType.rowTitle.copy(fontSize = 20.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.ExtraBold),
-                    color = FocusColors.ink,
-                    maxLines = 1,
-                    modifier = Modifier
+                // Nameplate (user, 26 Nov 2026): an orange bar, the warehouse code in small capitals
+                // above its name - no avatar, no online mark. The name wraps and, past two lines, gets
+                // smaller down to 15 sp. Never cut off.
+                var nameSize by remember(warehouseName) { mutableStateOf(18f) }
+                Row(
+                    Modifier
                         .weight(1f)
-                        .basicMarquee(iterations = Int.MAX_VALUE, initialDelayMillis = 1_200, spacing = androidx.compose.foundation.MarqueeSpacing(40.dp)),
-                )
+                        .height(IntrinsicSize.Min)
+                        .tourTarget("connection"),
+                ) {
+                    Box(
+                        Modifier
+                            .width(4.dp)
+                            .fillMaxHeight()
+                            .clip(RoundedCornerShape(2.dp))
+                            .background(FocusColors.action),
+                    )
+                    Column(Modifier.padding(start = 10.dp, top = 2.dp, bottom = 2.dp)) {
+                        if (warehouseCode.isNotBlank()) {
+                            Text(
+                                warehouseCode.uppercase(),
+                                style = FocusType.rowCode.copy(fontSize = 13.sp, lineHeight = 16.sp, letterSpacing = 0.8.sp,
+                                    fontWeight = androidx.compose.ui.text.font.FontWeight.Black),
+                                color = FocusColors.action,
+                            )
+                        }
+                        if (warehouseName.isNotBlank() && warehouseName != warehouseCode) {
+                            Text(
+                                warehouseName,
+                                style = FocusType.rowTitle.copy(fontSize = nameSize.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.ExtraBold),
+                                color = FocusColors.ink,
+                                lineHeight = (nameSize + 4f).sp,
+                                onTextLayout = { layout -> if (layout.lineCount > 2 && nameSize > 15f) nameSize -= 1f },
+                            )
+                        }
+                    }
+                }
             }
             Box(Modifier.tourTarget("signout")) {
                 HamburgerButton(open = menuOpen, onClick = { menuOpen = !menuOpen })
@@ -380,6 +414,7 @@ private fun receiveCount(figures: HomeDashboardViewModel.Figures, modules: List<
  * grey), and [tag] - the warehouse code - on an orange tag over its lower right corner.
  */
 @Composable
+// 46 dp, was 50 (user, 26 Nov 2026: smaller for the store name's width; 40 was too small).
 internal fun StatusAvatar(initials: String, tag: String, online: Boolean, modifier: Modifier = Modifier) {
     val ok = FocusColors.okIcon
     val off = FocusColors.iconMuted
@@ -387,7 +422,7 @@ internal fun StatusAvatar(initials: String, tag: String, online: Boolean, modifi
         Box(
             contentAlignment = Alignment.Center,
             modifier = Modifier
-                .size(50.dp)
+                .size(46.dp)
                 .drawBehind {
                     val stroke = 2.dp.toPx()
                     val radius = size.minDimension / 2 - stroke / 2
@@ -404,17 +439,17 @@ internal fun StatusAvatar(initials: String, tag: String, online: Boolean, modifi
             Box(
                 contentAlignment = Alignment.Center,
                 modifier = Modifier
-                    .size(42.dp)
+                    .size(38.dp)
                     .clip(CircleShape)
                     .background(FocusColors.navy),
             ) {
-                Text(initials, style = FocusType.rowTitle.copy(fontSize = 15.sp), color = FocusColors.surface)
+                Text(initials, style = FocusType.rowTitle.copy(fontSize = 14.sp), color = FocusColors.surface)
             }
         }
         if (tag.isNotBlank()) {
             Text(
                 tag,
-                style = FocusType.rowCode.copy(fontSize = 13.sp, lineHeight = 15.sp),
+                style = FocusType.rowCode.copy(fontSize = 12.sp, lineHeight = 14.sp),
                 color = FocusColors.surface,
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
@@ -459,3 +494,14 @@ private fun FocusHomePreview() = com.d365fo.mobileops.presentation.common.focus.
 internal val HOME_ICONS = listOf(
     LineIcons.Receive, LineIcons.Ship, LineIcons.Count, LineIcons.Create, LineIcons.ActivityThin, LineIcons.SearchThin,
 )
+
+/**
+ * Count control is on Home for a cycle count supervisor whose selected store is their default one
+ * - flagged default, or their only store (as D365FO's HSMobileOpsUserWarehouse::findDefault reads it).
+ */
+internal fun showsCountControl(session: com.d365fo.mobileops.data.repository.WorkerSession?): Boolean {
+    val selected = session?.selected ?: return false
+    if (!session.isCycleCountSupervisor) return false
+    val default = session.warehouses.firstOrNull { it.isDefault } ?: session.warehouses.singleOrNull()
+    return default != null && default.warehouseId.equals(selected.warehouseId, ignoreCase = true)
+}

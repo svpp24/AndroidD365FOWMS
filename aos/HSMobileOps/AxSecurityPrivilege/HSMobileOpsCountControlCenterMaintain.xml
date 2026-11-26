@@ -99,6 +99,141 @@
 			<ObjectType>MenuItemAction</ObjectType>
 			<Forms />
 		</AxSecurityEntryPointReference>
+		<AxSecurityEntryPointReference>
+			<Name>HSMobileOpsCountStoreJournalPostBatch</Name>
+			<Grant>
+				<Invoke>Allow</Invoke>
+			</Grant>
+			<ObjectName>HSMobileOpsCountStoreJournalPostBatch</ObjectName>
+			<ObjectType>MenuItemAction</ObjectType>
+			<Forms />
+		</AxSecurityEntryPointReference>
+		<AxSecurityEntryPointReference>
+			<Name>HSMobileOpsCountControlCenterByCount</Name>
+			<Grant>
+				<Read>Allow</Read>
+				<Update>Allow</Update>
+			</Grant>
+			<ObjectName>HSMobileOpsCountControlCenterByCount</ObjectName>
+			<ObjectType>MenuItemDisplay</ObjectType>
+			<Forms />
+		</AxSecurityEntryPointReference>
+		<AxSecurityEntryPointReference>
+			<Name>HSMobileOpsCountStoreJournalPart</Name>
+			<Grant>
+				<Read>Allow</Read>
+				<Update>Allow</Update>
+			</Grant>
+			<ObjectName>HSMobileOpsCountStoreJournalPart</ObjectName>
+			<ObjectType>MenuItemDisplay</ObjectType>
+			<Forms />
+		</AxSecurityEntryPointReference>
+		<AxSecurityEntryPointReference>
+			<Name>HSMobileOpsCountSelectedBinPart</Name>
+			<Grant>
+				<Read>Allow</Read>
+				<Update>Allow</Update>
+			</Grant>
+			<ObjectName>HSMobileOpsCountSelectedBinPart</ObjectName>
+			<ObjectType>MenuItemDisplay</ObjectType>
+			<Forms />
+		</AxSecurityEntryPointReference>
+		<AxSecurityEntryPointReference>
+			<Name>HSMobileOpsCountStoreJournalCountedTwice</Name>
+			<Grant>
+				<Read>Allow</Read>
+				<Update>Allow</Update>
+			</Grant>
+			<ObjectName>HSMobileOpsCountStoreJournalCountedTwice</ObjectName>
+			<ObjectType>MenuItemDisplay</ObjectType>
+			<Forms />
+		</AxSecurityEntryPointReference>
+		<AxSecurityEntryPointReference>
+			<Name>HSMobileOpsCountStoreJournalFailed</Name>
+			<Grant>
+				<Read>Allow</Read>
+				<Update>Allow</Update>
+			</Grant>
+			<ObjectName>HSMobileOpsCountStoreJournalFailed</ObjectName>
+			<ObjectType>MenuItemDisplay</ObjectType>
+			<Forms />
+		</AxSecurityEntryPointReference>
+		<AxSecurityEntryPointReference>
+			<Name>HSMobileOpsCountStoreJournalNotEnded</Name>
+			<Grant>
+				<Read>Allow</Read>
+				<Update>Allow</Update>
+			</Grant>
+			<ObjectName>HSMobileOpsCountStoreJournalNotEnded</ObjectName>
+			<ObjectType>MenuItemDisplay</ObjectType>
+			<Forms />
+		</AxSecurityEntryPointReference>
+		<AxSecurityEntryPointReference>
+			<Name>HSMobileOpsCountStoreJournalOnHold</Name>
+			<Grant>
+				<Read>Allow</Read>
+				<Update>Allow</Update>
+			</Grant>
+			<ObjectName>HSMobileOpsCountStoreJournalOnHold</ObjectName>
+			<ObjectType>MenuItemDisplay</ObjectType>
+			<Forms />
+		</AxSecurityEntryPointReference>
+		<AxSecurityEntryPointReference>
+			<Name>HSMobileOpsCountStoreJournalPostingTonight</Name>
+			<Grant>
+				<Read>Allow</Read>
+				<Update>Allow</Update>
+			</Grant>
+			<ObjectName>HSMobileOpsCountStoreJournalPostingTonight</ObjectName>
+			<ObjectType>MenuItemDisplay</ObjectType>
+			<Forms />
+		</AxSecurityEntryPointReference>
+		<AxSecurityEntryPointReference>
+			<Name>HSMobileOpsCountStoreJournalPostedWeek</Name>
+			<Grant>
+				<Read>Allow</Read>
+				<Update>Allow</Update>
+			</Grant>
+			<ObjectName>HSMobileOpsCountStoreJournalPostedWeek</ObjectName>
+			<ObjectType>MenuItemDisplay</ObjectType>
+			<Forms />
+		</AxSecurityEntryPointReference>
+		<AxSecurityEntryPointReference>
+			<Name>HSMobileOpsCountStoreJournalPost</Name>
+			<Grant>
+				<Invoke>Allow</Invoke>
+			</Grant>
+			<ObjectName>HSMobileOpsCountStoreJournalPost</ObjectName>
+			<ObjectType>MenuItemAction</ObjectType>
+			<Forms />
+		</AxSecurityEntryPointReference>
+		<AxSecurityEntryPointReference>
+			<Name>HSMobileOpsCountStoreJournalHold</Name>
+			<Grant>
+				<Invoke>Allow</Invoke>
+			</Grant>
+			<ObjectName>HSMobileOpsCountStoreJournalHold</ObjectName>
+			<ObjectType>MenuItemAction</ObjectType>
+			<Forms />
+		</AxSecurityEntryPointReference>
+		<AxSecurityEntryPointReference>
+			<Name>HSMobileOpsCountStoreJournalRelease</Name>
+			<Grant>
+				<Invoke>Allow</Invoke>
+			</Grant>
+			<ObjectName>HSMobileOpsCountStoreJournalRelease</ObjectName>
+			<ObjectType>MenuItemAction</ObjectType>
+			<Forms />
+		</AxSecurityEntryPointReference>
+		<AxSecurityEntryPointReference>
+			<Name>HSMobileOpsCountStoreJournalOpen</Name>
+			<Grant>
+				<Invoke>Allow</Invoke>
+			</Grant>
+			<ObjectName>HSMobileOpsCountStoreJournalOpen</ObjectName>
+			<ObjectType>MenuItemAction</ObjectType>
+			<Forms />
+		</AxSecurityEntryPointReference>
 	</EntryPoints>
 	<FormControlOverrides />
 </AxSecurityPrivilege>

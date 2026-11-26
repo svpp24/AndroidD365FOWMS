@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxMenuItemDisplay xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns="Microsoft.Dynamics.AX.Metadata.V1">
+	<Name>HSMobileOpsCountStoreJournalCountedTwice</Name>
+	<Label>Stores with bins counted twice</Label>
+	<HelpText>Opens the Count control center filtered to: Stores with bins counted twice. Used by its tile, which counts the same query.</HelpText>
+	<Object>HSMobileOpsCountControlCenter</Object>
+	<ObjectType>Form</ObjectType>
+	<Query>HSMobileOpsCountStoreJournalCountedTwiceQuery</Query>
+</AxMenuItemDisplay>

@@ -1,0 +1,203 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsCountTestData</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Test data for the count control center (user, 24 Nov 2026), in company DAT only: three blind
+/// counts in STORE1 counted by three test counters through the real staging service, with bins
+/// counted twice, so the store journal, Counted twice, Counters and the tiles have rows.
+/// Run: SysClassRunner, cls=HSMobileOpsCountTestData, cmp=DAT. Runs once; a second run stops.
+/// </summary>
+class HSMobileOpsCountTestData
+{
+    #define.Store('STORE1')
+    #define.Tag('TEST DATA')
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>main</Name>
+				<Source><![CDATA[
+    public static void main(Args _args)
+    {
+        HSMobileOpsCountMaster    master;
+        HSMobileOpsCountTypeSetup typeSetup;
+        HSMobileOpsCountStore     countStore;
+        InventTable               inventTable;
+        ItemId                    item1 = 'TEST-OIL', item2 = 'TEST-RICE', item3 = 'TEST-SUGAR';
+        str                       m1, m2, m3;
+        int                       n;
+
+        if (curExt() != 'dat')
+        {
+            throw error('Run this in company DAT only.');
+        }
+        if (!InventLocation::find(#Store).RecId)
+        {
+            throw error(strFmt('Warehouse %1 does not exist in DAT.', #Store));
+        }
+        HSMobileOpsCountTestData::location('A-01');
+        HSMobileOpsCountTestData::location('C-04');
+        select firstonly RecId from master where master.Description like 'TEST DATA*';
+        if (master.RecId)
+        {
+            info('The count test data is already there.');
+            return;
+        }
+        while select ItemId from inventTable order by ItemId
+        {
+            n++;
+            if (n == 1) item1 = inventTable.ItemId;
+            if (n == 2) item2 = inventTable.ItemId;
+            if (n == 3) { item3 = inventTable.ItemId; break; }
+        }
+
+        ttsbegin;
+        select forUpdate firstonly typeSetup where typeSetup.MasterType == HSMobileOpsCountMasterType::Blind;
+        if (!typeSetup.RecId)
+        {
+            typeSetup.MasterType = HSMobileOpsCountMasterType::Blind;
+        }
+        typeSetup.OneJournalPerStore = NoYes::Yes;
+        typeSetup.AutoPost           = NoYes::No;
+        typeSetup.write();
+
+        select forUpdate firstonly countStore where countStore.InventLocationId == #Store;
+        if (!countStore.RecId)
+        {
+            countStore.InventLocationId = #Store;
+            countStore.SupervisorUserId = curUserId();
+            countStore.insert();
+        }
+        HSMobileOpsCountTestData::counter('ZZCCTEST1', 'Ravi (test)');
+        HSMobileOpsCountTestData::counter('ZZCCTEST2', 'Sara (test)');
+        HSMobileOpsCountTestData::counter('ZZCCTEST3', 'Ahmed (test)');
+
+        m1 = HSMobileOpsCountTestData::blind('1');
+        m2 = HSMobileOpsCountTestData::blind('2');
+        m3 = HSMobileOpsCountTestData::blind('3');
+        ttscommit;
+
+        // Ravi and Sara both count A-01 bin 03; Ravi and Ahmed both count C-04 bin 01.
+        HSMobileOpsCountTestData::count(m1, 'ZZCCTEST1', 'HH-12', true, [
+            ['A-01', '03', item1, 6], ['C-04', '01', item2, 12], ['A-01', '05', item3, 4]]);
+        HSMobileOpsCountTestData::count(m2, 'ZZCCTEST2', 'HH-14', true, [
+            ['A-01', '03', item1, 8], ['A-01', '04', item2, 3]]);
+        HSMobileOpsCountTestData::count(m3, 'ZZCCTEST3', 'HH-09', false, [
+            ['C-04', '01', item2, 12], ['C-04', '02', item3, 9]]);
+
+        master = HSMobileOpsCountMaster::find(m1);
+        if (master.StoreJournalRecId)
+        {
+            HSMobileOpsCountStoreJournalEngine::refresh(master.StoreJournalRecId);
+        }
+        info(strFmt('Test data: %1, %2, %3 in %4 (items %5, %6, %7).', m1, m2, m3, #Store, item1, item2, item3));
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>location</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// A location in STORE1, so requested items can name it (DAT has none).
+    /// </summary>
+    private static void location(WMSLocationId _location)
+    {
+        WMSLocation location;
+        if (!WMSLocation::find(_location, #Store).RecId)
+        {
+            ttsbegin;
+            location.initValue();
+            location.InventLocationId = #Store;
+            location.wMSLocationId    = _location;
+            location.insert();
+            ttscommit;
+            info(strFmt('Location %1 created in %2.', _location, #Store));
+        }
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>counter</Name>
+				<Source><![CDATA[
+    private static void counter(str _userName, str _displayName)
+    {
+        HSMobileOpsUser user = HSMobileOpsUser::find(_userName, true);
+        if (!user.RecId)
+        {
+            user.UserName    = _userName;
+            user.DisplayName = _displayName;
+            user.PersonnelNumber = _userName;
+            user.IsActive    = NoYes::Yes;
+            user.insert();
+        }
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>blind</Name>
+				<Source><![CDATA[
+    private static str blind(str _n)
+    {
+        HSMobileOpsCountMaster master = HSMobileOpsCountControl::newMaster(HSMobileOpsCountMasterType::Blind, #Store,
+            strFmt('%1 blind count %2', #Tag, _n), curUserId());
+        HSMobileOpsCountItem   item;
+        container              locations = ['A-01', 'C-04'];
+        int                    i;
+
+        for (i = 1; i <= conLen(locations); i++)
+        {
+            item.clear();
+            item.MasterRecId   = master.RecId;
+            item.LineNum       = i;
+            item.WMSLocationId = conPeek(locations, i);
+            item.insert();
+        }
+        return master.MasterId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>count</Name>
+				<Source><![CDATA[
+    private static void count(str _masterId, str _userName, str _deviceId, boolean _end, container _lines)
+    {
+        HSMobileOpsCountStageService  service = new HSMobileOpsCountStageService();
+        HSMobileOpsCountStageRequest  request = new HSMobileOpsCountStageRequest();
+        HSMobileOpsCountStageResponse response;
+        container                     line;
+        str                           json = '[';
+        int                           i;
+
+        request.parmDataAreaId(curExt());
+        request.parmUserName(_userName);
+        request.parmDeviceId(_deviceId);
+        request.parmWarehouseId(#Store);
+        request.parmMasterId(_masterId);
+        response = service.openStage(request);
+        if (!response.parmSuccess())
+        {
+            throw error(strFmt('%1 could not open %2: %3 %4', _userName, _masterId, response.parmErrorCode(), response.parmMessage()));
+        }
+        for (i = 1; i <= conLen(_lines); i++)
+        {
+            line = conPeek(_lines, i);
+            json += strFmt('%1{"ClientLineId":"%2-%3","LocationId":"%4","BinId":"%5","ItemId":"%6","Quantity":%7,"UnitId":"ea"}',
+                i > 1 ? ',' : '', _userName, i, conPeek(line, 1), conPeek(line, 2), conPeek(line, 3), conPeek(line, 4));
+        }
+        request.parmStageId(response.parmStageId());
+        request.parmLinesJson(json + ']');
+        request.parmEndCount(_end);
+        response = service.submitLines(request);
+        if (!response.parmSuccess())
+        {
+            throw error(strFmt('%1 could not submit to %2: %3 %4', _userName, _masterId, response.parmErrorCode(), response.parmMessage()));
+        }
+        info(strFmt('%1: %2', _userName, response.parmMessage()));
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

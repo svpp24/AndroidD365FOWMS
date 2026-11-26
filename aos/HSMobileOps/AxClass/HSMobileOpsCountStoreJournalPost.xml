@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsCountStoreJournalPost</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Count control center: Post now - posts the selected store journal at once instead of tonight.
+/// </summary>
+class HSMobileOpsCountStoreJournalPost
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>main</Name>
+				<Source><![CDATA[
+    public static void main(Args _args)
+    {
+        HSMobileOpsCountStoreJournal storeJournal = _args ? _args.record() : null;
+
+        if (!storeJournal || !storeJournal.RecId)
+        {
+            throw error('Select a store first.');
+        }
+        if (HSMobileOpsCountStoreJournalEngine::post(storeJournal.RecId, true))
+        {
+            info(strFmt('Store journal %1 of %2 is posted.', storeJournal.JournalId, storeJournal.InventLocationId));
+        }
+        HSMobileOpsCountRefresh::researchCaller(_args);
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

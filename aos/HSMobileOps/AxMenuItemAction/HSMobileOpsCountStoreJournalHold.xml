@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxMenuItemAction xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsCountStoreJournalHold</Name>
+	<Label>Hold</Label>
+	<HelpText>Keep the selected store journal out of the nightly posting until it is released.</HelpText>
+	<Object>HSMobileOpsCountStoreJournalHold</Object>
+	<ObjectType>Class</ObjectType>
+	<Parameters>HOLD</Parameters>
+</AxMenuItemAction>

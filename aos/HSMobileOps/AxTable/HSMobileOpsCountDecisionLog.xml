@@ -1,0 +1,195 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxTable xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsCountDecisionLog</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Every decision on a bin counted twice: who decided, when, which decision and the quantities it
+/// was made on. Written by HSMobileOpsCountControl::decide; shown on the Count control center's
+/// Decision log.
+/// </summary>
+public class HSMobileOpsCountDecisionLog extends common
+{
+}
+]]></Declaration>
+		<Methods>
+		</Methods>
+	</SourceCode>
+	<Label>Counted twice decision</Label>
+	<TitleField1>ItemId</TitleField1>
+	<TitleField2>Decision</TitleField2>
+	<CacheLookup>NotInTTS</CacheLookup>
+	<Fields>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldInt64">
+			<Name>StoreJournalRecId</Name>
+			<AllowEdit>No</AllowEdit>
+			<ExtendedDataType>RefRecId</ExtendedDataType>
+			<Label>Store journal</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>InventLocationId</Name>
+			<AllowEdit>No</AllowEdit>
+			<ExtendedDataType>InventLocationId</ExtendedDataType>
+			<Label>Store</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>JournalId</Name>
+			<AllowEdit>No</AllowEdit>
+			<ExtendedDataType>InventJournalId</ExtendedDataType>
+			<Label>Journal</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>MasterId</Name>
+			<AllowEdit>No</AllowEdit>
+			<HelpText>The blind count of the line the supervisor selected.</HelpText>
+			<Label>Blind count</Label>
+			<StringSize>30</StringSize>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>WMSLocationId</Name>
+			<AllowEdit>No</AllowEdit>
+			<ExtendedDataType>WMSLocationId</ExtendedDataType>
+			<Label>Location</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>BinId</Name>
+			<AllowEdit>No</AllowEdit>
+			<Label>Bin</Label>
+			<StringSize>20</StringSize>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>ItemId</Name>
+			<AllowEdit>No</AllowEdit>
+			<ExtendedDataType>ItemId</ExtendedDataType>
+			<Label>Item</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>ConfigId</Name>
+			<AllowEdit>No</AllowEdit>
+			<ExtendedDataType>EcoResItemConfigurationName</ExtendedDataType>
+			<Label>Configuration</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>InventSizeId</Name>
+			<AllowEdit>No</AllowEdit>
+			<ExtendedDataType>EcoResItemSizeName</ExtendedDataType>
+			<Label>Size</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>InventColorId</Name>
+			<AllowEdit>No</AllowEdit>
+			<ExtendedDataType>EcoResItemColorName</ExtendedDataType>
+			<Label>Color</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>InventStyleId</Name>
+			<AllowEdit>No</AllowEdit>
+			<ExtendedDataType>EcoResItemStyleName</ExtendedDataType>
+			<Label>Style</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>InventBatchId</Name>
+			<AllowEdit>No</AllowEdit>
+			<ExtendedDataType>InventBatchId</ExtendedDataType>
+			<Label>Batch</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>InventSerialId</Name>
+			<AllowEdit>No</AllowEdit>
+			<ExtendedDataType>InventSerialId</ExtendedDataType>
+			<Label>Serial</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldEnum">
+			<Name>Decision</Name>
+			<AllowEdit>No</AllowEdit>
+			<Label>Decision</Label>
+			<EnumType>HSMobileOpsCountDuplicateDecision</EnumType>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>DecidedBy</Name>
+			<AllowEdit>No</AllowEdit>
+			<ExtendedDataType>UserId</ExtendedDataType>
+			<Label>Decided by</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldUtcDateTime">
+			<Name>DecidedUtc</Name>
+			<AllowEdit>No</AllowEdit>
+			<Label>Decided</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>SelectedCounter</Name>
+			<AllowEdit>No</AllowEdit>
+			<HelpText>Whose count was selected when the decision was made.</HelpText>
+			<Label>Selected count</Label>
+			<StringSize>60</StringSize>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>Quantities</Name>
+			<AllowEdit>No</AllowEdit>
+			<HelpText>Each count of the bin when the decision was made: counter, blind count and quantity.</HelpText>
+			<Label>Counts</Label>
+			<StringSize>250</StringSize>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldReal">
+			<Name>ResultQty</Name>
+			<AllowEdit>No</AllowEdit>
+			<ExtendedDataType>InventQty</ExtendedDataType>
+			<HelpText>What the decision puts in the journal for this bin.</HelpText>
+			<Label>Goes to the journal</Label>
+		</AxTableField>
+	</Fields>
+	<FullTextIndexes />
+	<Indexes>
+		<AxTableIndex>
+			<Name>StoreJournalIdx</Name>
+			<AllowDuplicates>Yes</AllowDuplicates>
+			<Fields>
+				<AxTableIndexField>
+					<DataField>StoreJournalRecId</DataField>
+				</AxTableIndexField>
+				<AxTableIndexField>
+					<DataField>DecidedUtc</DataField>
+				</AxTableIndexField>
+			</Fields>
+		</AxTableIndex>
+	</Indexes>
+	<Mappings />
+	<Relations>
+		<AxTableRelation xmlns=""
+			i:type="AxTableRelationForeignKey">
+			<Name>HSMobileOpsCountStoreJournal</Name>
+			<Cardinality>ZeroMore</Cardinality>
+			<RelatedTable>HSMobileOpsCountStoreJournal</RelatedTable>
+			<RelatedTableCardinality>ZeroOne</RelatedTableCardinality>
+			<RelationshipType>Association</RelationshipType>
+			<Constraints>
+				<AxTableRelationConstraint xmlns=""
+					i:type="AxTableRelationConstraintField">
+					<Name>StoreJournalRecId</Name>
+					<Field>StoreJournalRecId</Field>
+					<RelatedField>RecId</RelatedField>
+				</AxTableRelationConstraint>
+			</Constraints>
+		</AxTableRelation>
+	</Relations>
+	<StateMachines />
+</AxTable>

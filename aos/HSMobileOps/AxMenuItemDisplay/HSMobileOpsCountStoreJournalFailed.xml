@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxMenuItemDisplay xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns="Microsoft.Dynamics.AX.Metadata.V1">
+	<Name>HSMobileOpsCountStoreJournalFailed</Name>
+	<Label>Journals failed to create</Label>
+	<HelpText>Opens the Count control center filtered to: Journals failed to create. Used by its tile, which counts the same query.</HelpText>
+	<Object>HSMobileOpsCountControlCenter</Object>
+	<ObjectType>Form</ObjectType>
+	<Query>HSMobileOpsCountStoreJournalFailedQuery</Query>
+</AxMenuItemDisplay>

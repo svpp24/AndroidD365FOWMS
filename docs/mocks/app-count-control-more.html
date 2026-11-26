@@ -1,0 +1,110 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.19.0/dist/tabler-icons.min.css">
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#dfe3e6;font-family:Roboto,"Segoe UI",Arial,sans-serif;color:#1b1f22;display:flex;gap:28px;padding:24px;width:1640px}
+.ph{width:370px;height:800px;background:#f2f4f5;border-radius:28px;overflow:hidden;position:relative;border:8px solid #111;flex:none}
+.cap{position:absolute;top:-22px;left:0;font-size:13px;color:#444}
+.wrap{position:relative}
+.sb{height:24px;background:#fff;font-size:11px;display:flex;justify-content:space-between;padding:4px 14px;color:#333}
+.bar{height:56px;background:#fff;display:flex;align-items:center;gap:14px;padding:0 12px;border-bottom:1px solid #e3e6e8}
+.bar .ti{font-size:24px;color:#0d4f57}.bar h1{font-size:20px;font-weight:400;margin:0;flex:1}
+.cloud{color:#1e9e4a!important}
+.ctx{padding:10px 16px 0;font-size:13px;color:#0d6b74}
+.pad{padding:12px 14px}
+.tiles{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.tile{background:#fff;border-radius:14px;padding:12px;border-top:4px solid #ccc}
+.tile .n{font-size:28px;font-weight:500}.tile .l{font-size:13px;color:#555;line-height:1.3}
+.red{border-top-color:#d1343d}.amb{border-top-color:#e08a00}.grn{border-top-color:#1e9e4a}
+.card{background:#fff;border-radius:14px;padding:14px;margin-top:12px}
+.card h2{font-size:17px;font-weight:500;margin:0 0 4px}
+.sub{font-size:13px;color:#5b6266;line-height:1.45}
+.tag{display:inline-block;border:1.5px solid #e08a00;color:#b86e00;border-radius:12px;font-size:11.5px;padding:2px 9px;margin:6px 0;letter-spacing:.3px}
+.tag.r{border-color:#d1343d;color:#c0262f}.tag.g{border-color:#1e9e4a;color:#16823c}
+.warn{background:#fff3db;border-radius:10px;padding:9px 11px;font-size:13px;color:#7a4b00;margin-top:10px;display:flex;gap:8px}
+.row{display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid #eef0f1;font-size:15px}
+.row:last-child{border-bottom:0}.row .ti{color:#9aa1a5;font-size:20px}
+.badge{background:#d1343d;color:#fff;border-radius:10px;font-size:12px;padding:1px 8px;margin-left:6px}
+.btns{position:absolute;bottom:0;left:0;right:0;padding:12px 14px 18px;background:#f2f4f5;display:flex;gap:10px}
+.b1{flex:1;height:52px;border-radius:14px;background:#0d4f57;color:#fff;display:flex;align-items:center;justify-content:center;font-size:16px;position:relative;overflow:hidden}
+.b2{flex:1;height:52px;border-radius:14px;border:2px solid #0d4f57;color:#0d4f57;display:flex;align-items:center;justify-content:center;font-size:16px}
+.b1 .fill{position:absolute;left:0;top:0;bottom:0;width:38%;background:rgba(255,255,255,.18)}
+.chips{display:flex;gap:8px;margin-bottom:4px}
+.chip{border:1px solid #c5cbcf;border-radius:10px;padding:6px 12px;font-size:13px;background:#fff}.chip.on{background:#d9eef0;border-color:#d9eef0}
+.who{display:flex;justify-content:space-between;font-size:14px;padding:4px 0}
+.who b{font-weight:500}
+.opt{background:#fff;border:2px solid #dfe3e6;border-radius:14px;padding:12px 14px;margin-top:10px;display:flex;gap:12px;align-items:center}
+.opt.on{border-color:#0d4f57;background:#eef7f8}
+.rad{width:20px;height:20px;border-radius:50%;border:2px solid #8a9296;flex:none}
+.opt.on .rad{border:6px solid #0d4f57}
+.opt .t{font-size:15px}.opt .d{font-size:12.5px;color:#5b6266}
+.q{margin-left:auto;font-size:20px;font-weight:500;color:#0d4f57}
+.trail{font-size:12px;color:#5b6266;padding:8px 16px 0}
+.dot{width:10px;height:10px;border-radius:50%;display:inline-block;margin-right:8px}
+</style></head><body>
+
+<div class="wrap"><div class="cap">1b · Count control, journal on hold</div>
+<div class="ph"><div class="sb"><span>10:50</span><span>▾ ▮</span></div>
+<div class="bar"><i class="ti ti-arrow-left"></i><h1>Count control</h1><i class="ti ti-cloud-check cloud"></i><i class="ti ti-dots-vertical"></i></div>
+<div class="ctx">Store S0142 Marina · Supervisor</div>
+<div class="pad">
+<div class="tiles">
+<div class="tile"><div class="n">0</div><div class="l">Bins counted twice</div></div>
+<div class="tile"><div class="n">0</div><div class="l">Counters still counting</div></div>
+<div class="tile"><div class="n">3</div><div class="l">Blind counts today</div></div>
+<div class="tile"><div class="n">38</div><div class="l">Lines with variance</div></div>
+</div>
+<div class="card"><h2>Store journal CJ-018231</h2>
+<span class="tag">ON HOLD</span>
+<div class="sub">3 blind counts · 412 lines<br>Held by you · skipped by the nightly batch</div></div>
+<div class="card" style="padding:4px 14px">
+<div class="row"><span>Counted twice</span><i class="ti ti-chevron-right"></i></div>
+<div class="row"><span>Counters</span><i class="ti ti-chevron-right"></i></div>
+<div class="row"><span>Blind counts</span><i class="ti ti-chevron-right"></i></div>
+<div class="row"><span>Variance lines</span><i class="ti ti-chevron-right"></i></div>
+</div></div>
+<div class="btns"><div class="b2">Release journal</div><div class="b1" style="opacity:.45">Post now</div></div>
+</div></div>
+
+<div class="wrap"><div class="cap">5 · Blind counts</div>
+<div class="ph"><div class="sb"><span>10:44</span><span>▾ ▮</span></div>
+<div class="bar"><i class="ti ti-arrow-left"></i><h1>Blind counts</h1><i class="ti ti-cloud-check cloud"></i><i class="ti ti-dots-vertical"></i></div>
+<div class="pad">
+<div class="card"><h2>BC-0091</h2>
+<div class="sub">Aisle A shelves · started 08:02</div>
+<span class="tag g">IN JOURNAL</span>
+<div class="sub">1 counter · 180 lines</div></div>
+<div class="card"><h2>BC-0094</h2>
+<div class="sub">Oils and rice · started 13:12</div>
+<span class="tag g">IN JOURNAL</span>
+<div class="sub">1 counter · 132 lines</div></div>
+<div class="card"><h2>BC-0097</h2>
+<div class="sub">Back store · started 09:30</div>
+<span class="tag">COUNTING</span>
+<div class="sub">1 counter · 100 lines</div></div>
+<div class="trail">A blind count goes into the journal when its journal is created.</div>
+</div></div></div>
+
+<div class="wrap"><div class="cap">6 · Variance lines</div>
+<div class="ph"><div class="sb"><span>10:45</span><span>▾ ▮</span></div>
+<div class="bar"><i class="ti ti-arrow-left"></i><h1>Variance lines</h1><i class="ti ti-cloud-check cloud"></i><i class="ti ti-dots-vertical"></i></div>
+<div class="pad">
+<div class="sub" style="font-size:14px">Store journal CJ-018231 · 38 lines</div>
+<div class="card"><h2>10220 · Olive oil 1L</h2>
+<div class="sub">A-01</div>
+<div class="who"><span>Counted</span><b>14</b></div>
+<div class="who" style="color:#5b6266"><span>On-hand in D365</span><span>7</span></div>
+<div class="who"><span>Variance</span><b style="color:#16823c">+7</b></div></div>
+<div class="card"><h2>30871 · Rice 5kg</h2>
+<div class="sub">C-04</div>
+<div class="who"><span>Counted</span><b>12</b></div>
+<div class="who" style="color:#5b6266"><span>On-hand in D365</span><span>15</span></div>
+<div class="who"><span>Variance</span><b style="color:#c0262f">-3</b></div></div>
+<div class="card"><h2>41120 · Tea 100 bags</h2>
+<div class="sub">B-02 · Batch T2611</div>
+<div class="who"><span>Counted</span><b>0</b></div>
+<div class="who" style="color:#5b6266"><span>On-hand in D365</span><span>4</span></div>
+<div class="who"><span>Variance</span><b style="color:#c0262f">-4</b></div></div>
+</div></div></div>
+</body></html>

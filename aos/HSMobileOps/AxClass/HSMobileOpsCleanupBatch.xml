@@ -248,10 +248,16 @@ class HSMobileOpsCleanupBatch extends RunBaseBatch
                 line   = null;
                 stage  = null;
                 ttsbegin;
-                while select RecId from master
+                while select RecId, StoreJournalRecId from master
                     where (master.Status == HSMobileOpsCountMasterStatus::Transferred && master.TransferredUtc < before)
                        || (master.Status == HSMobileOpsCountMasterStatus::Cancelled   && master.StartedUtc     < before)
                 {
+                    // A store journal's lines stay until it has posted: they are its counted twice
+                    // and decision record.
+                    if (master.StoreJournalRecId && !HSMobileOpsCountStoreJournal::find(master.StoreJournalRecId).Posted)
+                    {
+                        continue;
+                    }
                     select count(RecId) from line where line.MasterRecId == master.RecId;
                     removed += any2Int(line.RecId);
                     if (line.RecId)

@@ -204,6 +204,15 @@ object Routes {
     /** Supervisor only: count accuracy by location / item / class / counter. */
     const val COUNTING_ACCURACY = "counting/supervisor/accuracy"
 
+    /** Count control for the store supervisor (spec section 4, 24 Nov 2026). */
+    const val COUNT_CONTROL = "countcontrol"
+    const val COUNT_CONTROL_TWICE = "countcontrol/twice"
+    const val COUNT_CONTROL_BIN = "countcontrol/bin/{lineId}"
+    fun countControlBin(lineId: String) = "countcontrol/bin/$lineId"
+    const val COUNT_CONTROL_COUNTERS = "countcontrol/counters"
+    const val COUNT_CONTROL_BLIND = "countcontrol/blind"
+    const val COUNT_CONTROL_VARIANCE = "countcontrol/variance"
+
     /**
      * The read-only lookups - promoted to first-class Home tiles directly (see HomeScreen's own
      * `MODULES`) rather than sitting behind an intermediate menu screen, so there is no
@@ -620,6 +629,39 @@ fun AppNavGraph(
 
                 composable(Routes.COUNTING_ACCURACY) {
                     AccuracyReportScreen(onBack = { navController.popBackStackSafely() })
+                }
+                composable(Routes.COUNT_CONTROL) {
+                    com.d365fo.mobileops.presentation.modules.countcontrol.CountControlScreen(
+                        onBack = { navController.popBackStackSafely() },
+                        onCountedTwice = { navController.navigate(Routes.COUNT_CONTROL_TWICE) },
+                        onCounters = { navController.navigate(Routes.COUNT_CONTROL_COUNTERS) },
+                        onBlindCounts = { navController.navigate(Routes.COUNT_CONTROL_BLIND) },
+                        onVarianceLines = { navController.navigate(Routes.COUNT_CONTROL_VARIANCE) },
+                    )
+                }
+                composable(Routes.COUNT_CONTROL_TWICE) {
+                    com.d365fo.mobileops.presentation.modules.countcontrol.CountedTwiceScreen(
+                        onBack = { navController.popBackStackSafely() },
+                        onBin = { lineId -> navController.navigate(Routes.countControlBin(lineId)) },
+                    )
+                }
+                composable(
+                    Routes.COUNT_CONTROL_BIN,
+                    arguments = listOf(androidx.navigation.navArgument("lineId") { type = androidx.navigation.NavType.StringType }),
+                ) {
+                    com.d365fo.mobileops.presentation.modules.countcontrol.DecideBinScreen(
+                        onBack = { navController.popBackStackSafely() },
+                        onDecided = { navController.popBackStackSafely() },
+                    )
+                }
+                composable(Routes.COUNT_CONTROL_COUNTERS) {
+                    com.d365fo.mobileops.presentation.modules.countcontrol.CountersScreen(onBack = { navController.popBackStackSafely() })
+                }
+                composable(Routes.COUNT_CONTROL_BLIND) {
+                    com.d365fo.mobileops.presentation.modules.countcontrol.BlindCountsScreen(onBack = { navController.popBackStackSafely() })
+                }
+                composable(Routes.COUNT_CONTROL_VARIANCE) {
+                    com.d365fo.mobileops.presentation.modules.countcontrol.VarianceLinesScreen(onBack = { navController.popBackStackSafely() })
                 }
 
                 composable(

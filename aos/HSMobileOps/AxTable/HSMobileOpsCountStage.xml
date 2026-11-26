@@ -76,6 +76,22 @@ public class HSMobileOpsCountStage extends common
 			<AllowEdit>No</AllowEdit>
 			<Label>Counted lines</Label>
 		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldInt64">
+			<Name>StoreJournalRecId</Name>
+			<AllowEdit>No</AllowEdit>
+			<ExtendedDataType>RefRecId</ExtendedDataType>
+			<HelpText>The store journal this blind count goes into (Count types: One journal per store).</HelpText>
+			<Label>Store journal</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>MasterId</Name>
+			<AllowEdit>No</AllowEdit>
+			<HelpText>The stock count's number, stored for the Count control center.</HelpText>
+			<Label>Blind count</Label>
+			<StringSize>30</StringSize>
+		</AxTableField>
 	</Fields>
 	<FullTextIndexes />
 	<Indexes>
@@ -88,6 +104,18 @@ public class HSMobileOpsCountStage extends common
 				</AxTableIndexField>
 				<AxTableIndexField>
 					<DataField>UserName</DataField>
+				</AxTableIndexField>
+			</Fields>
+		</AxTableIndex>
+		<AxTableIndex>
+			<Name>StoreJournalIdx</Name>
+			<AllowDuplicates>Yes</AllowDuplicates>
+			<Fields>
+				<AxTableIndexField>
+					<DataField>StoreJournalRecId</DataField>
+				</AxTableIndexField>
+				<AxTableIndexField>
+					<DataField>Status</DataField>
 				</AxTableIndexField>
 			</Fields>
 		</AxTableIndex>
@@ -106,6 +134,22 @@ public class HSMobileOpsCountStage extends common
 					i:type="AxTableRelationConstraintField">
 					<Name>MasterRecId</Name>
 					<Field>MasterRecId</Field>
+					<RelatedField>RecId</RelatedField>
+				</AxTableRelationConstraint>
+			</Constraints>
+		</AxTableRelation>
+		<AxTableRelation xmlns=""
+			i:type="AxTableRelationForeignKey">
+			<Name>HSMobileOpsCountStoreJournal</Name>
+			<Cardinality>ZeroMore</Cardinality>
+			<RelatedTable>HSMobileOpsCountStoreJournal</RelatedTable>
+			<RelatedTableCardinality>ZeroOne</RelatedTableCardinality>
+			<RelationshipType>Association</RelationshipType>
+			<Constraints>
+				<AxTableRelationConstraint xmlns=""
+					i:type="AxTableRelationConstraintField">
+					<Name>StoreJournalRecId</Name>
+					<Field>StoreJournalRecId</Field>
 					<RelatedField>RecId</RelatedField>
 				</AxTableRelationConstraint>
 			</Constraints>

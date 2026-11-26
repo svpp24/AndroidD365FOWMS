@@ -31,7 +31,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
@@ -125,8 +124,6 @@ fun WarehouseChip(viewModel: WarehouseSwitcherViewModel = hiltViewModel()) {
                 if (canSwitch) "  \u25BE" else "",
             style = MaterialTheme.typography.labelMedium,
             color = WarehouseStatusColors.accent,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
             modifier = Modifier
                 .widthIn(max = 190.dp)
                 .padding(end = 4.dp)

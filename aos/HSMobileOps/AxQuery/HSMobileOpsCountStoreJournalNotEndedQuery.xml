@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxQuery xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns=""
+	i:type="AxQuerySimple">
+	<Name>HSMobileOpsCountStoreJournalNotEndedQuery</Name>
+	<SourceCode>
+		<Methods>
+			<Method>
+				<Name>classDeclaration</Name>
+				<Source><![CDATA[
+[Query]
+public class HSMobileOpsCountStoreJournalNotEndedQuery extends QueryRun
+{
+}
+]]></Source>
+			</Method>
+		</Methods>
+		<DataSources />
+		<DataControls />
+		<Members />
+	</SourceCode>
+	<DataSources>
+		<AxQuerySimpleRootDataSource>
+			<Name>HSMobileOpsCountStoreJournal</Name>
+			<FirstFast>Yes</FirstFast>
+			<Table>HSMobileOpsCountStoreJournal</Table>
+			<DataSources />
+			<DerivedDataSources />
+			<Fields>
+				<AxQuerySimpleDataSourceField>
+					<Name>RecId</Name>
+					<Field>RecId</Field>
+				</AxQuerySimpleDataSourceField>
+			</Fields>
+			<Ranges>
+				<AxQuerySimpleDataSourceRange>
+					<Name>InventLocationId</Name>
+					<Field>InventLocationId</Field>
+					<Value>(HSMobileOpsCountStoreJournalEngine::myStores())</Value>
+				</AxQuerySimpleDataSourceRange>
+				<AxQuerySimpleDataSourceRange>
+					<Name>NotEndedCount</Name>
+					<Field>NotEndedCount</Field>
+					<Value>&gt;0</Value>
+				</AxQuerySimpleDataSourceRange>
+				<AxQuerySimpleDataSourceRange>
+					<Name>Posted</Name>
+					<Field>Posted</Field>
+					<Value>No</Value>
+				</AxQuerySimpleDataSourceRange>
+			</Ranges>
+			<GroupBy />
+			<Having />
+			<OrderBy />
+		</AxQuerySimpleRootDataSource>
+	</DataSources>
+</AxQuery>

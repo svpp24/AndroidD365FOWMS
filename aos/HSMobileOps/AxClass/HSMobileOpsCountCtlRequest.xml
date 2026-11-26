@@ -1,0 +1,111 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsCountCtlRequest</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// HSMobileOpsCountControlSvc's request: the company, the supervisor (UserName) and their store
+/// (WarehouseId); for decideBin the count (LineId) and KEEP, SUM or REJECT (Decision); for
+/// getCountedTwice whether the decided bins are wanted (Decided); for holdStoreJournal Hold or
+/// release (Hold).
+/// </summary>
+[DataContractAttribute]
+class HSMobileOpsCountCtlRequest
+{
+    str dataAreaId;
+    str userName;
+    str warehouseId;
+    str lineId;
+    str decision;
+    boolean decided;
+    boolean hold;
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmDataAreaId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('DataAreaId')]
+    public str parmDataAreaId(str _value = dataAreaId)
+    {
+        dataAreaId = _value;
+        return dataAreaId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmUserName</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('UserName')]
+    public str parmUserName(str _value = userName)
+    {
+        userName = _value;
+        return userName;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmWarehouseId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('WarehouseId')]
+    public str parmWarehouseId(str _value = warehouseId)
+    {
+        warehouseId = _value;
+        return warehouseId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmLineId</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('LineId')]
+    public str parmLineId(str _value = lineId)
+    {
+        lineId = _value;
+        return lineId;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmDecision</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Decision')]
+    public str parmDecision(str _value = decision)
+    {
+        decision = _value;
+        return decision;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmDecided</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Decided')]
+    public boolean parmDecided(boolean _value = decided)
+    {
+        decided = _value;
+        return decided;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmHold</Name>
+				<Source><![CDATA[
+
+    [DataMemberAttribute('Hold')]
+    public boolean parmHold(boolean _value = hold)
+    {
+        hold = _value;
+        return hold;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

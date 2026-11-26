@@ -1,0 +1,236 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxTable xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsCountStoreJournal</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// One store's journal of blind counts (Count types: One journal per store). Every blind count of
+/// the store goes into the same D365FO counting journal until it is posted; the next blind count
+/// then starts a new one. The figures are stored, kept current by
+/// HSMobileOpsCountStoreJournalEngine::refreshTotals - display methods render blank on this
+/// environment's forms. The Count control center lists one row per store journal.
+/// </summary>
+public class HSMobileOpsCountStoreJournal extends common
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>find</Name>
+				<Source><![CDATA[
+    public static HSMobileOpsCountStoreJournal find(RefRecId _recId, boolean _forUpdate = false)
+    {
+        HSMobileOpsCountStoreJournal storeJournal;
+
+        storeJournal.selectForUpdate(_forUpdate);
+        if (_recId)
+        {
+            select firstonly storeJournal where storeJournal.RecId == _recId;
+        }
+        return storeJournal;
+    }
+]]></Source>
+			</Method>
+			<Method>
+				<Name>findByJournal</Name>
+				<Source><![CDATA[
+    public static HSMobileOpsCountStoreJournal findByJournal(InventJournalId _journalId, boolean _forUpdate = false)
+    {
+        HSMobileOpsCountStoreJournal storeJournal;
+
+        storeJournal.selectForUpdate(_forUpdate);
+        if (_journalId)
+        {
+            select firstonly storeJournal where storeJournal.JournalId == _journalId;
+        }
+        return storeJournal;
+    }
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+	<Label>Store journal</Label>
+	<TitleField1>InventLocationId</TitleField1>
+	<TitleField2>JournalId</TitleField2>
+	<CacheLookup>NotInTTS</CacheLookup>
+	<Fields>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>InventLocationId</Name>
+			<AllowEdit>No</AllowEdit>
+			<ExtendedDataType>InventLocationId</ExtendedDataType>
+			<Label>Store</Label>
+			<Mandatory>Yes</Mandatory>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>StoreName</Name>
+			<AllowEdit>No</AllowEdit>
+			<Label>Name</Label>
+			<StringSize>60</StringSize>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>JournalId</Name>
+			<AllowEdit>No</AllowEdit>
+			<ExtendedDataType>InventJournalId</ExtendedDataType>
+			<HelpText>The D365FO counting journal every blind count of this store goes into until it is posted.</HelpText>
+			<Label>Store journal</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldUtcDateTime">
+			<Name>CreatedUtc</Name>
+			<AllowEdit>No</AllowEdit>
+			<Label>Created</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldEnum">
+			<Name>Status</Name>
+			<AllowEdit>No</AllowEdit>
+			<Label>Status</Label>
+			<EnumType>HSMobileOpsCountStoreJournalStatus</EnumType>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldEnum">
+			<Name>OnHold</Name>
+			<AllowEdit>No</AllowEdit>
+			<HelpText>A held store journal is skipped by the nightly posting until it is released.</HelpText>
+			<Label>On hold</Label>
+			<EnumType>NoYes</EnumType>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>HoldBy</Name>
+			<AllowEdit>No</AllowEdit>
+			<ExtendedDataType>UserId</ExtendedDataType>
+			<Label>Held by</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldUtcDateTime">
+			<Name>HoldUtc</Name>
+			<AllowEdit>No</AllowEdit>
+			<Label>Held</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldInt">
+			<Name>BlindCount</Name>
+			<AllowEdit>No</AllowEdit>
+			<Label>Blind counts</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldInt">
+			<Name>CounterCount</Name>
+			<AllowEdit>No</AllowEdit>
+			<Label>Counters</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldInt">
+			<Name>LineCount</Name>
+			<AllowEdit>No</AllowEdit>
+			<HelpText>Lines in the store journal.</HelpText>
+			<Label>Lines</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldInt">
+			<Name>VarianceLineCount</Name>
+			<AllowEdit>No</AllowEdit>
+			<Label>Lines with variance</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldInt">
+			<Name>CountedTwiceCount</Name>
+			<AllowEdit>No</AllowEdit>
+			<HelpText>Bins counted more than once and not decided yet. The store journal does not post until there are none.</HelpText>
+			<Label>Counted twice</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldInt">
+			<Name>CountingNow</Name>
+			<AllowEdit>No</AllowEdit>
+			<HelpText>Counters still counting in this store journal's blind counts.</HelpText>
+			<Label>Counting now</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldInt">
+			<Name>NotEndedCount</Name>
+			<AllowEdit>No</AllowEdit>
+			<HelpText>Counters who started longer ago than Count control setup allows and have not ended their count.</HelpText>
+			<Label>Counters not ended</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldInt">
+			<Name>FailedCount</Name>
+			<AllowEdit>No</AllowEdit>
+			<HelpText>Blind counts whose journal could not be created.</HelpText>
+			<Label>Failed to create</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldUtcDateTime">
+			<Name>LastCountUtc</Name>
+			<AllowEdit>No</AllowEdit>
+			<Label>Last count</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldEnum">
+			<Name>Posted</Name>
+			<AllowEdit>No</AllowEdit>
+			<Label>Posted</Label>
+			<EnumType>NoYes</EnumType>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldUtcDateTime">
+			<Name>PostedUtc</Name>
+			<AllowEdit>No</AllowEdit>
+			<Label>Posted at</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldDate">
+			<Name>PostedDate</Name>
+			<AllowEdit>No</AllowEdit>
+			<Label>Posted on</Label>
+		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldString">
+			<Name>PostMessage</Name>
+			<AllowEdit>No</AllowEdit>
+			<Label>Posting message</Label>
+			<StringSize>250</StringSize>
+		</AxTableField>
+	</Fields>
+	<FullTextIndexes />
+	<Indexes>
+		<AxTableIndex>
+			<Name>StoreIdx</Name>
+			<AllowDuplicates>Yes</AllowDuplicates>
+			<Fields>
+				<AxTableIndexField>
+					<DataField>InventLocationId</DataField>
+				</AxTableIndexField>
+				<AxTableIndexField>
+					<DataField>Posted</DataField>
+				</AxTableIndexField>
+			</Fields>
+		</AxTableIndex>
+		<AxTableIndex>
+			<Name>JournalIdx</Name>
+			<AllowDuplicates>Yes</AllowDuplicates>
+			<Fields>
+				<AxTableIndexField>
+					<DataField>JournalId</DataField>
+				</AxTableIndexField>
+			</Fields>
+		</AxTableIndex>
+		<AxTableIndex>
+			<Name>StatusIdx</Name>
+			<AllowDuplicates>Yes</AllowDuplicates>
+			<Fields>
+				<AxTableIndexField>
+					<DataField>Status</DataField>
+				</AxTableIndexField>
+			</Fields>
+		</AxTableIndex>
+	</Indexes>
+	<Mappings />
+	<Relations />
+	<StateMachines />
+</AxTable>

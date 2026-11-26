@@ -677,3 +677,39 @@ class LiveCountRequestServiceApi @Inject constructor(
         body: com.d365fo.mobileops.data.remote.dto.CountRequestServiceRequest,
     ) = delegate.get().createCount(body)
 }
+
+/** `HSMobileOpsCountControlSvc` - Count control for the store supervisor (see CountControlRepository). */
+@Singleton
+class LiveCountControlServiceApi @Inject constructor(
+    factory: D365RetrofitFactory,
+    settings: ConnectionSettings,
+) : CountControlServiceApi {
+
+    private val delegate = RebuildingApi(factory, CountControlServiceApi::class.java) {
+        settings.tenant.value.servicesRoot
+    }
+
+    override suspend fun getCountControl(body: com.d365fo.mobileops.data.remote.dto.CountControlServiceRequest, tag: com.d365fo.mobileops.data.remote.interceptor.IdempotentRead) =
+        delegate.get().getCountControl(body, tag)
+
+    override suspend fun getCountedTwice(body: com.d365fo.mobileops.data.remote.dto.CountControlServiceRequest, tag: com.d365fo.mobileops.data.remote.interceptor.IdempotentRead) =
+        delegate.get().getCountedTwice(body, tag)
+
+    override suspend fun getCounters(body: com.d365fo.mobileops.data.remote.dto.CountControlServiceRequest, tag: com.d365fo.mobileops.data.remote.interceptor.IdempotentRead) =
+        delegate.get().getCounters(body, tag)
+
+    override suspend fun getBlindCounts(body: com.d365fo.mobileops.data.remote.dto.CountControlServiceRequest, tag: com.d365fo.mobileops.data.remote.interceptor.IdempotentRead) =
+        delegate.get().getBlindCounts(body, tag)
+
+    override suspend fun getVarianceLines(body: com.d365fo.mobileops.data.remote.dto.CountControlServiceRequest, tag: com.d365fo.mobileops.data.remote.interceptor.IdempotentRead) =
+        delegate.get().getVarianceLines(body, tag)
+
+    override suspend fun decideBin(body: com.d365fo.mobileops.data.remote.dto.CountControlServiceRequest) =
+        delegate.get().decideBin(body)
+
+    override suspend fun holdStoreJournal(body: com.d365fo.mobileops.data.remote.dto.CountControlServiceRequest) =
+        delegate.get().holdStoreJournal(body)
+
+    override suspend fun postStoreJournal(body: com.d365fo.mobileops.data.remote.dto.CountControlServiceRequest) =
+        delegate.get().postStoreJournal(body)
+}

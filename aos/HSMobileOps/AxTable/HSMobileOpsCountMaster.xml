@@ -204,6 +204,14 @@ public class HSMobileOpsCountMaster extends common
 			<AllowEdit>No</AllowEdit>
 			<Label>Transferred</Label>
 		</AxTableField>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldInt64">
+			<Name>StoreJournalRecId</Name>
+			<AllowEdit>No</AllowEdit>
+			<ExtendedDataType>RefRecId</ExtendedDataType>
+			<HelpText>The store journal this blind count goes into (Count types: One journal per store).</HelpText>
+			<Label>Store journal</Label>
+		</AxTableField>
 	</Fields>
 	<FullTextIndexes />
 	<Indexes>
@@ -240,9 +248,46 @@ public class HSMobileOpsCountMaster extends common
 				</AxTableIndexField>
 			</Fields>
 		</AxTableIndex>
+		<AxTableIndex>
+			<Name>StoreJournalIdx</Name>
+			<AllowDuplicates>Yes</AllowDuplicates>
+			<Fields>
+				<AxTableIndexField>
+					<DataField>StoreJournalRecId</DataField>
+				</AxTableIndexField>
+				<AxTableIndexField>
+					<DataField>Status</DataField>
+				</AxTableIndexField>
+			</Fields>
+		</AxTableIndex>
+		<AxTableIndex>
+			<Name>TransferredJournalIdx</Name>
+			<AllowDuplicates>Yes</AllowDuplicates>
+			<Fields>
+				<AxTableIndexField>
+					<DataField>TransferredJournalId</DataField>
+				</AxTableIndexField>
+			</Fields>
+		</AxTableIndex>
 	</Indexes>
 	<Mappings />
 	<Relations>
+		<AxTableRelation xmlns=""
+			i:type="AxTableRelationForeignKey">
+			<Name>HSMobileOpsCountStoreJournal</Name>
+			<Cardinality>ZeroMore</Cardinality>
+			<RelatedTable>HSMobileOpsCountStoreJournal</RelatedTable>
+			<RelatedTableCardinality>ZeroOne</RelatedTableCardinality>
+			<RelationshipType>Association</RelationshipType>
+			<Constraints>
+				<AxTableRelationConstraint xmlns=""
+					i:type="AxTableRelationConstraintField">
+					<Name>StoreJournalRecId</Name>
+					<Field>StoreJournalRecId</Field>
+					<RelatedField>RecId</RelatedField>
+				</AxTableRelationConstraint>
+			</Constraints>
+		</AxTableRelation>
 	</Relations>
 	<StateMachines />
 </AxTable>

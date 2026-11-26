@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxEnum xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>HSMobileOpsCountStoreJournalStatus</Name>
+	<Label>Store journal status</Label>
+	<HelpText>Where a store's journal of blind counts is: being counted, waiting for the supervisor to decide bins counted twice, failed to create, on hold, ready for the nightly posting, or posted.</HelpText>
+	<EnumValues>
+		<AxEnumValue>
+			<Name>Counting</Name>
+			<Label>Counting</Label>
+			<Value>0</Value>
+		</AxEnumValue>
+		<AxEnumValue>
+			<Name>WaitingForSupervisor</Name>
+			<Label>Waiting for supervisor</Label>
+			<Value>1</Value>
+		</AxEnumValue>
+		<AxEnumValue>
+			<Name>FailedToCreate</Name>
+			<Label>Failed to create</Label>
+			<Value>2</Value>
+		</AxEnumValue>
+		<AxEnumValue>
+			<Name>OnHold</Name>
+			<Label>On hold</Label>
+			<Value>3</Value>
+		</AxEnumValue>
+		<AxEnumValue>
+			<Name>ReadyToPost</Name>
+			<Label>Posting tonight</Label>
+			<Value>4</Value>
+		</AxEnumValue>
+		<AxEnumValue>
+			<Name>Posted</Name>
+			<Label>Posted</Label>
+			<Value>5</Value>
+		</AxEnumValue>
+	</EnumValues>
+</AxEnum>

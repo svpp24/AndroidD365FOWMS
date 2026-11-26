@@ -428,7 +428,21 @@ class HSMobileOpsCountRequestService
         InventDim                    inventDim;
         Newtonsoft.Json.Linq.JArray  rows = new Newtonsoft.Json.Linq.JArray();
         Newtonsoft.Json.Linq.JObject row;
+        HSMobileOpsCountStageLine    line;
+        Set                          ownStock;
 
+        // One journal per store: the journal holds the store's other blind counts too - only this
+        // count's stock is its result.
+        if (_master.StoreJournalRecId)
+        {
+            ownStock = new Set(Types::String);
+            while select StockKey from line
+                group by StockKey
+                where line.MasterRecId == _master.RecId
+            {
+                ownStock.add(line.StockKey);
+            }
+        }
         if (_master.TransferredJournalId)
         {
             while select journalTrans
@@ -437,6 +451,12 @@ class HSMobileOpsCountRequestService
                 join inventDim
                     where inventDim.inventDimId == journalTrans.InventDimId
             {
+                if (ownStock != null && !ownStock.in(strUpr(strFmt('%1|%2|%3|%4|%5|%6|%7|%8', journalTrans.ItemId, inventDim.configId,
+                    inventDim.InventSizeId, inventDim.InventColorId, inventDim.InventStyleId, inventDim.inventBatchId,
+                    inventDim.inventSerialId, inventDim.wMSLocationId))))
+                {
+                    continue;
+                }
                 row = new Newtonsoft.Json.Linq.JObject();
                 HSMobileOpsCountRequestService::put(row, 'ItemId', journalTrans.ItemId);
                 HSMobileOpsCountRequestService::put(row, 'ItemName', InventTable::find(journalTrans.ItemId).defaultProductName());

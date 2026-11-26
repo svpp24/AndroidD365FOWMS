@@ -79,7 +79,7 @@ val NavigationTour = listOf(
     TourStep(
         targets = listOf("connection"),
         title = "Your warehouse",
-        text = "Your scans book here. Tap to change it. Green ring: online, amber: offline.",
+        text = "Your scans book here. Tap to change it.",
     ),
     TourStep(
         targets = listOf("row_Receive", "row_Ship", "row_Count", "row_Create"),

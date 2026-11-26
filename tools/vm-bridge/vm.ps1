@@ -11,8 +11,13 @@
     tools\vm-bridge\vm.ps1 -Result 20261122-101500-build     # read an earlier answer
 #>
 param(
-    [Parameter(Position = 0)][ValidateSet('status', 'compare', 'deploy', 'fetch', 'build', 'restart', 'dbsync')][string]$Action,
+    [Parameter(Position = 0)][ValidateSet('status', 'compare', 'deploy', 'fetch', 'find', 'fetchstd', 'build', 'restart', 'dbsync')][string]$Action,
     [Parameter(Position = 1, ValueFromRemainingArguments = $true)][string[]]$Files,
+    [string[]]$Names,
+    [string[]]$Types,
+    [string[]]$Packages,
+    [string]$Pattern,
+    [int]$Max = 400,
     [int]$TimeoutSec = 540,
     [string]$Result,
     [string]$Bridge = 'C:\Claude\vm-bridge'
@@ -36,6 +41,7 @@ if (-not $Action) { throw 'an action is needed: status, compare, deploy, build, 
 
 $id = "$(Get-Date -Format 'yyyyMMdd-HHmmss')-$Action"
 $request = [ordered]@{ action = $Action; files = @($Files | Where-Object { $_ }) }
+if ($Action -eq 'find') { $request.names = @($Names); $request.types = @($Types); $request.packages = @($Packages); $request.pattern = $Pattern; $request.max = $Max }
 if ($Action -eq 'compare') {
     # Hashed here: the VM reading every repo file over the RDP drive takes many minutes.
     $model = Join-Path (Split-Path $PSScriptRoot -Parent | Split-Path -Parent) 'aos\HSMobileOps'
