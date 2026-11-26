@@ -255,7 +255,7 @@ internal fun FocusHomeLayout(
             modifier = Modifier
                 .fillMaxWidth()
                 .heightIn(min = FocusDimens.topBar + 8.dp)
-                .padding(start = FocusDimens.side, end = 8.dp, top = 6.dp, bottom = 6.dp),
+                .padding(horizontal = FocusDimens.side, vertical = 6.dp),
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
