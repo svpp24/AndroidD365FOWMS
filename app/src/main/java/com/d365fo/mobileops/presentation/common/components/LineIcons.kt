@@ -16,6 +16,7 @@ import androidx.compose.ui.unit.dp
  */
 object LineIcons {
     private const val COUNT = "M9 4h6v3H9zM6 6h12v15H6zM9 12h6M9 16h4"
+    private const val COUNT_CHECK = "M9 4h6v3H9zM6 6h12v15H6zM9 14l2 2 4-4"
     private const val RECEIVE = "M12 4v10M7 9l5 5 5-5M4 18h16"
     private const val SHIP = "M3 7h11v9H3zM14 10h4l3 3v3h-7M7 19a2 2 0 1 0 0-4 2 2 0 0 0 0 4zM17 19a2 2 0 1 0 0-4 2 2 0 0 0 0 4z"
     private const val ACTIVITY = "M4 12h4l3-7 4 14 3-7h2"
@@ -72,6 +73,7 @@ object LineIcons {
 
     // Badge weight - module, widget and group badges.
     val Count = line("Count", COUNT, BADGE)
+    val CountControl = line("CountControl", COUNT_CHECK, BADGE)
     val Receive = line("Receive", RECEIVE, BADGE)
     val Ship = line("Ship", SHIP, BADGE)
     val Activity = line("Activity", ACTIVITY, BADGE)

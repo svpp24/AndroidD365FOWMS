@@ -152,7 +152,7 @@ internal fun FocusHome(
         // Count control (spec section 4, 24 Nov 2026): a cycle count supervisor, in the store that is
         // their default warehouse. D365FO checks both again on every call.
         if (showsCountControl(session)) {
-            add(HomeEntry(HOME_ICONS[2], "Count control", null) { onRecord("Count control"); onOpen(Routes.COUNT_CONTROL) })
+            add(HomeEntry(LineIcons.CountControl, "Count control", null) { onRecord("Count control"); onOpen(Routes.COUNT_CONTROL) })
         }
         if (has(WarehouseWorkflow.PO_CREATE, WarehouseWorkflow.TO_CREATE, WarehouseWorkflow.PURCHASE_RETURN)) {
             add(HomeEntry(HOME_ICONS[3], "Create", null) { openGroup(ModuleGroup.CREATE) })
