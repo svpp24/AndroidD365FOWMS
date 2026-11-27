@@ -63,7 +63,6 @@ import com.d365fo.mobileops.presentation.common.focus.FocusMenuItem
 import com.d365fo.mobileops.presentation.common.focus.HamburgerButton
 import com.d365fo.mobileops.presentation.common.focus.HomeOnHandPanel
 import com.d365fo.mobileops.presentation.common.focus.HomeRow
-import androidx.compose.foundation.text.appendInlineContent
 import com.d365fo.mobileops.presentation.common.focus.ResultBand
 import com.d365fo.mobileops.presentation.common.theme.FocusColors
 import com.d365fo.mobileops.presentation.common.theme.FocusType
@@ -234,84 +233,68 @@ internal fun FocusHomeLayout(
             .fillMaxSize()
             .background(FocusColors.page),
     ) {
-        // Header (user, 15 Nov 2026): the worker's initials in a navy circle - a green ring when
-        // online, a dashed grey one offline - with the warehouse code on an orange tag, then the
-        // warehouse's name on one line, scrolling when it is longer than the line, and the menu.
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(min = FocusDimens.topBar + 8.dp)
-                .padding(start = FocusDimens.side, end = 8.dp, top = 6.dp, bottom = 6.dp),
-        ) {
+        // Header (user, 27 Nov 2026, mock option 5): a square bar in the logo's deep navy with a
+        // thin logo-teal line under it - the warehouse code in an orange chip, the name in white
+        // beside it, and a white menu button. The name wraps; past two lines it gets smaller,
+        // down to 14 sp. Never cut off.
+        Column(Modifier.fillMaxWidth().background(LogoNavy)) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier
-                    .weight(1f)
-                    .tourTarget("warehouse")
-                    .then(
-                        if (onChangeWarehouse != null) {
-                            Modifier.clickable(role = Role.Button, onClickLabel = "Change warehouse", onClick = onChangeWarehouse)
-                        } else {
-                            Modifier
-                        },
-                    )
-                    .heightIn(min = 48.dp)
-                    .semantics(mergeDescendants = true) {
-                        heading()
-                        contentDescription = "$userLabel, $warehouseCode $warehouseName, " + if (online) "online" else "offline"
-                    },
+                    .fillMaxWidth()
+                    .heightIn(min = FocusDimens.topBar + 8.dp)
+                    .padding(start = FocusDimens.side, end = 8.dp, top = 8.dp, bottom = 8.dp),
             ) {
-                // Code chip (user, 26 Nov 2026): the warehouse code in an orange chip that reads as the
-                // first word of its name; the name wraps under it as one paragraph - no avatar, no
-                // online mark. Past two lines it gets smaller, down to 15 sp. Never cut off.
-                var nameSize by remember(warehouseName) { mutableStateOf(18f) }
-                val code = warehouseCode.uppercase()
-                val name = if (warehouseName.isNotBlank() && warehouseName != warehouseCode) warehouseName else ""
-                val chipStyle = FocusType.rowCode.copy(fontSize = 13.sp, lineHeight = 16.sp,
-                    fontWeight = androidx.compose.ui.text.font.FontWeight.ExtraBold)
-                val measurer = androidx.compose.ui.text.rememberTextMeasurer()
-                val density = androidx.compose.ui.platform.LocalDensity.current
-                val chipWidth = with(density) { (measurer.measure(code, chipStyle).size.width + 14.dp.roundToPx()).toSp() }
-                val chipHeight = with(density) { (measurer.measure(code, chipStyle).size.height + 4.dp.roundToPx()).toSp() }
-                Text(
-                    androidx.compose.ui.text.buildAnnotatedString {
-                        if (code.isNotBlank()) {
-                            appendInlineContent("chip", code)
-                            append(" ")
-                        }
-                        append(name)
-                    },
-                    inlineContent = mapOf(
-                        "chip" to androidx.compose.foundation.text.InlineTextContent(
-                            androidx.compose.ui.text.Placeholder(chipWidth, chipHeight,
-                                androidx.compose.ui.text.PlaceholderVerticalAlign.TextCenter),
-                        ) {
-                            Box(
-                                contentAlignment = Alignment.Center,
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .clip(RoundedCornerShape(7.dp))
-                                    .background(FocusColors.action), // orange (user, 26 Nov 2026)
-                            ) {
-                                Text(code, style = chipStyle, color = FocusColors.surface)
-                            }
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    modifier = Modifier
+                        .weight(1f)
+                        .tourTarget("warehouse")
+                        .then(
+                            if (onChangeWarehouse != null) {
+                                Modifier.clickable(role = Role.Button, onClickLabel = "Change warehouse", onClick = onChangeWarehouse)
+                            } else {
+                                Modifier
+                            },
+                        )
+                        .heightIn(min = 48.dp)
+                        .semantics(mergeDescendants = true) {
+                            heading()
+                            contentDescription = "$userLabel, $warehouseCode $warehouseName, " + if (online) "online" else "offline"
                         },
-                    ),
-                    style = FocusType.rowTitle.copy(fontSize = nameSize.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.ExtraBold),
-                    color = FocusColors.ink,
-                    lineHeight = (nameSize + 5f).sp,
-                    onTextLayout = { layout -> if (layout.lineCount > 2 && nameSize > 15f) nameSize -= 1f },
-                    modifier = Modifier.weight(1f).tourTarget("connection"),
-                )
+                ) {
+                    var nameSize by remember(warehouseName) { mutableStateOf(17f) }
+                    if (warehouseCode.isNotBlank()) {
+                        Text(
+                            warehouseCode.uppercase(),
+                            style = FocusType.rowCode.copy(fontSize = 15.sp, lineHeight = 18.sp,
+                                fontWeight = androidx.compose.ui.text.font.FontWeight.Bold),
+                            color = FocusColors.surface,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(LogoOrange)
+                                .padding(horizontal = 9.dp, vertical = 5.dp),
+                        )
+                    }
+                    Text(
+                        if (warehouseName.isNotBlank()) warehouseName else warehouseCode,
+                        style = FocusType.rowTitle.copy(fontSize = nameSize.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Medium),
+                        color = FocusColors.surface,
+                        lineHeight = (nameSize + 5f).sp,
+                        onTextLayout = { layout -> if (layout.lineCount > 2 && nameSize > 14f) nameSize -= 1f },
+                        modifier = Modifier.weight(1f).tourTarget("connection"),
+                    )
+                }
+                // Settings, Send feedback and Sign out stay in the menu (user, 26 Nov 2026).
+                Box(Modifier.tourTarget("signout")) {
+                    HamburgerButton(open = menuOpen, onClick = { menuOpen = !menuOpen }, onDark = true)
+                }
             }
-            // Settings, Send feedback and Sign out stay in the menu (user, 26 Nov 2026).
-            Box(Modifier.tourTarget("signout")) {
-                HamburgerButton(open = menuOpen, onClick = { menuOpen = !menuOpen })
-            }
+            Box(Modifier.fillMaxWidth().height(4.dp).background(LogoTeal))
         }
+        Spacer(Modifier.height(8.dp))
         FocusMenu(
             open = menuOpen,
             onDismiss = { menuOpen = false },
@@ -496,6 +479,11 @@ internal fun FocusHomeSample(band: Boolean = false) {
 @androidx.compose.ui.tooling.preview.Preview(name = "Home", widthDp = 360, heightDp = 640, showBackground = true)
 @Composable
 private fun FocusHomePreview() = com.d365fo.mobileops.presentation.common.focus.FocusPreviewSurface { FocusHomeSample() }
+
+/** The logo's colours (ic_splash_logo): forklift navy, box orange, barcode teal. */
+private val LogoNavy = androidx.compose.ui.graphics.Color(0xFF00203E)
+private val LogoOrange = androidx.compose.ui.graphics.Color(0xFFFF6800)
+private val LogoTeal = androidx.compose.ui.graphics.Color(0xFF00A5A4)
 
 /** Home's rows in order: Receive, Ship, Count, Create, Activity, Enquiry - see MenuIconsTest. */
 internal val HOME_ICONS = listOf(

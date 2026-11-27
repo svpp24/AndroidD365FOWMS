@@ -247,19 +247,20 @@ data class FocusMenuItem(val icon: ImageVector, val label: String, val color: Co
 
 /** The hamburger: navy lines; open, a navy square with a white X. 48dp. */
 @Composable
-fun HamburgerButton(open: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
+/** [onDark]: on a dark bar - a white icon, and a light wash when open. */
+fun HamburgerButton(open: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier, onDark: Boolean = false) {
     Box(
         contentAlignment = Alignment.Center,
         modifier = modifier
             .size(48.dp)
             .clip(RoundedCornerShape(16.dp))
-            .background(if (open) FocusColors.navy else Color.Transparent)
+            .background(if (open) (if (onDark) Color.White.copy(alpha = 0.18f) else FocusColors.navy) else Color.Transparent)
             .clickable(role = Role.Button, onClickLabel = if (open) "Close menu" else "Open menu", onClick = guardedClick(onClick)),
     ) {
         Icon(
             if (open) Icons.Filled.Close else Icons.Filled.Menu,
             contentDescription = if (open) "Close menu" else "Menu",
-            tint = if (open) FocusColors.surface else FocusColors.navy,
+            tint = if (open || onDark) FocusColors.surface else FocusColors.navy,
             modifier = Modifier.size(26.dp),
         )
     }
